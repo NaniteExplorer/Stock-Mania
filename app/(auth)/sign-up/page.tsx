@@ -1,10 +1,11 @@
 "use client";
-import {useForm} from "react-hook-form";
-import {Button} from "@/components/ui/button";
-import InputField from "@/components/forms/inputField";
+import { useForm } from "react-hook-form";
+import { Button } from "@/components/ui/button";
+import InputField from "../../../components/forms/InputField";
 import SelectField from "@/components/forms/SelectField";
-import {INVESTMENT_GOALS, PREFERRED_INDUSTRIES, RISK_TOLERANCE_OPTIONS,} from "@/lib/constants";
-import {CountrySelectField} from "@/components/forms/CountrySelectField";
+import { INVESTMENT_GOALS, PREFERRED_INDUSTRIES, RISK_TOLERANCE_OPTIONS } from "@/lib/constants";
+import { CountrySelectField } from "@/components/forms/CountrySelectField";
+import FooterLink from "@/components/forms/FooterLink";
 
 const SignUp = () => {
   const {
@@ -107,6 +108,11 @@ const SignUp = () => {
         >
           {isSubmitting ? "Creating Account" : "Start Your Investing Journey"}
         </Button>
+        <FooterLink
+          text="Already have an account"
+          linkText="Sign In"
+          href="/sign-in"
+        />
       </form>
     </>
   );
