@@ -1,8 +1,7 @@
 "use server";
 
-import {auth} from "@/lib/better-auth/auth";
-import {inngest} from "@/lib/inngest/client";
-import {headers} from "next/headers";
+import { inngest } from "@/lib/inngest/client";
+import { auth } from "@/lib/better-auth/auth";
 
 export const signUpWithEmail = async ({
   email,
@@ -14,7 +13,11 @@ export const signUpWithEmail = async ({
   preferredIndustry,
 }: SignUpFormData) => {
   try {
-    const response = await auth.api.signUpEmail({
+    // 1. Await the function to get the actual better-auth instance
+    const authInstance = await auth();
+
+    // 2. Call the API on the returned instance
+    const response = await authInstance.api.signUpEmail({
       body: { email, password, name: fullName },
     });
 
@@ -31,30 +34,12 @@ export const signUpWithEmail = async ({
         },
       });
     }
-
     return { success: true, data: response };
-  } catch (e) {
-    console.log("Sign up failed", e);
-    return { success: false, error: "Sign up failed" };
-  }
-};
-
-export const signInWithEmail = async ({ email, password }: SignInFormData) => {
-  try {
-    const response = await auth.api.signInEmail({ body: { email, password } });
-
-    return { success: true, data: response };
-  } catch (e) {
-    console.log("Sign in failed", e);
-    return { success: false, error: "Sign in failed" };
-  }
-};
-
-export const signOut = async () => {
-  try {
-    await auth.api.signOut({ headers: await headers() });
-  } catch (e) {
-    console.log("Sign out failed", e);
-    return { success: false, error: "Sign out failed" };
+  } catch (error) {
+    console.log("Sign up failed", error);
+    return {
+      success: false,
+      error: "Sign up failed",
+    };
   }
 };
