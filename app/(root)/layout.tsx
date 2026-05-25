@@ -4,8 +4,11 @@ import { auth } from "@/lib/better-auth/auth";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { User } from "better-auth";
+import { connection } from "next/server";
 
 const Layout = async ({ children }: { children: React.ReactNode }) => {
+  await connection();
+
   const authInstance = await auth();
   const session = await authInstance.api.getSession({
     headers: await headers(),
