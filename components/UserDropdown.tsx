@@ -5,22 +5,23 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
-  DropdownMenuTrigger
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useRouter } from "next/navigation";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { LogOut } from "lucide-react";
 import NavItems from "@/components/NavItems";
+import { User } from "better-auth";
+import { signOut } from "@/lib/actions/auth.actions";
 
-const UserDropdown = () => {
+const UserDropdown = ({ user }: { user: User }) => {
   const router = useRouter();
 
   const handleSignOut = async () => {
+    await signOut();
     router.push("/sign-in");
   };
-
-  const user = { name: "John", email: "contact@jsmastery.com" };
 
   return (
     <DropdownMenu>
