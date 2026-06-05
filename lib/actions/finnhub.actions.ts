@@ -1,8 +1,8 @@
 "use server";
 
-import { formatArticle, getDateRange, validateArticle } from "@/lib/utils";
-import { POPULAR_STOCK_SYMBOLS } from "@/lib/constants";
-import { cache } from "react";
+import {formatArticle, getDateRange, validateArticle} from "@/lib/utils";
+import {POPULAR_STOCK_SYMBOLS} from "@/lib/constants";
+import {cache} from "react";
 
 const FINNHUB_BASE_URL = "https://finnhub.io/api/v1";
 const NEXT_PUBLIC_FINNHUB_API_KEY =
@@ -42,7 +42,7 @@ export async function getNews(
 ): Promise<MarketNewsArticle[]> {
   try {
     const range = getDateRange(5);
-    const token = process.env.FINNHUB_API_KEY ?? NEXT_PUBLIC_FINNHUB_API_KEY;
+    const token = NEXT_PUBLIC_FINNHUB_API_KEY;
     if (!token) {
       throw new Error("FINNHUB API key is not configured");
     }

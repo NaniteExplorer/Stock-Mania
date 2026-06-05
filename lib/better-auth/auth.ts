@@ -3,6 +3,7 @@ import { mongodbAdapter } from "better-auth/adapters/mongodb";
 import { connectToDatabase } from "@/database/mongoose";
 import { nextCookies } from "better-auth/next-js";
 import type { Db } from "mongodb"; // <-- 1. Import the top-level Db type
+import { headers } from "next/headers";
 
 const createAuth = (db: Parameters<typeof mongodbAdapter>[0]) =>
   betterAuth({
@@ -36,4 +37,17 @@ export const auth = async () => {
   authInstance = createAuth(db as unknown as Db);
 
   return authInstance;
+};
+
+export const getCurrentSession = async () => {
+  try {
+    const authInstance = await auth();
+
+    return await authInstance.api.getSession({
+      headers: await headers(),
+    });
+  } catch (error) {
+    console.error("Unable to read auth session", error);
+    return null;
+  }
 };

@@ -1,7 +1,6 @@
 import * as React from "react";
 import Header from "@/components/Header";
-import { auth } from "@/lib/better-auth/auth";
-import { headers } from "next/headers";
+import { getCurrentSession } from "@/lib/better-auth/auth";
 import { redirect } from "next/navigation";
 import { User } from "better-auth";
 import { connection } from "next/server";
@@ -9,10 +8,7 @@ import { connection } from "next/server";
 const Layout = async ({ children }: { children: React.ReactNode }) => {
   await connection();
 
-  const authInstance = await auth();
-  const session = await authInstance.api.getSession({
-    headers: await headers(),
-  });
+  const session = await getCurrentSession();
 
   if (!session?.user) redirect("/sign-in");
   const user = session.user as User;
