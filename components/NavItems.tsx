@@ -2,7 +2,7 @@
 import { NAV_ITEMS } from "@/lib/constants";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import SearchCommand from "@/components/ui/SearchCommand";
+import SearchCommand from "@/components/SearchCommand";
 
 const NavItems = ({
   initialStocks,
@@ -10,15 +10,17 @@ const NavItems = ({
   initialStocks: StockWithWatchlistStatus[];
 }) => {
   const pathname = usePathname();
+
   const isActive = (path: string) => {
-    if (path == "/") return pathname == "/";
+    if (path === "/") return pathname === "/";
 
     return pathname.startsWith(path);
   };
+
   return (
     <ul className="flex flex-col sm:flex-row p-2 gap-3 sm:gap-10 font-medium">
-      {NAV_ITEMS.map(({ href, label }) => {
-        if (label === "Search")
+      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+        if (href === "/search")
           return (
             <li key="search-trigger">
               <SearchCommand
@@ -33,10 +35,11 @@ const NavItems = ({
           <li key={href}>
             <Link
               href={href}
-              className={`hover:text-yellow-500 transition-colors ${
+              className={`flex items-center gap-2 hover:text-yellow-500 transition-colors ${
                 isActive(href) ? "text-gray-100" : ""
               }`}
             >
+              <Icon className="h-4 w-4" aria-hidden="true" />
               {label}
             </Link>
           </li>
@@ -45,5 +48,4 @@ const NavItems = ({
     </ul>
   );
 };
-
 export default NavItems;
