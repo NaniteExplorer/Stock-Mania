@@ -46,15 +46,15 @@ export const MARKET_OVERVIEW_WIDGET_CONFIG = {
   largeChartUrl: "", // link to a large chart if needed
   isTransparent: true, // makes background transparent
   showFloatingTooltip: true, // show tooltip on hover
-  plotLineColorGrowing: "#0FEDBE", // line color when price goes up
-  plotLineColorFalling: "#0FEDBE", // line color when price falls
+  plotLineColorGrowing: "#10b981", // line color when price goes up
+  plotLineColorFalling: "#f43f5e", // line color when price falls
   gridLineColor: "rgba(240, 243, 250, 0)", // grid line color
-  scaleFontColor: "#DBDBDB", // font color for scale
-  belowLineFillColorGrowing: "rgba(41, 98, 255, 0.12)", // fill under line when growing
-  belowLineFillColorFalling: "rgba(41, 98, 255, 0.12)", // fill under line when falling
-  belowLineFillColorGrowingBottom: "rgba(41, 98, 255, 0)",
-  belowLineFillColorFallingBottom: "rgba(41, 98, 255, 0)",
-  symbolActiveColor: "rgba(15, 237, 190, 0.05)", // highlight color for active symbol
+  scaleFontColor: "#e2e8f0", // font color for scale
+  belowLineFillColorGrowing: "rgba(16, 185, 129, 0.12)", // fill under line when growing
+  belowLineFillColorFalling: "rgba(244, 63, 94, 0.12)", // fill under line when falling
+  belowLineFillColorGrowingBottom: "rgba(16, 185, 129, 0)",
+  belowLineFillColorFallingBottom: "rgba(244, 63, 94, 0)",
+  symbolActiveColor: "rgba(245, 158, 11, 0.08)", // highlight color for active symbol
   tabs: [
     {
       title: "Financial",
@@ -90,7 +90,7 @@ export const MARKET_OVERVIEW_WIDGET_CONFIG = {
     },
   ],
   support_host: "https://www.tradingview.com", // TradingView host
-  backgroundColor: "#141414", // background color
+  backgroundColor: "#0b1120", // background color
   width: "100%", // full width
   height: 600, // height in px
   showSymbolLogo: true, // show logo next to symbols
@@ -135,7 +135,7 @@ export const MARKET_DATA_WIDGET_CONFIG = {
   showSymbolLogo: true,
   colorTheme: "dark",
   isTransparent: false,
-  backgroundColor: "#0F0F0F",
+  backgroundColor: "#0b1120",
   symbolsGroups: [
     {
       name: "Financial",
@@ -197,8 +197,8 @@ export const CANDLE_CHART_WIDGET_CONFIG = (symbol: string) => ({
   symbol: symbol.toUpperCase(),
   theme: "dark",
   timezone: "Etc/UTC",
-  backgroundColor: "#141414",
-  gridColor: "#141414",
+  backgroundColor: "#0b1120",
+  gridColor: "#0b1120",
   watchlist: [],
   withdateranges: false,
   compareSymbols: [],
@@ -223,8 +223,8 @@ export const BASELINE_WIDGET_CONFIG = (symbol: string) => ({
   symbol: symbol.toUpperCase(),
   theme: "dark",
   timezone: "Etc/UTC",
-  backgroundColor: "#141414",
-  gridColor: "#141414",
+  backgroundColor: "#0b1120",
+  gridColor: "#0b1120",
   watchlist: [],
   withdateranges: false,
   compareSymbols: [],

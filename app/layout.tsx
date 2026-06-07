@@ -3,6 +3,8 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import React from "react";
 import { Toaster } from "@/components/ui/sonner";
+import { ThemeProvider } from "@/components/theme-provider";
+import { BRAND } from "@/branding/brand";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -15,9 +17,11 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Signalist",
-  description:
-    "Track real-time stock prices, get personalized alerts and explore detailed company insights.",
+  title: {
+    default: BRAND.name,
+    template: `%s | ${BRAND.name}`,
+  },
+  description: BRAND.description,
 };
 
 export default function RootLayout({
@@ -26,12 +30,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" suppressHydrationWarning>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        {children}
-        <Toaster />
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem={false}
+          disableTransitionOnChange
+        >
+          {children}
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
   );

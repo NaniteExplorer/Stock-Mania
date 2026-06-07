@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
-import { connectToDatabase } from "@/database/mongoose";
+import { connectToDatabase } from "@/core/db/connection";
+import { config } from "@/core/config/env";
 import { nextCookies } from "better-auth/next-js";
 import type { Db } from "mongodb"; // <-- 1. Import the top-level Db type
 import { headers } from "next/headers";
@@ -8,8 +9,8 @@ import { headers } from "next/headers";
 const createAuth = (db: Parameters<typeof mongodbAdapter>[0]) =>
   betterAuth({
     database: mongodbAdapter(db),
-    secret: process.env.BETTER_AUTH_SECRET!,
-    baseURL: process.env.BETTER_AUTH_URL!,
+    secret: config.auth().secret,
+    baseURL: config.auth().baseUrl,
     emailAndPassword: {
       enabled: true,
       disableSignUp: false,

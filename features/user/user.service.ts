@@ -1,10 +1,13 @@
-import { connectToDatabase } from "@/database/mongoose";
+import { connectToDatabase } from "@/core/db/connection";
+import { logger } from "@/core/logger";
 
+/** Users for the daily news email. Reads the Better-Auth `user` collection. */
 export const getAllUsersForNewsEmail = async () => {
   try {
     const mongoose = await connectToDatabase();
     const db = mongoose.connection.db;
-    if (!db) throw new Error("Mongoose connection not connected");
+    if (!db) throw new Error("MongoDB connection not found");
+
     const users = await db
       .collection("user")
       .find(
@@ -21,7 +24,7 @@ export const getAllUsersForNewsEmail = async () => {
         name: user.name,
       }));
   } catch (e) {
-    console.log("Error fetching users for news email:", e);
+    logger.error("getAllUsersForNewsEmail failed", e);
     return [];
   }
 };

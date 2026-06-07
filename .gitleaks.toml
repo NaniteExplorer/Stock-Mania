@@ -1,0 +1,12 @@
+# gitleaks configuration — extends the built-in ruleset.
+title = "stockMania gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Placeholder/example files contain dummy values, not real secrets."
+paths = [
+  '''\.env\.example$''',
+  '''package-lock\.json$''',
+]

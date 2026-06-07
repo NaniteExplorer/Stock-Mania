@@ -19,7 +19,7 @@ const WatchListSchema = new Schema<WatchListItem>(
   },
 );
 
-//Prevent duplicate symbol per user
+// Prevent duplicate symbol per user
 WatchListSchema.index({ userId: 1, symbol: 1 }, { unique: true });
 
 export const WatchList: Model<WatchListItem> =

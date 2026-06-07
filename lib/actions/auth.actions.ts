@@ -1,8 +1,34 @@
 "use server";
 
-import { inngest } from "@/lib/inngest/client";
-import { auth } from "@/lib/better-auth/auth";
 import { headers } from "next/headers";
+import { eventBus } from "@/core/queue/event-bus";
+import { auth } from "@/lib/better-auth/auth";
+import { rateLimiter } from "@/core/ratelimit";
+import { logger } from "@/core/logger";
+
+const MINUTE = 60 * 1000;
+
+async function getClientIp(): Promise<string> {
+  const h = await headers();
+  const forwarded = h.get("x-forwarded-for");
+  if (forwarded) return forwarded.split(",")[0].trim();
+  return h.get("x-real-ip") || "unknown";
+}
+
+/** Fail-open rate-limit guard: returns true if the action may proceed. */
+async function withinLimit(
+  key: string,
+  limit: number,
+  windowMs: number,
+): Promise<boolean> {
+  try {
+    const { allowed } = await rateLimiter.check(key, limit, windowMs);
+    return allowed;
+  } catch {
+    logger.warn("Rate limiter unavailable; allowing request", { key });
+    return true;
+  }
+}
 
 export const signUpWithEmail = async ({
   email,
@@ -14,16 +40,21 @@ export const signUpWithEmail = async ({
   preferredIndustry,
 }: SignUpFormData) => {
   try {
-    // 1. Await the function to get the actual better-auth instance
-    const authInstance = await auth();
+    const ip = await getClientIp();
+    if (!(await withinLimit(`signup:${ip}`, 10, 60 * MINUTE))) {
+      return {
+        success: false,
+        error: "Too many sign-up attempts. Please try again later.",
+      };
+    }
 
-    // 2. Call the API on the returned instance
+    const authInstance = await auth();
     const response = await authInstance.api.signUpEmail({
       body: { email, password, name: fullName },
     });
 
     if (response) {
-      await inngest.send({
+      await eventBus.publish({
         name: "app/user.created",
         data: {
           email,
@@ -37,30 +68,31 @@ export const signUpWithEmail = async ({
     }
     return { success: true, data: response };
   } catch (error) {
-    console.log("Sign up failed", error);
-    return {
-      success: false,
-      error: "Sign up failed",
-    };
+    logger.error("Sign up failed", error);
+    return { success: false, error: "Sign up failed" };
   }
 };
+
 export const signInWithEmail = async ({ email, password }: SignInFormData) => {
   try {
-    // 1. Await the function to get the actual better-auth instance
-    const authInstance = await auth();
+    const ip = await getClientIp();
+    // Per IP + email — throttles credential stuffing / brute force.
+    if (!(await withinLimit(`signin:${ip}:${email}`, 5, 15 * MINUTE))) {
+      return {
+        success: false,
+        error:
+          "Too many sign-in attempts. Please wait a few minutes and try again.",
+      };
+    }
 
-    // 2. Call the API on the returned instance
+    const authInstance = await auth();
     const response = await authInstance.api.signInEmail({
       body: { email, password },
     });
-
     return { success: true, data: response };
   } catch (error) {
-    console.log("Sign in failed", error);
-    return {
-      success: false,
-      error: "Sign in failed",
-    };
+    logger.error("Sign in failed", error);
+    return { success: false, error: "Sign in failed" };
   }
 };
 
@@ -69,7 +101,7 @@ export const signOut = async () => {
     const authInstance = await auth();
     await authInstance.api.signOut({ headers: await headers() });
   } catch (e) {
-    console.log("sign out failer", e);
+    logger.error("Sign out failed", e);
     return { success: false, error: "Sign out failed" };
   }
 };

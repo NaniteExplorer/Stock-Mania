@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Loader2, TrendingUp } from "lucide-react";
 import Link from "next/link";
-import { searchStocks } from "@/lib/actions/finnhub.actions";
+import { searchStocks } from "@/features/stocks/stocks.actions";
 import { useDebounce } from "@/hooks/useDebounce";
 
 export default function SearchCommand({
@@ -104,7 +104,7 @@ export default function SearchCommand({
                 {isSearchMode ? "Search results" : "Popular stocks"}
                 {` `}({displayStocks?.length || 0})
               </div>
-              {displayStocks?.map((stock, i) => (
+              {displayStocks?.map((stock) => (
                 <li key={stock.symbol} className="search-item">
                   <Link
                     href={`/stocks/${stock.symbol}`}

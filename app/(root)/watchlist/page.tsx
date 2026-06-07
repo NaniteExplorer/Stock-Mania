@@ -2,7 +2,7 @@ import Link from "next/link";
 import { Star } from "lucide-react";
 import { connection } from "next/server";
 import { getCurrentSession } from "@/lib/better-auth/auth";
-import { getWatchListSymbolsByEmail } from "@/lib/actions/watchlist.actions";
+import { getWatchListSymbolsByEmail } from "@/features/watchlist/watchlist.actions";
 
 const WatchlistPage = async () => {
   await connection();

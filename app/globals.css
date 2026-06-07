@@ -41,95 +41,133 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* Brand scale — values flip between light (:root) and dark (.dark) so the
+     existing gray-* utility classes become theme-aware automatically. */
+  --color-gray-950: var(--gray-950);
+  --color-gray-900: var(--gray-900);
+  --color-gray-800: var(--gray-800);
+  --color-gray-700: var(--gray-700);
+  --color-gray-600: var(--gray-600);
+  --color-gray-500: var(--gray-500);
+  --color-gray-400: var(--gray-400);
+  --color-gray-100: var(--gray-100);
 }
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.984 0.003 247.858);
-  --sidebar-foreground: oklch(0.129 0.042 264.695);
-  --sidebar-primary: oklch(0.208 0.042 265.755);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.968 0.007 247.896);
-  --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
-  --sidebar-border: oklch(0.929 0.013 255.508);
-  --sidebar-ring: oklch(0.704 0.04 256.788);
+
+  /* stockMania — light theme (clean variant of the premium terminal) */
+  --background: #f8fafc;
+  --foreground: #0b1120;
+  --card: #ffffff;
+  --card-foreground: #0b1120;
+  --popover: #ffffff;
+  --popover-foreground: #0b1120;
+  --primary: #b45309;
+  --primary-foreground: #ffffff;
+  --secondary: #f1f5f9;
+  --secondary-foreground: #0b1120;
+  --muted: #f1f5f9;
+  --muted-foreground: #475569;
+  --accent: #f1f5f9;
+  --accent-foreground: #b45309;
+  --destructive: #dc2626;
+  --border: #e2e8f0;
+  --input: #e2e8f0;
+  --ring: #b45309;
+  --chart-1: #f59e0b;
+  --chart-2: #10b981;
+  --chart-3: #3b82f6;
+  --chart-4: #a855f7;
+  --chart-5: #f43f5e;
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0b1120;
+  --sidebar-primary: #b45309;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f1f5f9;
+  --sidebar-accent-foreground: #0b1120;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #b45309;
+
+  /* Brand scale (light) */
+  --gray-950: #0b1120;
+  --gray-900: #f8fafc; /* page background */
+  --gray-800: #ffffff; /* surfaces / cards / header */
+  --gray-700: #f1f5f9; /* elevated surfaces */
+  --gray-600: #e2e8f0; /* borders / dividers */
+  --gray-500: #64748b; /* muted text / placeholders */
+  --gray-400: #1e293b; /* body text */
+  --gray-100: #0b1120; /* high-emphasis text */
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+  /* stockMania — premium terminal (dark, default) */
+  --background: #0b1120;
+  --foreground: #e2e8f0;
+  --card: #111a2e;
+  --card-foreground: #e2e8f0;
+  --popover: #111a2e;
+  --popover-foreground: #e2e8f0;
+  --primary: #f59e0b;
+  --primary-foreground: #0b1120;
+  --secondary: #1b2740;
+  --secondary-foreground: #e2e8f0;
+  --muted: #1b2740;
+  --muted-foreground: #94a3b8;
+  --accent: #1b2740;
+  --accent-foreground: #f59e0b;
+  --destructive: #f43f5e;
+  --border: #26334d;
+  --input: #26334d;
+  --ring: #f59e0b;
+  --chart-1: #f59e0b;
+  --chart-2: #10b981;
+  --chart-3: #38bdf8;
+  --chart-4: #a855f7;
+  --chart-5: #f43f5e;
+  --sidebar: #111a2e;
+  --sidebar-foreground: #e2e8f0;
+  --sidebar-primary: #f59e0b;
+  --sidebar-primary-foreground: #0b1120;
+  --sidebar-accent: #1b2740;
+  --sidebar-accent-foreground: #f59e0b;
+  --sidebar-border: #26334d;
+  --sidebar-ring: #f59e0b;
+
+  /* Brand scale (dark) */
+  --gray-950: #0b1120;
+  --gray-900: #0b1120; /* page background */
+  --gray-800: #111a2e; /* surfaces / cards / header */
+  --gray-700: #1b2740; /* elevated surfaces */
+  --gray-600: #26334d; /* borders / dividers */
+  --gray-500: #94a3b8; /* muted text / placeholders */
+  --gray-400: #e2e8f0; /* body text */
+  --gray-100: #f8fafc; /* high-emphasis text */
 }
 
-/* === CUSTOM COLOR THEME === */
+/* === stockMania ACCENTS (constant across light/dark) === */
 @theme {
-  /* Extended Gray Scale */
-  --color-gray-900: #050505;
-  --color-gray-800: #141414;
-  --color-gray-700: #212328;
-  --color-gray-600: #30333A;
-  --color-gray-500: #9095A1;
-  --color-gray-400: #CCDADC;
+  /* Gold — primary brand accent */
+  --color-gold-400: #fbbf24;
+  --color-gold-500: #f59e0b;
+  --color-gold-600: #d97706;
 
-  /* Vibrant Colors */
-  --color-blue-600: #5862FF;
-  --color-yellow-400: #FDD458;
-  --color-yellow-500: #E8BA40;
-  --color-teal-400: #0FEDBE;
-  --color-red-500: #FF495B;
-  --color-orange-500: #FF8243;
-  --color-purple-500: #D13BFF;
+  /* Legacy yellow-* tokens remapped to gold so existing classes restyle automatically */
+  --color-yellow-400: #fbbf24;
+  --color-yellow-500: #f59e0b;
+  --color-yellow-600: #d97706;
+  --color-yellow-900: #451a03;
+
+  /* Market semantics */
+  --color-green-500: #10b981; /* up */
+  --color-red-500: #f43f5e; /* down */
+
+  /* Secondary accents */
+  --color-teal-400: #2dd4bf;
+  --color-blue-600: #3b82f6;
+  --color-orange-500: #fb923c;
+  --color-purple-500: #a855f7;
 }
 
 @layer base {
@@ -188,10 +226,10 @@
     @apply text-sm font-medium text-gray-400;
   }
   .form-input {
-    @apply h-12 px-3 py-3 text-white text-base placeholder:text-gray-500 border-gray-600 bg-gray-800 rounded-lg focus:!border-yellow-500 focus:ring-0;
+    @apply h-12 px-3 py-3 text-gray-100 text-base placeholder:text-gray-500 border-gray-600 bg-gray-800 rounded-lg focus:!border-yellow-500 focus:ring-0;
   }
   .select-trigger {
-    @apply w-full !h-12 px-3 py-3 text-base border-gray-600 bg-gray-800 text-white rounded-lg focus:!border-yellow-500 focus:ring-0;
+    @apply w-full !h-12 px-3 py-3 text-base border-gray-600 bg-gray-800 text-gray-100 rounded-lg focus:!border-yellow-500 focus:ring-0;
   }
   .country-select-trigger {
     @apply h-12 px-3 py-3 text-base w-full justify-between font-normal border-gray-600 bg-gray-800 text-gray-400 rounded-lg focus:!border-yellow-500 focus:ring-0;
@@ -203,7 +241,7 @@
     @apply text-gray-500 py-6 text-center !bg-gray-800;
   }
   .country-select-item {
-    @apply text-white cursor-pointer px-3 py-2 rounded-sm bg-gray-800 hover:!bg-gray-600;
+    @apply text-gray-100 cursor-pointer px-3 py-2 rounded-sm bg-gray-800 hover:!bg-gray-600;
   }
   .footer-link {
     @apply text-gray-400 font-medium hover:text-yellow-400 hover:underline transition-colors;
@@ -212,7 +250,7 @@
     @apply cursor-pointer hover:text-yellow-500;
   }
   .search-btn {
-    @apply cursor-pointer px-4 py-2 w-fit flex items-center gap-2 text-sm md:text-base bg-yellow-500 hover:bg-yellow-500 text-black font-medium rounded;
+    @apply cursor-pointer px-4 py-2 w-fit flex items-center gap-2 text-sm md:text-base bg-yellow-500 hover:bg-yellow-500 text-gray-950 font-medium rounded;
   }
   .search-dialog {
     @apply !bg-gray-800 lg:min-w-[800px] border-gray-600 fixed top-10 left-1/2 -translate-x-1/2 translate-y-10;
@@ -391,30 +429,30 @@
 /* TradingView Advanced Chart Widget Styles */
 .tradingview-widget-container {
   position: relative;
-  background-color: #141414 !important;
+  background-color: #0b1120 !important;
   border-radius: 8px !important;
   overflow: hidden !important;
 }
 
 .tv-embed-widget-wrapper__body {
-  background-color: #141414 !important;
+  background-color: #0b1120 !important;
 }
 
 .tradingview-widget-container__widget {
-  background-color: #141414 !important;
+  background-color: #0b1120 !important;
   height: 100% !important;
 
 }
 
 .widget-stock-heatmap-container .screenerMapWrapper-BBVfGP0b {
   overflow: hidden !important;
-  background: #141414 !important;
-  background-color: #141414 !important;
+  background: #0b1120 !important;
+  background-color: #0b1120 !important;
 }
 
 .canvasContainer-tyaAU8aH {
-  background: #141414 !important;
-  background-color: #141414 !important;
+  background: #0b1120 !important;
+  background-color: #0b1120 !important;
 }
 
 .tv-site-widget--bg_none {
@@ -441,17 +479,17 @@
 }
 
 .tv-embed-widget-wrapper .tv-embed-widget-wrapper__body {
-  background: #141414 !important;
-  background-color: #141414 !important;
+  background: #0b1120 !important;
+  background-color: #0b1120 !important;
 }
 
 .tradingview-widget-container iframe {
-  background-color: #141414 !important;
+  background-color: #0b1120 !important;
   width: 100% !important;
 }
 
 .custom-chart.tradingview-widget-container iframe {
-  border: 1px solid #30333A;
+  border: 1px solid #26334d;
   border-radius: 8px !important;
   overflow: hidden !important;
 }
@@ -477,11 +515,11 @@
 }
 
 .scrollbar-hide-default:hover {
-  scrollbar-color: #30333A transparent;
+  scrollbar-color: #26334d transparent;
 }
 
 .scrollbar-hide-default:hover::-webkit-scrollbar-thumb {
-  background-color: #30333A;
+  background-color: #26334d;
 }
 
 .scrollbar-hide-default::-webkit-scrollbar-thumb:hover {
