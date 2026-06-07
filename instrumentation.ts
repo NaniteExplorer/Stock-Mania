@@ -1,12 +1,10 @@
 /**
  * Next.js instrumentation — runs once when the server starts.
- * Validates configuration early so misconfiguration is visible at boot rather
- * than on the first request. See https://nextjs.org/docs/app/guides/instrumentation
+ * Node.js-specific code (DNS setup, config validation) lives in
+ * instrumentation.node.ts so the edge-runtime bundler never sees node:dns.
  */
 export async function register() {
-  // Only run in the Node.js server runtime (skip edge / build analysis).
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
-
-  const { validateServerConfig } = await import("@/core/config/env");
-  validateServerConfig();
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    await import("./instrumentation.node");
+  }
 }
