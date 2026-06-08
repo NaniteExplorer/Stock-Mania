@@ -47,4 +47,20 @@ class InMemorySlidingWindow implements RateLimiter {
   }
 }
 
-export const rateLimiter: RateLimiter = new InMemorySlidingWindow();
+const _global = globalThis as unknown as { _smRl?: RateLimiter };
+
+async function resolveImpl(): Promise<RateLimiter> {
+  if (_global._smRl) return _global._smRl;
+  if (process.env.REDIS_URL) {
+    const { RedisSlidingWindow } = await import("./redis");
+    _global._smRl = new RedisSlidingWindow();
+  } else {
+    _global._smRl = new InMemorySlidingWindow();
+  }
+  return _global._smRl;
+}
+
+export const rateLimiter: RateLimiter = {
+  check: (key, limit, windowMs) =>
+    resolveImpl().then((rl) => rl.check(key, limit, windowMs)),
+};

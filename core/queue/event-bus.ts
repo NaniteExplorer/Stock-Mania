@@ -20,4 +20,19 @@ class InngestEventBus implements EventBus {
   }
 }
 
-export const eventBus: EventBus = new InngestEventBus();
+const _global = globalThis as unknown as { _smEventBus?: EventBus };
+
+async function resolveImpl(): Promise<EventBus> {
+  if (_global._smEventBus) return _global._smEventBus;
+  if (process.env.KAFKA_BROKERS) {
+    const { KafkaEventBus } = await import("./kafka");
+    _global._smEventBus = new KafkaEventBus();
+  } else {
+    _global._smEventBus = new InngestEventBus();
+  }
+  return _global._smEventBus;
+}
+
+export const eventBus: EventBus = {
+  publish: (event) => resolveImpl().then((b) => b.publish(event)),
+};

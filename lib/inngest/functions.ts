@@ -8,6 +8,9 @@ import { getAllUsersForNewsEmail } from "@/features/user/user.service";
 import { getWatchListSymbolsByEmail } from "@/features/watchlist/watchlist.actions";
 import { getNews } from "@/features/news/news.service";
 import { getFormattedTodayDate } from "@/lib/utils";
+import { alertService } from "@/features/alerts/alert.service";
+import { signalService, buildSignalPrompt, parseSignalResponse } from "@/features/signals/signal.service";
+import { config } from "@/core/config/env";
 
 type UserForNewsEmail = {
   id: string;
@@ -55,14 +58,7 @@ export const sendSignUpEmail = inngest.createFunction(
 );
 
 /**
- * Dispatcher — runs on a cron (or manual event). It does almost no work: load
- * users and fan out ONE durable event per user. The heavy work (news + AI +
- * email) runs in isolated, independently-retried worker runs below, so a single
- * user's failure or a slow upstream never blocks the rest, and the whole job
- * never sits in one long-running step that can time out.
- *
- * SCALE: for very large user bases, page the user query and call step.sendEvent
- * per page rather than building one large array.
+ * Dispatcher — runs on a cron. Fans out one durable event per user.
  */
 export const sendDailyNewsSummary = inngest.createFunction(
   {
@@ -84,7 +80,6 @@ export const sendDailyNewsSummary = inngest.createFunction(
       .filter((u) => u.email)
       .map((u) => ({
         name: "app/news.user.requested",
-        // Idempotency: at most one summary per user per day, even if the cron retries.
         id: `news-${u.id || u.email}-${date}`,
         data: { id: u.id, email: u.email, name: u.name, date },
       }));
@@ -96,9 +91,7 @@ export const sendDailyNewsSummary = inngest.createFunction(
 );
 
 /**
- * Worker — builds and sends ONE user's news summary. `concurrency` and
- * `throttle` cap how hard we hit Finnhub / Gemini / SMTP; each step is retried
- * independently.
+ * Worker — builds and sends ONE user's news summary.
  */
 export const sendUserNewsSummary = inngest.createFunction(
   {
@@ -149,5 +142,114 @@ export const sendUserNewsSummary = inngest.createFunction(
     });
 
     return { success: true, email };
+  },
+);
+
+/**
+ * Price alert checker — runs every 5 minutes during market hours.
+ * Fetches current prices for all active alerts and notifies users if triggered.
+ */
+export const checkPriceAlerts = inngest.createFunction(
+  {
+    id: "check-price-alerts",
+    triggers: [
+      { event: "app/alerts.check" },
+      { cron: "*/5 9-16 * * 1-5" }, // Every 5 min, Mon–Fri 9am–4pm UTC
+    ],
+    retries: 1,
+  },
+  async ({ step }) => {
+    const result = await step.run("check-and-notify", () =>
+      alertService.checkAndNotify(),
+    );
+    return result;
+  },
+);
+
+/**
+ * AI trading signal generator.
+ * Triggered manually (app/signal.requested) or by a scheduled cron for watchlist symbols.
+ */
+export const generateAISignal = inngest.createFunction(
+  {
+    id: "generate-ai-signal",
+    triggers: [{ event: "app/signal.requested" }],
+    concurrency: { limit: 5 },
+    throttle: { limit: 20, period: "1m" },
+    retries: 2,
+  },
+  async ({ event, step }) => {
+    const { symbol } = event.data as { symbol: string };
+
+    const priceData = await step.run("fetch-price", async () => {
+      const { apiKey, baseUrl } = config.finnhub();
+      if (!apiKey) return null;
+      const res = await fetch(
+        `${baseUrl}/quote?symbol=${symbol}&token=${apiKey}`,
+        { cache: "no-store" },
+      );
+      if (!res.ok) return null;
+      return res.json() as Promise<{ c: number }>;
+    });
+
+    if (!priceData?.c) {
+      return { success: false, reason: "price-unavailable", symbol };
+    }
+
+    const news = await step.run("fetch-news", async () => {
+      const articles = await getNews([symbol]);
+      return articles?.slice(0, 5).map((a) => a.headline ?? "") ?? [];
+    });
+
+    const prompt = buildSignalPrompt({
+      symbol,
+      currentPrice: priceData.c,
+      newsHeadlines: news as string[],
+    });
+
+    const response = await step.ai.infer("generate-signal", {
+      model: step.ai.models.gemini({ model: "gemini-2.5-flash-lite" }),
+      body: {
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+      },
+    });
+
+    const saved = await step.run("save-signal", async () => {
+      const part = response.candidates?.[0]?.content?.parts?.[0];
+      const raw = part && "text" in part ? part.text : null;
+      if (!raw) return null;
+
+      const parsed = parseSignalResponse(raw);
+      if (!parsed) return null;
+
+      return signalService.save(
+        { symbol, currentPrice: priceData.c, newsHeadlines: news as string[] },
+        parsed,
+      );
+    });
+
+    return { success: true, symbol, signalId: saved?.id ?? null };
+  },
+);
+
+/**
+ * Daily signal generation for popular symbols — runs at market open.
+ */
+export const generateDailySignals = inngest.createFunction(
+  {
+    id: "daily-signals-dispatch",
+    triggers: [{ event: "app/signals.daily" }, { cron: "30 9 * * 1-5" }],
+  },
+  async ({ step }) => {
+    const SYMBOLS = ["AAPL", "MSFT", "GOOGL", "TSLA", "NVDA", "RELIANCE", "TCS", "INFY"];
+
+    const events = SYMBOLS.map((symbol) => ({
+      name: "app/signal.requested",
+      data: { symbol, requestedBy: "system" },
+    }));
+
+    await step.sendEvent("dispatch-signals", events);
+
+    return { dispatched: events.length };
   },
 );

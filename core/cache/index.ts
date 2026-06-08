@@ -54,4 +54,24 @@ class InMemoryCache implements CacheProvider {
   }
 }
 
-export const cache: CacheProvider = new InMemoryCache();
+// Lazy singleton — resolves to RedisCache when REDIS_URL is set, InMemoryCache otherwise.
+// Call sites never change; swap happens here only.
+const _global = globalThis as unknown as { _smCache?: CacheProvider };
+
+async function resolveImpl(): Promise<CacheProvider> {
+  if (_global._smCache) return _global._smCache;
+  if (process.env.REDIS_URL) {
+    const { RedisCache } = await import("./redis");
+    _global._smCache = new RedisCache();
+  } else {
+    _global._smCache = new InMemoryCache();
+  }
+  return _global._smCache;
+}
+
+export const cache: CacheProvider = {
+  get: (k) => resolveImpl().then((c) => c.get(k)),
+  set: (k, v, ttl) => resolveImpl().then((c) => c.set(k, v, ttl)),
+  delete: (k) => resolveImpl().then((c) => c.delete(k)),
+  wrap: (k, ttl, p) => resolveImpl().then((c) => c.wrap(k, ttl, p)),
+};

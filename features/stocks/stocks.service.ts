@@ -1,6 +1,7 @@
 import { cache as requestCache } from "react";
 import { config } from "@/core/config/env";
 import { fetchJSON } from "@/core/http/fetch-json";
+import { cache } from "@/core/cache";
 import { logger } from "@/core/logger";
 import { POPULAR_STOCK_SYMBOLS } from "@/lib/constants";
 
@@ -15,12 +16,16 @@ type FinnhubSearchResultWithExchange = FinnhubSearchResult & {
 };
 
 /**
- * Stock search via Finnhub. Wrapped in React `cache` so repeated calls within a
- * single request (e.g. Header + nav) are de-duplicated.
+ * Stock search via Finnhub.
  *
- * SCALE: the per-symbol profile fetches and search results are prime candidates
- * for a shared Redis cache (core/cache) so one upstream call serves every user,
- * instead of hitting Finnhub's rate limit per request.
+ * Two layers of caching:
+ *  1. React `cache()` — deduplicates repeated calls within a single request.
+ *  2. `core/cache` (Redis when set, in-memory otherwise) — cross-request cache
+ *     so 1,000 concurrent users searching "AAPL" produce 1 Finnhub call, not 1,000.
+ *
+ * TTLs:
+ *  - Symbol profiles: 1 hour (company metadata rarely changes)
+ *  - Search results: 30 minutes
  */
 export const searchStocks = requestCache(
   async (query?: string): Promise<StockWithWatchlistStatus[]> => {
@@ -35,20 +40,24 @@ export const searchStocks = requestCache(
       let results: FinnhubSearchResultWithExchange[] = [];
 
       if (!trimmed) {
-        // Default view: profiles for the top popular symbols.
         const top = POPULAR_STOCK_SYMBOLS.slice(0, 10);
+
         const profiles = await Promise.all(
           top.map(async (sym) => {
-            try {
-              const url = `${baseUrl}/stock/profile2?symbol=${encodeURIComponent(sym)}&token=${apiKey}`;
-              const profile = await fetchJSON<FinnhubProfile>(url, {
-                revalidateSeconds: 3600,
-              });
-              return { sym, profile };
-            } catch {
-              logger.warn("Failed to fetch profile2", { sym });
-              return { sym, profile: null };
-            }
+            const profile = await cache.wrap<FinnhubProfile | null>(
+              `profile:${sym}`,
+              3600,
+              async () => {
+                try {
+                  const url = `${baseUrl}/stock/profile2?symbol=${encodeURIComponent(sym)}&token=${apiKey}`;
+                  return fetchJSON<FinnhubProfile>(url, { revalidateSeconds: 3600 });
+                } catch {
+                  logger.warn("Failed to fetch profile2", { sym });
+                  return null;
+                }
+              },
+            );
+            return { sym, profile };
           }),
         );
 
@@ -69,10 +78,15 @@ export const searchStocks = requestCache(
           })
           .filter((x): x is FinnhubSearchResultWithExchange => Boolean(x));
       } else {
-        const url = `${baseUrl}/search?q=${encodeURIComponent(trimmed)}&token=${apiKey}`;
-        const data = await fetchJSON<FinnhubSearchResponse>(url, {
-          revalidateSeconds: 1800,
-        });
+        const cacheKey = `search:${trimmed.toLowerCase()}`;
+        const data = await cache.wrap<FinnhubSearchResponse | null>(
+          cacheKey,
+          1800,
+          async () => {
+            const url = `${baseUrl}/search?q=${encodeURIComponent(trimmed)}&token=${apiKey}`;
+            return fetchJSON<FinnhubSearchResponse>(url, { revalidateSeconds: 1800 });
+          },
+        );
         results = Array.isArray(data?.result) ? data.result : [];
       }
 

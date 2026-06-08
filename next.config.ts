@@ -20,6 +20,9 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // standalone output is only needed for Docker self-hosting.
+  // Set NEXT_OUTPUT=standalone in your Dockerfile build stage; leave it unset for Vercel.
+  ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" } : {}),
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

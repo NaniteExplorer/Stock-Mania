@@ -8,11 +8,31 @@ import { logger } from "@/core/logger";
 
 const MINUTE = 60 * 1000;
 
+// Loose but sufficient: rejects non-IP garbage that could poison rate-limit keys.
+const IP_RE = /^[\d.a-f:]{2,45}$/i;
+
+function sanitizeIp(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+  const candidate = raw.trim();
+  return IP_RE.test(candidate) ? candidate : null;
+}
+
 async function getClientIp(): Promise<string> {
   const h = await headers();
+  // x-real-ip is set by the outermost proxy and cannot be forged by clients.
+  const realIp = sanitizeIp(h.get("x-real-ip"));
+  if (realIp) return realIp;
+  // x-forwarded-for: leftmost entry is client-supplied and can be spoofed.
+  // Take the rightmost entry, which is the one added by the trusted proxy.
   const forwarded = h.get("x-forwarded-for");
-  if (forwarded) return forwarded.split(",")[0].trim();
-  return h.get("x-real-ip") || "unknown";
+  if (forwarded) {
+    const parts = forwarded.split(",");
+    for (let i = parts.length - 1; i >= 0; i--) {
+      const ip = sanitizeIp(parts[i]);
+      if (ip) return ip;
+    }
+  }
+  return "unknown";
 }
 
 /** Fail-open rate-limit guard: returns true if the action may proceed. */

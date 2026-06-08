@@ -1,9 +1,13 @@
-import { LayoutDashboard, Search, Star } from "lucide-react";
+import { LayoutDashboard, Search, Star, BriefcaseBusiness, Zap, History, Settings } from "lucide-react";
 
 export const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/search", label: "Search", icon: Search },
   { href: "/watchlist", label: "Watchlist", icon: Star },
+  { href: "/portfolio", label: "Portfolio", icon: BriefcaseBusiness },
+  { href: "/signals", label: "AI Signals", icon: Zap },
+  { href: "/orders", label: "Orders", icon: History },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 // Sign-up form select options
@@ -38,23 +42,37 @@ export const CONDITION_OPTIONS = [
   { value: "less", label: "Less than (<)" },
 ];
 
+// Indian stock symbols (NSE) — Nifty 50 + top mid-caps
+export const INDIAN_STOCK_SYMBOLS = [
+  "RELIANCE", "TCS", "HDFCBANK", "INFY", "ICICIBANK",
+  "HINDUNILVR", "ITC", "SBIN", "BAJFINANCE", "BHARTIARTL",
+  "KOTAKBANK", "LT", "ASIANPAINT", "AXISBANK", "MARUTI",
+  "SUNPHARMA", "NESTLEIND", "ULTRACEMCO", "WIPRO", "TITAN",
+  "ADANIPORTS", "POWERGRID", "NTPC", "ONGC", "JSWSTEEL",
+  "TATASTEEL", "DIVISLAB", "DRREDDY", "APOLLOHOSP", "CIPLA",
+  "HCLTECH", "TECHM", "BAJAJFINSV", "BPCL", "COALINDIA",
+  "EICHERMOT", "GRASIM", "HEROMOTOCO", "HINDALCO", "INDUSINDBK",
+  "TATAMOTORS", "TATACONSUM", "VEDL", "SHREECEM", "UPL",
+  "SBILIFE", "ICICIPRULI", "HDFCLIFE", "BRITANNIA", "MM",
+];
+
 // TradingView Charts
 export const MARKET_OVERVIEW_WIDGET_CONFIG = {
-  colorTheme: "dark", // dark mode
-  dateRange: "12M", // last 12 months
-  locale: "en", // language
-  largeChartUrl: "", // link to a large chart if needed
-  isTransparent: true, // makes background transparent
-  showFloatingTooltip: true, // show tooltip on hover
-  plotLineColorGrowing: "#10b981", // line color when price goes up
-  plotLineColorFalling: "#f43f5e", // line color when price falls
-  gridLineColor: "rgba(240, 243, 250, 0)", // grid line color
-  scaleFontColor: "#e2e8f0", // font color for scale
-  belowLineFillColorGrowing: "rgba(16, 185, 129, 0.12)", // fill under line when growing
-  belowLineFillColorFalling: "rgba(244, 63, 94, 0.12)", // fill under line when falling
+  colorTheme: "dark",
+  dateRange: "12M",
+  locale: "en",
+  largeChartUrl: "",
+  isTransparent: true,
+  showFloatingTooltip: true,
+  plotLineColorGrowing: "#10b981",
+  plotLineColorFalling: "#f43f5e",
+  gridLineColor: "rgba(240, 243, 250, 0)",
+  scaleFontColor: "#e2e8f0",
+  belowLineFillColorGrowing: "rgba(16, 185, 129, 0.12)",
+  belowLineFillColorFalling: "rgba(244, 63, 94, 0.12)",
   belowLineFillColorGrowingBottom: "rgba(16, 185, 129, 0)",
   belowLineFillColorFallingBottom: "rgba(244, 63, 94, 0)",
-  symbolActiveColor: "rgba(245, 158, 11, 0.08)", // highlight color for active symbol
+  symbolActiveColor: "rgba(245, 158, 11, 0.08)",
   tabs: [
     {
       title: "Financial",
@@ -88,17 +106,47 @@ export const MARKET_OVERVIEW_WIDGET_CONFIG = {
         { s: "NYSE:V", d: "Visa" },
       ],
     },
+    {
+      title: "India",
+      symbols: [
+        { s: "BSE:RELIANCE", d: "Reliance Industries" },
+        { s: "BSE:TCS", d: "TCS" },
+        { s: "BSE:HDFCBANK", d: "HDFC Bank" },
+        { s: "BSE:INFY", d: "Infosys" },
+        { s: "BSE:ICICIBANK", d: "ICICI Bank" },
+        { s: "BSE:BHARTIARTL", d: "Bharti Airtel" },
+      ],
+    },
   ],
-  support_host: "https://www.tradingview.com", // TradingView host
-  backgroundColor: "#0b1120", // background color
-  width: "100%", // full width
-  height: 600, // height in px
-  showSymbolLogo: true, // show logo next to symbols
-  showChart: true, // display mini chart
+  support_host: "https://www.tradingview.com",
+  backgroundColor: "#0b1120",
+  width: "100%",
+  height: 600,
+  showSymbolLogo: true,
+  showChart: true,
 };
 
 export const HEATMAP_WIDGET_CONFIG = {
   dataSource: "SPX500",
+  blockSize: "market_cap_basic",
+  blockColor: "change",
+  grouping: "sector",
+  isTransparent: true,
+  locale: "en",
+  symbolUrl: "",
+  colorTheme: "dark",
+  exchanges: [],
+  hasTopBar: false,
+  isDataSetEnabled: false,
+  isZoomEnabled: true,
+  hasSymbolTooltip: true,
+  isMonoSize: false,
+  width: "100%",
+  height: "600",
+};
+
+export const INDIA_HEATMAP_WIDGET_CONFIG = {
+  dataSource: "SENSEX",
   blockSize: "market_cap_basic",
   blockColor: "change",
   grouping: "sector",
@@ -167,6 +215,17 @@ export const MARKET_DATA_WIDGET_CONFIG = {
         { name: "NYSE:T", displayName: "At&t Inc" },
         { name: "NYSE:WMT", displayName: "Walmart" },
         { name: "NYSE:V", displayName: "Visa" },
+      ],
+    },
+    {
+      name: "India",
+      symbols: [
+        { name: "BSE:RELIANCE", displayName: "Reliance" },
+        { name: "BSE:TCS", displayName: "TCS" },
+        { name: "BSE:HDFCBANK", displayName: "HDFC Bank" },
+        { name: "BSE:INFY", displayName: "Infosys" },
+        { name: "BSE:ICICIBANK", displayName: "ICICI Bank" },
+        { name: "BSE:BHARTIARTL", displayName: "Airtel" },
       ],
     },
   ],
@@ -265,65 +324,16 @@ export const COMPANY_FINANCIALS_WIDGET_CONFIG = (symbol: string) => ({
 });
 
 export const POPULAR_STOCK_SYMBOLS = [
-  // Tech Giants (the big technology companies)
-  "AAPL",
-  "MSFT",
-  "GOOGL",
-  "AMZN",
-  "TSLA",
-  "META",
-  "NVDA",
-  "NFLX",
-  "ORCL",
-  "CRM",
-
-  // Growing Tech Companies
-  "ADBE",
-  "INTC",
-  "AMD",
-  "PYPL",
-  "UBER",
-  "ZOOM",
-  "SPOT",
-  "SQ",
-  "SHOP",
-  "ROKU",
-
-  // Newer Tech Companies
-  "SNOW",
-  "PLTR",
-  "COIN",
-  "RBLX",
-  "DDOG",
-  "CRWD",
-  "NET",
-  "OKTA",
-  "TWLO",
-  "ZM",
-
-  // Consumer & Delivery Apps
-  "DOCU",
-  "PTON",
-  "PINS",
-  "SNAP",
-  "LYFT",
-  "DASH",
-  "ABNB",
-  "RIVN",
-  "LCID",
-  "NIO",
-
-  // International Companies
-  "XPEV",
-  "LI",
-  "BABA",
-  "JD",
-  "PDD",
-  "TME",
-  "BILI",
-  "DIDI",
-  "GRAB",
-  "SE",
+  // Tech Giants
+  "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NVDA", "NFLX", "ORCL", "CRM",
+  // Growing Tech
+  "ADBE", "INTC", "AMD", "PYPL", "UBER", "ZOOM", "SPOT", "SQ", "SHOP", "ROKU",
+  // Newer Tech
+  "SNOW", "PLTR", "COIN", "RBLX", "DDOG", "CRWD", "NET", "OKTA", "TWLO", "ZM",
+  // Consumer & Delivery
+  "DOCU", "PTON", "PINS", "SNAP", "LYFT", "DASH", "ABNB", "RIVN", "LCID", "NIO",
+  // International
+  "XPEV", "LI", "BABA", "JD", "PDD", "TME", "BILI", "DIDI", "GRAB", "SE",
 ];
 
 export const NO_MARKET_NEWS =

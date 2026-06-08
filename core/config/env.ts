@@ -99,6 +99,38 @@ export const config = {
   inngest: () => ({
     isDev: read("INNGEST_DEV") === "1",
   }),
+
+  redis: () => ({
+    url: read("REDIS_URL") ?? null,
+  }),
+
+  kafka: () => ({
+    brokers: readList("KAFKA_BROKERS"),
+    username: read("KAFKA_SASL_USERNAME") ?? null,
+    password: read("KAFKA_SASL_PASSWORD") ?? null,
+    clientId: read("KAFKA_CLIENT_ID") ?? "stockmania",
+  }),
+
+  zerodha: () => ({
+    apiKey: requireEnv("ZERODHA_API_KEY"),
+    apiSecret: requireEnv("ZERODHA_API_SECRET"),
+    redirectUrl:
+      read("ZERODHA_REDIRECT_URL") ??
+      `${baseUrl()}/api/zerodha/callback`,
+  }),
+
+  twilio: () => ({
+    accountSid: read("TWILIO_ACCOUNT_SID") ?? null,
+    authToken: read("TWILIO_AUTH_TOKEN") ?? null,
+    from: read("TWILIO_WHATSAPP_FROM") ?? "whatsapp:+14155238886",
+  }),
+
+  alpaca: () => ({
+    apiKey: read("ALPACA_API_KEY") ?? null,
+    apiSecret: read("ALPACA_API_SECRET") ?? null,
+    baseUrl: read("ALPACA_BASE_URL") ?? "https://paper-api.alpaca.markets",
+    live: read("ALPACA_LIVE") === "true",
+  }),
 } as const;
 
 /**
@@ -131,6 +163,28 @@ export function validateServerConfig(): void {
     logger.warn(
       "FINNHUB_API_KEY not set — market data and search are unavailable.",
     );
+  }
+  if (!config.redis().url) {
+    logger.warn(
+      "REDIS_URL not set — cache and rate-limits are in-process only (single instance).",
+    );
+  }
+  if (!config.kafka().brokers?.length) {
+    logger.warn(
+      "KAFKA_BROKERS not set — domain events route through Inngest only.",
+    );
+  }
+  if (!config.twilio().accountSid) {
+    logger.warn("TWILIO_ACCOUNT_SID not set — WhatsApp alerts disabled.");
+  }
+  if (!config.alpaca().apiKey) {
+    logger.warn("ALPACA_API_KEY not set — US stock trading disabled (paper mode).");
+  }
+
+  try {
+    config.zerodha();
+  } catch (e) {
+    problems.push((e as Error).message);
   }
 
   if (problems.length > 0) {
