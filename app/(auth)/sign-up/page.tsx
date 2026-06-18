@@ -37,7 +37,7 @@ const SignUp = () => {
   const onSubmit = async (data: SignUpFormData) => {
     try {
       const result = await signUpWithEmail(data);
-      if (result?.success) router.push("/");
+      if (result?.success) router.push("/dashboard");
       else {
         toast.error("Sign up failed", {
           description: result?.error ?? "Failed to create an account.",
@@ -54,13 +54,17 @@ const SignUp = () => {
 
   return (
     <>
-      <h1 className="form-title">Sign Up & Personalize</h1>
+      <h1 className="form-title">Create your wealth cockpit</h1>
+      <p className="mb-8 text-sm leading-6 text-gray-500">
+        Personalize your workspace now. Full asset tracking modules can be
+        connected later as stockMania grows.
+      </p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         <InputField
           name="fullName"
           label="Full Name"
-          placeholder="John Doe"
+          placeholder="Aarav Sharma"
           register={register}
           error={errors.fullName}
           validation={{ required: "Full name is required", minLength: 2 }}
@@ -69,7 +73,7 @@ const SignUp = () => {
         <InputField
           name="email"
           label="Email"
-          placeholder="contact@jsmastery.com"
+          placeholder="you@company.com"
           register={register}
           error={errors.email}
           validation={{
@@ -132,7 +136,7 @@ const SignUp = () => {
           disabled={isSubmitting}
           className="yellow-btn w-full mt-5"
         >
-          {isSubmitting ? "Creating Account" : "Start Your Investing Journey"}
+          {isSubmitting ? "Creating account" : "Create secure workspace"}
         </Button>
 
         <FooterLink

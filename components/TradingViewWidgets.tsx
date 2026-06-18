@@ -24,7 +24,12 @@ const TradingViewWidget = ({
   return (
     <div className="w-full">
       {title && (
-        <h3 className="font-semibold text-2xl text-gray-100 mb-5">{title}</h3>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-gray-100">{title}</h3>
+          <span className="rounded-full border border-gray-600 bg-gray-900/60 px-2.5 py-1 text-[11px] font-semibold text-gray-500">
+            Live
+          </span>
+        </div>
       )}
       <div
         className={cn("tradingview-widget-container", className)}

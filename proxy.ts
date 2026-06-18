@@ -7,11 +7,18 @@ import { getSessionCookie } from "better-auth/cookies";
  * redirect signed-out users early. Real authorization is enforced per page/route
  * via getCurrentSession(). Do not treat this as a security boundary.
  */
+/** Public routes that never require a session cookie. */
+const PUBLIC_PATHS = new Set(["/", "/sign-in", "/sign-up"]);
+
 export function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // Public marketing landing + auth pages stay open to signed-out visitors.
+  if (PUBLIC_PATHS.has(pathname)) return NextResponse.next();
+
   const sessionCookie = getSessionCookie(request);
 
-  // No cookie -> send to sign-in. (Redirecting to "/" would loop, since "/" is
-  // also matched here.)
+  // No cookie -> send to sign-in for any gated route.
   if (!sessionCookie) {
     return NextResponse.redirect(new URL("/sign-in", request.url));
   }
@@ -21,6 +28,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!api|_next/static|_next/image|favicon.ico|sign-in|sign-up|assets).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|icon.svg|apple-icon|sign-in|sign-up|assets).*)",
   ],
 };

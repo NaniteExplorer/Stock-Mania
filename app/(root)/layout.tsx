@@ -13,9 +13,9 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
   if (!session?.user) redirect("/sign-in");
   const user = session.user as User;
   return (
-    <main className="min-h-screen text-grey-400">
+    <main className="min-h-screen text-gray-400">
       <Header user={user} />
-      <div className="container py-10">{children}</div>
+      <div className="container py-6 md:py-8">{children}</div>
     </main>
   );
 };

@@ -1,7 +1,7 @@
 import { LayoutDashboard, Search, Star, BriefcaseBusiness, Zap, History, Settings } from "lucide-react";
 
 export const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/search", label: "Search", icon: Search },
   { href: "/watchlist", label: "Watchlist", icon: Star },
   { href: "/portfolio", label: "Portfolio", icon: BriefcaseBusiness },
@@ -58,7 +58,7 @@ export const INDIAN_STOCK_SYMBOLS = [
 
 // TradingView Charts
 export const MARKET_OVERVIEW_WIDGET_CONFIG = {
-  colorTheme: "dark",
+  colorTheme: "light",
   dateRange: "12M",
   locale: "en",
   largeChartUrl: "",
@@ -119,7 +119,7 @@ export const MARKET_OVERVIEW_WIDGET_CONFIG = {
     },
   ],
   support_host: "https://www.tradingview.com",
-  backgroundColor: "#0b1120",
+  backgroundColor: "#ffffff",
   width: "100%",
   height: 600,
   showSymbolLogo: true,
@@ -134,7 +134,7 @@ export const HEATMAP_WIDGET_CONFIG = {
   isTransparent: true,
   locale: "en",
   symbolUrl: "",
-  colorTheme: "dark",
+  colorTheme: "light",
   exchanges: [],
   hasTopBar: false,
   isDataSetEnabled: false,
@@ -153,7 +153,7 @@ export const INDIA_HEATMAP_WIDGET_CONFIG = {
   isTransparent: true,
   locale: "en",
   symbolUrl: "",
-  colorTheme: "dark",
+  colorTheme: "light",
   exchanges: [],
   hasTopBar: false,
   isDataSetEnabled: false,
@@ -167,7 +167,7 @@ export const INDIA_HEATMAP_WIDGET_CONFIG = {
 export const TOP_STORIES_WIDGET_CONFIG = {
   displayMode: "regular",
   feedMode: "market",
-  colorTheme: "dark",
+  colorTheme: "light",
   isTransparent: true,
   locale: "en",
   market: "stock",
@@ -181,9 +181,9 @@ export const MARKET_DATA_WIDGET_CONFIG = {
   height: 600,
   locale: "en",
   showSymbolLogo: true,
-  colorTheme: "dark",
+  colorTheme: "light",
   isTransparent: false,
-  backgroundColor: "#0b1120",
+  backgroundColor: "#ffffff",
   symbolsGroups: [
     {
       name: "Financial",
@@ -233,7 +233,7 @@ export const MARKET_DATA_WIDGET_CONFIG = {
 
 export const SYMBOL_INFO_WIDGET_CONFIG = (symbol: string) => ({
   symbol: symbol.toUpperCase(),
-  colorTheme: "dark",
+  colorTheme: "light",
   isTransparent: true,
   locale: "en",
   width: "100%",
@@ -254,10 +254,10 @@ export const CANDLE_CHART_WIDGET_CONFIG = (symbol: string) => ({
   save_image: false,
   style: 1,
   symbol: symbol.toUpperCase(),
-  theme: "dark",
+  theme: "light",
   timezone: "Etc/UTC",
-  backgroundColor: "#0b1120",
-  gridColor: "#0b1120",
+  backgroundColor: "#ffffff",
+  gridColor: "#eef1f8",
   watchlist: [],
   withdateranges: false,
   compareSymbols: [],
@@ -280,10 +280,10 @@ export const BASELINE_WIDGET_CONFIG = (symbol: string) => ({
   save_image: false,
   style: 10,
   symbol: symbol.toUpperCase(),
-  theme: "dark",
+  theme: "light",
   timezone: "Etc/UTC",
-  backgroundColor: "#0b1120",
-  gridColor: "#0b1120",
+  backgroundColor: "#ffffff",
+  gridColor: "#eef1f8",
   watchlist: [],
   withdateranges: false,
   compareSymbols: [],
@@ -294,7 +294,7 @@ export const BASELINE_WIDGET_CONFIG = (symbol: string) => ({
 
 export const TECHNICAL_ANALYSIS_WIDGET_CONFIG = (symbol: string) => ({
   symbol: symbol.toUpperCase(),
-  colorTheme: "dark",
+  colorTheme: "light",
   isTransparent: "true",
   locale: "en",
   width: "100%",
@@ -305,7 +305,7 @@ export const TECHNICAL_ANALYSIS_WIDGET_CONFIG = (symbol: string) => ({
 
 export const COMPANY_PROFILE_WIDGET_CONFIG = (symbol: string) => ({
   symbol: symbol.toUpperCase(),
-  colorTheme: "dark",
+  colorTheme: "light",
   isTransparent: "true",
   locale: "en",
   width: "100%",
@@ -314,7 +314,7 @@ export const COMPANY_PROFILE_WIDGET_CONFIG = (symbol: string) => ({
 
 export const COMPANY_FINANCIALS_WIDGET_CONFIG = (symbol: string) => ({
   symbol: symbol.toUpperCase(),
-  colorTheme: "dark",
+  colorTheme: "light",
   isTransparent: "true",
   locale: "en",
   width: "100%",

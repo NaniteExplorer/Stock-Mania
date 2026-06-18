@@ -19,7 +19,7 @@ const WatchlistPage = async () => {
           <p className="empty-description">
             Add stocks from a stock detail page to keep track of them here.
           </p>
-          <Link href="/" className="footer-link">
+          <Link href="/dashboard" className="footer-link">
             Back to dashboard
           </Link>
         </div>

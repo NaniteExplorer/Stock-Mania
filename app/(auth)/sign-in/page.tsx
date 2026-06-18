@@ -25,7 +25,7 @@ const SignIn = () => {
   const onSubmit = async (data: SignInFormData) => {
     try {
       const result = await signInWithEmail(data);
-      if (result.success) router.push("/");
+      if (result.success) router.push("/dashboard");
       else {
         toast.error("Sign in failed", {
           description: result.error ?? "Failed to sign in.",
@@ -42,12 +42,16 @@ const SignIn = () => {
   return (
     <>
       <h1 className="form-title">Welcome back</h1>
+      <p className="mb-8 text-sm leading-6 text-gray-500">
+        Access your market workspace, watchlists, broker-ready portfolio
+        surfaces, and AI signal queue.
+      </p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
         <InputField
           name="email"
           label="Email"
-          placeholder="contact@jsmastery.com"
+          placeholder="you@company.com"
           register={register}
           error={errors.email}
           validation={{
@@ -71,7 +75,7 @@ const SignIn = () => {
           disabled={isSubmitting}
           className="yellow-btn w-full mt-5"
         >
-          {isSubmitting ? "Signing In" : "Sign In"}
+          {isSubmitting ? "Signing in" : "Enter dashboard"}
         </Button>
 
         <FooterLink

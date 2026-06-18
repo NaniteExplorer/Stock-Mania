@@ -4,11 +4,12 @@ import { useTransition } from "react";
 import { toast } from "sonner";
 import { requestSignal } from "@/features/signals/signal.actions";
 import type { TradingSignal } from "@/features/signals/signal.types";
+import { Sparkles } from "lucide-react";
 
 const DIRECTION_STYLES: Record<TradingSignal["direction"], string> = {
-  BUY: "bg-green-500/20 text-green-400 border-green-500/40",
-  SELL: "bg-red-500/20 text-red-400 border-red-500/40",
-  HOLD: "bg-yellow-500/20 text-yellow-400 border-yellow-500/40",
+  BUY: "bg-green-500/15 text-green-400 border-green-500/40",
+  SELL: "bg-red-500/15 text-red-400 border-red-500/40",
+  HOLD: "bg-yellow-500/15 text-yellow-400 border-yellow-500/40",
 };
 
 const CONFIDENCE_DOTS: Record<TradingSignal["confidence"], number> = {
@@ -23,16 +24,17 @@ interface SignalCardProps {
 
 export function SignalCard({ signal }: SignalCardProps) {
   const dots = CONFIDENCE_DOTS[signal.confidence];
-  const ageMin = Math.round(
-    (Date.now() - new Date(signal.generatedAt).getTime()) / 60_000,
-  );
 
   return (
-    <div className="rounded-xl border border-gray-700 bg-gray-800/60 p-5 flex flex-col gap-3">
+    <div className="enterprise-card flex flex-col gap-3 p-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="text-base font-bold text-gray-100">{signal.symbol}</span>
-          <span className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${DIRECTION_STYLES[signal.direction]}`}>
+          <span className="text-base font-bold text-gray-100">
+            {signal.symbol}
+          </span>
+          <span
+            className={`rounded-full border px-2.5 py-0.5 text-xs font-bold ${DIRECTION_STYLES[signal.direction]}`}
+          >
             {signal.direction}
           </span>
         </div>
@@ -40,40 +42,50 @@ export function SignalCard({ signal }: SignalCardProps) {
           {[1, 2, 3].map((i) => (
             <span
               key={i}
-              className={`h-2 w-2 rounded-full ${i <= dots ? "bg-yellow-400" : "bg-gray-700"}`}
+              className={`h-2 w-2 rounded-full ${
+                i <= dots ? "bg-yellow-400" : "bg-gray-700"
+              }`}
             />
           ))}
         </div>
       </div>
 
-      <p className="text-sm text-gray-300 leading-relaxed">{signal.reasoning}</p>
+      <p className="text-sm leading-relaxed text-gray-300">
+        {signal.reasoning}
+      </p>
 
       <div className="grid grid-cols-2 gap-2 text-xs">
-        <div className="rounded-lg bg-gray-900/60 px-3 py-2">
+        <div className="rounded-md border border-gray-600 bg-gray-900/60 px-3 py-2">
           <p className="text-gray-500">Entry</p>
-          <p className="font-mono text-gray-100">₹{signal.currentPrice.toFixed(2)}</p>
+          <p className="font-mono text-gray-100">
+            Rs {signal.currentPrice.toFixed(2)}
+          </p>
         </div>
         {signal.targetPrice && (
-          <div className="rounded-lg bg-gray-900/60 px-3 py-2">
+          <div className="rounded-md border border-gray-600 bg-gray-900/60 px-3 py-2">
             <p className="text-gray-500">Target</p>
-            <p className="font-mono text-green-400">₹{signal.targetPrice.toFixed(2)}</p>
+            <p className="font-mono text-green-400">
+              Rs {signal.targetPrice.toFixed(2)}
+            </p>
           </div>
         )}
         {signal.stopLoss && (
-          <div className="rounded-lg bg-gray-900/60 px-3 py-2">
+          <div className="rounded-md border border-gray-600 bg-gray-900/60 px-3 py-2">
             <p className="text-gray-500">Stop Loss</p>
-            <p className="font-mono text-red-400">₹{signal.stopLoss.toFixed(2)}</p>
+            <p className="font-mono text-red-400">
+              Rs {signal.stopLoss.toFixed(2)}
+            </p>
           </div>
         )}
-        <div className="rounded-lg bg-gray-900/60 px-3 py-2">
+        <div className="rounded-md border border-gray-600 bg-gray-900/60 px-3 py-2">
           <p className="text-gray-500">Confidence</p>
           <p className="text-gray-100">{signal.confidence}</p>
         </div>
       </div>
 
       <p className="text-xs text-gray-600">
-        Generated {ageMin < 60 ? `${ageMin}m ago` : `${Math.round(ageMin / 60)}h ago`}
-        {" · "}Expires {new Date(signal.expiresAt).toLocaleTimeString()}
+        Generated {String(signal.generatedAt)} / Expires{" "}
+        {String(signal.expiresAt)}
       </p>
     </div>
   );
@@ -101,9 +113,10 @@ export function RequestSignalButton({ symbol }: RequestSignalButtonProps) {
     <button
       onClick={handle}
       disabled={isPending}
-      className="rounded-md border border-yellow-600 px-3 py-1.5 text-xs font-medium text-yellow-400 hover:bg-yellow-500/10 transition-colors disabled:opacity-50"
+      className="inline-flex items-center gap-2 rounded-md border border-yellow-600 px-3 py-1.5 text-xs font-medium text-yellow-400 transition-colors hover:bg-yellow-500/10 disabled:opacity-50"
     >
-      {isPending ? "Queuing…" : "⚡ Get AI Signal"}
+      <Sparkles className="h-3.5 w-3.5" />
+      {isPending ? "Queuing..." : "Get AI Signal"}
     </button>
   );
 }
