@@ -1,14 +1,61 @@
-import { LayoutDashboard, Search, Star, BriefcaseBusiness, Zap, History, Settings } from "lucide-react";
+import {
+  LayoutDashboard,
+  Search,
+  Star,
+  BriefcaseBusiness,
+  Zap,
+  History,
+  Settings,
+  Landmark,
+  LineChart,
+  Building2,
+  Gem,
+} from "lucide-react";
 
-export const NAV_ITEMS = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/search", label: "Search", icon: Search },
-  { href: "/watchlist", label: "Watchlist", icon: Star },
-  { href: "/portfolio", label: "Portfolio", icon: BriefcaseBusiness },
-  { href: "/signals", label: "AI Signals", icon: Zap },
-  { href: "/orders", label: "Orders", icon: History },
-  { href: "/settings", label: "Settings", icon: Settings },
+/**
+ * Sidebar navigation, grouped INDmoney-style. `NAV_ITEMS` (flat) is derived for
+ * any consumer that just needs the full list (e.g. mobile menus).
+ */
+export const NAV_GROUPS = [
+  {
+    label: "Overview",
+    items: [{ href: "/dashboard", label: "Net Worth", icon: LayoutDashboard }],
+  },
+  {
+    label: "Wealth",
+    items: [
+      { href: "/accounts", label: "Accounts", icon: Landmark },
+      { href: "/investments", label: "Investments", icon: LineChart },
+      { href: "/esops", label: "ESOPs", icon: Building2 },
+      { href: "/assets", label: "Assets", icon: Gem },
+    ],
+  },
+  {
+    label: "Markets",
+    items: [
+      { href: "/portfolio", label: "Portfolio", icon: BriefcaseBusiness },
+      { href: "/watchlist", label: "Watchlist", icon: Star },
+      { href: "/signals", label: "AI Signals", icon: Zap },
+      { href: "/orders", label: "Orders", icon: History },
+      { href: "/search", label: "Search", icon: Search },
+    ],
+  },
+  {
+    label: "Account",
+    items: [{ href: "/settings", label: "Settings", icon: Settings }],
+  },
 ];
+
+export const NAV_ITEMS = NAV_GROUPS.flatMap((g) => g.items);
+
+/** Primary destinations for the mobile bottom-nav. */
+export const MOBILE_NAV_ITEMS = [
+  { href: "/dashboard", label: "Net Worth", icon: LayoutDashboard },
+  { href: "/accounts", label: "Accounts", icon: Landmark },
+  { href: "/investments", label: "Invest", icon: LineChart },
+  { href: "/portfolio", label: "Portfolio", icon: BriefcaseBusiness },
+  { href: "/settings", label: "Settings", icon: Settings },
+] as const;
 
 // Sign-up form select options
 export const INVESTMENT_GOALS = [
@@ -57,6 +104,27 @@ export const INDIAN_STOCK_SYMBOLS = [
 ];
 
 // TradingView Charts
+
+/** Scrolling ticker for the public landing — global indices + India + bellwether stocks. */
+export const TICKER_TAPE_WIDGET_CONFIG = {
+  symbols: [
+    { proName: "FOREXCOM:SPXUSD", title: "S&P 500" },
+    { proName: "FOREXCOM:NSXUSD", title: "Nasdaq 100" },
+    { proName: "BSE:SENSEX", title: "Sensex" },
+    { proName: "NSE:NIFTY", title: "Nifty 50" },
+    { proName: "NASDAQ:AAPL", title: "Apple" },
+    { proName: "NASDAQ:NVDA", title: "Nvidia" },
+    { proName: "NSE:RELIANCE", title: "Reliance" },
+    { proName: "NSE:TCS", title: "TCS" },
+    { proName: "BSE:HDFCBANK", title: "HDFC Bank" },
+  ],
+  showSymbolLogo: true,
+  isTransparent: true,
+  displayMode: "adaptive",
+  colorTheme: "light",
+  locale: "en",
+};
+
 export const MARKET_OVERVIEW_WIDGET_CONFIG = {
   colorTheme: "light",
   dateRange: "12M",

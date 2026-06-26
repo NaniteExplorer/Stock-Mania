@@ -1,5 +1,5 @@
 import Link from "next/link";
-import Image from "next/image";
+import { BrandMark } from "@/components/Logo";
 import { BRAND } from "@/branding/brand";
 
 const columns = [
@@ -36,13 +36,8 @@ const Footer = () => {
       <div className="container py-14">
         <div className="grid gap-10 md:grid-cols-2 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
           <div className="max-w-sm">
-            <Link href="/" className="flex items-center gap-2.5">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-yellow-500/30 bg-yellow-500/10">
-                <Image src="/assets/icons/logo.svg" alt="stockMania" width={22} height={22} />
-              </span>
-              <span className="text-lg font-bold tracking-tight text-gray-100">
-                stock<span className="text-yellow-500">Mania</span>
-              </span>
+            <Link href="/">
+              <BrandMark logoClassName="h-9 w-9" />
             </Link>
             <p className="mt-4 text-sm leading-6 text-gray-500">{BRAND.tagline}</p>
           </div>

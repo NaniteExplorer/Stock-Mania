@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useState } from "react";
 import { Menu, X, ArrowRight } from "lucide-react";
+import { BrandMark } from "@/components/Logo";
 
 const links = [
   { href: "#features", label: "Features" },
@@ -21,13 +21,8 @@ const MarketingHeader = ({ isAuthed }: { isAuthed: boolean }) => {
     <header className="fixed inset-x-0 top-0 z-50">
       <div className="container">
         <div className="mt-4 flex items-center justify-between rounded-2xl border border-gray-600 bg-gray-800/75 px-4 py-3 shadow-[0_10px_30px_-18px_rgba(16,24,40,0.25)] backdrop-blur-xl">
-          <Link href="/" className="flex shrink-0 items-center gap-2.5">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-yellow-500/30 bg-yellow-500/10">
-              <Image src="/assets/icons/logo.svg" alt="stockMania" width={22} height={22} />
-            </span>
-            <span className="text-lg font-bold tracking-tight text-gray-100">
-              stock<span className="text-yellow-500">Mania</span>
-            </span>
+          <Link href="/" className="shrink-0">
+            <BrandMark logoClassName="h-9 w-9" />
           </Link>
 
           <nav className="hidden items-center gap-1 lg:flex">

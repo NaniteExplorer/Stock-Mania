@@ -10,9 +10,12 @@ export default async function SearchPage() {
   const initialStocks = await searchStocks();
 
   return (
-    <section className="watchlist">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="watchlist-title">Search stocks</h1>
+    <section className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div>
+          <h1 className="page-title">Search stocks</h1>
+          <p className="page-subtitle">Find and open any listed company.</p>
+        </div>
         <SearchCommand
           renderAs="button"
           label="Search stocks"

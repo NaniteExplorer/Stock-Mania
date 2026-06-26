@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import InputField from "../../../components/forms/InputField";
@@ -25,17 +26,15 @@ const SignIn = () => {
   const onSubmit = async (data: SignInFormData) => {
     try {
       const result = await signInWithEmail(data);
-      if (result.success) router.push("/dashboard");
-      else {
-        toast.error("Sign in failed", {
-          description: result.error ?? "Failed to sign in.",
-        });
+      if (result.success) {
+        toast.success("Welcome back!");
+        router.push("/dashboard");
+      } else {
+        toast.error(result.error ?? "We couldn't sign you in.");
       }
     } catch (e) {
       console.error(e);
-      toast.error("Sign in failed", {
-        description: e instanceof Error ? e.message : "Failed to sign in.",
-      });
+      toast.error("We couldn't sign you in. Please try again.");
     }
   };
 
@@ -43,8 +42,8 @@ const SignIn = () => {
     <>
       <h1 className="form-title">Welcome back</h1>
       <p className="mb-8 text-sm leading-6 text-gray-500">
-        Access your market workspace, watchlists, broker-ready portfolio
-        surfaces, and AI signal queue.
+        Sign in to track your complete net worth — accounts, investments, ESOPs
+        and assets — alongside live markets and AI signals.
       </p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
@@ -70,10 +69,19 @@ const SignIn = () => {
           validation={{ required: "Password is required", minLength: 8 }}
         />
 
+        <div className="flex justify-end">
+          <Link
+            href="/forgot-password"
+            className="text-sm font-medium text-yellow-500 hover:brightness-110"
+          >
+            Forgot password?
+          </Link>
+        </div>
+
         <Button
           type="submit"
           disabled={isSubmitting}
-          className="yellow-btn w-full mt-5"
+          className="yellow-btn w-full mt-2"
         >
           {isSubmitting ? "Signing in" : "Enter dashboard"}
         </Button>

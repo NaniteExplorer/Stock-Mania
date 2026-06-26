@@ -5,6 +5,8 @@ import { config } from "@/core/config/env";
 import { nextCookies } from "better-auth/next-js";
 import type { Db } from "mongodb"; // <-- 1. Import the top-level Db type
 import { headers } from "next/headers";
+import { sendPasswordResetEmail } from "@/lib/nodemailer";
+import { logger } from "@/core/logger";
 
 const createAuth = (db: Parameters<typeof mongodbAdapter>[0]) =>
   betterAuth({
@@ -18,6 +20,15 @@ const createAuth = (db: Parameters<typeof mongodbAdapter>[0]) =>
       minPasswordLength: 8,
       maxPasswordLength: 128,
       autoSignIn: true,
+      // Emails a reset link pointing at our /reset-password page (token embedded).
+      sendResetPassword: async ({ user, token }) => {
+        const url = `${config.auth().baseUrl}/reset-password?token=${token}`;
+        try {
+          await sendPasswordResetEmail({ email: user.email, name: user.name, url });
+        } catch (err) {
+          logger.error("Failed to send password reset email", err);
+        }
+      },
     },
     plugins: [nextCookies()],
   });

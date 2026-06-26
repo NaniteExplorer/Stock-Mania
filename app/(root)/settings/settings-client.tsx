@@ -59,10 +59,15 @@ export default function SettingsClient({
   };
 
   return (
-    <div className="flex flex-col gap-8 max-w-2xl">
-      <div className="flex items-center gap-2">
-        <Settings className="h-5 w-5 text-yellow-400" />
-        <h1 className="text-2xl font-bold text-gray-100">Settings</h1>
+    <div className="flex max-w-2xl flex-col gap-6">
+      <div className="flex items-center gap-3">
+        <span className="icon-chip h-11 w-11">
+          <Settings className="h-5 w-5" />
+        </span>
+        <div>
+          <h1 className="page-title">Settings</h1>
+          <p className="page-subtitle">Account, brokers and notifications.</p>
+        </div>
       </div>
 
       {successMessage && (
@@ -81,7 +86,7 @@ export default function SettingsClient({
       )}
 
       {/* Account */}
-      <section className="rounded-xl border border-gray-700 bg-gray-800/60 p-6 flex flex-col gap-4">
+      <section className="panel p-6 flex flex-col gap-4">
         <h2 className="text-base font-semibold text-gray-100">Account</h2>
         <div className="grid grid-cols-2 gap-y-3 text-sm">
           <span className="text-gray-500">Name</span>
@@ -92,7 +97,7 @@ export default function SettingsClient({
       </section>
 
       {/* Broker Connections */}
-      <section className="rounded-xl border border-gray-700 bg-gray-800/60 p-6 flex flex-col gap-5">
+      <section className="panel p-6 flex flex-col gap-5">
         <h2 className="text-base font-semibold text-gray-100">Broker Connections</h2>
 
         <div className="flex flex-col gap-4">
@@ -149,7 +154,7 @@ export default function SettingsClient({
       </section>
 
       {/* Notification Preferences */}
-      <section className="rounded-xl border border-gray-700 bg-gray-800/60 p-6 flex flex-col gap-5">
+      <section className="panel p-6 flex flex-col gap-5">
         <h2 className="text-base font-semibold text-gray-100">Notifications</h2>
 
         <label className="flex flex-col gap-1 text-sm">

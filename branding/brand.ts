@@ -7,9 +7,9 @@
 export const BRAND = {
   name: "stockMania",
   legalName: "stockMania",
-  tagline: "Track markets. Spot signals. Trade with conviction.",
+  tagline: "Your whole net worth, beautifully in one place.",
   description:
-    "Track real-time stock prices, build watchlists, get AI-powered market summaries, and explore deep company insights.",
+    "Track your complete net worth — bank accounts, stocks, ETFs, mutual funds, ESOPs and assets — alongside live markets, watchlists and AI-powered signals.",
   email: {
     /** Display name shown in the email "From" field. The actual address is the
      *  authenticated SMTP user (see core/config/env.ts -> email.user). */

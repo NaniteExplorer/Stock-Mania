@@ -9,14 +9,14 @@ function StatCard({ label, value, sub, positive }: {
   positive?: boolean;
 }) {
   return (
-    <div className="rounded-xl border border-gray-700 bg-gray-800/60 p-5">
-      <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</p>
-      <p className={`mt-1 text-2xl font-bold ${
-        positive === undefined ? "text-gray-100" : positive ? "text-green-400" : "text-red-400"
+    <div className="stat-tile">
+      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <p className={`mt-1 text-2xl font-bold tnum ${
+        positive === undefined ? "text-gray-100" : positive ? "text-green-500" : "text-red-500"
       }`}>
         {value}
       </p>
-      {sub && <p className="mt-0.5 text-xs text-gray-500">{sub}</p>}
+      {sub && <p className="mt-0.5 text-xs text-gray-500 tnum">{sub}</p>}
     </div>
   );
 }
@@ -38,8 +38,8 @@ export default async function PortfolioPage() {
     <div className="flex flex-col gap-8">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-100">Portfolio</h1>
-          <p className="text-sm text-gray-500 mt-1">Real-time holdings and P&amp;L</p>
+          <h1 className="page-title">Portfolio</h1>
+          <p className="page-subtitle">Live broker holdings and P&amp;L.</p>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <span className={`flex items-center gap-1 ${portfolio.zerodhaConnected ? "text-green-400" : "text-gray-600"}`}>
@@ -54,11 +54,11 @@ export default async function PortfolioPage() {
       </div>
 
       {noConnections ? (
-        <div className="rounded-xl border border-dashed border-gray-700 p-10 text-center">
-          <p className="text-gray-400 mb-4">Connect a broker to see your portfolio.</p>
+        <div className="panel border-dashed p-10 text-center">
+          <p className="mb-4 text-gray-400">Connect a broker to see your portfolio.</p>
           <Link
             href="/settings"
-            className="inline-block rounded-lg border border-yellow-600 px-5 py-2 text-sm font-medium text-yellow-400 hover:bg-yellow-500/10 transition-colors"
+            className="inline-block rounded-lg border border-yellow-600 px-5 py-2 text-sm font-medium text-yellow-500 transition-colors hover:bg-yellow-500/10"
           >
             Go to Settings →
           </Link>

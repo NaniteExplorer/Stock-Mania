@@ -37,27 +37,24 @@ const SignUp = () => {
   const onSubmit = async (data: SignUpFormData) => {
     try {
       const result = await signUpWithEmail(data);
-      if (result?.success) router.push("/dashboard");
-      else {
-        toast.error("Sign up failed", {
-          description: result?.error ?? "Failed to create an account.",
-        });
+      if (result?.success) {
+        toast.success("Account created", { description: "Welcome to stockMania!" });
+        router.push("/dashboard");
+      } else {
+        toast.error(result?.error ?? "We couldn't create your account.");
       }
     } catch (e) {
       console.error(e);
-      toast.error("Sign up failed", {
-        description:
-          e instanceof Error ? e.message : "Failed to create an account.",
-      });
+      toast.error("We couldn't create your account. Please try again.");
     }
   };
 
   return (
     <>
-      <h1 className="form-title">Create your wealth cockpit</h1>
+      <h1 className="form-title">Start tracking your net worth</h1>
       <p className="mb-8 text-sm leading-6 text-gray-500">
-        Personalize your workspace now. Full asset tracking modules can be
-        connected later as stockMania grows.
+        Create your account to bring accounts, investments, ESOPs and assets
+        together — alongside live markets and AI signals.
       </p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">

@@ -5,6 +5,23 @@ import { eventBus } from "@/core/queue/event-bus";
 import { auth } from "@/lib/better-auth/auth";
 import { rateLimiter } from "@/core/ratelimit";
 import { logger } from "@/core/logger";
+import { sendWelcomeEmail } from "@/lib/nodemailer";
+
+/** A warm, profile-personalised welcome message (no AI dependency). */
+function buildWelcomeIntro({
+  investmentGoals,
+  riskTolerance,
+  preferredIndustry,
+}: Pick<SignUpFormData, "investmentGoals" | "riskTolerance" | "preferredIndustry">): string {
+  const goal = (investmentGoals || "growth").toLowerCase();
+  const risk = (riskTolerance || "balanced").toLowerCase();
+  const industry = preferredIndustry || "the markets";
+  return (
+    `Your ${risk}-risk, ${goal}-focused workspace is ready. ` +
+    `Track your complete net worth — accounts, investments, ESOPs and assets — ` +
+    `keep an eye on ${industry}, and act with AI-powered market context. Welcome to the calm way to manage money.`
+  );
+}
 
 const MINUTE = 60 * 1000;
 
@@ -50,6 +67,33 @@ async function withinLimit(
   }
 }
 
+/**
+ * Turn a Better-Auth APIError into a clear, user-facing message. Better-Auth
+ * throws an error carrying `body.code` (machine code) and `body.message`; we map
+ * the codes users actually hit to friendly copy and fall back gracefully.
+ */
+function describeAuthError(error: unknown, fallback: string): string {
+  const e = error as { body?: { code?: string; message?: string } };
+  switch (e?.body?.code) {
+    case "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL":
+    case "USER_ALREADY_EXISTS":
+      return "An account with this email already exists. Try signing in instead.";
+    case "INVALID_EMAIL_OR_PASSWORD":
+      return "Incorrect email or password. Please try again.";
+    case "INVALID_PASSWORD":
+      return "Incorrect password. Please try again.";
+    case "USER_NOT_FOUND":
+      return "No account found with this email.";
+    case "PASSWORD_TOO_SHORT":
+      return "Your password must be at least 8 characters.";
+    case "INVALID_TOKEN":
+    case "TOKEN_EXPIRED":
+      return "This reset link is invalid or has expired. Request a new one.";
+    default:
+      return e?.body?.message || fallback;
+  }
+}
+
 export const signUpWithEmail = async ({
   email,
   password,
@@ -73,23 +117,47 @@ export const signUpWithEmail = async ({
       body: { email, password, name: fullName },
     });
 
+    // Everything below is best-effort: a failure here must NEVER fail an account
+    // that was already created.
     if (response) {
-      await eventBus.publish({
-        name: "app/user.created",
-        data: {
+      // Personalised welcome email — sent directly so it always lands, even when
+      // background workers (Inngest/Kafka) aren't running.
+      try {
+        await sendWelcomeEmail({
           email,
           name: fullName,
-          country,
-          investmentGoals,
-          riskTolerance,
-          preferredIndustry,
-        },
-      });
+          intro: buildWelcomeIntro({ investmentGoals, riskTolerance, preferredIndustry }),
+        });
+      } catch (emailError) {
+        logger.warn("welcome email failed (non-fatal)", { emailError });
+      }
+
+      // Domain event for any background consumers (analytics, etc.).
+      try {
+        await eventBus.publish({
+          name: "app/user.created",
+          data: {
+            email,
+            name: fullName,
+            country,
+            investmentGoals,
+            riskTolerance,
+            preferredIndustry,
+          },
+        });
+      } catch (publishError) {
+        logger.warn("user.created event publish failed (non-fatal)", {
+          publishError,
+        });
+      }
     }
     return { success: true, data: response };
   } catch (error) {
     logger.error("Sign up failed", error);
-    return { success: false, error: "Sign up failed" };
+    return {
+      success: false,
+      error: describeAuthError(error, "We couldn't create your account. Please try again."),
+    };
   }
 };
 
@@ -112,7 +180,51 @@ export const signInWithEmail = async ({ email, password }: SignInFormData) => {
     return { success: true, data: response };
   } catch (error) {
     logger.error("Sign in failed", error);
-    return { success: false, error: "Sign in failed" };
+    return {
+      success: false,
+      error: describeAuthError(error, "We couldn't sign you in. Please try again."),
+    };
+  }
+};
+
+/**
+ * Start the password-reset flow. Always reports success to the caller so the UI
+ * cannot be used to discover which emails are registered (enumeration safety).
+ */
+export const requestPasswordReset = async (email: string) => {
+  try {
+    const ip = await getClientIp();
+    if (!(await withinLimit(`reset:${ip}`, 5, 15 * MINUTE))) {
+      return {
+        success: false,
+        error: "Too many requests. Please wait a few minutes and try again.",
+      };
+    }
+
+    const authInstance = await auth();
+    await authInstance.api.requestPasswordReset({
+      body: { email, redirectTo: "/reset-password" },
+    });
+    return { success: true };
+  } catch (error) {
+    // Swallow real errors too — never reveal whether the email exists.
+    logger.warn("requestPasswordReset issue", { error });
+    return { success: true };
+  }
+};
+
+/** Complete the reset using the token from the emailed link. */
+export const resetPassword = async (token: string, newPassword: string) => {
+  try {
+    const authInstance = await auth();
+    await authInstance.api.resetPassword({ body: { token, newPassword } });
+    return { success: true };
+  } catch (error) {
+    logger.error("resetPassword failed", error);
+    return {
+      success: false,
+      error: describeAuthError(error, "This reset link is invalid or has expired."),
+    };
   }
 };
 

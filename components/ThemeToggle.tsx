@@ -8,10 +8,10 @@ import { Button } from "@/components/ui/button";
 const ThemeToggle = () => {
   const { resolvedTheme, setTheme } = useTheme();
   // `resolvedTheme` is undefined until next-themes resolves it on the client.
-  // Treating undefined as light (the default theme) keeps the server render and
+  // Treating undefined as dark (the default theme) keeps the server render and
   // the first client render identical, so there is no hydration mismatch and no
   // need for a mount-guard effect.
-  const isDark = resolvedTheme ? resolvedTheme === "dark" : false;
+  const isDark = resolvedTheme ? resolvedTheme === "dark" : true;
 
   return (
     <Button

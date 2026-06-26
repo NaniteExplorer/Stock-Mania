@@ -7,19 +7,21 @@ export default async function SignalsPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div>
-        <div className="flex items-center gap-2">
-          <Zap className="h-5 w-5 text-yellow-400" />
-          <h1 className="text-2xl font-bold text-gray-100">AI Signals</h1>
+      <div className="flex items-center gap-3">
+        <span className="icon-chip h-11 w-11">
+          <Zap className="h-5 w-5" />
+        </span>
+        <div>
+          <h1 className="page-title">AI Signals</h1>
+          <p className="page-subtitle">
+            AI-generated trading signals each market day. Not financial advice — always verify.
+          </p>
         </div>
-        <p className="mt-1 text-sm text-gray-500">
-          AI-generated trading signals updated every market day. Not financial advice — always verify before trading.
-        </p>
       </div>
 
       {signals.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-700 p-12 text-center">
-          <Zap className="mx-auto h-10 w-10 text-gray-700 mb-4" />
+        <div className="panel border-dashed p-12 text-center">
+          <Zap className="mx-auto mb-4 h-10 w-10 text-gray-500" />
           <p className="text-gray-400 mb-2">No signals generated yet.</p>
           <p className="text-sm text-gray-600">
             Signals are generated each market day at 9:30 AM. You can also trigger one from any stock page.

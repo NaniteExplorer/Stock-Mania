@@ -1,6 +1,9 @@
 import * as React from "react";
 import Header from "@/components/Header";
+import Sidebar from "@/components/Sidebar";
+import MobileNav from "@/components/MobileNav";
 import { getCurrentSession } from "@/lib/better-auth/auth";
+import { getNetWorthSummary } from "@/features/networth/networth.actions";
 import { redirect } from "next/navigation";
 import { User } from "better-auth";
 import { connection } from "next/server";
@@ -12,11 +15,20 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
 
   if (!session?.user) redirect("/sign-in");
   const user = session.user as User;
+
+  const summary = await getNetWorthSummary();
+
   return (
-    <main className="min-h-screen text-gray-400">
-      <Header user={user} />
-      <div className="container py-6 md:py-8">{children}</div>
-    </main>
+    <div className="flex min-h-screen text-gray-400">
+      <Sidebar summary={summary} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Header user={user} />
+        <main className="flex-1 px-4 pb-24 pt-6 md:px-6 md:pb-10 lg:px-8 lg:pb-12">
+          <div className="mx-auto w-full max-w-[1440px]">{children}</div>
+        </main>
+      </div>
+      <MobileNav />
+    </div>
   );
 };
 

@@ -1,0 +1,60 @@
+import type { Metadata } from "next";
+import { getMyInvestments } from "@/features/investments/investment.actions";
+import InvestmentsManager from "@/components/wealth/InvestmentsManager";
+import { formatINR, formatSignedINRCompact, formatSignedPercent } from "@/lib/utils";
+import { LineChart } from "lucide-react";
+
+export const metadata: Metadata = { title: "Investments" };
+
+export default async function InvestmentsPage() {
+  const items = await getMyInvestments();
+  const invested = items.reduce((s, i) => s + i.invested, 0);
+  const current = items.reduce((s, i) => s + i.currentValue, 0);
+  const pnl = current - invested;
+  const pnlPct = invested > 0 ? (pnl / invested) * 100 : 0;
+  const up = pnl >= 0;
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="page-title">Investments</h1>
+        <p className="page-subtitle">Stocks, ETFs, mutual funds &amp; more — entered manually.</p>
+      </div>
+
+      <div className="networth-hero">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="icon-chip h-11 w-11">
+            <LineChart className="h-5 w-5" />
+          </span>
+          <div>
+            <p className="text-sm font-medium text-gray-500">Current value</p>
+            <p className="text-3xl font-bold tracking-tight text-gray-100 tnum">
+              {formatINR(current)}
+            </p>
+          </div>
+          <span className={`chip ml-auto ${up ? "chip-pos" : "chip-neg"}`}>
+            {formatSignedINRCompact(pnl)} ({formatSignedPercent(pnlPct)})
+          </span>
+        </div>
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="stat-tile">
+            <p className="text-xs text-gray-500">Invested</p>
+            <p className="mt-1 text-lg font-bold text-gray-100 tnum">{formatINR(invested)}</p>
+          </div>
+          <div className="stat-tile">
+            <p className="text-xs text-gray-500">Holdings</p>
+            <p className="mt-1 text-lg font-bold text-gray-100 tnum">{items.length}</p>
+          </div>
+          <div className="stat-tile">
+            <p className="text-xs text-gray-500">Total return</p>
+            <p className={`mt-1 text-lg font-bold tnum ${up ? "text-green-500" : "text-red-500"}`}>
+              {formatSignedPercent(pnlPct)}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <InvestmentsManager items={items} />
+    </div>
+  );
+}

@@ -7,11 +7,13 @@ export default async function OrdersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center gap-2">
-        <History className="h-5 w-5 text-yellow-400" />
+      <div className="flex items-center gap-3">
+        <span className="icon-chip h-11 w-11">
+          <History className="h-5 w-5" />
+        </span>
         <div>
-          <h1 className="text-2xl font-bold text-gray-100">Order History</h1>
-          <p className="text-sm text-gray-500 mt-0.5">All your trades across Zerodha and Alpaca</p>
+          <h1 className="page-title">Order history</h1>
+          <p className="page-subtitle">All your trades across Zerodha and Alpaca.</p>
         </div>
       </div>
 

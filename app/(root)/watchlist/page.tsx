@@ -28,8 +28,11 @@ const WatchlistPage = async () => {
   }
 
   return (
-    <section className="watchlist">
-      <h1 className="watchlist-title">Watchlist</h1>
+    <section className="flex flex-col gap-6">
+      <div>
+        <h1 className="page-title">Watchlist</h1>
+        <p className="page-subtitle">Stocks you&apos;re keeping an eye on.</p>
+      </div>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {symbols.map((symbol) => (
           <Link

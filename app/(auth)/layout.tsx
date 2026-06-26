@@ -1,15 +1,15 @@
 import Link from "next/link";
-import Image from "next/image";
+import { BrandMark } from "@/components/Logo";
 import { getCurrentSession } from "@/lib/better-auth/auth";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
-import { ArrowLeft, BarChart3, Bell, ShieldCheck, Sparkles, Star } from "lucide-react";
+import { ArrowLeft, Landmark, LineChart, ShieldCheck, Sparkles, Star } from "lucide-react";
 import HeroVisual from "@/components/landing/HeroVisual";
 
 const highlights = [
-  { icon: BarChart3, label: "Live markets", desc: "Real-time quotes & charts" },
+  { icon: LineChart, label: "Net worth", desc: "Every asset in one view" },
+  { icon: Landmark, label: "Accounts", desc: "Bank, cash & deposits" },
   { icon: Star, label: "Watchlists", desc: "Track what matters" },
-  { icon: Bell, label: "Smart alerts", desc: "Never miss a move" },
   { icon: Sparkles, label: "AI signals", desc: "Context, not advice" },
 ];
 
@@ -24,13 +24,8 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
       {/* Left — form */}
       <section className="relative z-10 flex flex-col px-6 py-8 sm:px-10 lg:px-16 lg:py-12">
         <div className="flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-2.5">
-            <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-yellow-500/30 bg-yellow-500/10">
-              <Image src="/assets/icons/logo.svg" alt="stockMania" width={24} height={24} />
-            </span>
-            <span className="text-xl font-bold tracking-tight text-gray-100">
-              stock<span className="text-yellow-500">Mania</span>
-            </span>
+          <Link href="/">
+            <BrandMark logoClassName="h-10 w-10" wordmarkClassName="text-xl" />
           </Link>
           <Link
             href="/"
@@ -58,11 +53,11 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
             Broker-ready architecture
           </span>
           <h2 className="mt-5 text-3xl font-bold tracking-tight text-gray-100 xl:text-4xl">
-            Your unified <span className="gradient-text">wealth cockpit</span>
+            Your whole <span className="gradient-text">net worth</span>, in one place
           </h2>
           <p className="mt-3 max-w-md text-sm leading-6 text-gray-400">
-            One elegant workspace for markets, watchlists, signals and the road
-            to complete asset tracking.
+            Bank accounts, stocks, ETFs, ESOPs and assets — tracked beautifully
+            alongside live markets and AI signals.
           </p>
 
           <div className="mt-9 grid w-full grid-cols-2 gap-3">

@@ -1,9 +1,6 @@
 import { inngest } from "@/lib/inngest/client";
-import {
-  NEWS_SUMMARY_EMAIL_PROMPT,
-  PERSONALIZED_WELCOME_EMAIL_PROMPT,
-} from "@/lib/inngest/prompts";
-import { sendNewsSummaryEmail, sendWelcomeEmail } from "@/lib/nodemailer";
+import { NEWS_SUMMARY_EMAIL_PROMPT } from "@/lib/inngest/prompts";
+import { sendNewsSummaryEmail } from "@/lib/nodemailer";
 import { getAllUsersForNewsEmail } from "@/features/user/user.service";
 import { getWatchListSymbolsByEmail } from "@/features/watchlist/watchlist.actions";
 import { getNews } from "@/features/news/news.service";
@@ -17,45 +14,6 @@ type UserForNewsEmail = {
   email: string;
   name: string;
 };
-
-export const sendSignUpEmail = inngest.createFunction(
-  { id: "sign-up-email", triggers: { event: "app/user.created" } },
-  async ({ event, step }) => {
-    const userProfile = `
-            - Country: ${event.data.country}
-            - Investment goals: ${event.data.investmentGoals}
-            - Risk tolerance: ${event.data.riskTolerance}
-            - Preferred industry: ${event.data.preferredIndustry}
-        `;
-
-    const prompt = PERSONALIZED_WELCOME_EMAIL_PROMPT.replace(
-      "{{userProfile}}",
-      userProfile,
-    );
-
-    const response = await step.ai.infer("generate-welcome-intro", {
-      model: step.ai.models.gemini({ model: "gemini-2.5-flash-lite" }),
-      body: {
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-      },
-    });
-
-    await step.run("send-welcome-email", async () => {
-      const part = response.candidates?.[0]?.content?.parts?.[0];
-      const introText =
-        (part && "text" in part ? part.text : null) ||
-        "Thanks for joining stockMania. You now have the tools to track markets and make smarter moves.";
-
-      const {
-        data: { email, name },
-      } = event;
-
-      return await sendWelcomeEmail({ email, name, intro: introText });
-    });
-
-    return { success: true, message: "Welcome email sent successfully" };
-  },
-);
 
 /**
  * Dispatcher — runs on a cron. Fans out one durable event per user.
