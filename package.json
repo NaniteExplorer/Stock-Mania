@@ -43,5 +43,12 @@
     "prettier": "^3.8.3",
     "tailwindcss": "^4",
     "typescript": "^5"
+  },
+  "allowScripts": {
+    "sharp@0.34.5": true,
+    "protobufjs@7.5.7": true,
+    "protobufjs@8.0.1": true,
+    "msw@2.14.6": true,
+    "unrs-resolver@1.11.1": true
   }
 }
