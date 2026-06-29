@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getMyInvestments } from "@/features/investments/investment.actions";
 import InvestmentsManager from "@/components/wealth/InvestmentsManager";
+import HoldingsImporter from "@/components/wealth/HoldingsImporter";
 import RefreshPricesButton from "@/components/wealth/RefreshPricesButton";
 import { formatINR, formatSignedINRCompact, formatSignedPercent } from "@/lib/utils";
 import { LineChart } from "lucide-react";
@@ -60,6 +61,7 @@ export default async function InvestmentsPage() {
         </div>
       </div>
 
+      <HoldingsImporter />
       <InvestmentsManager items={items} />
     </div>
   );

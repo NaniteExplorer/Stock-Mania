@@ -100,6 +100,16 @@ export const config = {
     isDev: read("INNGEST_DEV") === "1",
   }),
 
+  /**
+   * Optional logo provider for real institution logos. With a (free) token set,
+   * the logo proxy returns proper brand logos; without one it falls back to
+   * favicons and then a branded badge. Get a key at logo.dev or brandfetch.com.
+   */
+  logo: () => ({
+    logoDevToken: read("LOGO_DEV_TOKEN") ?? null,
+    brandfetchClientId: read("BRANDFETCH_CLIENT_ID") ?? null,
+  }),
+
   redis: () => ({
     url: read("REDIS_URL") ?? null,
   }),

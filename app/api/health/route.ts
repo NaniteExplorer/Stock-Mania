@@ -1,3 +1,6 @@
+import { logger } from "@/core/logger";
+import { enforceRequestRateLimit } from "@/core/http/rate-limit-request";
+
 export const dynamic = "force-dynamic";
 
 type ServiceStatus = "ok" | "degraded" | "down" | "disabled";
@@ -24,7 +27,8 @@ async function checkRedis(): Promise<ServiceResult> {
     await client.quit();
     return { status: "ok", latencyMs };
   } catch (e) {
-    return { status: "down", error: (e as Error).message };
+    logger.error("Redis health check failed", e);
+    return { status: "down" };
   }
 }
 
@@ -47,7 +51,8 @@ async function checkKafka(): Promise<ServiceResult> {
     await admin.disconnect();
     return { status: "ok", latencyMs };
   } catch (e) {
-    return { status: "down", error: (e as Error).message };
+    logger.error("Kafka health check failed", e);
+    return { status: "down" };
   }
 }
 
@@ -65,7 +70,8 @@ async function checkMongo(): Promise<ServiceResult> {
     await conn.close();
     return { status: "ok", latencyMs };
   } catch (e) {
-    return { status: "down", error: (e as Error).message };
+    logger.error("MongoDB health check failed", e);
+    return { status: "down" };
   }
 }
 
@@ -89,11 +95,16 @@ async function checkTwilio(): Promise<ServiceResult> {
     if (!res.ok) return { status: "degraded", latencyMs, error: `HTTP ${res.status}` };
     return { status: "ok", latencyMs };
   } catch (e) {
-    return { status: "down", error: (e as Error).message };
+    logger.error("Twilio health check failed", e);
+    return { status: "down" };
   }
 }
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
+  // Monitoring endpoint — throttle to stop it being hammered for probing.
+  const limited = await enforceRequestRateLimit(request, "health", 30, 60 * 1000);
+  if (limited) return limited;
+
   const [redis, kafka, mongo, twilio] = await Promise.all([
     checkRedis(),
     checkKafka(),

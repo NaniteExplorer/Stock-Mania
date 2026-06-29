@@ -1,10 +1,36 @@
 import type { NextConfig } from "next";
 
-// Baseline security headers applied to every response. These are safe with the
-// TradingView embeds. A Content-Security-Policy is intentionally NOT enabled
-// here because it must allowlist the TradingView script/frame origins — see
-// SECURITY.md for a ready-to-enable, scoped CSP to verify against the widgets.
+// Content-Security-Policy. Scoped to allowlist the TradingView script/frame
+// origins (and Finnhub / Google APIs used by the client) so the embedded
+// widgets keep working. 'unsafe-inline' is required because Next.js and the
+// TradingView widgets inject inline scripts/styles without a nonce; tighten to
+// a nonce-based policy (see node_modules/next/dist/docs/.../content-security-policy.md)
+// if those inline scripts are ever eliminated.
+//
+// 'unsafe-eval' is added in development ONLY: React/Turbopack use eval() for
+// debugging features (callstacks, fast refresh). React never uses eval() in
+// production, so the production policy stays strict.
+const isDev = process.env.NODE_ENV === "development";
+
+const contentSecurityPolicy = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://s3.tradingview.com https://*.tradingview.com`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https:",
+  "frame-src https://*.tradingview.com https://www.tradingview.com",
+  "connect-src 'self' https://*.tradingview.com https://finnhub.io https://*.googleapis.com",
+  "font-src 'self' data:",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+]
+  .join("; ")
+  .concat(";");
+
+// Baseline security headers applied to every response.
 const securityHeaders = [
+  { key: "Content-Security-Policy", value: contentSecurityPolicy },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },

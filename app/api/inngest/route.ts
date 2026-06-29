@@ -6,6 +6,7 @@ import {
   checkPriceAlerts,
   generateAISignal,
   generateDailySignals,
+  categorizeImportedTransactions,
 } from "@/lib/inngest/functions";
 
 // Note: the welcome email is now sent directly from the sign-up action
@@ -18,5 +19,6 @@ export const { GET, POST, PUT } = serve({
     checkPriceAlerts,
     generateAISignal,
     generateDailySignals,
+    categorizeImportedTransactions,
   ],
 });

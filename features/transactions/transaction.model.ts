@@ -1,5 +1,6 @@
 import { Model, Schema, model, models } from "mongoose";
 import type { TransactionDirection, TransactionSource } from "./transaction.types";
+import type { CategorySource } from "./transaction.categories";
 
 export interface TransactionDoc {
   accountId: Schema.Types.ObjectId;
@@ -12,6 +13,7 @@ export interface TransactionDoc {
   balanceAfter: number | null;
   currency: string;
   category: string | null;
+  categorySource: CategorySource | null;
   source: TransactionSource;
   sourceFile: string | null;
   fingerprint: string;
@@ -30,6 +32,7 @@ const TransactionSchema = new Schema<TransactionDoc>({
   balanceAfter: { type: Number, default: null },
   currency: { type: String, required: true, default: "INR", uppercase: true },
   category: { type: String, default: null },
+  categorySource: { type: String, enum: ["RULE", "AI", "MANUAL"], default: null },
   source: { type: String, required: true, enum: ["MANUAL", "STATEMENT_IMPORT"], default: "MANUAL" },
   sourceFile: { type: String, default: null },
   fingerprint: { type: String, required: true },

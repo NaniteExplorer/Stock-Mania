@@ -16,6 +16,7 @@ interface SettingsClientProps {
     whatsappAlertsEnabled: boolean;
     emailAlertsEnabled: boolean;
     displayCurrency: string;
+    selfPayees: string[];
   };
   successMessage?: string;
   errorMessage?: string;
@@ -44,6 +45,7 @@ export default function SettingsClient({
   const [waEnabled, setWaEnabled] = useState(prefs.whatsappAlertsEnabled);
   const [emailEnabled, setEmailEnabled] = useState(prefs.emailAlertsEnabled);
   const [displayCurrency, setDisplayCurrency] = useState(prefs.displayCurrency);
+  const [selfPayees, setSelfPayees] = useState((prefs.selfPayees ?? []).join("\n"));
   const [isPending, startTransition] = useTransition();
 
   const savePrefs = () => {
@@ -53,6 +55,7 @@ export default function SettingsClient({
         whatsappAlertsEnabled: waEnabled,
       emailAlertsEnabled: emailEnabled,
       displayCurrency,
+      selfPayees: selfPayees.split(/[\n,]/).map((entry) => entry.trim()).filter(Boolean),
       });
       if (result.success) {
         toast.success("Preferences saved.");
@@ -163,6 +166,23 @@ export default function SettingsClient({
         <select value={displayCurrency} onChange={(event) => setDisplayCurrency(event.target.value)} className="select-trigger">
           {SUPPORTED_CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{currency.symbol} · {currency.code} — {currency.name}</option>)}
         </select>
+      </section>
+
+      {/* Self / family payees — excluded from spend */}
+      <section className="cockpit-panel flex flex-col gap-3 p-6">
+        <h2 className="text-base font-semibold text-gray-100">Self &amp; family transfers</h2>
+        <p className="text-xs text-gray-500">
+          Add your own account numbers, UPI handles, or family members&apos; names — one per line.
+          Statement transactions matching these are tagged as self transfers and <strong>excluded from spend</strong>.
+        </p>
+        <textarea
+          value={selfPayees}
+          onChange={(event) => setSelfPayees(event.target.value)}
+          rows={4}
+          placeholder={"XXXXXX1234\nname@okhdfcbank\nPriya Sharma"}
+          className="rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-yellow-500 focus:outline-none"
+          suppressHydrationWarning
+        />
       </section>
 
       {/* Notification Preferences */}

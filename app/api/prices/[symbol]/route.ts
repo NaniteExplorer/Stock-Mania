@@ -1,5 +1,6 @@
 import { config } from "@/core/config/env";
 import { cache } from "@/core/cache";
+import { enforceRequestRateLimit } from "@/core/http/rate-limit-request";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +44,11 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ symbol: string }> },
 ): Promise<Response> {
+  // Public, unauthenticated endpoint — throttle per IP so a single client can't
+  // open unbounded SSE streams and exhaust the upstream Finnhub quota.
+  const limited = await enforceRequestRateLimit(request, "prices", 60, 60 * 1000);
+  if (limited) return limited;
+
   const { symbol } = await params;
   const upper = symbol.toUpperCase();
   const encoder = new TextEncoder();

@@ -38,8 +38,11 @@ const SignUp = () => {
     try {
       const result = await signUpWithEmail(data);
       if (result?.success) {
-        toast.success("Account created", { description: "Welcome to stockMania!" });
-        router.push("/dashboard");
+        toast.success("Account created", {
+          description:
+            "Check your email and click the verification link to activate your account.",
+        });
+        router.push("/sign-in");
       } else {
         toast.error(result?.error ?? "We couldn't create your account.");
       }
@@ -83,11 +86,21 @@ const SignUp = () => {
         <InputField
           name="password"
           label="Password"
-          placeholder="Enter a strong password"
+          placeholder="8+ chars with upper, lower, number & symbol"
           type="password"
           register={register}
           error={errors.password}
-          validation={{ required: "Password is required", minLength: 8 }}
+          validation={{
+            required: "Password is required",
+            minLength: { value: 8, message: "At least 8 characters" },
+            validate: (value: string) =>
+              /[a-z]/.test(value) &&
+              /[A-Z]/.test(value) &&
+              /\d/.test(value) &&
+              /[^A-Za-z0-9]/.test(value)
+                ? true
+                : "Include upper, lower, a number and a symbol",
+          }}
         />
 
         <CountrySelectField

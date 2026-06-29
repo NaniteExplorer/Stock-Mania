@@ -5,11 +5,11 @@ import ProviderMark from "@/components/wealth/ProviderMark";
 import { createAccount, updateAccount, deleteAccount } from "@/features/accounts/account.actions";
 import { ACCOUNT_TYPE_LABELS, type Account, type AccountType } from "@/features/accounts/account.types";
 import { formatCurrency, SUPPORTED_CURRENCIES } from "@/lib/currencies";
-import { FINANCIAL_PROVIDERS, findFinancialProvider } from "@/lib/financial-providers";
+import { findFinancialProvider } from "@/lib/financial-providers";
 
 const fields: WealthField[] = [
   { name: "name", label: "Account name", type: "text", required: true, placeholder: "Salary account", half: true },
-  { name: "institution", label: "Bank / institution", type: "text", placeholder: "Search HDFC, SBI, UBS…", suggestions: FINANCIAL_PROVIDERS.map((provider) => provider.name), half: true },
+  { name: "institution", label: "Bank / institution", type: "provider", placeholder: "Search HDFC, SBI, UBS…", half: true },
   { name: "type", label: "Type", type: "select", half: true, options: Object.entries(ACCOUNT_TYPE_LABELS).map(([value, label]) => ({ value, label })) },
   { name: "last4", label: "Last 4 digits", type: "text", placeholder: "1234", half: true },
   { name: "currency", label: "Account currency", type: "select", half: true, options: SUPPORTED_CURRENCIES.map((currency) => ({ value: currency.code, label: `${currency.symbol} · ${currency.code} — ${currency.name}` })) },

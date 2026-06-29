@@ -7,6 +7,7 @@ import { getNews } from "@/features/news/news.service";
 import { getFormattedTodayDate } from "@/lib/utils";
 import { alertService } from "@/features/alerts/alert.service";
 import { signalService, buildSignalPrompt, parseSignalResponse } from "@/features/signals/signal.service";
+import { aiCategorizeAccount } from "@/features/transactions/ai-categorizer.service";
 import { config } from "@/core/config/env";
 
 type UserForNewsEmail = {
@@ -187,6 +188,30 @@ export const generateAISignal = inngest.createFunction(
     });
 
     return { success: true, symbol, signalId: saved?.id ?? null };
+  },
+);
+
+/**
+ * Categorizes freshly-imported transactions the rules engine couldn't classify,
+ * using Gemini. Fires after a statement import (app/transactions.imported).
+ */
+export const categorizeImportedTransactions = inngest.createFunction(
+  {
+    id: "categorize-imported-transactions",
+    triggers: [{ event: "app/transactions.imported" }],
+    concurrency: { limit: 5 },
+    throttle: { limit: 20, period: "1m" },
+    retries: 2,
+  },
+  async ({ event, step }) => {
+    const { userId, accountId } = event.data as { userId: string; accountId: string };
+    if (!userId || !accountId) return { success: false, reason: "missing-ids" };
+
+    const result = await step.run("ai-categorize", () =>
+      aiCategorizeAccount(userId, accountId),
+    );
+
+    return { success: true, ...result };
   },
 );
 

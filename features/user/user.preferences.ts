@@ -7,6 +7,8 @@ interface UserPreferences {
   whatsappAlertsEnabled: boolean;
   emailAlertsEnabled: boolean;
   displayCurrency: string;
+  /** Own/family account numbers, UPI handles or names — used to flag self transfers. */
+  selfPayees: string[];
   updatedAt: Date;
 }
 
@@ -17,6 +19,7 @@ const prefsSchema = new Schema<UserPreferences>(
     whatsappAlertsEnabled: { type: Boolean, default: false },
     emailAlertsEnabled: { type: Boolean, default: true },
     displayCurrency: { type: String, default: "INR", uppercase: true },
+    selfPayees: { type: [String], default: [] },
   },
   { timestamps: { createdAt: false, updatedAt: "updatedAt" } },
 );
@@ -36,6 +39,7 @@ export const userPreferencesService = {
         whatsappAlertsEnabled: false,
         emailAlertsEnabled: true,
         displayCurrency: "INR",
+        selfPayees: [],
         updatedAt: new Date(),
       };
     }
@@ -45,6 +49,7 @@ export const userPreferencesService = {
       whatsappAlertsEnabled: doc.whatsappAlertsEnabled ?? false,
       emailAlertsEnabled: doc.emailAlertsEnabled ?? true,
       displayCurrency: doc.displayCurrency ?? "INR",
+      selfPayees: doc.selfPayees ?? [],
       updatedAt: doc.updatedAt,
     };
   },

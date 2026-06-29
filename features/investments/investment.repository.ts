@@ -48,6 +48,8 @@ export interface InvestmentRepository {
   create(userId: string, input: CreateInvestmentInput): Promise<InvestmentEntity>;
   update(id: string, userId: string, input: UpdateInvestmentInput): Promise<void>;
   remove(id: string, userId: string): Promise<void>;
+  /** Insert or update a holding, matched by symbol (or name when no symbol). */
+  upsertBySymbol(userId: string, input: CreateInvestmentInput): Promise<"inserted" | "updated">;
 }
 
 class MongoInvestmentRepository implements InvestmentRepository {
@@ -79,6 +81,28 @@ class MongoInvestmentRepository implements InvestmentRepository {
   async remove(id: string, userId: string): Promise<void> {
     await connectToDatabase();
     await Investment.deleteOne({ _id: id, userId });
+  }
+
+  async upsertBySymbol(userId: string, input: CreateInvestmentInput): Promise<"inserted" | "updated"> {
+    await connectToDatabase();
+    const filter = input.symbol
+      ? { userId, symbol: input.symbol.toUpperCase() }
+      : { userId, name: input.name };
+    const result = await Investment.updateOne(
+      filter,
+      {
+        $set: {
+          name: input.name,
+          kind: input.kind,
+          units: input.units,
+          avgCost: input.avgCost,
+          currentPrice: input.currentPrice,
+        },
+        $setOnInsert: { userId, symbol: input.symbol ? input.symbol.toUpperCase() : null },
+      },
+      { upsert: true },
+    );
+    return result.upsertedCount ? "inserted" : "updated";
   }
 }
 

@@ -1,3 +1,5 @@
+import type { CategorySource } from "./transaction.categories";
+
 export type TransactionDirection = "CREDIT" | "DEBIT";
 export type TransactionSource = "MANUAL" | "STATEMENT_IMPORT";
 
@@ -13,6 +15,7 @@ export interface AccountTransaction {
   balanceAfter: number | null;
   currency: string;
   category: string | null;
+  categorySource: CategorySource | null;
   source: TransactionSource;
   sourceFile: string | null;
   createdAt: Date;

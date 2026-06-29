@@ -4,6 +4,7 @@ import {
   WELCOME_EMAIL_TEMPLATE,
 } from "@/lib/nodemailer/templates";
 import { PASSWORD_RESET_EMAIL_TEMPLATE } from "@/lib/nodemailer/reset-template";
+import { VERIFY_EMAIL_TEMPLATE } from "@/lib/nodemailer/verify-template";
 import { BRAND } from "@/branding/brand";
 
 // Sender uses the authenticated SMTP account with the brand as display name.
@@ -57,6 +58,29 @@ export const sendPasswordResetEmail = async ({
     to: email,
     subject: `Reset your ${BRAND.name} password`,
     text: `Reset your ${BRAND.name} password using this link: ${url}`,
+    html: htmlTemplate,
+  });
+};
+
+export const sendVerificationEmail = async ({
+  email,
+  name,
+  url,
+}: {
+  email: string;
+  name: string;
+  url: string;
+}) => {
+  const htmlTemplate = VERIFY_EMAIL_TEMPLATE.replace(
+    "{{name}}",
+    name || "there",
+  ).replaceAll("{{url}}", url);
+
+  await transporter.sendMail({
+    from: FROM,
+    to: email,
+    subject: `Verify your ${BRAND.name} email`,
+    text: `Verify your ${BRAND.name} email using this link: ${url}`,
     html: htmlTemplate,
   });
 };

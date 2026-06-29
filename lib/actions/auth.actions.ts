@@ -25,6 +25,32 @@ function buildWelcomeIntro({
 
 const MINUTE = 60 * 1000;
 
+/**
+ * Enforce a strong password before it reaches Better Auth. Returns an error
+ * message when the password is too weak, or null when it passes.
+ */
+function validatePasswordStrength(password: string): string | null {
+  if (password.length < 8) {
+    return "Your password must be at least 8 characters.";
+  }
+  if (password.length > 128) {
+    return "Your password must be 128 characters or fewer.";
+  }
+  if (!/[a-z]/.test(password)) {
+    return "Your password must include a lowercase letter.";
+  }
+  if (!/[A-Z]/.test(password)) {
+    return "Your password must include an uppercase letter.";
+  }
+  if (!/\d/.test(password)) {
+    return "Your password must include a number.";
+  }
+  if (!/[^A-Za-z0-9]/.test(password)) {
+    return "Your password must include a symbol.";
+  }
+  return null;
+}
+
 // Loose but sufficient: rejects non-IP garbage that could poison rate-limit keys.
 const IP_RE = /^[\d.a-f:]{2,45}$/i;
 
@@ -89,6 +115,8 @@ function describeAuthError(error: unknown, fallback: string): string {
     case "INVALID_TOKEN":
     case "TOKEN_EXPIRED":
       return "This reset link is invalid or has expired. Request a new one.";
+    case "EMAIL_NOT_VERIFIED":
+      return "Please verify your email first. Check your inbox for the verification link.";
     default:
       return e?.body?.message || fallback;
   }
@@ -103,13 +131,18 @@ export const signUpWithEmail = async ({
   riskTolerance,
   preferredIndustry,
 }: SignUpFormData) => {
+  const ip = await getClientIp();
   try {
-    const ip = await getClientIp();
     if (!(await withinLimit(`signup:${ip}`, 10, 60 * MINUTE))) {
       return {
         success: false,
         error: "Too many sign-up attempts. Please try again later.",
       };
+    }
+
+    const weakPassword = validatePasswordStrength(password);
+    if (weakPassword) {
+      return { success: false, error: weakPassword };
     }
 
     const authInstance = await auth();
@@ -151,8 +184,12 @@ export const signUpWithEmail = async ({
         });
       }
     }
-    return { success: true, data: response };
+    // Email verification is required, so no session exists yet. Signal the UI to
+    // show a "check your email to verify" state instead of redirecting in.
+    logger.info("auth.signup.success", { ip, email });
+    return { success: true, requiresVerification: true, data: response };
   } catch (error) {
+    logger.warn("auth.signup.failed", { ip, email });
     logger.error("Sign up failed", error);
     return {
       success: false,
@@ -162,8 +199,8 @@ export const signUpWithEmail = async ({
 };
 
 export const signInWithEmail = async ({ email, password }: SignInFormData) => {
+  const ip = await getClientIp();
   try {
-    const ip = await getClientIp();
     // Per IP + email — throttles credential stuffing / brute force.
     if (!(await withinLimit(`signin:${ip}:${email}`, 5, 15 * MINUTE))) {
       return {
@@ -177,8 +214,10 @@ export const signInWithEmail = async ({ email, password }: SignInFormData) => {
     const response = await authInstance.api.signInEmail({
       body: { email, password },
     });
+    logger.info("auth.signin.success", { ip, email });
     return { success: true, data: response };
   } catch (error) {
+    logger.warn("auth.signin.failed", { ip, email });
     logger.error("Sign in failed", error);
     return {
       success: false,

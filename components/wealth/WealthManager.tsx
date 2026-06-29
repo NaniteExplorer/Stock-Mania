@@ -11,11 +11,12 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { ArrowUpDown, Pencil, Plus, Search, ShieldCheck, Trash2 } from "lucide-react";
+import ProviderCombobox from "./ProviderCombobox";
 
 export interface WealthField {
   name: string;
   label: string;
-  type: "text" | "number" | "date" | "select";
+  type: "text" | "number" | "date" | "select" | "provider";
   required?: boolean;
   placeholder?: string;
   step?: string;
@@ -151,10 +152,10 @@ export default function WealthManager<T extends { id: string }>({
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-600 bg-gray-800 p-3">
         <div className="relative min-w-[220px] flex-1 sm:max-w-sm">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search records" className="form-input h-10 w-full pl-9" aria-label="Search records" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search records" className="form-input h-10 w-full !pl-10" aria-label="Search records" />
         </div>
         <button type="button" onClick={() => setAscending((value) => !value)} className="ghost-btn h-10 px-3" aria-label="Change sort direction">
-          <ArrowUpDown className="h-4 w-4" /> {ascending ? "Aâ€“Z" : "Zâ€“A"}
+          <ArrowUpDown className="h-4 w-4" /> {ascending ? "A–Z" : "Z–A"}
         </button>
         <button
           onClick={openCreate}
@@ -217,7 +218,13 @@ export default function WealthManager<T extends { id: string }>({
             {fields.map((f) => (
               <div key={f.name} className={f.half ? "" : "col-span-full"}>
                 <label className="form-label">{f.label}</label>
-                {f.type === "select" ? (
+                {f.type === "provider" ? (
+                  <ProviderCombobox
+                    value={values[f.name] ?? ""}
+                    onChange={(value) => setField(f.name, value)}
+                    placeholder={f.placeholder}
+                  />
+                ) : f.type === "select" ? (
                   <select
                     value={values[f.name] ?? ""}
                     onChange={(e) => setField(f.name, e.target.value)}
@@ -267,7 +274,7 @@ export default function WealthManager<T extends { id: string }>({
               </button>
             </div>
             <div className="col-span-full flex items-center gap-2 border-t border-gray-600 pt-4 text-xs text-gray-500">
-              <ShieldCheck className="h-4 w-4 text-green-500" /> Private to your account Â· values can be updated anytime
+              <ShieldCheck className="h-4 w-4 text-green-500" /> Private to your account · values can be updated anytime
             </div>
           </form>
         </DialogContent>

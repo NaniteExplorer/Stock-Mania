@@ -24,7 +24,7 @@ const AccountSchema = new Schema<AccountDoc>(
     type: {
       type: String,
       required: true,
-      enum: ["BANK", "CASH", "WALLET", "FIXED_DEPOSIT", "RECURRING_DEPOSIT", "PPF", "NPS", "EPFO"],
+      enum: ["BANK", "CASH", "WALLET", "CREDIT_CARD", "FIXED_DEPOSIT", "RECURRING_DEPOSIT", "PPF", "NPS", "EPFO"],
       default: "BANK",
     },
     balance: { type: Number, required: true, default: 0 },

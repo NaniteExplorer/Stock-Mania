@@ -43,23 +43,40 @@ gitleaks protect --staged --config .gitleaks.toml
   authorization is enforced per page/route via `getCurrentSession()` and inside
   every mutating Server Action.
 
-## Content-Security-Policy (verify, then enable)
+## Content-Security-Policy (enabled)
 
-A CSP is not enabled by default because it must allowlist the TradingView embed
-origins. After confirming the widgets still load, add this to the
-`securityHeaders` array in `next.config.ts`:
+A CSP **is enabled** in `next.config.ts` (`contentSecurityPolicy`). It allowlists
+the TradingView embed origins (plus Finnhub / Google APIs used by the client) and
+adds `object-src 'none'`, `base-uri 'self'`, `form-action 'self'` and
+`frame-ancestors 'none'`. `'unsafe-inline'` is still required for scripts/styles
+because Next.js and the TradingView widgets inject inline content without a nonce.
+**Verify the TradingView charts after any change** — a too-strict policy will show
+CSP violations in the browser console. To eliminate `'unsafe-inline'`, migrate to a
+nonce-based policy (see `node_modules/next/dist/docs/.../content-security-policy.md`).
 
-```
-Content-Security-Policy:
-  default-src 'self';
-  script-src 'self' 'unsafe-inline' https://s3.tradingview.com https://*.tradingview.com;
-  style-src 'self' 'unsafe-inline';
-  img-src 'self' data: https:;
-  frame-src https://*.tradingview.com https://www.tradingview.com;
-  connect-src 'self' https://*.tradingview.com https://finnhub.io https://*.googleapis.com;
-  font-src 'self' data:;
-```
+## Other application protections
+
+- **Email verification required** — sign-up no longer auto-signs-in; users must
+  click a verification link (`emailVerification` in `lib/better-auth/auth.ts`).
+- **Strong passwords** — `validatePasswordStrength` in `lib/actions/auth.actions.ts`
+  requires upper, lower, digit and symbol.
+- **Explicit session/cookie config** — 7-day session, `HttpOnly` + `SameSite=Lax`,
+  `Secure` in production, plus `trustedOrigins`.
+- **Input validation** — every data Server Action validates its payload with zod
+  (`features/*/**.schema.ts`) before touching the database.
+- **Public endpoints throttled** — `/api/prices/[symbol]` and `/api/health` are
+  rate-limited per IP (`core/http/rate-limit-request.ts`).
+- **No internal-error leakage** — `/api/health` logs failures server-side and
+  returns only a status.
 
 ## Dependencies
 
-`npm audit --audit-level=high` runs in CI. Keep dependencies patched.
+`npm audit --audit-level=high` runs in CI. Keep dependencies patched. As of the
+last sweep, `next` (16.2.9) and `nodemailer` (9.x) are on patched lines. The
+remaining advisories (`kiteconnect`, `exceljs`, and their transitive
+`mocha`/`serialize-javascript`/`uuid` chain) are **intentionally not "fixed"** —
+npm's only available fix is a **major downgrade** (`kiteconnect 5→4`,
+`exceljs 4→3`) that would regress the Zerodha integration and Excel export. The
+`serialize-javascript` advisory is reachable only through `kiteconnect`'s bundled
+test framework (`mocha`), not at runtime. Revisit when upstream ships a
+non-downgrade fix.

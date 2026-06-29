@@ -4,6 +4,9 @@ import { revalidatePath } from "next/cache";
 import { getCurrentSession } from "@/lib/better-auth/auth";
 import { logger } from "@/core/logger";
 import { investmentService } from "./investment.service";
+import { parseInput } from "@/core/validation/parse";
+import { createInvestmentSchema, updateInvestmentSchema } from "./investment.schema";
+import { parseHoldingsFile, importHoldings, type HoldingsImportResult } from "./holdings-import.service";
 import type {
   Investment,
   CreateInvestmentInput,
@@ -11,6 +14,27 @@ import type {
 } from "./investment.types";
 
 type ActionResult = { success: boolean; error?: string };
+
+/** Import a broker holdings export (INDmoney/Groww/Zerodha CSV·XLSX·PDF). */
+export async function importBrokerHoldings(formData: FormData): Promise<HoldingsImportResult> {
+  const session = await getCurrentSession();
+  if (!session?.user?.id) return { success: false, inserted: 0, updated: 0, rejected: 0, error: "You must be signed in." };
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) return { success: false, inserted: 0, updated: 0, rejected: 0, error: "No file was uploaded." };
+  if (file.size > 8 * 1024 * 1024) return { success: false, inserted: 0, updated: 0, rejected: 0, error: "File is too large (max 8 MB)." };
+
+  const password = String(formData.get("password") ?? "");
+  try {
+    const holdings = await parseHoldingsFile(file, password);
+    const result = await importHoldings(session.user.id, holdings);
+    revalidatePath("/investments"); revalidatePath("/dashboard");
+    return result;
+  } catch (error) {
+    logger.error("Holdings import failed", error);
+    return { success: false, inserted: 0, updated: 0, rejected: 0, error: error instanceof Error ? error.message : "The file could not be imported." };
+  }
+}
 
 export async function getMyInvestments(): Promise<Investment[]> {
   const session = await getCurrentSession();
@@ -26,8 +50,10 @@ export async function getMyInvestments(): Promise<Investment[]> {
 export async function createInvestment(input: CreateInvestmentInput): Promise<ActionResult> {
   const session = await getCurrentSession();
   if (!session?.user?.id) return { success: false, error: "You must be signed in." };
+  const parsed = parseInput(createInvestmentSchema, input);
+  if (!parsed.success) return { success: false, error: parsed.error };
   try {
-    await investmentService.create(session.user.id, input);
+    await investmentService.create(session.user.id, parsed.data as CreateInvestmentInput);
     revalidatePath("/investments");
     revalidatePath("/dashboard");
     return { success: true };
@@ -43,8 +69,10 @@ export async function updateInvestment(
 ): Promise<ActionResult> {
   const session = await getCurrentSession();
   if (!session?.user?.id) return { success: false, error: "You must be signed in." };
+  const parsed = parseInput(updateInvestmentSchema, input);
+  if (!parsed.success) return { success: false, error: parsed.error };
   try {
-    await investmentService.update(id, session.user.id, input);
+    await investmentService.update(id, session.user.id, parsed.data as UpdateInvestmentInput);
     revalidatePath("/investments");
     revalidatePath("/dashboard");
     return { success: true };

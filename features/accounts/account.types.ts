@@ -1,15 +1,19 @@
-export type AccountType = "BANK" | "CASH" | "WALLET" | "FIXED_DEPOSIT" | "RECURRING_DEPOSIT" | "PPF" | "NPS" | "EPFO";
+export type AccountType = "BANK" | "CASH" | "WALLET" | "CREDIT_CARD" | "FIXED_DEPOSIT" | "RECURRING_DEPOSIT" | "PPF" | "NPS" | "EPFO";
 
 export const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
   BANK: "Bank account",
   CASH: "Cash",
   WALLET: "Wallet",
+  CREDIT_CARD: "Credit card",
   FIXED_DEPOSIT: "Fixed deposit",
   RECURRING_DEPOSIT: "Recurring deposit",
   PPF: "Public Provident Fund",
   NPS: "National Pension System",
   EPFO: "Employees' Provident Fund",
 };
+
+/** Credit cards are tracked as accounts but represent debt, not assets. */
+export const LIABILITY_ACCOUNT_TYPES: AccountType[] = ["CREDIT_CARD"];
 
 export interface Account {
   id: string;

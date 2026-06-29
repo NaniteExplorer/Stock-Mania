@@ -24,6 +24,7 @@ export const networthService = {
   async getOverview(userId: string): Promise<NetWorthOverview> {
     const [
       accountsTotal,
+      creditCardDebt,
       investmentsTotal,
       esopsTotal,
       assetsTotal,
@@ -36,6 +37,7 @@ export const networthService = {
       liabilities,
     ] = await Promise.all([
       accountService.total(userId),
+      accountService.creditCardDebt(userId),
       investmentService.totalValue(userId),
       esopService.vestedValue(userId),
       assetService.total(userId),
@@ -58,7 +60,8 @@ export const networthService = {
 
     const totalAssets =
       totals.accounts + totals.investments + totals.brokerage + totals.esops + totals.assets;
-    const totalLiabilities = liabilitiesTotal;
+    // Credit-card outstanding is debt — add it to liabilities, never to assets.
+    const totalLiabilities = liabilitiesTotal + creditCardDebt;
     const netWorth = totalAssets - totalLiabilities;
 
     const raw: Omit<AllocationSlice, "percent">[] = [

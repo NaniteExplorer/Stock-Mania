@@ -8,6 +8,7 @@ interface SavePrefsInput {
   whatsappAlertsEnabled: boolean;
   emailAlertsEnabled: boolean;
   displayCurrency: string;
+  selfPayees: string[];
 }
 
 export async function saveUserPreferences(
