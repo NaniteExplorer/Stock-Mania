@@ -1,8 +1,24 @@
 import { serve } from "inngest/next";
 import { inngest } from "@/lib/inngest/client";
-import { sendDailyNewsSummary, sendSignUpEmail } from "@/lib/inngest/functions";
+import {
+  sendDailyNewsSummary,
+  sendUserNewsSummary,
+  checkPriceAlerts,
+  generateAISignal,
+  generateDailySignals,
+  categorizeImportedTransactions,
+} from "@/lib/inngest/functions";
 
+// Note: the welcome email is now sent directly from the sign-up action
+// (lib/actions/auth.actions.ts) so it lands reliably without Inngest running.
 export const { GET, POST, PUT } = serve({
   client: inngest,
-  functions: [sendSignUpEmail, sendDailyNewsSummary],
+  functions: [
+    sendDailyNewsSummary,
+    sendUserNewsSummary,
+    checkPriceAlerts,
+    generateAISignal,
+    generateDailySignals,
+    categorizeImportedTransactions,
+  ],
 });

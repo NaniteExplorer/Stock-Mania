@@ -1,0 +1,13 @@
+.git
+.next
+node_modules
+*.log
+.env
+.env.*
+!.env.example
+k8s
+*.md
+Dockerfile*
+docker-compose*
+.claude
+branding

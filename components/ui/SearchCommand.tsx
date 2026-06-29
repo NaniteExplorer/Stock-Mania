@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   CommandDialog,
   CommandEmpty,
@@ -8,9 +8,9 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { Button } from "@/components/ui/button";
-import { Loader2, TrendingUp } from "lucide-react";
+import { Loader2, Search, TrendingUp } from "lucide-react";
 import Link from "next/link";
-import { searchStocks } from "@/lib/actions/finnhub.actions";
+import { searchStocks } from "@/features/stocks/stocks.actions";
 import { useDebounce } from "@/hooks/useDebounce";
 
 export default function SearchCommand({
@@ -38,7 +38,7 @@ export default function SearchCommand({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const handleSearch = async () => {
+  const handleSearch = useCallback(async () => {
     if (!isSearchMode) return setStocks(initialStocks);
 
     setLoading(true);
@@ -50,13 +50,13 @@ export default function SearchCommand({
     } finally {
       setLoading(false);
     }
-  };
+  }, [initialStocks, isSearchMode, searchTerm]);
 
   const debouncedSearch = useDebounce(handleSearch, 300);
 
   useEffect(() => {
     debouncedSearch();
-  }, [searchTerm]);
+  }, [debouncedSearch, searchTerm]);
 
   const handleSelectStock = () => {
     setOpen(false);
@@ -67,11 +67,17 @@ export default function SearchCommand({
   return (
     <>
       {renderAs === "text" ? (
-        <span onClick={() => setOpen(true)} className="search-text">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-gray-400 transition-colors hover:bg-gray-700/70 hover:text-gray-100"
+        >
+          <Search className="h-4 w-4" />
           {label}
-        </span>
+        </button>
       ) : (
         <Button onClick={() => setOpen(true)} className="search-btn">
+          <Search className="h-4 w-4 text-yellow-400" />
           {label}
         </Button>
       )}
@@ -84,7 +90,7 @@ export default function SearchCommand({
           <CommandInput
             value={searchTerm}
             onValueChange={setSearchTerm}
-            placeholder="Search stocks..."
+            placeholder="Search stocks, ETFs, mutual funds..."
             className="search-input"
           />
           {loading && <Loader2 className="search-loader" />}
@@ -101,21 +107,21 @@ export default function SearchCommand({
           ) : (
             <ul>
               <div className="search-count">
-                {isSearchMode ? "Search results" : "Popular stocks"}
+                {isSearchMode ? "Search results" : "Popular assets"}
                 {` `}({displayStocks?.length || 0})
               </div>
-              {displayStocks?.map((stock, i) => (
+              {displayStocks?.map((stock) => (
                 <li key={stock.symbol} className="search-item">
                   <Link
                     href={`/stocks/${stock.symbol}`}
                     onClick={handleSelectStock}
                     className="search-item-link"
                   >
-                    <TrendingUp className="h-4 w-4 text-gray-500" />
+                    <TrendingUp className="h-4 w-4 text-yellow-500" />
                     <div className="flex-1">
                       <div className="search-item-name">{stock.name}</div>
                       <div className="text-sm text-gray-500">
-                        {stock.symbol} | {stock.exchange} | {stock.type}
+                        {stock.symbol} / {stock.exchange} / {stock.type}
                       </div>
                     </div>
                     {/*<Star />*/}

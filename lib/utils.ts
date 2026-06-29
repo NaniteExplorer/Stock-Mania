@@ -116,6 +116,49 @@ export const formatPrice = (price: number) => {
   }).format(price);
 };
 
+/** Format money with an explicit unit; locale never decides the currency. */
+export const formatMoney = (amount: number, currency: string, fractionDigits = 2) =>
+  new Intl.NumberFormat(currency === "INR" ? "en-IN" : "en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  }).format(Number.isFinite(amount) ? amount : 0);
+
+// ─────────────────────────── INR money formatting ───────────────────────────
+
+/** Full INR amount, e.g. "₹24,80,000". */
+export const formatINR = (amount: number, fractionDigits = 0) =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: fractionDigits,
+    minimumFractionDigits: fractionDigits,
+  }).format(Number.isFinite(amount) ? amount : 0);
+
+/** Compact INR using Indian units, e.g. "₹24.8L", "₹1.20Cr", "₹8.5K". */
+export const formatINRCompact = (amount: number): string => {
+  const n = Number.isFinite(amount) ? amount : 0;
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  if (abs >= 1e7) return `${sign}₹${(abs / 1e7).toFixed(2)}Cr`;
+  if (abs >= 1e5) return `${sign}₹${(abs / 1e5).toFixed(2)}L`;
+  if (abs >= 1e3) return `${sign}₹${(abs / 1e3).toFixed(1)}K`;
+  return `${sign}₹${abs.toFixed(0)}`;
+};
+
+/** Signed percent, e.g. "+2.40%" / "-1.10%". */
+export const formatSignedPercent = (pct: number): string => {
+  const safe = Number.isFinite(pct) ? pct : 0;
+  return `${safe >= 0 ? "+" : ""}${safe.toFixed(2)}%`;
+};
+
+/** Signed compact INR, e.g. "+₹42.6K" / "-₹12.0K". */
+export const formatSignedINRCompact = (amount: number): string => {
+  const n = Number.isFinite(amount) ? amount : 0;
+  return `${n >= 0 ? "+" : ""}${formatINRCompact(n)}`;
+};
+
 export const formatDateToday = new Date().toLocaleDateString("en-US", {
   weekday: "long",
   year: "numeric",
