@@ -13,6 +13,7 @@ export interface Holding {
   totalValue: number;
   investedValue: number;
   broker: "ZERODHA" | "ALPACA";
+  currency: "INR" | "USD";
 }
 
 export interface Position {
@@ -27,6 +28,7 @@ export interface Position {
   realised: number;
   side: "LONG" | "SHORT";
   broker: "ZERODHA" | "ALPACA";
+  currency: "INR" | "USD";
 }
 
 export interface PortfolioSummary {

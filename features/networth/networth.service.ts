@@ -2,6 +2,7 @@ import { accountService } from "@/features/accounts/account.service";
 import { investmentService } from "@/features/investments/investment.service";
 import { esopService } from "@/features/esops/esop.service";
 import { assetService } from "@/features/assets/asset.service";
+import { liabilityService } from "@/features/liabilities/liability.service";
 import { portfolioService } from "@/features/portfolio/portfolio.service";
 import { logger } from "@/core/logger";
 import type { NetWorthOverview, AllocationSlice } from "./networth.types";
@@ -21,18 +22,31 @@ async function safeBrokerage(
 
 export const networthService = {
   async getOverview(userId: string): Promise<NetWorthOverview> {
-    const [accountsTotal, investmentsTotal, esopsTotal, assetsTotal, brokerage, accounts, investments, esops, assets] =
-      await Promise.all([
-        accountService.total(userId),
-        investmentService.totalValue(userId),
-        esopService.vestedValue(userId),
-        assetService.total(userId),
-        safeBrokerage(userId),
-        accountService.list(userId),
-        investmentService.list(userId),
-        esopService.list(userId),
-        assetService.list(userId),
-      ]);
+    const [
+      accountsTotal,
+      investmentsTotal,
+      esopsTotal,
+      assetsTotal,
+      liabilitiesTotal,
+      brokerage,
+      accounts,
+      investments,
+      esops,
+      assets,
+      liabilities,
+    ] = await Promise.all([
+      accountService.total(userId),
+      investmentService.totalValue(userId),
+      esopService.vestedValue(userId),
+      assetService.total(userId),
+      liabilityService.total(userId),
+      safeBrokerage(userId),
+      accountService.list(userId),
+      investmentService.list(userId),
+      esopService.list(userId),
+      assetService.list(userId),
+      liabilityService.list(userId),
+    ]);
 
     const totals = {
       accounts: accountsTotal,
@@ -42,8 +56,10 @@ export const networthService = {
       assets: assetsTotal,
     };
 
-    const netWorth =
+    const totalAssets =
       totals.accounts + totals.investments + totals.brokerage + totals.esops + totals.assets;
+    const totalLiabilities = liabilitiesTotal;
+    const netWorth = totalAssets - totalLiabilities;
 
     const raw: Omit<AllocationSlice, "percent">[] = [
       { key: "accounts", label: "Cash & Bank", value: totals.accounts, color: "var(--chart-3)" },
@@ -53,9 +69,10 @@ export const networthService = {
       { key: "assets", label: "Assets", value: totals.assets, color: "var(--chart-5)" },
     ];
 
+    // Allocation is a breakdown of ASSETS (liabilities are shown separately).
     const allocation: AllocationSlice[] = raw
       .filter((s) => s.value > 0)
-      .map((s) => ({ ...s, percent: netWorth > 0 ? (s.value / netWorth) * 100 : 0 }))
+      .map((s) => ({ ...s, percent: totalAssets > 0 ? (s.value / totalAssets) * 100 : 0 }))
       .sort((a, b) => b.value - a.value);
 
     const dayChange = brokerage.dayPnl;
@@ -64,6 +81,8 @@ export const networthService = {
 
     return {
       netWorth,
+      totalAssets,
+      totalLiabilities,
       dayChange,
       dayChangePercent,
       allocation,
@@ -73,8 +92,9 @@ export const networthService = {
         investments: investments.length,
         esops: esops.length,
         assets: assets.length,
+        liabilities: liabilities.length,
       },
-      hasData: netWorth > 0,
+      hasData: totalAssets > 0 || totalLiabilities > 0,
     };
   },
 };

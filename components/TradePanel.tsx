@@ -10,6 +10,7 @@ import type {
   OrderProduct,
 } from "@/features/orders/order.types";
 import { toast } from "sonner";
+import { formatMoney } from "@/lib/utils";
 
 interface TradePanelProps {
   symbol: string;
@@ -29,6 +30,7 @@ export default function TradePanel({
   const [quantity, setQuantity] = useState(1);
   const [limitPrice, setLimitPrice] = useState<string>("");
   const [isPending, startTransition] = useTransition();
+  const currency = ["NYSE", "NASDAQ", "ARCA"].includes(exchange) ? "USD" : "INR";
 
   const estimatedValue =
     quote?.c && quantity > 0 ? (quote.c * quantity).toFixed(2) : null;
@@ -62,7 +64,7 @@ export default function TradePanel({
   };
 
   return (
-    <div className="rounded-xl border border-gray-700 bg-gray-800/60 p-5 flex flex-col gap-4">
+    <div className="cockpit-panel p-5 flex flex-col gap-4">
       {/* Live price header */}
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-gray-400">
@@ -74,7 +76,7 @@ export default function TradePanel({
           />
           {quote ? (
             <span className="font-mono text-base font-semibold text-gray-100">
-              ₹{quote.c.toFixed(2)}
+              {formatMoney(quote.c, currency)}
               <span
                 className={`ml-2 text-xs ${quote.d >= 0 ? "text-green-400" : "text-red-400"}`}
               >
@@ -160,7 +162,7 @@ export default function TradePanel({
         {/* Limit price (shown only for LIMIT orders) */}
         {orderType === "LIMIT" && (
           <label className="flex flex-col gap-1 text-xs text-gray-400">
-            Limit price (₹)
+            Limit price ({currency})
             <input
               type="number"
               step="0.05"
@@ -176,7 +178,7 @@ export default function TradePanel({
 
         {estimatedValue && (
           <p className="text-xs text-gray-500">
-            Est. value: ₹{estimatedValue}
+            Est. value: {formatMoney(Number(estimatedValue), currency)}
           </p>
         )}
 

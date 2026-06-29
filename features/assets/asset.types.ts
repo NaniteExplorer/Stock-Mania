@@ -1,6 +1,7 @@
 export type AssetCategory =
   | "REAL_ESTATE"
   | "GOLD"
+  | "SILVER"
   | "VEHICLE"
   | "EPF"
   | "PPF"
@@ -11,6 +12,7 @@ export type AssetCategory =
 export const ASSET_CATEGORY_LABELS: Record<AssetCategory, string> = {
   REAL_ESTATE: "Real estate",
   GOLD: "Gold & jewellery",
+  SILVER: "Silver",
   VEHICLE: "Vehicle",
   EPF: "EPF",
   PPF: "PPF",

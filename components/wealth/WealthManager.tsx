@@ -10,7 +10,7 @@ import {
   DialogTitle,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowUpDown, Pencil, Plus, Search, ShieldCheck, Trash2 } from "lucide-react";
 
 export interface WealthField {
   name: string;
@@ -21,6 +21,7 @@ export interface WealthField {
   step?: string;
   prefix?: string;
   options?: { value: string; label: string }[];
+  suggestions?: string[];
   half?: boolean;
 }
 
@@ -78,6 +79,20 @@ export default function WealthManager<T extends { id: string }>({
   const [values, setValues] = React.useState<Values>(emptyValues(fields));
   const [submitting, setSubmitting] = React.useState(false);
   const [deletingId, setDeletingId] = React.useState<string | null>(null);
+  const [query, setQuery] = React.useState("");
+  const [ascending, setAscending] = React.useState(true);
+
+  const visibleItems = React.useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return items
+      .filter((item) => !needle || Object.values(toValues(item)).some((value) => value.toLowerCase().includes(needle)))
+      .sort((a, b) => {
+        const firstField = fields[0]?.name ?? "";
+        const left = toValues(a)[firstField] ?? "";
+        const right = toValues(b)[firstField] ?? "";
+        return left.localeCompare(right) * (ascending ? 1 : -1);
+      });
+  }, [ascending, fields, items, query, toValues]);
 
   const openCreate = () => {
     setEditingId(null);
@@ -116,6 +131,7 @@ export default function WealthManager<T extends { id: string }>({
   };
 
   const remove = async (id: string) => {
+    if (!window.confirm("Delete this record? This action cannot be undone.")) return;
     setDeletingId(id);
     try {
       const res = await onDelete(id);
@@ -132,7 +148,14 @@ export default function WealthManager<T extends { id: string }>({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-600 bg-gray-800 p-3">
+        <div className="relative min-w-[220px] flex-1 sm:max-w-sm">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search records" className="form-input h-10 w-full pl-9" aria-label="Search records" />
+        </div>
+        <button type="button" onClick={() => setAscending((value) => !value)} className="ghost-btn h-10 px-3" aria-label="Change sort direction">
+          <ArrowUpDown className="h-4 w-4" /> {ascending ? "Aâ€“Z" : "Zâ€“A"}
+        </button>
         <button
           onClick={openCreate}
           className="inline-flex h-10 items-center gap-2 rounded-xl bg-yellow-500 px-4 text-sm font-semibold text-white transition-colors hover:brightness-110"
@@ -154,8 +177,8 @@ export default function WealthManager<T extends { id: string }>({
         </div>
       ) : (
         <ul className="flex flex-col gap-3">
-          {items.map((item) => (
-            <li key={item.id} className="panel flex items-center gap-3 p-4">
+          {visibleItems.map((item) => (
+            <li key={item.id} className="cockpit-panel flex items-center gap-3 p-4">
               <div className="min-w-0 flex-1">{renderRow(item)}</div>
               <div className="flex shrink-0 items-center gap-1">
                 <button
@@ -186,7 +209,7 @@ export default function WealthManager<T extends { id: string }>({
               {editingId ? `Edit ${dialogTitle}` : `Add ${dialogTitle}`}
             </DialogTitle>
             <DialogDescription>
-              Stored privately to your account. Values are used to compute your net worth.
+            Stored privately and used to compute net worth. Manually entered valuations are treated as estimates.
             </DialogDescription>
           </DialogHeader>
 
@@ -223,7 +246,9 @@ export default function WealthManager<T extends { id: string }>({
                       required={f.required}
                       placeholder={f.placeholder}
                       className={`form-input w-full ${f.prefix ? "pl-7" : ""}`}
+                      list={f.suggestions ? `${f.name}-suggestions` : undefined}
                     />
+                    {f.suggestions && <datalist id={`${f.name}-suggestions`}>{f.suggestions.map((suggestion) => <option key={suggestion} value={suggestion} />)}</datalist>}
                   </div>
                 )}
               </div>
@@ -240,6 +265,9 @@ export default function WealthManager<T extends { id: string }>({
               <button type="submit" disabled={submitting} className="yellow-btn px-6">
                 {submitting ? "Saving…" : editingId ? "Save changes" : "Add"}
               </button>
+            </div>
+            <div className="col-span-full flex items-center gap-2 border-t border-gray-600 pt-4 text-xs text-gray-500">
+              <ShieldCheck className="h-4 w-4 text-green-500" /> Private to your account Â· values can be updated anytime
             </div>
           </form>
         </DialogContent>

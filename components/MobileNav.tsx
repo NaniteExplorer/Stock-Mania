@@ -11,7 +11,7 @@ const MobileNav = () => {
   const pathname = usePathname();
 
   return (
-    <nav className="bottom-nav">
+    <nav className="bottom-nav" aria-label="Primary navigation">
       {MOBILE_NAV_ITEMS.map(({ href, label, icon: Icon }) => {
         const active = isActive(pathname, href);
         return (

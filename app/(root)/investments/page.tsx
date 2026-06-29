@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { getMyInvestments } from "@/features/investments/investment.actions";
 import InvestmentsManager from "@/components/wealth/InvestmentsManager";
+import RefreshPricesButton from "@/components/wealth/RefreshPricesButton";
 import { formatINR, formatSignedINRCompact, formatSignedPercent } from "@/lib/utils";
 import { LineChart } from "lucide-react";
 
@@ -16,9 +17,14 @@ export default async function InvestmentsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="page-title">Investments</h1>
-        <p className="page-subtitle">Stocks, ETFs, mutual funds &amp; more — entered manually.</p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="page-title">Investments</h1>
+          <p className="page-subtitle">
+            Stocks, ETFs, mutual funds &amp; more — values update from live prices.
+          </p>
+        </div>
+        {items.length > 0 && <RefreshPricesButton />}
       </div>
 
       <div className="networth-hero">

@@ -95,5 +95,6 @@ export async function getAlpacaPositions(): Promise<Position[]> {
     realised: 0,
     side: p.side === "long" ? "LONG" : "SHORT",
     broker: "ALPACA" as const,
+    currency: "USD" as const,
   }));
 }

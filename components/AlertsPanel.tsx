@@ -9,6 +9,7 @@ import type {
   AlertChannel,
 } from "@/features/alerts/alert.types";
 import { Bell, X } from "lucide-react";
+import { formatMoney } from "@/lib/utils";
 
 interface AlertsPanelProps {
   symbol: string;
@@ -43,7 +44,7 @@ export default function AlertsPanel({
 
       if (result.success) {
         setAlerts((prev) => [result.alert, ...prev]);
-        toast.success(`Alert set for ${symbol} at Rs ${targetPrice}`);
+        toast.success(`Alert set for ${symbol} at ${formatMoney(Number(targetPrice), "INR")}`);
       } else {
         toast.error(result.error);
       }
@@ -67,7 +68,7 @@ export default function AlertsPanel({
   };
 
   return (
-    <div className="enterprise-card flex flex-col gap-5 p-5">
+    <div className="cockpit-panel flex flex-col gap-5 p-5">
       <div className="flex items-center gap-2">
         <Bell className="h-4 w-4 text-yellow-400" />
         <h3 className="text-sm font-semibold text-gray-100">Price Alerts</h3>
@@ -162,8 +163,7 @@ export default function AlertsPanel({
             >
               <div className="flex flex-col gap-0.5">
                 <span className="text-gray-200">
-                  {a.type === "PRICE_ABOVE" ? "Above" : "Below"} Rs{" "}
-                  {a.targetPrice.toFixed(2)}
+                  {a.type === "PRICE_ABOVE" ? "Above" : "Below"} {formatMoney(a.targetPrice, "INR")}
                 </span>
                 <span className="text-gray-500">
                   {a.channel} / {a.status}

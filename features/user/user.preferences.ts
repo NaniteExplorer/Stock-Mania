@@ -6,6 +6,7 @@ interface UserPreferences {
   whatsappNumber: string | null;
   whatsappAlertsEnabled: boolean;
   emailAlertsEnabled: boolean;
+  displayCurrency: string;
   updatedAt: Date;
 }
 
@@ -15,6 +16,7 @@ const prefsSchema = new Schema<UserPreferences>(
     whatsappNumber: { type: String, default: null },
     whatsappAlertsEnabled: { type: Boolean, default: false },
     emailAlertsEnabled: { type: Boolean, default: true },
+    displayCurrency: { type: String, default: "INR", uppercase: true },
   },
   { timestamps: { createdAt: false, updatedAt: "updatedAt" } },
 );
@@ -33,6 +35,7 @@ export const userPreferencesService = {
         whatsappNumber: null,
         whatsappAlertsEnabled: false,
         emailAlertsEnabled: true,
+        displayCurrency: "INR",
         updatedAt: new Date(),
       };
     }
@@ -41,6 +44,7 @@ export const userPreferencesService = {
       whatsappNumber: doc.whatsappNumber ?? null,
       whatsappAlertsEnabled: doc.whatsappAlertsEnabled ?? false,
       emailAlertsEnabled: doc.emailAlertsEnabled ?? true,
+      displayCurrency: doc.displayCurrency ?? "INR",
       updatedAt: doc.updatedAt,
     };
   },

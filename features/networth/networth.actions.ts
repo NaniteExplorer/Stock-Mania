@@ -8,11 +8,13 @@ import type { NetWorthOverview, NetWorthSummary } from "./networth.types";
 
 const EMPTY_OVERVIEW: NetWorthOverview = {
   netWorth: 0,
+  totalAssets: 0,
+  totalLiabilities: 0,
   dayChange: 0,
   dayChangePercent: 0,
   allocation: [],
   totals: { accounts: 0, investments: 0, brokerage: 0, esops: 0, assets: 0 },
-  counts: { accounts: 0, investments: 0, esops: 0, assets: 0 },
+  counts: { accounts: 0, investments: 0, esops: 0, assets: 0, liabilities: 0 },
   hasData: false,
 };
 

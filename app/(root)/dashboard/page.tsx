@@ -1,7 +1,5 @@
 import Link from "next/link";
-import TradingViewWidget from "@/components/TradingViewWidgets";
-import AllocationDonut from "@/components/wealth/AllocationDonut";
-import { MARKET_OVERVIEW_WIDGET_CONFIG } from "@/lib/constants";
+import Allocation3D from "@/components/wealth/Allocation3D";
 import { getNetWorthOverview } from "@/features/networth/networth.actions";
 import { getMyAccounts } from "@/features/accounts/account.actions";
 import { getMyInvestments } from "@/features/investments/investment.actions";
@@ -17,12 +15,17 @@ import {
   ArrowRight,
   ArrowUpRight,
   Building2,
+  CreditCard,
   Gem,
   Landmark,
   LineChart,
   BriefcaseBusiness,
   Plus,
   Sparkles,
+  ShieldCheck,
+  Clock3,
+  CircleGauge,
+  Target,
 } from "lucide-react";
 
 const CLASS_CARDS = [
@@ -48,7 +51,8 @@ export default async function DashboardPage() {
   ]);
 
   const positive = overview.dayChange >= 0;
-  const scriptURL = "https://s3.tradingview.com/external-embedding/embed-widget-";
+  const liquidCashPercent = overview.totalAssets > 0 ? (overview.totals.accounts / overview.totalAssets) * 100 : 0;
+  const debtRatio = overview.totalAssets > 0 ? (overview.totalLiabilities / overview.totalAssets) * 100 : 0;
 
   const movers = [...investments]
     .sort((a, b) => Math.abs(b.pnlPercent) - Math.abs(a.pnlPercent))
@@ -60,7 +64,7 @@ export default async function DashboardPage() {
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="page-title">Net worth</h1>
-          <p className="page-subtitle">Everything you own, in one clear view.</p>
+          <p className="page-subtitle">Your financial position, composition and next actions.</p>
         </div>
         <Link
           href="/accounts"
@@ -72,7 +76,7 @@ export default async function DashboardPage() {
 
       {/* Hero + allocation */}
       <section className="grid gap-5 xl:grid-cols-[1.25fr_1fr]">
-        <div className="networth-hero">
+        <div className="networth-hero cockpit-panel">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-sm font-medium text-gray-500">Total net worth</p>
@@ -90,6 +94,16 @@ export default async function DashboardPage() {
                 </span>
                 <span className="text-xs text-gray-500">today</span>
               </div>
+              <p className="mt-2 text-xs text-gray-500">
+                Assets{" "}
+                <span className="font-semibold text-gray-300 tnum">
+                  {formatINRCompact(overview.totalAssets)}
+                </span>
+                {"  ·  "}Liabilities{" "}
+                <span className="font-semibold text-red-500 tnum">
+                  {formatINRCompact(overview.totalLiabilities)}
+                </span>
+              </p>
             </div>
             <span className="pill pill-brand">
               <Sparkles className="h-3.5 w-3.5" />
@@ -114,9 +128,15 @@ export default async function DashboardPage() {
 
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3">
             <div className="stat-tile">
-              <p className="text-xs text-gray-500">Cash & Bank</p>
+              <p className="text-xs text-gray-500">Total assets</p>
               <p className="mt-1 text-lg font-bold text-gray-100 tnum">
-                {formatINRCompact(overview.totals.accounts)}
+                {formatINRCompact(overview.totalAssets)}
+              </p>
+            </div>
+            <div className="stat-tile">
+              <p className="text-xs text-gray-500">Liabilities</p>
+              <p className="mt-1 text-lg font-bold text-red-500 tnum">
+                {formatINRCompact(overview.totalLiabilities)}
               </p>
             </div>
             <div className="stat-tile">
@@ -125,20 +145,15 @@ export default async function DashboardPage() {
                 {formatINRCompact(overview.totals.investments + overview.totals.brokerage)}
               </p>
             </div>
-            <div className="stat-tile">
-              <p className="text-xs text-gray-500">ESOPs + Assets</p>
-              <p className="mt-1 text-lg font-bold text-gray-100 tnum">
-                {formatINRCompact(overview.totals.esops + overview.totals.assets)}
-              </p>
-            </div>
           </div>
         </div>
 
-        <div className="panel p-6">
-          <h2 className="text-base font-semibold text-gray-100">Allocation</h2>
-          <p className="mb-5 text-sm text-gray-500">How your wealth is spread.</p>
+        <div className="cockpit-panel p-6">
+          <span className="section-kicker">Wealth map</span>
+          <h2 className="mt-1 text-base font-semibold text-gray-100">Interactive allocation</h2>
+          <p className="mb-5 text-sm text-gray-500">Select a segment to inspect its source.</p>
           {overview.allocation.length > 0 ? (
-            <AllocationDonut
+            <Allocation3D
               slices={overview.allocation}
               centerLabel="Net worth"
               centerValue={formatINRCompact(overview.netWorth)}
@@ -172,10 +187,10 @@ export default async function DashboardPage() {
       )}
 
       {/* Wealth class tiles */}
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-5">
+      <section className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
         {CLASS_CARDS.map(({ key, label, href, icon: Icon, totalKey }) => {
           const value = overview.totals[totalKey];
-          const pct = overview.netWorth > 0 ? (value / overview.netWorth) * 100 : 0;
+          const pct = overview.totalAssets > 0 ? (value / overview.totalAssets) * 100 : 0;
           return (
             <Link key={key} href={href} className="panel panel-hover p-4">
               <div className="flex items-center justify-between">
@@ -186,10 +201,24 @@ export default async function DashboardPage() {
               </div>
               <p className="mt-3 text-xs text-gray-500">{label}</p>
               <p className="mt-1 text-lg font-bold text-gray-100 tnum">{formatINRCompact(value)}</p>
-              <p className="mt-0.5 text-[11px] text-gray-500 tnum">{pct.toFixed(1)}% of net worth</p>
+              <p className="mt-0.5 text-[11px] text-gray-500 tnum">{pct.toFixed(1)}% of assets</p>
             </Link>
           );
         })}
+        <Link href="/liabilities" className="panel panel-hover p-4">
+          <div className="flex items-center justify-between">
+            <span className="icon-chip">
+              <CreditCard className="h-5 w-5" />
+            </span>
+            <ArrowRight className="h-4 w-4 text-gray-500" />
+          </div>
+          <p className="mt-3 text-xs text-gray-500">Liabilities</p>
+          <p className="mt-1 text-lg font-bold text-red-500 tnum">
+            {overview.totalLiabilities > 0 ? "−" : ""}
+            {formatINRCompact(overview.totalLiabilities)}
+          </p>
+          <p className="mt-0.5 text-[11px] text-gray-500 tnum">{overview.counts.liabilities} owed</p>
+        </Link>
       </section>
 
       {/* Accounts + Movers */}
@@ -275,15 +304,36 @@ export default async function DashboardPage() {
         </div>
       </section>
 
-      {/* Markets */}
-      <section className="panel p-4">
-        <TradingViewWidget
-          title="Markets overview"
-          scriptUrl={`${scriptURL}advanced-chart.js`}
-          config={MARKET_OVERVIEW_WIDGET_CONFIG}
-          className="custom-chart"
-          height={460}
-        />
+      <section className="cockpit-panel p-5 md:p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <span className="section-kicker">Financial dynamics</span>
+            <h2 className="mt-1 text-lg font-semibold text-gray-100">How your wealth is moving</h2>
+            <p className="mt-1 text-sm text-gray-500">Movement attribution begins as dated activity is recorded.</p>
+          </div>
+          <span className="data-status">Current values verified</span>
+        </div>
+        <div className="mt-6 grid min-h-44 gap-4 lg:grid-cols-[1.6fr_1fr]">
+          <div className="relative overflow-hidden rounded-xl border border-gray-600 bg-gray-900/45 p-5">
+            <div className="absolute inset-x-5 bottom-9 top-6 opacity-60 [background:repeating-linear-gradient(to_bottom,transparent,transparent_31px,var(--border)_32px)]" />
+            <div className="relative flex h-full flex-col items-center justify-center text-center">
+              <Clock3 className="h-6 w-6 text-yellow-500" />
+              <p className="mt-3 text-sm font-semibold text-gray-200">Your timeline starts with the next snapshot</p>
+              <p className="mt-1 max-w-md text-xs leading-5 text-gray-500">Future dated changes will separate contributions, market movement and debt reduction. No synthetic history is shown.</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {['Contributions', 'Market return', 'Income', 'Debt reduced'].map((label) => (
+              <div key={label} className="stat-tile"><p className="metric-label">{label}</p><p className="mt-3 text-xl font-bold text-gray-300">â€”</p><p className="mt-1 text-xs text-gray-500">Awaiting history</p></div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-3">
+        <div className="cockpit-panel p-5"><CircleGauge className="h-5 w-5 text-blue-500" /><p className="metric-label mt-4">Liquid position</p><p className="mt-2 text-2xl font-bold text-gray-100 tnum">{formatINRCompact(overview.totals.accounts)}</p><p className="mt-1 text-xs text-gray-500">{liquidCashPercent.toFixed(1)}% of assets in cash and accounts</p></div>
+        <div className="cockpit-panel p-5"><ShieldCheck className="h-5 w-5 text-green-500" /><p className="metric-label mt-4">Debt health</p><p className={`mt-2 text-2xl font-bold tnum ${debtRatio > 50 ? "text-red-500" : "text-gray-100"}`}>{debtRatio.toFixed(1)}%</p><p className="mt-1 text-xs text-gray-500">Liabilities as a share of total assets</p></div>
+        <div className="cockpit-panel p-5"><Target className="h-5 w-5 text-purple-500" /><p className="metric-label mt-4">Goals</p><p className="mt-2 text-2xl font-bold text-gray-100">Planning next</p><p className="mt-1 text-xs text-gray-500">Goal targets and probability ranges are on the roadmap</p></div>
       </section>
     </div>
   );

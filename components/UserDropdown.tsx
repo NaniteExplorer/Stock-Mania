@@ -31,13 +31,9 @@ const UserDropdown = ({ user }: { user: User }) => {
           className="flex h-10 items-center gap-2.5 rounded-xl border border-gray-600 bg-gray-800 px-1.5 pr-2 text-gray-400 hover:border-yellow-500/50 hover:bg-gray-700 hover:text-yellow-400 sm:px-2"
         >
           <Avatar className="h-7 w-7">
-            <AvatarImage
-              src={
-                "https://avatars.githubusercontent.com/u/153423955?s=280&v=4"
-              }
-            />
+            {user.image && <AvatarImage src={user.image} alt={user.name ?? "User"} />}
             <AvatarFallback className="bg-yellow-500 text-sm font-bold text-white">
-              {user.name?.[0] ?? "U"}
+              {user.name?.[0]?.toUpperCase() ?? "U"}
             </AvatarFallback>
           </Avatar>
           <div className="hidden flex-col items-start md:flex">
@@ -52,13 +48,9 @@ const UserDropdown = ({ user }: { user: User }) => {
         <DropdownMenuLabel>
           <div className="relative flex items-center gap-3 rounded-md bg-gray-900/60 p-3">
             <Avatar className="h-10 w-10">
-              <AvatarImage
-                src={
-                  "https://avatars.githubusercontent.com/u/153423955?s=280&v=4"
-                }
-              />
+              {user.image && <AvatarImage src={user.image} alt={user.name ?? "User"} />}
               <AvatarFallback className="bg-yellow-500 text-sm font-bold text-white">
-                {user.name?.[0] ?? "U"}
+                {user.name?.[0]?.toUpperCase() ?? "U"}
               </AvatarFallback>
             </Avatar>
             <div className="flex min-w-0 flex-col">

@@ -89,11 +89,11 @@ const Landing = async () => {
           <div className="animate-fade-up">
             <span className="eyebrow">
               <Sparkles className="h-3.5 w-3.5" />
-              Markets + complete wealth
+              Your financial life, synchronized
             </span>
             <h1 className="mt-6 max-w-2xl text-4xl font-bold leading-[1.08] tracking-tight text-gray-100 sm:text-5xl md:text-6xl">
-              Track the markets.{" "}
-              <span className="gradient-text">Grow your net worth.</span>
+              See your entire financial life{" "}
+              <span className="gradient-text">move together.</span>
             </h1>
             <p className="mt-6 max-w-xl text-base leading-7 text-gray-400 md:text-lg">
               Live NASDAQ and Indian markets, heatmaps, charts and news — free and

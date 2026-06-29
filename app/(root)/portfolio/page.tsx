@@ -1,6 +1,7 @@
 import { getPortfolio } from "@/features/portfolio/portfolio.actions";
 import { HoldingsTable, PositionsTable } from "@/components/PortfolioTable";
 import Link from "next/link";
+import { formatINR, formatSignedINRCompact } from "@/lib/utils";
 
 function StatCard({ label, value, sub, positive }: {
   label: string;
@@ -41,7 +42,7 @@ export default async function PortfolioPage() {
           <h1 className="page-title">Portfolio</h1>
           <p className="page-subtitle">Live broker holdings and P&amp;L.</p>
         </div>
-        <div className="flex items-center gap-2 text-xs">
+        <div className="data-status flex items-center gap-3 text-xs">
           <span className={`flex items-center gap-1 ${portfolio.zerodhaConnected ? "text-green-400" : "text-gray-600"}`}>
             <span className={`h-2 w-2 rounded-full ${portfolio.zerodhaConnected ? "bg-green-400" : "bg-gray-700"}`} />
             Zerodha
@@ -54,7 +55,7 @@ export default async function PortfolioPage() {
       </div>
 
       {noConnections ? (
-        <div className="panel border-dashed p-10 text-center">
+        <div className="cockpit-panel border-dashed p-10 text-center">
           <p className="mb-4 text-gray-400">Connect a broker to see your portfolio.</p>
           <Link
             href="/settings"
@@ -68,21 +69,21 @@ export default async function PortfolioPage() {
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <StatCard
               label="Invested"
-              value={`₹${portfolio.totalInvested.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
+              value={formatINR(portfolio.totalInvested)}
             />
             <StatCard
               label="Current Value"
-              value={`₹${portfolio.currentValue.toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
+              value={formatINR(portfolio.currentValue)}
             />
             <StatCard
               label="Total P&L"
-              value={`${portfolio.totalPnl >= 0 ? "+" : ""}₹${Math.abs(portfolio.totalPnl).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
+              value={formatSignedINRCompact(portfolio.totalPnl)}
               sub={`${portfolio.totalPnlPercent >= 0 ? "+" : ""}${portfolio.totalPnlPercent.toFixed(2)}%`}
               positive={portfolio.totalPnl >= 0}
             />
             <StatCard
               label="Day P&L"
-              value={`${portfolio.dayPnl >= 0 ? "+" : ""}₹${Math.abs(portfolio.dayPnl).toLocaleString("en-IN", { maximumFractionDigits: 0 })}`}
+              value={formatSignedINRCompact(portfolio.dayPnl)}
               positive={portfolio.dayPnl >= 0}
             />
           </div>

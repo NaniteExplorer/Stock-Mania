@@ -7,7 +7,10 @@ export interface AllocationSlice {
 }
 
 export interface NetWorthOverview {
+  /** Total assets minus total liabilities. */
   netWorth: number;
+  totalAssets: number;
+  totalLiabilities: number;
   dayChange: number;
   dayChangePercent: number;
   allocation: AllocationSlice[];
@@ -23,6 +26,7 @@ export interface NetWorthOverview {
     investments: number;
     esops: number;
     assets: number;
+    liabilities: number;
   };
   hasData: boolean;
 }

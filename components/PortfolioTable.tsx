@@ -1,6 +1,7 @@
 "use client";
 
 import type { Holding, Position } from "@/features/portfolio/portfolio.types";
+import { formatMoney } from "@/lib/utils";
 
 function pnlClass(v: number) {
   return v >= 0 ? "text-green-400" : "text-red-400";
@@ -27,7 +28,7 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-600 bg-gray-800/70">
+    <div className="cockpit-table overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-gray-700/80 text-gray-400">
           <tr>
@@ -59,19 +60,19 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
               </td>
               <td className="px-4 py-3 text-gray-300">{h.quantity}</td>
               <td className="px-4 py-3 text-gray-300">
-                Rs {fmt(h.avgPrice)}
+                {formatMoney(h.avgPrice, h.currency)}
               </td>
               <td className="px-4 py-3 text-gray-100">
-                Rs {fmt(h.currentPrice)}
+                {formatMoney(h.currentPrice, h.currency)}
               </td>
               <td className="px-4 py-3 text-gray-300">
-                Rs {fmt(h.investedValue)}
+                {formatMoney(h.investedValue, h.currency)}
               </td>
               <td className="px-4 py-3 text-gray-100">
-                Rs {fmt(h.totalValue)}
+                {formatMoney(h.totalValue, h.currency)}
               </td>
               <td className={`px-4 py-3 font-medium ${pnlClass(h.pnl)}`}>
-                {h.pnl >= 0 ? "+" : ""}Rs {fmt(h.pnl)}
+                {h.pnl >= 0 ? "+" : ""}{formatMoney(h.pnl, h.currency)}
                 <span className="ml-1 text-xs">
                   ({h.pnlPercent >= 0 ? "+" : ""}
                   {fmt(h.pnlPercent)}%)
@@ -114,7 +115,7 @@ export function PositionsTable({ positions }: PositionsTableProps) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-gray-600 bg-gray-800/70">
+    <div className="cockpit-table overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-gray-700/80 text-gray-400">
           <tr>
@@ -151,15 +152,15 @@ export function PositionsTable({ positions }: PositionsTableProps) {
               </td>
               <td className="px-4 py-3 text-gray-300">{p.quantity}</td>
               <td className="px-4 py-3 text-gray-300">
-                Rs {fmt(p.avgPrice)}
+                {formatMoney(p.avgPrice, p.currency)}
               </td>
               <td className="px-4 py-3 text-gray-100">
-                Rs {fmt(p.currentPrice)}
+                {formatMoney(p.currentPrice, p.currency)}
               </td>
               <td
                 className={`px-4 py-3 font-medium ${pnlClass(p.unrealised)}`}
               >
-                {p.unrealised >= 0 ? "+" : ""}Rs {fmt(p.unrealised)}
+                {p.unrealised >= 0 ? "+" : ""}{formatMoney(p.unrealised, p.currency)}
               </td>
               <td className="px-4 py-3 text-gray-400">{p.product}</td>
             </tr>

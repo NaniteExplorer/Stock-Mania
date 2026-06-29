@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { requestSignal } from "@/features/signals/signal.actions";
 import type { TradingSignal } from "@/features/signals/signal.types";
 import { Sparkles } from "lucide-react";
+import { formatMoney } from "@/lib/utils";
 
 const DIRECTION_STYLES: Record<TradingSignal["direction"], string> = {
   BUY: "bg-green-500/15 text-green-400 border-green-500/40",
@@ -26,7 +27,7 @@ export function SignalCard({ signal }: SignalCardProps) {
   const dots = CONFIDENCE_DOTS[signal.confidence];
 
   return (
-    <div className="enterprise-card flex flex-col gap-3 p-5">
+    <div className="cockpit-panel flex flex-col gap-3 p-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-base font-bold text-gray-100">
@@ -58,14 +59,14 @@ export function SignalCard({ signal }: SignalCardProps) {
         <div className="rounded-md border border-gray-600 bg-gray-900/60 px-3 py-2">
           <p className="text-gray-500">Entry</p>
           <p className="font-mono text-gray-100">
-            Rs {signal.currentPrice.toFixed(2)}
+            {formatMoney(signal.currentPrice, "INR")}
           </p>
         </div>
         {signal.targetPrice && (
           <div className="rounded-md border border-gray-600 bg-gray-900/60 px-3 py-2">
             <p className="text-gray-500">Target</p>
             <p className="font-mono text-green-400">
-              Rs {signal.targetPrice.toFixed(2)}
+              {formatMoney(signal.targetPrice, "INR")}
             </p>
           </div>
         )}
@@ -73,7 +74,7 @@ export function SignalCard({ signal }: SignalCardProps) {
           <div className="rounded-md border border-gray-600 bg-gray-900/60 px-3 py-2">
             <p className="text-gray-500">Stop Loss</p>
             <p className="font-mono text-red-400">
-              Rs {signal.stopLoss.toFixed(2)}
+              {formatMoney(signal.stopLoss, "INR")}
             </p>
           </div>
         )}

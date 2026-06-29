@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_GROUPS } from "@/lib/constants";
 import { BrandMark } from "@/components/Logo";
-import { ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, Radio } from "lucide-react";
 
 export interface SidebarSummary {
   netWorth: string;
@@ -19,7 +19,7 @@ const Sidebar = ({ summary }: { summary?: SidebarSummary }) => {
   const pathname = usePathname();
 
   return (
-    <aside className="sticky top-0 hidden h-screen w-[264px] shrink-0 flex-col border-r border-gray-600 bg-sidebar px-3 py-5 lg:flex">
+    <aside className="sticky top-0 hidden h-screen w-[272px] shrink-0 flex-col border-r border-gray-600 bg-sidebar/95 px-3 py-5 backdrop-blur-xl lg:flex">
       <Link href="/dashboard" className="px-1">
         <BrandMark logoClassName="h-10 w-10" subtitle="Wealth OS" />
       </Link>
@@ -72,9 +72,11 @@ const Sidebar = ({ summary }: { summary?: SidebarSummary }) => {
       </nav>
 
       <div className="mt-3 rounded-xl border border-gray-600 bg-gray-700/40 p-3">
-        <p className="text-xs font-semibold text-gray-300">Manual + live</p>
+        <p className="flex items-center gap-2 text-xs font-semibold text-gray-300">
+          <Radio className="h-3.5 w-3.5 text-green-500" /> Data cockpit
+        </p>
         <p className="mt-1 text-[11px] leading-4 text-gray-500">
-          Add accounts, ESOPs &amp; assets manually; markets sync live.
+          Broker prices sync live. Manual values are estimates until verified.
         </p>
       </div>
     </aside>

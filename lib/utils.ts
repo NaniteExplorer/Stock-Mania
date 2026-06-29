@@ -116,6 +116,15 @@ export const formatPrice = (price: number) => {
   }).format(price);
 };
 
+/** Format money with an explicit unit; locale never decides the currency. */
+export const formatMoney = (amount: number, currency: string, fractionDigits = 2) =>
+  new Intl.NumberFormat(currency === "INR" ? "en-IN" : "en-US", {
+    style: "currency",
+    currency,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits,
+  }).format(Number.isFinite(amount) ? amount : 0);
+
 // ─────────────────────────── INR money formatting ───────────────────────────
 
 /** Full INR amount, e.g. "₹24,80,000". */

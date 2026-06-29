@@ -18,7 +18,7 @@ const AssetSchema = new Schema<AssetDoc>(
     category: {
       type: String,
       required: true,
-      enum: ["REAL_ESTATE", "GOLD", "VEHICLE", "EPF", "PPF", "NPS", "CRYPTO", "OTHER"],
+      enum: ["REAL_ESTATE", "GOLD", "SILVER", "VEHICLE", "EPF", "PPF", "NPS", "CRYPTO", "OTHER"],
       default: "OTHER",
     },
     value: { type: Number, required: true, default: 0 },

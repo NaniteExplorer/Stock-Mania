@@ -19,7 +19,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
   const summary = await getNetWorthSummary();
 
   return (
-    <div className="flex min-h-screen text-gray-400">
+    <div className="cockpit-shell flex min-h-screen text-gray-400">
       <Sidebar summary={summary} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Header user={user} />

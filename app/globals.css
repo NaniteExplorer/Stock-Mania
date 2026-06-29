@@ -70,6 +70,78 @@
   --color-yellow-600: var(--brand);
 }
 
+/* Precision cockpit layer --------------------------------------------------
+   Shared, restrained depth for the wealth workspace. Kept here so every
+   route inherits the same visual language instead of inventing local cards. */
+@layer utilities {
+  .cockpit-shell {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .cockpit-shell::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: .32;
+    background-image:
+      linear-gradient(rgba(124, 108, 255, .035) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(124, 108, 255, .035) 1px, transparent 1px);
+    background-size: 44px 44px;
+    mask-image: linear-gradient(to bottom, black, transparent 72%);
+  }
+
+  .cockpit-panel {
+    @apply relative overflow-hidden rounded-2xl border border-gray-600 bg-gray-800;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.035), 0 18px 50px -32px rgba(0,0,0,.7);
+  }
+
+  .cockpit-panel::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(135deg, rgba(124,108,255,.06), transparent 32%, transparent 72%, rgba(45,212,191,.025));
+  }
+
+  .metric-label {
+    @apply text-[11px] font-semibold uppercase tracking-[.14em] text-gray-500;
+  }
+
+  .data-status {
+    @apply inline-flex items-center gap-2 rounded-full border border-gray-600 bg-gray-700/50 px-3 py-1.5 text-xs font-medium text-gray-400;
+  }
+
+  .data-status::before {
+    content: "";
+    @apply h-1.5 w-1.5 rounded-full bg-green-500;
+    box-shadow: 0 0 10px var(--pos);
+  }
+
+  .section-kicker {
+    @apply text-[11px] font-bold uppercase tracking-[.18em] text-yellow-500;
+  }
+
+  .cockpit-table {
+    @apply overflow-hidden rounded-2xl border border-gray-600 bg-gray-800;
+  }
+
+  .focus-cockpit {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-yellow-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-900;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
 :root {
   --radius: 1rem;
   --background: #f5f6fa;
@@ -219,7 +291,8 @@
   }
 
   .enterprise-card {
-    @apply rounded-2xl border border-gray-600 bg-gray-800;
+    @apply relative overflow-hidden rounded-2xl border border-gray-600 bg-gray-800;
+    background-image: linear-gradient(135deg, rgba(124,108,255,.035), transparent 38%);
     box-shadow:
       0 1px 2px rgba(16, 24, 40, 0.04),
       0 14px 34px -18px rgba(16, 24, 40, 0.16);
@@ -615,7 +688,7 @@
 
   /* Page heading block */
   .page-title {
-    @apply text-2xl font-bold tracking-tight text-gray-100 md:text-[1.75rem];
+    @apply text-2xl font-bold tracking-[-.025em] text-gray-100 md:text-[1.75rem];
   }
   .page-subtitle {
     @apply mt-1 text-sm text-gray-500;

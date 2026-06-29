@@ -5,7 +5,7 @@ import SearchCommand from "@/components/SearchCommand";
 import { BrandMark } from "@/components/Logo";
 import { User } from "better-auth";
 import { searchStocks } from "@/features/stocks/stocks.actions";
-import { Bell, Command, Plus } from "lucide-react";
+import { Bell, Command, Plus, Radio } from "lucide-react";
 
 const Header = async ({ user }: { user: User }) => {
   const initialStocks = await searchStocks();
@@ -34,6 +34,9 @@ const Header = async ({ user }: { user: User }) => {
         </div>
 
         <div className="flex items-center gap-2">
+          <span className="data-status hidden xl:inline-flex">
+            <Radio className="h-3 w-3" /> Live connections
+          </span>
           <div className="lg:hidden">
             <SearchCommand renderAs="text" label="Search" initialStocks={initialStocks} />
           </div>
@@ -42,7 +45,7 @@ const Header = async ({ user }: { user: User }) => {
             className="hidden h-9 items-center gap-1.5 rounded-lg bg-yellow-500 px-3 text-sm font-semibold text-white transition-colors hover:brightness-110 sm:flex"
           >
             <Plus className="h-4 w-4" />
-            Add
+            Quick add
           </Link>
           <button
             className="hidden h-9 w-9 items-center justify-center rounded-lg border border-gray-600 bg-gray-800 text-gray-400 transition-colors hover:border-yellow-500/50 hover:text-yellow-400 sm:flex"

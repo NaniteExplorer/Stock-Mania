@@ -1,6 +1,7 @@
 "use client";
 
 import type { TradeOrder } from "@/features/orders/order.types";
+import { formatMoney } from "@/lib/utils";
 
 const STATUS_STYLE: Record<TradeOrder["status"], string> = {
   PLACED: "text-blue-400 bg-blue-500/10",
@@ -24,9 +25,9 @@ export default function OrderHistoryTable({ orders }: OrderHistoryTableProps) {
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-700">
+    <div className="cockpit-table overflow-x-auto">
       <table className="w-full text-sm">
-        <thead className="bg-gray-800/80 text-gray-400">
+        <thead className="bg-gray-700/70 text-gray-400">
           <tr>
             {["Symbol", "Exchange", "Side", "Type", "Qty", "Price", "Status", "Broker", "Date"].map((h) => (
               <th key={h} className="px-4 py-3 text-left font-medium">
@@ -46,7 +47,7 @@ export default function OrderHistoryTable({ orders }: OrderHistoryTableProps) {
               <td className="px-4 py-3 text-gray-300">{o.orderType}</td>
               <td className="px-4 py-3 text-gray-300">{o.quantity}</td>
               <td className="px-4 py-3 text-gray-300">
-                {o.price ? `₹${o.price.toFixed(2)}` : "MKT"}
+                {o.price ? formatMoney(o.price, ["NYSE", "NASDAQ", "ARCA"].includes(o.exchange) ? "USD" : "INR") : "MKT"}
               </td>
               <td className="px-4 py-3">
                 <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLE[o.status]}`}>

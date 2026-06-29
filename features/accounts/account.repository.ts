@@ -14,6 +14,8 @@ type Row = {
   userId: string;
   name: string;
   institution: string;
+  providerId?: string | null;
+  currency?: string;
   type: AccountEntity["type"];
   balance: number;
   last4: string | null;
@@ -26,6 +28,8 @@ const toEntity = (row: Row): AccountEntity => ({
   userId: row.userId,
   name: row.name,
   institution: row.institution,
+  providerId: row.providerId ?? null,
+  currency: row.currency ?? "INR",
   type: row.type,
   balance: row.balance,
   last4: row.last4 ?? null,
@@ -53,6 +57,8 @@ class MongoAccountRepository implements AccountRepository {
       userId,
       name: input.name,
       institution: input.institution ?? "",
+      providerId: input.providerId ?? null,
+      currency: input.currency ?? "INR",
       type: input.type,
       balance: input.balance,
       last4: input.last4 ?? null,

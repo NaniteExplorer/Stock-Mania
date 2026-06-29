@@ -20,6 +20,7 @@ function fromZerodhaHolding(h: ZerodhaHolding): Holding {
     totalValue,
     investedValue,
     broker: "ZERODHA",
+    currency: "INR",
   };
 }
 
@@ -36,6 +37,7 @@ function fromZerodhaPosition(p: ZerodhaPosition): Position {
     realised: p.realised,
     side: p.quantity >= 0 ? "LONG" : "SHORT",
     broker: "ZERODHA",
+    currency: "INR",
   };
 }
 

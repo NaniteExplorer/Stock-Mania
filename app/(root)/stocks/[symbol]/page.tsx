@@ -17,6 +17,8 @@ import { isConnected as isZerodhaConnected } from "@/features/orders/zerodha.cli
 import { getUserAlerts } from "@/features/alerts/alert.actions";
 import { getSignalsForSymbol } from "@/features/signals/signal.actions";
 import { SignalCard } from "@/components/SignalCard";
+import Link from "next/link";
+import { ArrowLeft, Activity } from "lucide-react";
 
 export default async function StockDetails({ params }: StockDetailsPageProps) {
   const { symbol } = await params;
@@ -40,10 +42,17 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
   );
 
   return (
-    <div className="flex w-full">
-      <section className="grid w-full grid-cols-1 gap-6 lg:grid-cols-2">
+    <div className="flex w-full flex-col gap-6">
+      <div className="flex flex-wrap items-center justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <Link href="/search" className="icon-chip focus-cockpit" aria-label="Back to stock search"><ArrowLeft className="h-4 w-4" /></Link>
+          <div><p className="section-kicker">Market workspace</p><h1 className="page-title">{upperSymbol}</h1><p className="page-subtitle">Price, execution, alerts and evidence in one view.</p></div>
+        </div>
+        <span className="data-status"><Activity className="h-3.5 w-3.5" /> Live market surface</span>
+      </div>
+      <section className="grid w-full grid-cols-1 items-start gap-6 xl:grid-cols-[1.45fr_.75fr]">
         {/* Left column */}
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6 xl:sticky xl:top-24">
           <TradingViewWidget
             scriptUrl={`${scriptUrl}symbol-info.js`}
             config={SYMBOL_INFO_WIDGET_CONFIG(symbol)}
@@ -88,7 +97,7 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
 
           {signals.length > 0 && (
             <div className="flex flex-col gap-3">
-              <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide">AI Signals</h3>
+              <h3 className="section-kicker">AI evidence</h3>
               {signals.map((s) => (
                 <SignalCard key={s.id} signal={s} />
               ))}

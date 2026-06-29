@@ -3,8 +3,9 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import Link from "next/link";
-import { Settings, Check, X, ExternalLink } from "lucide-react";
+import { Settings, Check, X, ExternalLink, Coins } from "lucide-react";
 import { saveUserPreferences } from "./settings.actions";
+import { SUPPORTED_CURRENCIES } from "@/lib/currencies";
 
 interface SettingsClientProps {
   user: { id: string; name: string; email: string };
@@ -14,6 +15,7 @@ interface SettingsClientProps {
     whatsappNumber: string | null;
     whatsappAlertsEnabled: boolean;
     emailAlertsEnabled: boolean;
+    displayCurrency: string;
   };
   successMessage?: string;
   errorMessage?: string;
@@ -41,6 +43,7 @@ export default function SettingsClient({
   const [phone, setPhone] = useState(prefs.whatsappNumber ?? "");
   const [waEnabled, setWaEnabled] = useState(prefs.whatsappAlertsEnabled);
   const [emailEnabled, setEmailEnabled] = useState(prefs.emailAlertsEnabled);
+  const [displayCurrency, setDisplayCurrency] = useState(prefs.displayCurrency);
   const [isPending, startTransition] = useTransition();
 
   const savePrefs = () => {
@@ -48,7 +51,8 @@ export default function SettingsClient({
       const result = await saveUserPreferences({
         whatsappNumber: phone || null,
         whatsappAlertsEnabled: waEnabled,
-        emailAlertsEnabled: emailEnabled,
+      emailAlertsEnabled: emailEnabled,
+      displayCurrency,
       });
       if (result.success) {
         toast.success("Preferences saved.");
@@ -59,7 +63,7 @@ export default function SettingsClient({
   };
 
   return (
-    <div className="flex max-w-2xl flex-col gap-6">
+    <div className="flex max-w-5xl flex-col gap-6">
       <div className="flex items-center gap-3">
         <span className="icon-chip h-11 w-11">
           <Settings className="h-5 w-5" />
@@ -86,7 +90,7 @@ export default function SettingsClient({
       )}
 
       {/* Account */}
-      <section className="panel p-6 flex flex-col gap-4">
+      <section className="cockpit-panel p-6 flex flex-col gap-4">
         <h2 className="text-base font-semibold text-gray-100">Account</h2>
         <div className="grid grid-cols-2 gap-y-3 text-sm">
           <span className="text-gray-500">Name</span>
@@ -97,7 +101,7 @@ export default function SettingsClient({
       </section>
 
       {/* Broker Connections */}
-      <section className="panel p-6 flex flex-col gap-5">
+      <section className="cockpit-panel p-6 flex flex-col gap-5">
         <h2 className="text-base font-semibold text-gray-100">Broker Connections</h2>
 
         <div className="flex flex-col gap-4">
@@ -153,8 +157,16 @@ export default function SettingsClient({
         </div>
       </section>
 
+      <section className="cockpit-panel flex flex-col gap-4 p-6">
+        <div className="flex items-center gap-3"><span className="icon-chip"><Coins className="h-5 w-5" /></span><div><h2 className="text-base font-semibold text-gray-100">Currency</h2><p className="text-xs text-gray-500">Show wealth in one currency while preserving every original value.</p></div></div>
+        <label className="form-label">Display currency</label>
+        <select value={displayCurrency} onChange={(event) => setDisplayCurrency(event.target.value)} className="select-trigger">
+          {SUPPORTED_CURRENCIES.map((currency) => <option key={currency.code} value={currency.code}>{currency.symbol} · {currency.code} — {currency.name}</option>)}
+        </select>
+      </section>
+
       {/* Notification Preferences */}
-      <section className="panel p-6 flex flex-col gap-5">
+      <section className="cockpit-panel p-6 flex flex-col gap-5">
         <h2 className="text-base font-semibold text-gray-100">Notifications</h2>
 
         <label className="flex flex-col gap-1 text-sm">

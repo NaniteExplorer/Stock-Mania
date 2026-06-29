@@ -4,6 +4,7 @@ import { placeAlpacaOrder } from "./alpaca.client";
 import { eventBus } from "@/core/queue/event-bus";
 import { isUSExchange } from "./order.types";
 import type { PlaceOrderInput, TradeOrder, OrderBroker } from "./order.types";
+import { logger } from "@/core/logger";
 
 export const orderService = {
   async place(userId: string, input: PlaceOrderInput): Promise<TradeOrder> {
@@ -24,9 +25,9 @@ export const orderService = {
       errorMessage: null,
     });
 
-    try {
-      let brokerId: string;
+    let brokerId: string;
 
+    try {
       if (broker === "ALPACA") {
         brokerId = await placeAlpacaOrder(input);
       } else {
@@ -43,8 +44,26 @@ export const orderService = {
         brokerId = String(response.order_id);
       }
 
-      await orderRepository.updateStatus(order.id, "PLACED", brokerId);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Unknown error";
+      await orderRepository.updateStatus(order.id, "REJECTED", undefined, message);
+      throw new Error(`Order rejected: ${message}`);
+    }
 
+    // The broker is now the source of truth. A local persistence or event-bus
+    // failure must never relabel an accepted broker order as REJECTED.
+    try {
+      await orderRepository.updateStatus(order.id, "PLACED", brokerId);
+    } catch (err) {
+      logger.error("Broker accepted order but local status update failed", {
+        orderId: order.id,
+        brokerId,
+        broker,
+        err,
+      });
+    }
+
+    try {
       await eventBus.publish({
         name: "trade/order.placed",
         data: {
@@ -57,13 +76,16 @@ export const orderService = {
           broker,
         },
       });
-
-      return { ...order, status: "PLACED", brokerId };
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unknown error";
-      await orderRepository.updateStatus(order.id, "REJECTED", undefined, message);
-      throw new Error(`Order rejected: ${message}`);
+      logger.error("Order placed but event publication failed", {
+        orderId: order.id,
+        brokerId,
+        broker,
+        err,
+      });
     }
+
+    return { ...order, status: "PLACED", brokerId };
   },
 
   async getHistory(userId: string): Promise<TradeOrder[]> {

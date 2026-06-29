@@ -19,6 +19,10 @@ export default async function SignalsPage() {
         </div>
       </div>
 
+      <div className="rounded-xl border border-blue-500/20 bg-blue-500/5 px-4 py-3 text-xs leading-5 text-gray-400">
+        Signals are informational context, not trade instructions. Check the evidence, freshness and your own risk limits before acting.
+      </div>
+
       {signals.length === 0 ? (
         <div className="panel border-dashed p-12 text-center">
           <Zap className="mx-auto mb-4 h-10 w-10 text-gray-500" />

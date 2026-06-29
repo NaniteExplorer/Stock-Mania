@@ -7,6 +7,7 @@ interface SavePrefsInput {
   whatsappNumber: string | null;
   whatsappAlertsEnabled: boolean;
   emailAlertsEnabled: boolean;
+  displayCurrency: string;
 }
 
 export async function saveUserPreferences(

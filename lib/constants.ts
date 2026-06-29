@@ -10,6 +10,7 @@ import {
   LineChart,
   Building2,
   Gem,
+  CreditCard,
 } from "lucide-react";
 
 /**
@@ -28,6 +29,7 @@ export const NAV_GROUPS = [
       { href: "/investments", label: "Investments", icon: LineChart },
       { href: "/esops", label: "ESOPs", icon: Building2 },
       { href: "/assets", label: "Assets", icon: Gem },
+      { href: "/liabilities", label: "Liabilities", icon: CreditCard },
     ],
   },
   {
