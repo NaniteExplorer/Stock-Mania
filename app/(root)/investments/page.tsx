@@ -1,7 +1,12 @@
 import type { Metadata } from "next";
 import { getMyInvestments } from "@/features/investments/investment.actions";
+import { getMyTrades } from "@/features/trades/trade.actions";
+import { getMyGoldLeases } from "@/features/gold-lease/gold-lease.actions";
 import InvestmentsManager from "@/components/wealth/InvestmentsManager";
 import HoldingsImporter from "@/components/wealth/HoldingsImporter";
+import TradeLedger from "@/components/wealth/TradeLedger";
+import GoldLeaseManager from "@/components/wealth/GoldLeaseManager";
+import AnalysisCard from "@/components/AnalysisCard";
 import RefreshPricesButton from "@/components/wealth/RefreshPricesButton";
 import { formatINR, formatSignedINRCompact, formatSignedPercent } from "@/lib/utils";
 import { LineChart } from "lucide-react";
@@ -9,11 +14,16 @@ import { LineChart } from "lucide-react";
 export const metadata: Metadata = { title: "Investments" };
 
 export default async function InvestmentsPage() {
-  const items = await getMyInvestments();
+  const [items, trades, goldLeases] = await Promise.all([
+    getMyInvestments(),
+    getMyTrades(),
+    getMyGoldLeases(),
+  ]);
   const invested = items.reduce((s, i) => s + i.invested, 0);
   const current = items.reduce((s, i) => s + i.currentValue, 0);
   const pnl = current - invested;
   const pnlPct = invested > 0 ? (pnl / invested) * 100 : 0;
+  const realizedNet = items.reduce((s, i) => s + i.realizedNet, 0);
   const up = pnl >= 0;
 
   return (
@@ -53,15 +63,18 @@ export default async function InvestmentsPage() {
             <p className="mt-1 text-lg font-bold text-gray-100 tnum">{items.length}</p>
           </div>
           <div className="stat-tile">
-            <p className="text-xs text-gray-500">Total return</p>
-            <p className={`mt-1 text-lg font-bold tnum ${up ? "text-green-500" : "text-red-500"}`}>
-              {formatSignedPercent(pnlPct)}
+            <p className="text-xs text-gray-500">Realized P&amp;L (net)</p>
+            <p className={`mt-1 text-lg font-bold tnum ${realizedNet >= 0 ? "text-green-500" : "text-red-500"}`}>
+              {formatSignedINRCompact(realizedNet)}
             </p>
           </div>
         </div>
       </div>
 
       <HoldingsImporter />
+      <TradeLedger trades={trades} />
+      <GoldLeaseManager leases={goldLeases} />
+      <AnalysisCard />
       <InvestmentsManager items={items} />
     </div>
   );

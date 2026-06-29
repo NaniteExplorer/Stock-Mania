@@ -7,6 +7,8 @@ import {
   generateAISignal,
   generateDailySignals,
   categorizeImportedTransactions,
+  accrueGoldLease,
+  pollDriveImports,
 } from "@/lib/inngest/functions";
 
 // Note: the welcome email is now sent directly from the sign-up action
@@ -20,5 +22,7 @@ export const { GET, POST, PUT } = serve({
     generateAISignal,
     generateDailySignals,
     categorizeImportedTransactions,
+    accrueGoldLease,
+    pollDriveImports,
   ],
 });

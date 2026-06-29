@@ -101,6 +101,18 @@ export const config = {
   }),
 
   /**
+   * Google Drive auto-ingestion (optional). A service-account JSON + a shared
+   * folder ID let a scheduled job fetch & parse purchase PDFs. Without them, the
+   * Drive poller no-ops and manual upload still works.
+   */
+  drive: () => ({
+    serviceAccountJson: read("GOOGLE_SERVICE_ACCOUNT_JSON") ?? null,
+    folderId: read("DRIVE_FOLDER_ID") ?? null,
+    // Drive-imported trades are booked to this user (the shared folder's owner).
+    importUserId: read("DRIVE_IMPORT_USER_ID") ?? null,
+  }),
+
+  /**
    * Optional logo provider for real institution logos. With a (free) token set,
    * the logo proxy returns proper brand logos; without one it falls back to
    * favicons and then a branded badge. Get a key at logo.dev or brandfetch.com.

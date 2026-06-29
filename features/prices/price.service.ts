@@ -75,6 +75,20 @@ async function fetchCryptoInr(symbol: string): Promise<number | null> {
   return typeof price === "number" ? price : null;
 }
 
+const TROY_OUNCE_GRAMS = 31.1034768;
+
+/**
+ * Live ₹/gram for gold. Derived keyless from Yahoo: gold futures (GC=F, USD/oz)
+ * × USDINR ÷ grams-per-troy-ounce. No API key required.
+ */
+async function fetchGoldInrPerGram(fxCache: Map<string, number>): Promise<number | null> {
+  const quote = await fetchYahoo("GC=F");
+  if (!quote) return null;
+  const fx = await fxToInr(quote.currency, fxCache);
+  if (fx == null) return null;
+  return (quote.price * fx) / TROY_OUNCE_GRAMS;
+}
+
 async function fetchMfNav(schemeCode: string): Promise<number | null> {
   const json = (await fetchJson(`${MFAPI}${schemeCode}/latest`)) as
     | { data?: Array<{ nav?: string }> }
@@ -93,8 +107,16 @@ function yahooSymbolFor(rawSymbol: string): string {
 }
 
 export const priceService = {
+  /** Latest ₹/gram for gold (Yahoo GC=F × USDINR ÷ 31.1035), or null. */
+  async goldInrPerGram(fxCache: Map<string, number> = new Map()): Promise<number | null> {
+    return fetchGoldInrPerGram(fxCache);
+  },
+
   /** Latest price in INR for one holding, or null if it can't be resolved. */
   async getInrPrice(inv: Investment, fxCache: Map<string, number>): Promise<number | null> {
+    // Digital gold is priced per gram and needs no symbol.
+    if (inv.kind === "DIGITAL_GOLD") return fetchGoldInrPerGram(fxCache);
+
     const symbol = (inv.symbol || "").trim();
     if (!symbol) return null;
 

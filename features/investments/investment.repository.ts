@@ -1,11 +1,16 @@
 import { connectToDatabase } from "@/core/db/connection";
 import { Investment } from "./investment.model";
+import { taxSettingsService } from "@/features/tax/tax.settings.service";
+import { estimateTax } from "@/features/tax/tax.service";
+import { taxClassForKind, type TaxConfig } from "@/features/tax/tax.config";
 import type {
   Investment as InvestmentEntity,
   CreateInvestmentInput,
   UpdateInvestmentInput,
   InvestmentKind,
 } from "./investment.types";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 type Row = {
   _id: unknown;
@@ -16,15 +21,40 @@ type Row = {
   units: number;
   avgCost: number;
   currentPrice: number;
+  holdingSince?: Date | null;
+  realizedGain?: number;
+  realizedTax?: number;
+  totalCharges?: number;
+  openBuyCharges?: number;
   createdAt: Date;
   updatedAt: Date;
 };
 
-const toEntity = (row: Row): InvestmentEntity => {
+const toEntity = (row: Row, taxConfig?: TaxConfig): InvestmentEntity => {
   const invested = row.units * row.avgCost;
   const currentValue = row.units * row.currentPrice;
   const pnl = currentValue - invested;
   const pnlPercent = invested > 0 ? (pnl / invested) * 100 : 0;
+
+  const openBuyCharges = row.openBuyCharges ?? 0;
+  const realizedGain = row.realizedGain ?? 0;
+  const realizedTax = row.realizedTax ?? 0;
+  const grossInvested = invested + openBuyCharges;
+
+  // Estimated tax if the open position were sold now (net proceeds).
+  let exitTax = 0;
+  if (taxConfig) {
+    const unrealizedGain = currentValue - grossInvested;
+    const holdingDays = row.holdingSince
+      ? Math.max(0, Math.round((Date.now() - new Date(row.holdingSince).getTime()) / DAY_MS))
+      : 0;
+    exitTax = estimateTax(taxConfig, {
+      assetClass: taxClassForKind(row.kind),
+      gain: unrealizedGain,
+      holdingDays,
+    }).taxAmount;
+  }
+  const netProceedsIfSold = currentValue - exitTax;
   return {
     id: String(row._id),
     userId: row.userId,
@@ -34,12 +64,21 @@ const toEntity = (row: Row): InvestmentEntity => {
     units: row.units,
     avgCost: row.avgCost,
     currentPrice: row.currentPrice,
+    holdingSince: row.holdingSince ?? null,
+    realizedGain,
+    realizedTax,
+    totalCharges: row.totalCharges ?? 0,
+    openBuyCharges,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     invested,
     currentValue,
     pnl,
     pnlPercent,
+    grossInvested,
+    netProceedsIfSold,
+    unrealizedNet: netProceedsIfSold - grossInvested,
+    realizedNet: realizedGain - realizedTax,
   };
 };
 
@@ -55,8 +94,11 @@ export interface InvestmentRepository {
 class MongoInvestmentRepository implements InvestmentRepository {
   async listByUser(userId: string): Promise<InvestmentEntity[]> {
     await connectToDatabase();
-    const rows = await Investment.find({ userId }).sort({ createdAt: -1 }).lean<Row[]>();
-    return rows.map(toEntity);
+    const [rows, taxConfig] = await Promise.all([
+      Investment.find({ userId }).sort({ createdAt: -1 }).lean<Row[]>(),
+      taxSettingsService.getConfig(userId),
+    ]);
+    return rows.map((row) => toEntity(row, taxConfig));
   }
 
   async create(userId: string, input: CreateInvestmentInput): Promise<InvestmentEntity> {

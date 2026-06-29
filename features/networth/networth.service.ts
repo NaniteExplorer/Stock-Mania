@@ -3,6 +3,7 @@ import { investmentService } from "@/features/investments/investment.service";
 import { esopService } from "@/features/esops/esop.service";
 import { assetService } from "@/features/assets/asset.service";
 import { liabilityService } from "@/features/liabilities/liability.service";
+import { goldLeaseService } from "@/features/gold-lease/gold-lease.service";
 import { portfolioService } from "@/features/portfolio/portfolio.service";
 import { logger } from "@/core/logger";
 import type { NetWorthOverview, AllocationSlice } from "./networth.types";
@@ -28,6 +29,7 @@ export const networthService = {
       investmentsTotal,
       esopsTotal,
       assetsTotal,
+      goldLeaseTotal,
       liabilitiesTotal,
       brokerage,
       accounts,
@@ -41,6 +43,7 @@ export const networthService = {
       investmentService.totalValue(userId),
       esopService.vestedValue(userId),
       assetService.total(userId),
+      goldLeaseService.totalValue(userId),
       liabilityService.total(userId),
       safeBrokerage(userId),
       accountService.list(userId),
@@ -55,7 +58,8 @@ export const networthService = {
       investments: investmentsTotal,
       brokerage: brokerage.currentValue,
       esops: esopsTotal,
-      assets: assetsTotal,
+      // Leased gold is a gold asset — folded into the assets line.
+      assets: assetsTotal + goldLeaseTotal,
     };
 
     const totalAssets =

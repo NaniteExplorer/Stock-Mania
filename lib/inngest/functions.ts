@@ -6,6 +6,8 @@ import { getWatchListSymbolsByEmail } from "@/features/watchlist/watchlist.actio
 import { getNews } from "@/features/news/news.service";
 import { getFormattedTodayDate } from "@/lib/utils";
 import { alertService } from "@/features/alerts/alert.service";
+import { goldLeaseService } from "@/features/gold-lease/gold-lease.service";
+import { driveImportService } from "@/features/imports/drive-import.service";
 import { signalService, buildSignalPrompt, parseSignalResponse } from "@/features/signals/signal.service";
 import { aiCategorizeAccount } from "@/features/transactions/ai-categorizer.service";
 import { config } from "@/core/config/env";
@@ -122,6 +124,42 @@ export const checkPriceAlerts = inngest.createFunction(
       alertService.checkAndNotify(),
     );
     return result;
+  },
+);
+
+/**
+ * Drive auto-ingestion — polls the shared Drive folder for new purchase PDFs,
+ * AI-parses them into trades and books them (dedup-safe). Runs on a schedule.
+ */
+export const pollDriveImports = inngest.createFunction(
+  {
+    id: "poll-drive-imports",
+    triggers: [
+      { event: "app/drive.poll" },
+      { cron: "0 */6 * * *" }, // every 6 hours
+    ],
+    retries: 1,
+  },
+  async ({ step }) => {
+    return step.run("poll-and-import", () => driveImportService.pollAndImport());
+  },
+);
+
+/**
+ * Gold lease accrual — credits each active lease its monthly yield (in grams).
+ * Runs monthly; idempotent and catches up any missed months.
+ */
+export const accrueGoldLease = inngest.createFunction(
+  {
+    id: "accrue-gold-lease",
+    triggers: [
+      { event: "app/gold-lease.accrue" },
+      { cron: "0 2 1 * *" }, // 02:00 UTC on the 1st of each month
+    ],
+    retries: 1,
+  },
+  async ({ step }) => {
+    return step.run("accrue-due", () => goldLeaseService.accrueDue());
   },
 );
 

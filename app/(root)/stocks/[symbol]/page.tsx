@@ -17,6 +17,7 @@ import { isConnected as isZerodhaConnected } from "@/features/orders/zerodha.cli
 import { getUserAlerts } from "@/features/alerts/alert.actions";
 import { getSignalsForSymbol } from "@/features/signals/signal.actions";
 import { SignalCard } from "@/components/SignalCard";
+import AnalysisCard from "@/components/AnalysisCard";
 import Link from "next/link";
 import { ArrowLeft, Activity } from "lucide-react";
 
@@ -94,6 +95,8 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
             symbol={upperSymbol}
             initialAlerts={symbolAlerts}
           />
+
+          <AnalysisCard symbol={upperSymbol} />
 
           {signals.length > 0 && (
             <div className="flex flex-col gap-3">

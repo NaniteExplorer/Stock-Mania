@@ -15,6 +15,7 @@
     "inngest:dev": "npx inngest-cli@latest dev -u http://localhost:3000/api/inngest"
   },
   "dependencies": {
+    "@googleapis/drive": "^20.2.0",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "@types/three": "^0.184.1",
@@ -24,6 +25,7 @@
     "cmdk": "^1.1.1",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
+    "google-auth-library": "^10.9.0",
     "inngest": "^4.4.0",
     "ioredis": "^5.11.1",
     "kafkajs": "^2.2.4",
