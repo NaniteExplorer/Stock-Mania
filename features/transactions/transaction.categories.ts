@@ -21,7 +21,8 @@ export type TransactionCategory =
   | "FEES_CHARGES"
   | "MISCELLANEOUS"
   | "TRANSFER"
-  | "SELF_TRANSFER";
+  | "SELF_TRANSFER"
+  | "ADJUSTMENT";
 
 export type CategorySource = "RULE" | "AI" | "MANUAL";
 
@@ -47,7 +48,11 @@ export const CATEGORY_META: Record<TransactionCategory, CategoryMeta> = {
   MISCELLANEOUS: { label: "Miscellaneous", excludeFromSpend: false },
   TRANSFER: { label: "Transfer", excludeFromSpend: true },
   SELF_TRANSFER: { label: "Self / family transfer", excludeFromSpend: true },
+  ADJUSTMENT: { label: "Balance adjustment", excludeFromSpend: true },
 };
+
+/** Categories that are neither real spend NOR real income (internal movements). */
+export const NON_CASHFLOW_CATEGORIES: TransactionCategory[] = ["TRANSFER", "SELF_TRANSFER", "ADJUSTMENT"];
 
 export const TRANSACTION_CATEGORIES = Object.keys(CATEGORY_META) as TransactionCategory[];
 

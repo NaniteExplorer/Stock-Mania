@@ -50,7 +50,7 @@ const ForgotPassword = () => {
           If an account exists for <span className="font-semibold text-gray-300">{sentTo}</span>,
           we&apos;ve sent a link to reset your password. The link expires in 1 hour.
         </p>
-        <Link href="/sign-in" className="yellow-btn inline-flex items-center justify-center px-6">
+        <Link href="/sign-in" className="btn-brand inline-flex items-center justify-center px-6">
           Back to sign in
         </Link>
       </div>
@@ -78,7 +78,7 @@ const ForgotPassword = () => {
           }}
         />
 
-        <Button type="submit" disabled={isSubmitting} className="yellow-btn mt-2 w-full">
+        <Button type="submit" disabled={isSubmitting} className="btn-brand mt-2 w-full">
           {isSubmitting ? "Sending link…" : "Send reset link"}
         </Button>
 

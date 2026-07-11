@@ -5,12 +5,14 @@ import {
   BriefcaseBusiness,
   Zap,
   History,
+  CalendarClock,
   Settings,
   Landmark,
   LineChart,
   Building2,
   Gem,
   CreditCard,
+  PieChart,
 } from "lucide-react";
 
 /**
@@ -20,12 +22,17 @@ import {
 export const NAV_GROUPS = [
   {
     label: "Overview",
-    items: [{ href: "/dashboard", label: "Net Worth", icon: LayoutDashboard }],
+    items: [
+      { href: "/dashboard", label: "Net Worth", icon: LayoutDashboard },
+      { href: "/history", label: "History", icon: CalendarClock },
+    ],
   },
   {
     label: "Wealth",
     items: [
       { href: "/accounts", label: "Accounts", icon: Landmark },
+      { href: "/transactions", label: "Transactions", icon: History },
+      { href: "/spends", label: "Spending", icon: PieChart },
       { href: "/investments", label: "Investments", icon: LineChart },
       { href: "/esops", label: "ESOPs", icon: Building2 },
       { href: "/assets", label: "Assets", icon: Gem },

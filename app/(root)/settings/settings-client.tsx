@@ -93,7 +93,7 @@ export default function SettingsClient({
       )}
 
       {/* Account */}
-      <section className="cockpit-panel p-6 flex flex-col gap-4">
+      <section className="panel p-6 flex flex-col gap-4">
         <h2 className="text-base font-semibold text-gray-100">Account</h2>
         <div className="grid grid-cols-2 gap-y-3 text-sm">
           <span className="text-gray-500">Name</span>
@@ -104,7 +104,7 @@ export default function SettingsClient({
       </section>
 
       {/* Broker Connections */}
-      <section className="cockpit-panel p-6 flex flex-col gap-5">
+      <section className="panel p-6 flex flex-col gap-5">
         <h2 className="text-base font-semibold text-gray-100">Broker Connections</h2>
 
         <div className="flex flex-col gap-4">
@@ -121,7 +121,7 @@ export default function SettingsClient({
               {!zerodhaConnected ? (
                 <Link
                   href="/api/zerodha/connect"
-                  className="rounded-md border border-yellow-600 px-3 py-1.5 text-xs font-medium text-yellow-400 hover:bg-yellow-500/10 transition-colors"
+                  className="rounded-md border border-brand-600 px-3 py-1.5 text-xs font-medium text-brand-400 hover:bg-brand-500/10 transition-colors"
                 >
                   Connect
                 </Link>
@@ -141,8 +141,8 @@ export default function SettingsClient({
             <div>
               <p className="text-sm font-medium text-gray-200">Alpaca (Global — NYSE/NASDAQ)</p>
               <p className="text-xs text-gray-500 mt-0.5">
-                Set <code className="text-yellow-600">ALPACA_API_KEY</code> +{" "}
-                <code className="text-yellow-600">ALPACA_API_SECRET</code> in your .env file.
+                Set <code className="text-brand-600">ALPACA_API_KEY</code> +{" "}
+                <code className="text-brand-600">ALPACA_API_SECRET</code> in your .env file.
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -151,7 +151,7 @@ export default function SettingsClient({
                 href="https://alpaca.markets"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-1 text-xs text-gray-500 hover:text-yellow-400 transition-colors"
+                className="flex items-center gap-1 text-xs text-gray-500 hover:text-brand-400 transition-colors"
               >
                 Get keys <ExternalLink className="h-3 w-3" />
               </a>
@@ -160,7 +160,7 @@ export default function SettingsClient({
         </div>
       </section>
 
-      <section className="cockpit-panel flex flex-col gap-4 p-6">
+      <section className="panel flex flex-col gap-4 p-6">
         <div className="flex items-center gap-3"><span className="icon-chip"><Coins className="h-5 w-5" /></span><div><h2 className="text-base font-semibold text-gray-100">Currency</h2><p className="text-xs text-gray-500">Show wealth in one currency while preserving every original value.</p></div></div>
         <label className="form-label">Display currency</label>
         <select value={displayCurrency} onChange={(event) => setDisplayCurrency(event.target.value)} className="select-trigger">
@@ -169,7 +169,7 @@ export default function SettingsClient({
       </section>
 
       {/* Self / family payees — excluded from spend */}
-      <section className="cockpit-panel flex flex-col gap-3 p-6">
+      <section className="panel flex flex-col gap-3 p-6">
         <h2 className="text-base font-semibold text-gray-100">Self &amp; family transfers</h2>
         <p className="text-xs text-gray-500">
           Add your own account numbers, UPI handles, or family members&apos; names — one per line.
@@ -180,13 +180,13 @@ export default function SettingsClient({
           onChange={(event) => setSelfPayees(event.target.value)}
           rows={4}
           placeholder={"XXXXXX1234\nname@okhdfcbank\nPriya Sharma"}
-          className="rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-yellow-500 focus:outline-none"
+          className="rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-brand-500 focus:outline-none"
           suppressHydrationWarning
         />
       </section>
 
       {/* Notification Preferences */}
-      <section className="cockpit-panel p-6 flex flex-col gap-5">
+      <section className="panel p-6 flex flex-col gap-5">
         <h2 className="text-base font-semibold text-gray-100">Notifications</h2>
 
         <label className="flex flex-col gap-1 text-sm">
@@ -197,7 +197,7 @@ export default function SettingsClient({
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             placeholder="+919876543210"
-            className="mt-1 rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-500"
+            className="mt-1 rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-brand-500"
             suppressHydrationWarning
           />
         </label>
@@ -220,7 +220,7 @@ export default function SettingsClient({
         <button
           onClick={savePrefs}
           disabled={isPending}
-          className="rounded-md bg-yellow-500/10 border border-yellow-600 py-2.5 text-sm font-semibold text-yellow-400 hover:bg-yellow-500/20 transition-colors disabled:opacity-50"
+          className="rounded-md bg-brand-500/10 border border-brand-600 py-2.5 text-sm font-semibold text-brand-400 hover:bg-brand-500/20 transition-colors disabled:opacity-50"
           suppressHydrationWarning
         >
           {isPending ? "Saving…" : "Save Preferences"}
@@ -253,7 +253,7 @@ function Toggle({
         aria-checked={checked}
         onClick={() => onChange(!checked)}
         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-          checked ? "bg-yellow-500" : "bg-gray-700"
+          checked ? "bg-brand-500" : "bg-gray-700"
         }`}
         suppressHydrationWarning
       >

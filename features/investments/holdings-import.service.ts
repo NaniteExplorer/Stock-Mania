@@ -31,12 +31,29 @@ export interface HoldingsImportResult {
 }
 
 const COLUMN_ALIASES = {
-  symbol: ["symbol", "ticker", "tradingsymbol", "scrip", "instrument", "isin"],
-  name: ["name", "company", "security", "instrument name", "scheme name", "stock name"],
-  units: ["quantity", "qty", "units", "shares", "holdings", "holding"],
-  avgCost: ["avg cost", "average price", "buy avg", "avg price", "average cost", "buy average", "avg. cost"],
-  currentPrice: ["ltp", "last price", "current price", "market price", "nav", "cmp", "closing price"],
+  symbol: ["symbol", "ticker", "tradingsymbol", "scrip", "instrument", "isin", "coin", "asset"],
+  name: ["name", "company", "security", "instrument name", "scheme name", "stock name", "coin name"],
+  units: ["quantity", "qty", "units", "shares", "holdings", "holding", "grams", "balance"],
+  avgCost: ["avg cost", "average price", "buy avg", "avg price", "average cost", "buy average", "avg. cost", "avg buy price"],
+  currentPrice: ["ltp", "last price", "current price", "market price", "nav", "cmp", "closing price", "rate"],
+  kind: ["type", "asset type", "asset class", "category", "instrument type", "segment"],
 } as const;
+
+/**
+ * Map a free-text asset-type label (from a "type" column) to an InvestmentKind.
+ * Falls back to the caller's chosen kind when the label is missing/unknown.
+ */
+export function kindFromLabel(value: string, fallback: InvestmentKind): InvestmentKind {
+  const v = value.toLowerCase();
+  if (/crypto|coin|usdt|\bbtc\b|\beth\b/.test(v)) return "CRYPTO";
+  if (/gold|silver|metal|bullion/.test(v)) return "DIGITAL_GOLD";
+  if (/\betf\b/.test(v)) return "ETF";
+  if (/mutual|\bmf\b|fund/.test(v)) return "MUTUAL_FUND";
+  if (/bond|debenture|g-?sec/.test(v)) return "BOND";
+  if (/commodit|\bmcx\b/.test(v)) return "COMMODITY";
+  if (/stock|equity|share|scrip/.test(v)) return "STOCK";
+  return fallback;
+}
 
 const normalize = (value: unknown) => String(value ?? "").trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
 const num = (value: unknown): number => {
@@ -49,7 +66,7 @@ function findColumn(headers: string[], aliases: readonly string[]) {
   return headers.findIndex((header) => aliases.includes(header) || aliases.some((alias) => header.includes(alias)));
 }
 
-function rowsToHoldings(rawRows: string[][]): ParsedHolding[] {
+function rowsToHoldings(rawRows: string[][], defaultKind: InvestmentKind = "STOCK"): ParsedHolding[] {
   const headerIndex = rawRows.findIndex((row) => {
     const cells = row.map(normalize);
     const hasName = cells.some((c) => [...COLUMN_ALIASES.symbol, ...COLUMN_ALIASES.name].some((a) => c.includes(a)));
@@ -69,10 +86,12 @@ function rowsToHoldings(rawRows: string[][]): ParsedHolding[] {
     const units = col.units >= 0 ? num(row[col.units]) : 0;
     if (!name && !symbol) return [];
     if (units <= 0) return [];
+    // A "type" column (if present) wins per-row; otherwise the caller's chosen kind.
+    const kind = col.kind >= 0 ? kindFromLabel(String(row[col.kind] ?? ""), defaultKind) : defaultKind;
     return [{
       name: name || symbol,
       symbol: symbol || null,
-      kind: "STOCK" as InvestmentKind,
+      kind,
       units,
       avgCost: col.avgCost >= 0 ? num(row[col.avgCost]) : 0,
       currentPrice: col.currentPrice >= 0 ? num(row[col.currentPrice]) : 0,
@@ -97,7 +116,7 @@ const aiHoldingSchema = z.object({
   })),
 });
 
-async function parsePdfHoldings(data: Uint8Array, password: string): Promise<ParsedHolding[]> {
+async function parsePdfHoldings(data: Uint8Array, password: string, defaultKind: InvestmentKind = "STOCK"): Promise<ParsedHolding[]> {
   if (!geminiClient.isConfigured()) throw new Error("PDF holdings need AI — set GEMINI_API_KEY or use a CSV/XLSX export.");
   const text = await extractPdfText(data, password);
   const prompt = [
@@ -112,15 +131,15 @@ async function parsePdfHoldings(data: Uint8Array, password: string): Promise<Par
   const parsed = aiHoldingSchema.safeParse(raw);
   if (!parsed.success) throw new Error("Holdings could not be parsed reliably. Try a CSV/XLSX export instead.");
   return parsed.data.holdings.map((h) => ({
-    name: h.name, symbol: h.symbol ?? null, kind: "STOCK" as InvestmentKind,
+    name: h.name, symbol: h.symbol ?? null, kind: defaultKind,
     units: h.units, avgCost: h.avgCost, currentPrice: h.currentPrice,
   }));
 }
 
-export async function parseHoldingsFile(file: File, password = ""): Promise<ParsedHolding[]> {
+export async function parseHoldingsFile(file: File, password = "", defaultKind: InvestmentKind = "STOCK"): Promise<ParsedHolding[]> {
   const extension = file.name.split(".").pop()?.toLowerCase();
-  if (extension === "pdf") return parsePdfHoldings(new Uint8Array(await file.arrayBuffer()), password);
-  if (["csv", "tsv", "txt"].includes(extension || "")) return rowsToHoldings(splitDelimited(await file.text()));
+  if (extension === "pdf") return parsePdfHoldings(new Uint8Array(await file.arrayBuffer()), password, defaultKind);
+  if (["csv", "tsv", "txt"].includes(extension || "")) return rowsToHoldings(splitDelimited(await file.text()), defaultKind);
   if (["xlsx", "xls"].includes(extension || "")) {
     const ExcelJS = (await import("exceljs")).default;
     const workbook = new ExcelJS.Workbook();
@@ -128,7 +147,7 @@ export async function parseHoldingsFile(file: File, password = ""): Promise<Pars
     const sheet = workbook.worksheets[0];
     const rows: string[][] = [];
     sheet.eachRow((row) => rows.push((row.values as unknown[]).slice(1).map((cell) => String(cell ?? ""))));
-    return rowsToHoldings(rows);
+    return rowsToHoldings(rows, defaultKind);
   }
   throw new Error("Supported files: CSV, TSV, XLSX and PDF.");
 }

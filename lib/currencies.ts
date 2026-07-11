@@ -8,7 +8,11 @@ export const SUPPORTED_CURRENCIES = [
 
 export function formatCurrency(amount: number, currency = "INR", compact = false) {
   return new Intl.NumberFormat(currency === "INR" ? "en-IN" : "en-US", {
-    style: "currency", currency, notation: compact ? "compact" : "standard", maximumFractionDigits: compact ? 2 : 0,
+    style: "currency",
+    currency,
+    notation: compact ? "compact" : "standard",
+    minimumFractionDigits: compact ? 0 : 2,
+    maximumFractionDigits: 2,
   }).format(Number.isFinite(amount) ? amount : 0);
 }
 

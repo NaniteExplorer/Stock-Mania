@@ -25,8 +25,14 @@ export async function importBrokerHoldings(formData: FormData): Promise<Holdings
   if (file.size > 8 * 1024 * 1024) return { success: false, inserted: 0, updated: 0, rejected: 0, error: "File is too large (max 8 MB)." };
 
   const password = String(formData.get("password") ?? "");
+  const kindRaw = String(formData.get("kind") ?? "STOCK").toUpperCase();
+  const kind = (["STOCK", "ETF", "MUTUAL_FUND", "BOND", "CRYPTO", "DIGITAL_GOLD", "COMMODITY"] as const).includes(
+    kindRaw as never,
+  )
+    ? (kindRaw as CreateInvestmentInput["kind"])
+    : "STOCK";
   try {
-    const holdings = await parseHoldingsFile(file, password);
+    const holdings = await parseHoldingsFile(file, password, kind);
     const result = await importHoldings(session.user.id, holdings);
     revalidatePath("/investments"); revalidatePath("/dashboard");
     return result;

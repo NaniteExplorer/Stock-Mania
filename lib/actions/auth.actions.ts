@@ -6,6 +6,11 @@ import { auth } from "@/lib/better-auth/auth";
 import { rateLimiter } from "@/core/ratelimit";
 import { logger } from "@/core/logger";
 import { sendWelcomeEmail } from "@/lib/nodemailer";
+import { z } from "zod";
+import { parseInput } from "@/core/validation/parse";
+
+const emailSchema = z.string().trim().toLowerCase().email("Enter a valid email address.").max(254);
+const nameSchema = z.string().trim().min(1, "Name is required.").max(100);
 
 /** A warm, profile-personalised welcome message (no AI dependency). */
 function buildWelcomeIntro({
@@ -140,6 +145,11 @@ export const signUpWithEmail = async ({
       };
     }
 
+    const parsedEmail = parseInput(emailSchema, email);
+    if (!parsedEmail.success) return { success: false, error: parsedEmail.error };
+    const parsedName = parseInput(nameSchema, fullName);
+    if (!parsedName.success) return { success: false, error: parsedName.error };
+
     const weakPassword = validatePasswordStrength(password);
     if (weakPassword) {
       return { success: false, error: weakPassword };
@@ -147,7 +157,7 @@ export const signUpWithEmail = async ({
 
     const authInstance = await auth();
     const response = await authInstance.api.signUpEmail({
-      body: { email, password, name: fullName },
+      body: { email: parsedEmail.data, password, name: parsedName.data },
     });
 
     // Everything below is best-effort: a failure here must NEVER fail an account
@@ -255,6 +265,13 @@ export const requestPasswordReset = async (email: string) => {
 /** Complete the reset using the token from the emailed link. */
 export const resetPassword = async (token: string, newPassword: string) => {
   try {
+    // Enforce the same strength policy as sign-up — otherwise reset becomes a
+    // backdoor to weak passwords.
+    const weakPassword = validatePasswordStrength(newPassword);
+    if (weakPassword) {
+      return { success: false, error: weakPassword };
+    }
+
     const authInstance = await auth();
     await authInstance.api.resetPassword({ body: { token, newPassword } });
     return { success: true };

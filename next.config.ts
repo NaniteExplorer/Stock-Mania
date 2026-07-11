@@ -17,7 +17,7 @@ const contentSecurityPolicy = [
   `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""} https://s3.tradingview.com https://*.tradingview.com`,
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https:",
-  "frame-src https://*.tradingview.com https://www.tradingview.com",
+  "frame-src https://*.tradingview.com https://www.tradingview.com https://*.tradingview-widget.com",
   "connect-src 'self' https://*.tradingview.com https://finnhub.io https://*.googleapis.com",
   "font-src 'self' data:",
   "object-src 'none'",
@@ -49,6 +49,9 @@ const nextConfig: NextConfig = {
   // standalone output is only needed for Docker self-hosting.
   // Set NEXT_OUTPUT=standalone in your Dockerfile build stage; leave it unset for Vercel.
   ...(process.env.NEXT_OUTPUT === "standalone" ? { output: "standalone" } : {}),
+  // pdfjs resolves its worker relative to its installed package at runtime.
+  // Bundling it into a Next server chunk breaks that relative worker import.
+  serverExternalPackages: ["pdfjs-dist"],
   experimental: { serverActions: { bodySizeLimit: "3mb" } },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];

@@ -26,7 +26,7 @@ export default function MarketToggle({ market }: MarketToggleProps) {
     <button
       onClick={toggle}
       disabled={isPending}
-      className="flex items-center gap-1.5 rounded-full border border-gray-700 bg-gray-800/60 px-3 py-1 text-xs font-medium text-gray-300 transition-colors hover:border-yellow-500 hover:text-yellow-400 disabled:opacity-50"
+      className="flex items-center gap-1.5 rounded-full border border-gray-700 bg-gray-800/60 px-3 py-1 text-xs font-medium text-gray-300 transition-colors hover:border-brand-500 hover:text-brand-400 disabled:opacity-50"
       title={`Switch to ${market === "india" ? "Global" : "Indian"} market`}
     >
       <span>{market === "india" ? "🇮🇳" : "🌐"}</span>

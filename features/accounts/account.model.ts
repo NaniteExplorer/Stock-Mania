@@ -9,6 +9,7 @@ export interface AccountDoc {
   currency: string;
   type: AccountType;
   balance: number;
+  balanceAsOf: Date | null;
   last4: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -28,6 +29,7 @@ const AccountSchema = new Schema<AccountDoc>(
       default: "BANK",
     },
     balance: { type: Number, required: true, default: 0 },
+    balanceAsOf: { type: Date, default: null },
     last4: { type: String, default: null },
   },
   { timestamps: true },

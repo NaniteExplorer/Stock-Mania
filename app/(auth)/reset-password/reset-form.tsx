@@ -32,7 +32,7 @@ export default function ResetForm({ token }: { token: string }) {
         <p className="mb-8 text-sm leading-6 text-gray-500">
           This link is missing its token or has expired. Request a new one to continue.
         </p>
-        <Link href="/forgot-password" className="yellow-btn inline-flex items-center justify-center px-6">
+        <Link href="/forgot-password" className="btn-brand inline-flex items-center justify-center px-6">
           Request a new link
         </Link>
       </div>
@@ -92,7 +92,7 @@ export default function ResetForm({ token }: { token: string }) {
           }}
         />
 
-        <Button type="submit" disabled={isSubmitting} className="yellow-btn mt-2 w-full">
+        <Button type="submit" disabled={isSubmitting} className="btn-brand mt-2 w-full">
           {isSubmitting ? "Updating…" : "Update password"}
         </Button>
 

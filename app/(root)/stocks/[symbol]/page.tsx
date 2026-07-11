@@ -46,7 +46,7 @@ export default async function StockDetails({ params }: StockDetailsPageProps) {
     <div className="flex w-full flex-col gap-6">
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <Link href="/search" className="icon-chip focus-cockpit" aria-label="Back to stock search"><ArrowLeft className="h-4 w-4" /></Link>
+          <Link href="/search" className="icon-chip focus-brand" aria-label="Back to stock search"><ArrowLeft className="h-4 w-4" /></Link>
           <div><p className="section-kicker">Market workspace</p><h1 className="page-title">{upperSymbol}</h1><p className="page-subtitle">Price, execution, alerts and evidence in one view.</p></div>
         </div>
         <span className="data-status"><Activity className="h-3.5 w-3.5" /> Live market surface</span>

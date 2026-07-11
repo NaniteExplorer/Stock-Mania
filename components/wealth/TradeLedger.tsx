@@ -68,7 +68,7 @@ export default function TradeLedger({ trades }: { trades: Trade[] }) {
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-600 p-5">
         <div>
           <div className="flex items-center gap-2">
-            <Receipt className="h-5 w-5 text-yellow-500" />
+            <Receipt className="h-5 w-5 text-brand-500" />
             <h2 className="font-semibold text-gray-100">Trade ledger</h2>
             <span className="pill pill-brand">FIFO</span>
           </div>
@@ -119,7 +119,7 @@ export default function TradeLedger({ trades }: { trades: Trade[] }) {
           <input type="number" inputMode="decimal" step="0.01" value={values.charges} onChange={(e) => set("charges", e.target.value)} placeholder="20" className="form-input mt-1.5 w-full" />
         </div>
         <div className="sm:col-span-2 lg:col-span-4 flex justify-end">
-          <button type="submit" disabled={pending} className="yellow-btn px-6">
+          <button type="submit" disabled={pending} className="btn-brand px-6">
             {pending ? "Saving…" : "Record trade"}
           </button>
         </div>

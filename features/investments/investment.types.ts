@@ -1,4 +1,11 @@
-export type InvestmentKind = "STOCK" | "ETF" | "MUTUAL_FUND" | "BOND" | "CRYPTO" | "DIGITAL_GOLD";
+export type InvestmentKind =
+  | "STOCK"
+  | "ETF"
+  | "MUTUAL_FUND"
+  | "BOND"
+  | "CRYPTO"
+  | "DIGITAL_GOLD"
+  | "COMMODITY";
 
 export const INVESTMENT_KIND_LABELS: Record<InvestmentKind, string> = {
   STOCK: "Stock",
@@ -7,6 +14,7 @@ export const INVESTMENT_KIND_LABELS: Record<InvestmentKind, string> = {
   BOND: "Bond",
   CRYPTO: "Crypto",
   DIGITAL_GOLD: "Digital gold",
+  COMMODITY: "Commodity (MCX)",
 };
 
 /** Kinds measured in grams rather than share/unit counts. */

@@ -10,6 +10,7 @@ const { KiteConnect } = require("kiteconnect") as { KiteConnect: new (opts: { ap
 
 import { config } from "@/core/config/env";
 import { cache } from "@/core/cache";
+import { seal, open } from "@/core/crypto/secretbox";
 
 export interface ZerodhaHolding {
   tradingsymbol: string;
@@ -72,6 +73,9 @@ interface KiteInstance {
   getOrders(): Promise<ZerodhaOrder[]>;
 }
 
+/** Cookie carrying the OAuth CSRF state between /connect and /callback. */
+export const ZERODHA_STATE_COOKIE = "zerodha_oauth_state";
+
 function tokenKey(userId: string) {
   return `zerodha:token:${userId}`;
 }
@@ -97,11 +101,19 @@ export async function storeAccessToken(
   userId: string,
   accessToken: string,
 ): Promise<void> {
-  await cache.set(tokenKey(userId), accessToken, 24 * 60 * 60);
+  // Encrypted at rest: a trading token in plaintext Redis would let anyone
+  // with cache access place orders.
+  await cache.set(tokenKey(userId), seal(accessToken), 24 * 60 * 60);
+}
+
+async function readAccessToken(userId: string): Promise<string | null> {
+  const sealed = await cache.get<string>(tokenKey(userId));
+  if (!sealed) return null;
+  return open(sealed);
 }
 
 export async function getAuthenticatedKite(userId: string): Promise<KiteInstance> {
-  const token = await cache.get<string>(tokenKey(userId));
+  const token = await readAccessToken(userId);
   if (!token) {
     throw new Error(
       "Zerodha not connected. Visit /api/zerodha/connect to authenticate.",
@@ -113,8 +125,7 @@ export async function getAuthenticatedKite(userId: string): Promise<KiteInstance
 }
 
 export async function isConnected(userId: string): Promise<boolean> {
-  const token = await cache.get<string>(tokenKey(userId));
-  return token !== null;
+  return (await readAccessToken(userId)) !== null;
 }
 
 export async function disconnectZerodha(userId: string): Promise<void> {

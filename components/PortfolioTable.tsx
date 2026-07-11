@@ -28,7 +28,7 @@ export function HoldingsTable({ holdings }: HoldingsTableProps) {
   }
 
   return (
-    <div className="cockpit-table overflow-x-auto">
+    <div className="panel overflow-hidden overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-gray-700/80 text-gray-400">
           <tr>
@@ -115,7 +115,7 @@ export function PositionsTable({ positions }: PositionsTableProps) {
   }
 
   return (
-    <div className="cockpit-table overflow-x-auto">
+    <div className="panel overflow-hidden overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-gray-700/80 text-gray-400">
           <tr>

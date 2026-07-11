@@ -1,16 +1,16 @@
 "use client";
 
-import { useTheme } from "next-themes";
+
 import { Toaster as SoonerToaster, type ToasterProps } from "sonner";
 import { CircleCheckIcon, InfoIcon, Loader2Icon, OctagonXIcon, TriangleAlertIcon } from "lucide-react";
 import React from "react";
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme = "system" } = useTheme();
+  
 
   return (
     <SoonerToaster
-      theme={theme as ToasterProps["theme"]}
+      theme="dark"
       className="toaster group"
       position="top-center"
       richColors

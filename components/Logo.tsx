@@ -57,7 +57,7 @@ export const BrandMark = ({
     <Logo className={logoClassName} />
     <span className="leading-none">
       <span className={cn("block text-lg font-bold tracking-tight text-gray-100", wordmarkClassName)}>
-        stock<span className="text-yellow-500">Mania</span>
+        stock<span className="text-brand-500">Mania</span>
       </span>
       {subtitle && (
         <span className="mt-1 block text-[10px] font-medium uppercase tracking-[0.18em] text-gray-500">

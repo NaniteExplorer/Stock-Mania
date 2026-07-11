@@ -68,9 +68,9 @@ export default function AlertsPanel({
   };
 
   return (
-    <div className="cockpit-panel flex flex-col gap-5 p-5">
+    <div className="panel flex flex-col gap-5 p-5">
       <div className="flex items-center gap-2">
-        <Bell className="h-4 w-4 text-yellow-400" />
+        <Bell className="h-4 w-4 text-brand-400" />
         <h3 className="text-sm font-semibold text-gray-100">Price Alerts</h3>
       </div>
 
@@ -83,7 +83,7 @@ export default function AlertsPanel({
               onClick={() => setType(t)}
               className={`rounded-md border py-1.5 text-xs font-medium transition-colors ${
                 type === t
-                  ? "border-yellow-500 bg-yellow-500/10 text-yellow-400"
+                  ? "border-brand-500 bg-brand-500/10 text-brand-400"
                   : "border-gray-600 text-gray-500 hover:border-gray-500"
               }`}
             >
@@ -101,7 +101,7 @@ export default function AlertsPanel({
             required
             value={targetPrice}
             onChange={(e) => setTargetPrice(e.target.value)}
-            className="rounded-md border border-gray-600 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-yellow-500 focus:outline-none"
+            className="rounded-md border border-gray-600 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-brand-500 focus:outline-none"
           />
         </label>
 
@@ -113,7 +113,7 @@ export default function AlertsPanel({
               onClick={() => setChannel(c)}
               className={`rounded-md border py-1 text-xs font-medium transition-colors ${
                 channel === c
-                  ? "border-yellow-500 bg-yellow-500/10 text-yellow-400"
+                  ? "border-brand-500 bg-brand-500/10 text-brand-400"
                   : "border-gray-600 text-gray-500 hover:border-gray-500"
               }`}
             >
@@ -131,7 +131,7 @@ export default function AlertsPanel({
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               placeholder="+919876543210"
-              className="rounded-md border border-gray-600 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-yellow-500 focus:outline-none"
+              className="rounded-md border border-gray-600 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:border-brand-500 focus:outline-none"
             />
           </label>
         )}
@@ -139,7 +139,7 @@ export default function AlertsPanel({
         <button
           type="submit"
           disabled={isPending}
-          className="rounded-md border border-yellow-600 bg-yellow-500/10 py-2 text-xs font-semibold text-yellow-400 transition-colors hover:bg-yellow-500/20 disabled:opacity-50"
+          className="rounded-md border border-brand-600 bg-brand-500/10 py-2 text-xs font-semibold text-brand-400 transition-colors hover:bg-brand-500/20 disabled:opacity-50"
         >
           {isPending ? "Setting..." : "Set Alert"}
         </button>

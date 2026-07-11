@@ -72,7 +72,7 @@ const SignIn = () => {
         <div className="flex justify-end">
           <Link
             href="/forgot-password"
-            className="text-sm font-medium text-yellow-500 hover:brightness-110"
+            className="text-sm font-medium text-brand-500 hover:brightness-110"
           >
             Forgot password?
           </Link>
@@ -81,7 +81,7 @@ const SignIn = () => {
         <Button
           type="submit"
           disabled={isSubmitting}
-          className="yellow-btn w-full mt-2"
+          className="btn-brand w-full mt-2"
         >
           {isSubmitting ? "Signing in" : "Enter dashboard"}
         </Button>

@@ -2,6 +2,8 @@
 
 import { getCurrentSession } from "@/lib/better-auth/auth";
 import { orderService } from "./order.service";
+import { parseInput } from "@/core/validation/parse";
+import { placeOrderSchema } from "./order.schema";
 import type { PlaceOrderInput, TradeOrder } from "./order.types";
 
 export async function placeOrder(
@@ -10,8 +12,11 @@ export async function placeOrder(
   const session = await getCurrentSession();
   if (!session?.user) return { success: false, error: "Not authenticated." };
 
+  const parsed = parseInput(placeOrderSchema, input);
+  if (!parsed.success) return { success: false, error: parsed.error };
+
   try {
-    const order = await orderService.place(session.user.id, input);
+    const order = await orderService.place(session.user.id, parsed.data);
     return { success: true, order };
   } catch (err) {
     return {

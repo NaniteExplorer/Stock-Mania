@@ -64,7 +64,7 @@ export default function TradePanel({
   };
 
   return (
-    <div className="cockpit-panel p-5 flex flex-col gap-4">
+    <div className="panel p-5 flex flex-col gap-4">
       {/* Live price header */}
       <div className="flex items-center justify-between">
         <span className="text-sm font-medium text-gray-400">
@@ -120,7 +120,7 @@ export default function TradePanel({
               onClick={() => setOrderType(t)}
               className={`flex-1 rounded-md py-1.5 text-xs font-medium border transition-colors ${
                 orderType === t
-                  ? "border-yellow-500 text-yellow-400 bg-yellow-500/10"
+                  ? "border-brand-500 text-brand-400 bg-brand-500/10"
                   : "border-gray-700 text-gray-500 hover:border-gray-500"
               }`}
             >
@@ -138,7 +138,7 @@ export default function TradePanel({
               onClick={() => setProduct(p)}
               className={`flex-1 rounded-md py-1 text-xs font-medium border transition-colors ${
                 product === p
-                  ? "border-yellow-500 text-yellow-400 bg-yellow-500/10"
+                  ? "border-brand-500 text-brand-400 bg-brand-500/10"
                   : "border-gray-700 text-gray-500 hover:border-gray-500"
               }`}
             >
@@ -155,7 +155,7 @@ export default function TradePanel({
             min={1}
             value={quantity}
             onChange={(e) => setQuantity(Math.max(1, parseInt(e.target.value, 10) || 1))}
-            className="rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-500"
+            className="rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-brand-500"
           />
         </label>
 
@@ -170,7 +170,7 @@ export default function TradePanel({
               value={limitPrice}
               onChange={(e) => setLimitPrice(e.target.value)}
               placeholder={quote ? String(quote.c.toFixed(2)) : "0.00"}
-              className="rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-yellow-500"
+              className="rounded-md border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 focus:outline-none focus:border-brand-500"
               required
             />
           </label>
@@ -185,7 +185,7 @@ export default function TradePanel({
         {!isZerodhaConnected && (
           <a
             href="/api/zerodha/connect"
-            className="text-center rounded-md border border-yellow-600 py-2 text-xs text-yellow-400 hover:bg-yellow-500/10 transition-colors"
+            className="text-center rounded-md border border-brand-600 py-2 text-xs text-brand-400 hover:bg-brand-500/10 transition-colors"
           >
             Connect Zerodha to trade
           </a>

@@ -1,10 +1,10 @@
 import * as React from "react";
 import MarketingHeader from "@/components/landing/MarketingHeader";
 import Footer from "@/components/landing/Footer";
-import { getCurrentSession } from "@/lib/better-auth/auth";
+import { getOptionalSession } from "@/lib/better-auth/auth";
 
 const MarketingLayout = async ({ children }: { children: React.ReactNode }) => {
-  const session = await getCurrentSession();
+  const session = await getOptionalSession();
   const isAuthed = Boolean(session?.user);
 
   return (

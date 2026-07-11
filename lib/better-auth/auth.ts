@@ -1,9 +1,13 @@
+import { cache } from "react";
 import { betterAuth } from "better-auth";
 import { mongodbAdapter } from "better-auth/adapters/mongodb";
-import { connectToDatabase } from "@/core/db/connection";
+import {
+  connectToDatabase,
+  DatabaseUnavailableError,
+} from "@/core/db/connection";
 import { config } from "@/core/config/env";
 import { nextCookies } from "better-auth/next-js";
-import type { Db } from "mongodb"; // <-- 1. Import the top-level Db type
+import type { Db } from "mongodb";
 import { headers } from "next/headers";
 import {
   sendPasswordResetEmail,
@@ -24,9 +28,10 @@ const createAuth = (db: Parameters<typeof mongodbAdapter>[0]) =>
     emailAndPassword: {
       enabled: true,
       disableSignUp: false,
-      // Users must confirm their email before they can sign in. autoSignIn is
-      // therefore off — sign-up returns a "check your email" state instead.
-      requireEmailVerification: true,
+      // In production users must confirm their email before they can sign in.
+      // In local/dev we skip this — SMTP usually isn't reachable, so the
+      // verification email never arrives and accounts would be unusable.
+      requireEmailVerification: isProduction,
       minPasswordLength: 8,
       maxPasswordLength: 128,
       autoSignIn: false,
@@ -41,9 +46,9 @@ const createAuth = (db: Parameters<typeof mongodbAdapter>[0]) =>
       },
     },
     emailVerification: {
-      // Better Auth sends this automatically on sign-up because
-      // requireEmailVerification is true; sendOnSignUp makes that explicit.
-      sendOnSignUp: true,
+      // Send the verification email on sign-up only in production (matches
+      // requireEmailVerification); avoids noisy SMTP failures in local dev.
+      sendOnSignUp: isProduction,
       autoSignInAfterVerification: true,
       sendVerificationEmail: async ({ user, url }) => {
         try {
@@ -80,13 +85,39 @@ export const auth = async () => {
     throw new Error("MongoDB connection not found");
   }
 
-  // 2. Cast the Mongoose DB to the top-level MongoDB Db type
+  // Mongoose bundles its own copy of the mongodb driver, so its Db type is
+  // structurally identical but nominally different from our top-level `mongodb`
+  // package's Db — hence the cast. Safe as long as both driver majors match.
   authInstance = createAuth(db as unknown as Db);
 
   return authInstance;
 };
 
-export const getCurrentSession = async () => {
+/**
+ * Thrown when the session cannot be read because infrastructure (DB) is down —
+ * distinct from "no session" so callers don't treat an outage as logged-out.
+ */
+export class AuthUnavailableError extends Error {
+  constructor(cause: unknown) {
+    super("Auth is unavailable (database unreachable)");
+    this.name = "AuthUnavailableError";
+    this.cause = cause;
+  }
+}
+
+// Dedupe outage logs: one line per window instead of one per call site.
+let lastUnavailableLogAt = 0;
+const UNAVAILABLE_LOG_WINDOW_MS = 30_000;
+
+/**
+ * Per-request memoized session read (React cache): the layout, pages and every
+ * server action in one request share a single DB lookup.
+ *
+ * Returns `null` only for "not signed in". Infrastructure failures throw
+ * AuthUnavailableError so the caller can render a 503-style state instead of
+ * bouncing the user to sign-in.
+ */
+export const getCurrentSession = cache(async () => {
   try {
     const authInstance = await auth();
 
@@ -94,7 +125,32 @@ export const getCurrentSession = async () => {
       headers: await headers(),
     });
   } catch (error) {
-    logger.error("Unable to read auth session", error);
+    // Next.js signals "this route must be dynamic" by throwing from headers()
+    // during prerender — control flow, not a failure. Let it propagate as-is.
+    if ((error as { digest?: string })?.digest === "DYNAMIC_SERVER_USAGE") {
+      throw error;
+    }
+    if (Date.now() - lastUnavailableLogAt > UNAVAILABLE_LOG_WINDOW_MS) {
+      lastUnavailableLogAt = Date.now();
+      logger.error("Unable to read auth session", error);
+    }
+    throw new AuthUnavailableError(
+      error instanceof DatabaseUnavailableError ? error.cause : error,
+    );
+  }
+});
+
+/**
+ * Convenience for call sites that prefer "outage → treated as signed out"
+ * (e.g. public pages that just hide user chrome).
+ */
+export const getOptionalSession = async () => {
+  try {
+    return await getCurrentSession();
+  } catch (error) {
+    if ((error as { digest?: string })?.digest === "DYNAMIC_SERVER_USAGE") {
+      throw error;
+    }
     return null;
   }
 };

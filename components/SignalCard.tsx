@@ -10,7 +10,7 @@ import { formatMoney } from "@/lib/utils";
 const DIRECTION_STYLES: Record<TradingSignal["direction"], string> = {
   BUY: "bg-green-500/15 text-green-400 border-green-500/40",
   SELL: "bg-red-500/15 text-red-400 border-red-500/40",
-  HOLD: "bg-yellow-500/15 text-yellow-400 border-yellow-500/40",
+  HOLD: "bg-brand-500/15 text-brand-400 border-brand-500/40",
 };
 
 const CONFIDENCE_DOTS: Record<TradingSignal["confidence"], number> = {
@@ -27,7 +27,7 @@ export function SignalCard({ signal }: SignalCardProps) {
   const dots = CONFIDENCE_DOTS[signal.confidence];
 
   return (
-    <div className="cockpit-panel flex flex-col gap-3 p-5">
+    <div className="panel flex flex-col gap-3 p-5">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <span className="text-base font-bold text-gray-100">
@@ -44,7 +44,7 @@ export function SignalCard({ signal }: SignalCardProps) {
             <span
               key={i}
               className={`h-2 w-2 rounded-full ${
-                i <= dots ? "bg-yellow-400" : "bg-gray-700"
+                i <= dots ? "bg-brand-400" : "bg-gray-700"
               }`}
             />
           ))}
@@ -114,7 +114,7 @@ export function RequestSignalButton({ symbol }: RequestSignalButtonProps) {
     <button
       onClick={handle}
       disabled={isPending}
-      className="inline-flex items-center gap-2 rounded-md border border-yellow-600 px-3 py-1.5 text-xs font-medium text-yellow-400 transition-colors hover:bg-yellow-500/10 disabled:opacity-50"
+      className="inline-flex items-center gap-2 rounded-md border border-brand-600 px-3 py-1.5 text-xs font-medium text-brand-400 transition-colors hover:bg-brand-500/10 disabled:opacity-50"
     >
       <Sparkles className="h-3.5 w-3.5" />
       {isPending ? "Queuing..." : "Get AI Signal"}

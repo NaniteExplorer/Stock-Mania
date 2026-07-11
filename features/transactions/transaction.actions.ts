@@ -4,11 +4,19 @@ import { revalidatePath } from "next/cache";
 import { getCurrentSession } from "@/lib/better-auth/auth";
 import { logger } from "@/core/logger";
 import { eventBus } from "@/core/queue/event-bus";
-import { transactionService } from "./transaction.service";
+import { transactionService, type SpendSummary, type SpendTrendMonth } from "./transaction.service";
+import { budgetService, type BudgetItem } from "./budget.service";
 import { extractPdfText, PdfPasswordError } from "./pdf-parser";
 import { parseStatementText } from "./ai-statement.service";
 import { isTransactionCategory } from "./transaction.categories";
-import type { ParsedStatementRow, StatementImportResult } from "./transaction.types";
+import { parseInput } from "@/core/validation/parse";
+import {
+  importStatementSchema,
+  objectIdSchema,
+  setBudgetSchema,
+  transactionQuerySchema,
+} from "./transaction.schema";
+import type { AccountTransaction, ParsedStatementRow, StatementImportResult } from "./transaction.types";
 
 export interface ParseUploadResult {
   success: boolean;
@@ -56,21 +64,158 @@ export async function parseStatementUpload(formData: FormData): Promise<ParseUpl
 export async function importAccountStatement(accountId: string, fileName: string, rows: ParsedStatementRow[]): Promise<StatementImportResult> {
   const session = await getCurrentSession();
   if (!session?.user?.id) return { success: false, inserted: 0, skipped: 0, rejected: rows.length, balanceUpdated: false, error: "You must be signed in." };
+  const parsed = parseInput(importStatementSchema, { accountId, fileName, rows });
+  if (!parsed.success) return { success: false, inserted: 0, skipped: 0, rejected: rows.length, balanceUpdated: false, error: parsed.error };
   try {
-    const result = await transactionService.importStatement(session.user.id, accountId, fileName, rows);
-    // Kick off async AI categorization for rows the rules engine left null.
-    if (result.success && result.inserted > 0) {
+    const result = await transactionService.importStatement(session.user.id, parsed.data.accountId, parsed.data.fileName, parsed.data.rows);
+    if (result.success) {
+      // Re-run the rule categorizer over everything (skips manual overrides) and
+      // recompute balances — so importing fixes categories AND balances in one go,
+      // including rows imported before the rules/balance parsing improved.
+      try {
+        await transactionService.reprocess(session.user.id);
+      } catch (reprocessError) {
+        logger.warn("post-import reprocess failed (non-fatal)", { reprocessError });
+      }
+      // Kick off async AI categorization for rows the rules engine still left null.
+      // Publish even for a duplicate-only re-import: older uncategorized rows
+      // may still need enrichment after a previous worker/configuration outage.
       try {
         await eventBus.publish({ name: "app/transactions.imported", data: { userId: session.user.id, accountId } });
       } catch (publishError) {
         logger.warn("transactions.imported publish failed (non-fatal)", { publishError });
       }
     }
-    revalidatePath("/accounts"); revalidatePath("/dashboard");
+    revalidatePath("/accounts"); revalidatePath("/dashboard"); revalidatePath("/transactions"); revalidatePath("/spends");
     return result;
   } catch (error) {
     logger.error("Statement import failed", error);
     return { success: false, inserted: 0, skipped: 0, rejected: rows.length, balanceUpdated: false, error: "The statement could not be imported." };
+  }
+}
+
+/** Delete a single transaction. */
+export async function deleteTransaction(id: string): Promise<{ success: boolean; error?: string }> {
+  const session = await getCurrentSession();
+  if (!session?.user?.id) return { success: false, error: "You must be signed in." };
+  const parsedId = parseInput(objectIdSchema, id);
+  if (!parsedId.success) return { success: false, error: parsedId.error };
+  try {
+    await transactionService.remove(parsedId.data, session.user.id);
+    revalidatePath("/transactions"); revalidatePath("/spends"); revalidatePath("/accounts"); revalidatePath("/dashboard");
+    return { success: true };
+  } catch (error) {
+    logger.error("deleteTransaction failed", error);
+    return { success: false, error: "Could not delete the transaction." };
+  }
+}
+
+/** Bulk delete — all transactions, or only a given account's. */
+export async function deleteAllTransactions(accountId?: string): Promise<{ success: boolean; deleted?: number; error?: string }> {
+  const session = await getCurrentSession();
+  if (!session?.user?.id) return { success: false, error: "You must be signed in." };
+  if (accountId !== undefined) {
+    const parsedId = parseInput(objectIdSchema, accountId);
+    if (!parsedId.success) return { success: false, error: parsedId.error };
+  }
+  try {
+    const deleted = await transactionService.removeMany(session.user.id, accountId);
+    revalidatePath("/transactions"); revalidatePath("/spends"); revalidatePath("/accounts"); revalidatePath("/dashboard");
+    return { success: true, deleted };
+  } catch (error) {
+    logger.error("deleteAllTransactions failed", error);
+    return { success: false, error: "Could not delete transactions." };
+  }
+}
+
+/** Re-run categorization rules over existing transactions + recompute balances. */
+export async function reprocessTransactions(): Promise<{ success: boolean; recategorized?: number; balancesUpdated?: number; error?: string }> {
+  const session = await getCurrentSession();
+  if (!session?.user?.id) return { success: false, error: "You must be signed in." };
+  try {
+    const result = await transactionService.reprocess(session.user.id);
+    const accountIds = await transactionService.listUncategorizedAccountIds(session.user.id);
+    await Promise.all(accountIds.map(async (accountId) => {
+      try {
+        await eventBus.publish({ name: "app/transactions.imported", data: { userId: session.user.id, accountId } });
+      } catch (publishError) {
+        logger.warn("transaction recategorization publish failed (non-fatal)", { accountId, publishError });
+      }
+    }));
+    revalidatePath("/transactions"); revalidatePath("/accounts"); revalidatePath("/spends"); revalidatePath("/dashboard");
+    return { success: true, ...result };
+  } catch (error) {
+    logger.error("reprocessTransactions failed", error);
+    return { success: false, error: "Could not reprocess transactions." };
+  }
+}
+
+/** Server-side paginated + filtered transactions — scales to any history size. */
+export async function queryTransactions(
+  query: import("./transaction.service").TransactionQuery,
+): Promise<{ transactions: AccountTransaction[]; total: number; grandTotal: number }> {
+  const session = await getCurrentSession();
+  if (!session?.user?.id) return { transactions: [], total: 0, grandTotal: 0 };
+  const parsed = parseInput(transactionQuerySchema, query);
+  if (!parsed.success) return { transactions: [], total: 0, grandTotal: 0 };
+  try {
+    const [{ rows, total }, grandTotal] = await Promise.all([
+      transactionService.query(session.user.id, parsed.data),
+      transactionService.count(session.user.id),
+    ]);
+    return { transactions: rows, total, grandTotal };
+  } catch (error) {
+    logger.error("queryTransactions failed", error);
+    return { transactions: [], total: 0, grandTotal: 0 };
+  }
+}
+
+export async function getSpendSummary(sinceDays = 90): Promise<SpendSummary | null> {
+  const session = await getCurrentSession();
+  if (!session?.user?.id) return null;
+  try {
+    return await transactionService.spendSummary(session.user.id, sinceDays);
+  } catch (error) {
+    logger.error("getSpendSummary failed", error);
+    return null;
+  }
+}
+
+export async function getSpendTrend(months = 6): Promise<SpendTrendMonth[]> {
+  const session = await getCurrentSession();
+  if (!session?.user?.id) return [];
+  try {
+    return await transactionService.spendTrend(session.user.id, months);
+  } catch (error) {
+    logger.error("getSpendTrend failed", error);
+    return [];
+  }
+}
+
+export async function getMyBudgets(): Promise<BudgetItem[]> {
+  const session = await getCurrentSession();
+  if (!session?.user?.id) return [];
+  try {
+    return await budgetService.list(session.user.id);
+  } catch (error) {
+    logger.error("getMyBudgets failed", error);
+    return [];
+  }
+}
+
+export async function setBudget(category: string, monthlyLimit: number): Promise<{ success: boolean; error?: string }> {
+  const session = await getCurrentSession();
+  if (!session?.user?.id) return { success: false, error: "You must be signed in." };
+  const parsed = parseInput(setBudgetSchema, { category, monthlyLimit });
+  if (!parsed.success) return { success: false, error: parsed.error };
+  if (!isTransactionCategory(parsed.data.category)) return { success: false, error: "Unknown category." };
+  try {
+    await budgetService.set(session.user.id, parsed.data.category, parsed.data.monthlyLimit);
+    revalidatePath("/spends");
+    return { success: true };
+  } catch (error) {
+    logger.error("setBudget failed", error);
+    return { success: false, error: "Could not save the budget." };
   }
 }
 
@@ -81,9 +226,11 @@ export async function setTransactionCategory(
 ): Promise<{ success: boolean; error?: string }> {
   const session = await getCurrentSession();
   if (!session?.user?.id) return { success: false, error: "You must be signed in." };
+  const parsedId = parseInput(objectIdSchema, id);
+  if (!parsedId.success) return { success: false, error: parsedId.error };
   if (!isTransactionCategory(category)) return { success: false, error: "Unknown category." };
   try {
-    await transactionService.setCategory(id, session.user.id, category);
+    await transactionService.setCategory(parsedId.data, session.user.id, category);
     revalidatePath("/accounts"); revalidatePath("/dashboard");
     return { success: true };
   } catch (error) {

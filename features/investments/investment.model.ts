@@ -27,7 +27,7 @@ const InvestmentSchema = new Schema<InvestmentDoc>(
     kind: {
       type: String,
       required: true,
-      enum: ["STOCK", "ETF", "MUTUAL_FUND", "BOND", "CRYPTO", "DIGITAL_GOLD"],
+      enum: ["STOCK", "ETF", "MUTUAL_FUND", "BOND", "CRYPTO", "DIGITAL_GOLD", "COMMODITY"],
       default: "STOCK",
     },
     units: { type: Number, required: true, default: 0 },

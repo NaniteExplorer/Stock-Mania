@@ -72,7 +72,7 @@ export default function SearchCommand({
         </button>
       ) : (
         <Button onClick={() => setOpen(true)} className="search-btn">
-          <Search className="h-4 w-4 text-yellow-400" />
+          <Search className="h-4 w-4 text-brand-400" />
           {label}
         </Button>
       )}
@@ -112,7 +112,7 @@ export default function SearchCommand({
                     onClick={handleSelectStock}
                     className="search-item-link"
                   >
-                    <TrendingUp className="h-4 w-4 text-yellow-500" />
+                    <TrendingUp className="h-4 w-4 text-brand-500" />
                     <div className="flex-1">
                       <div className="search-item-name">{stock.name}</div>
                       <div className="text-sm text-gray-500">

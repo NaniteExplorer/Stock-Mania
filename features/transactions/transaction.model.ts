@@ -11,6 +11,7 @@ export interface TransactionDoc {
   amount: number;
   direction: TransactionDirection;
   balanceAfter: number | null;
+  statementOrder: number | null;
   currency: string;
   category: string | null;
   categorySource: CategorySource | null;
@@ -30,6 +31,9 @@ const TransactionSchema = new Schema<TransactionDoc>({
   amount: { type: Number, required: true, min: 0 },
   direction: { type: String, required: true, enum: ["CREDIT", "DEBIT"] },
   balanceAfter: { type: Number, default: null },
+  // Stable tie-breaker for statements whose dates have no time component.
+  // Higher means later in the bank statement's chronology.
+  statementOrder: { type: Number, default: null },
   currency: { type: String, required: true, default: "INR", uppercase: true },
   category: { type: String, default: null },
   categorySource: { type: String, enum: ["RULE", "AI", "MANUAL"], default: null },

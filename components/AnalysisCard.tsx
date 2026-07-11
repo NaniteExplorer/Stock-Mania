@@ -21,7 +21,7 @@ export default function AnalysisCard({ symbol }: { symbol?: string }) {
     });
 
   return (
-    <section className="cockpit-panel flex flex-col gap-3 p-5">
+    <section className="panel flex flex-col gap-3 p-5">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <span className="icon-chip"><Sparkles className="h-5 w-5" /></span>
@@ -30,7 +30,7 @@ export default function AnalysisCard({ symbol }: { symbol?: string }) {
             <p className="text-xs text-gray-500">Short-term, AI-generated estimate — not financial advice.</p>
           </div>
         </div>
-        <button onClick={run} disabled={pending} className="yellow-btn px-4 py-2 text-sm">
+        <button onClick={run} disabled={pending} className="btn-brand px-4 py-2 text-sm">
           {pending ? "Analyzing…" : analysis ? "Refresh" : "Generate"}
         </button>
       </div>

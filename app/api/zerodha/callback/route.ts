@@ -1,10 +1,19 @@
+import { timingSafeEqual } from "node:crypto";
+import { cookies } from "next/headers";
 import { getCurrentSession } from "@/lib/better-auth/auth";
-import { exchangeToken, storeAccessToken } from "@/features/orders/zerodha.client";
+import {
+  exchangeToken,
+  storeAccessToken,
+  ZERODHA_STATE_COOKIE,
+} from "@/features/orders/zerodha.client";
 import { config } from "@/core/config/env";
 import { logger } from "@/core/logger";
 
 // Zerodha request tokens are alphanumeric strings up to 64 chars.
 const REQUEST_TOKEN_RE = /^[A-Za-z0-9]{1,64}$/;
+
+const safeEqual = (a: string, b: string) =>
+  a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
 export async function GET(request: Request): Promise<Response> {
   const base = config.app().baseUrl;
@@ -13,6 +22,18 @@ export async function GET(request: Request): Promise<Response> {
   const status = searchParams.get("status");
 
   if (status === "error" || !requestToken || !REQUEST_TOKEN_RE.test(requestToken)) {
+    return Response.redirect(new URL("/settings?error=zerodha_auth_failed", base));
+  }
+
+  // CSRF check: the state Kite echoed back must match the cookie set by
+  // /connect — otherwise a crafted link could bind an attacker's Zerodha
+  // account to the victim's session.
+  const cookieStore = await cookies();
+  const expectedState = cookieStore.get(ZERODHA_STATE_COOKIE)?.value;
+  const returnedState = searchParams.get("state");
+  cookieStore.delete(ZERODHA_STATE_COOKIE);
+  if (!expectedState || !returnedState || !safeEqual(expectedState, returnedState)) {
+    logger.warn("[zerodha/callback] OAuth state mismatch — rejecting");
     return Response.redirect(new URL("/settings?error=zerodha_auth_failed", base));
   }
 

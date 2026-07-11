@@ -33,10 +33,10 @@ export default async function SearchPage() {
             <Link
               key={stock.symbol}
               href={`/stocks/${stock.symbol}`}
-              className="cockpit-panel panel-hover group flex items-center gap-4 p-5"
+              className="panel panel-hover group flex items-center gap-4 p-5"
             >
               <TrendingUp
-                className="h-5 w-5 text-yellow-500 transition-transform group-hover:translate-x-0.5"
+                className="h-5 w-5 text-brand-500 transition-transform group-hover:translate-x-0.5"
                 aria-hidden="true"
               />
               <div className="flex-1">

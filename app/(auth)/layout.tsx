@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BrandMark } from "@/components/Logo";
-import { getCurrentSession } from "@/lib/better-auth/auth";
+import { getOptionalSession } from "@/lib/better-auth/auth";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { ArrowLeft, Landmark, LineChart, ShieldCheck, Sparkles, Star } from "lucide-react";
@@ -16,7 +16,7 @@ const highlights = [
 const Layout = async ({ children }: { children: React.ReactNode }) => {
   await connection();
 
-  const session = await getCurrentSession();
+  const session = await getOptionalSession();
   if (session?.user) redirect("/dashboard");
 
   return (
@@ -64,9 +64,9 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
             {highlights.map(({ icon: Icon, label, desc }) => (
               <div
                 key={label}
-                className="enterprise-card p-4 text-left"
+                className="panel p-4 text-left"
               >
-                <Icon className="h-5 w-5 text-yellow-400" />
+                <Icon className="h-5 w-5 text-brand-400" />
                 <p className="mt-3 text-sm font-semibold text-gray-100">{label}</p>
                 <p className="mt-0.5 text-xs text-gray-500">{desc}</p>
               </div>

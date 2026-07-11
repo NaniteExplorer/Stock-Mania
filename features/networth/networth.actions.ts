@@ -25,7 +25,7 @@ export async function getNetWorthOverview(): Promise<NetWorthOverview> {
     return await networthService.getOverview(session.user.id);
   } catch (err) {
     logger.error("getNetWorthOverview failed", err);
-    return EMPTY_OVERVIEW;
+    return { ...EMPTY_OVERVIEW, degraded: true };
   }
 }
 

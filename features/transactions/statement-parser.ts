@@ -7,11 +7,11 @@ const HEADER_ALIASES = {
   date: ["date", "transaction date", "txn date", "value date", "posting date", "tran date"],
   description: ["description", "narration", "transaction details", "particulars", "remarks", "details"],
   reference: ["reference", "reference no", "ref no", "transaction id", "cheque no", "utr", "chq/ref no"],
-  debit: ["debit", "withdrawal", "withdrawal amount", "debit amount", "dr amount"],
-  credit: ["credit", "deposit", "deposit amount", "credit amount", "cr amount"],
+  debit: ["debit", "withdrawal", "withdrawal amount", "debit amount", "dr amount", "dr", "withdrawal (dr)"],
+  credit: ["credit", "deposit", "deposit amount", "credit amount", "cr amount", "cr", "deposit (cr)"],
   amount: ["amount", "transaction amount", "txn amount"],
   type: ["type", "dr/cr", "debit/credit", "transaction type"],
-  balance: ["balance", "closing balance", "running balance", "available balance"],
+  balance: ["balance", "closing balance", "running balance", "available balance", "bal"],
 } as const;
 
 const normalize = (value: Cell) => String(value ?? "").trim().toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ");
@@ -40,16 +40,37 @@ function findColumn(headers: string[], aliases: readonly string[]) {
   return headers.findIndex((header) => aliases.includes(header) || aliases.some((alias) => header.includes(alias)));
 }
 
-export function normalizeStatementRows(rawRows: RawRow[], currency = "INR"): ParsedStatementRow[] {
+type ColumnMap = Record<keyof typeof HEADER_ALIASES, number>;
+
+/** Whole-cell numeric test (so a date like "20-05-2025" isn't seen as the number 20). */
+const looksNumeric = (cell: Cell): boolean => {
+  if (typeof cell === "number") return Number.isFinite(cell);
+  const t = String(cell ?? "").trim();
+  return t !== "" && /^[₹$€£]?\s*-?\(?[\d,]+(\.\d+)?\)?$/.test(t.replace(/\s/g, ""));
+};
+/** Whole-cell date test (dd/mm/yyyy, dd-mm-yyyy or ISO yyyy-mm-dd). */
+const looksDate = (cell: Cell): boolean => {
+  if (cell instanceof Date) return !Number.isNaN(cell.getTime());
+  const t = String(cell ?? "").trim();
+  return /^\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}/.test(t) || /^\d{4}-\d{2}-\d{2}/.test(t);
+};
+const isBlank = (cell: Cell) => String(cell ?? "").trim() === "";
+
+/** Locate the header row + column map from known aliases; null if it can't. */
+function detectByAliases(rawRows: RawRow[]): { headerIndex: number; col: ColumnMap } | null {
   const headerIndex = rawRows.findIndex((row) => {
     const cells = row.map(normalize);
     return cells.some((cell) => HEADER_ALIASES.date.includes(cell as never)) && cells.some((cell) => [...HEADER_ALIASES.description, ...HEADER_ALIASES.debit, ...HEADER_ALIASES.credit, ...HEADER_ALIASES.amount].some((alias) => cell.includes(alias)));
   });
-  if (headerIndex < 0) throw new Error("Could not identify the transaction table. Export a statement with column headers.");
+  if (headerIndex < 0) return null;
   const headers = rawRows[headerIndex].map(normalize);
-  const col = Object.fromEntries(Object.entries(HEADER_ALIASES).map(([key, aliases]) => [key, findColumn(headers, aliases)])) as Record<keyof typeof HEADER_ALIASES, number>;
-  if (col.date < 0 || col.description < 0 || (col.amount < 0 && col.debit < 0 && col.credit < 0)) throw new Error("The statement needs date, description and amount/debit/credit columns.");
+  const col = Object.fromEntries(Object.entries(HEADER_ALIASES).map(([key, aliases]) => [key, findColumn(headers, aliases)])) as ColumnMap;
+  if (col.date < 0 || col.description < 0 || (col.amount < 0 && col.debit < 0 && col.credit < 0)) return null;
+  return { headerIndex, col };
+}
 
+/** Build normalized rows from a resolved column map (alias path). */
+function buildRows(rawRows: RawRow[], headerIndex: number, col: ColumnMap, currency: string): ParsedStatementRow[] {
   const occurrence = new Map<string, number>();
   return rawRows.slice(headerIndex + 1).flatMap((row) => {
     const date = isoDate(row[col.date]);
@@ -66,6 +87,147 @@ export function normalizeStatementRows(rawRows: RawRow[], currency = "INR"): Par
     const count = occurrence.get(key) ?? 0; occurrence.set(key, count + 1);
     return [{ transactionDate: date, description, reference: reference || null, amount, direction, balanceAfter: col.balance >= 0 ? numberValue(row[col.balance]) : null, currency, occurrence: count }];
   });
+}
+
+/**
+ * Header-agnostic fallback. Infers columns from the DATA rather than column
+ * names, so any bank's layout works without an alias for it:
+ *  - date column = the one whose cells parse as dates,
+ *  - numeric columns = detected by content; the fully-populated one that varies
+ *    the most is the running balance, sparse ones are debit/credit,
+ *  - debit vs credit is decided by whether the balance went UP or DOWN — no need
+ *    to know which column is which,
+ *  - description = the widest free-text column.
+ */
+function inferByContent(rawRows: RawRow[], currency: string): ParsedStatementRow[] {
+  const width = Math.max(0, ...rawRows.map((r) => r.length));
+  if (width === 0) return [];
+
+  // Per-column tallies across every row.
+  const dateHits = new Array(width).fill(0);
+  const numHits = new Array(width).fill(0);
+  const textLen = new Array(width).fill(0);
+  for (const row of rawRows) {
+    for (let c = 0; c < width; c += 1) {
+      const cell = row[c];
+      if (looksDate(cell)) dateHits[c] += 1;
+      else if (looksNumeric(cell)) numHits[c] += 1;
+      else if (!isBlank(cell)) textLen[c] += String(cell).trim().length;
+    }
+  }
+
+  const dateCol = dateHits.indexOf(Math.max(...dateHits));
+  if (dateCol < 0 || dateHits[dateCol] < 2) throw new Error("Could not find a date column. Export the statement with a date column.");
+
+  // Data rows = those with a real date in the date column.
+  const dataRows = rawRows.filter((r) => looksDate(r[dateCol]));
+  if (dataRows.length < 1) throw new Error("No transaction rows were found.");
+
+  // Numeric columns (exclude the date column).
+  const numericCols: number[] = [];
+  for (let c = 0; c < width; c += 1) {
+    if (c === dateCol) continue;
+    const filledNumeric = dataRows.filter((r) => looksNumeric(r[c])).length;
+    if (filledNumeric >= Math.max(1, dataRows.length * 0.3)) numericCols.push(c);
+  }
+  // A running balance is the column whose row-to-row change equals ± another
+  // column's value. Score each candidate against that relationship to tell a
+  // balance apart from an amount column (both can be fully populated).
+  const matchScore = (balC: number, amtC: number): number => {
+    let prev: number | null = null, hits = 0;
+    for (const r of dataRows) {
+      const b = numberValue(r[balC]);
+      const a = numberValue(r[amtC]);
+      if (b != null && prev != null && a != null && !isBlank(r[amtC])) {
+        const d = b - prev;
+        if (Math.abs(d - a) < 0.5 || Math.abs(d + a) < 0.5) hits += 1;
+      }
+      if (b != null) prev = b;
+    }
+    return hits;
+  };
+  const fullCols = numericCols.filter((c) => dataRows.filter((r) => looksNumeric(r[c])).length >= dataRows.length * 0.9);
+  let balanceCol = -1;
+  if (fullCols.length === 1) {
+    balanceCol = fullCols[0];
+  } else if (fullCols.length > 1) {
+    balanceCol = fullCols
+      .map((c) => ({
+        c,
+        score: Math.max(0, ...numericCols.filter((a) => a !== c).map((a) => matchScore(c, a))),
+        distinct: new Set(dataRows.map((r) => numberValue(r[c]))).size,
+      }))
+      .sort((a, b) => b.score - a.score || b.distinct - a.distinct)[0].c;
+  }
+  const amountCols = numericCols.filter((c) => c !== balanceCol);
+
+  // Description = widest free-text column.
+  const descCol = textLen.indexOf(Math.max(...textLen));
+  if (descCol < 0) throw new Error("Could not find a description column.");
+
+  // Decide which amount column is credit vs debit by voting against the balance
+  // movement (balance up on the row ⇒ that filled column is a credit).
+  let creditCol = -1, debitCol = -1;
+  if (amountCols.length >= 2 && balanceCol >= 0) {
+    const score = new Map<number, number>(); // +ve ⇒ behaves like credit
+    let prev: number | null = null;
+    for (const r of dataRows) {
+      const bal = numberValue(r[balanceCol]);
+      if (bal != null && prev != null) {
+        const up = bal > prev;
+        for (const c of amountCols) if (looksNumeric(r[c])) score.set(c, (score.get(c) ?? 0) + (up ? 1 : -1));
+      }
+      if (bal != null) prev = bal;
+    }
+    const ranked = amountCols.slice().sort((a, b) => (score.get(b) ?? 0) - (score.get(a) ?? 0));
+    creditCol = ranked[0]; debitCol = ranked[ranked.length - 1];
+  }
+
+  const occurrence = new Map<string, number>();
+  let prevBal: number | null = null;
+  const out: ParsedStatementRow[] = [];
+  for (const row of dataRows) {
+    const date = isoDate(row[dateCol]);
+    const description = String(row[descCol] ?? "").trim();
+    if (!date || !description) { continue; }
+    const bal = balanceCol >= 0 ? numberValue(row[balanceCol]) : null;
+
+    let amount: number | null = null;
+    let direction: TransactionDirection | null = null;
+    if (debitCol >= 0 && creditCol >= 0) {
+      const dr = numberValue(row[debitCol]);
+      const cr = numberValue(row[creditCol]);
+      if (dr != null && !isBlank(row[debitCol])) { amount = dr; direction = "DEBIT"; }
+      else if (cr != null && !isBlank(row[creditCol])) { amount = cr; direction = "CREDIT"; }
+    } else if (amountCols.length >= 1) {
+      // Single amount column: sign or balance movement gives direction.
+      const a = numberValue(row[amountCols[0]]);
+      if (a != null) {
+        amount = a;
+        const rawText = String(row[amountCols[0]] ?? "").trim();
+        const negative = /^\(.*\)$/.test(rawText) || rawText.startsWith("-");
+        direction = negative ? "DEBIT" : bal != null && prevBal != null ? (bal >= prevBal ? "CREDIT" : "DEBIT") : "CREDIT";
+      }
+    }
+    if (bal != null) prevBal = bal;
+    if (amount == null || amount === 0 || !direction) continue;
+
+    const key = `${date.slice(0, 10)}|${amount.toFixed(2)}|${direction}|${description.toLowerCase()}`;
+    const count = occurrence.get(key) ?? 0; occurrence.set(key, count + 1);
+    out.push({ transactionDate: date, description, reference: null, amount, direction, balanceAfter: bal, currency, occurrence: count });
+  }
+  return out;
+}
+
+export function normalizeStatementRows(rawRows: RawRow[], currency = "INR"): ParsedStatementRow[] {
+  // Fast path: recognized column headers.
+  const aliased = detectByAliases(rawRows);
+  if (aliased) {
+    const rows = buildRows(rawRows, aliased.headerIndex, aliased.col, currency);
+    if (rows.length) return rows;
+  }
+  // Fallback: infer columns from the data itself (works for any bank layout).
+  return inferByContent(rawRows, currency);
 }
 
 function splitDelimitedLine(line: string, delimiter: string): string[] {

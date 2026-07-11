@@ -1,17 +1,12 @@
-import dns from "node:dns";
 import { validateServerConfig } from "@/core/config/env";
+import { configureMongoSrvDns } from "@/core/db/connection";
 
-const dnsServers = process.env.MONGODB_DNS_SERVERS;
 const uri = process.env.MONGODB_URI ?? "";
+const dnsServers = (process.env.MONGODB_DNS_SERVERS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
-if (dnsServers && uri.startsWith("mongodb+srv://")) {
-  const servers = dnsServers
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (servers.length > 0) {
-    dns.setServers(servers);
-  }
-}
+configureMongoSrvDns(uri, dnsServers.length ? dnsServers : null);
 
 validateServerConfig();

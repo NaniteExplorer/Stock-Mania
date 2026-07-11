@@ -32,7 +32,7 @@ export default function TaxSettingsForm({ settings }: { settings: TaxSettings })
     });
 
   return (
-    <section className="cockpit-panel flex flex-col gap-4 p-6">
+    <section className="panel flex flex-col gap-4 p-6">
       <div className="flex items-center gap-3">
         <span className="icon-chip">
           <Receipt className="h-5 w-5" />
@@ -64,7 +64,7 @@ export default function TaxSettingsForm({ settings }: { settings: TaxSettings })
       <button
         onClick={save}
         disabled={isPending}
-        className="self-start rounded-md border border-yellow-600 bg-yellow-500/10 px-5 py-2.5 text-sm font-semibold text-yellow-400 transition-colors hover:bg-yellow-500/20 disabled:opacity-50"
+        className="self-start rounded-md border border-brand-600 bg-brand-500/10 px-5 py-2.5 text-sm font-semibold text-brand-400 transition-colors hover:bg-brand-500/20 disabled:opacity-50"
         suppressHydrationWarning
       >
         {isPending ? "Saving…" : "Save tax settings"}

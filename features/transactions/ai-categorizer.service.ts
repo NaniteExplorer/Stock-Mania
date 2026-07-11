@@ -38,22 +38,29 @@ export async function aiCategorizeAccount(
     return { categorized: 0 };
   }
 
-  const rows = await transactionService.listUncategorized(userId, accountId, 100);
-  if (!rows.length) return { categorized: 0 };
-
-  const raw = await geminiClient.generateJson<unknown>(buildPrompt(rows));
-  const parsed = assignmentsSchema.safeParse(raw);
-  if (!parsed.success) {
-    logger.error("AI categorization output failed validation", parsed.error);
-    return { categorized: 0 };
-  }
-
-  const valid = new Set(rows.map((r) => r.id));
   let categorized = 0;
-  for (const { id, category } of parsed.data.assignments) {
-    if (!valid.has(id)) continue;
-    await transactionService.applyAiCategory(id, userId, category);
-    categorized += 1;
+  // Provider APIs commonly cap enrichment requests at 100 rows. Drain bounded
+  // batches instead of processing only the first page forever. The no-progress
+  // guard prevents malformed/partial model output from creating an endless loop.
+  for (let batch = 0; batch < 50; batch += 1) {
+    const rows = await transactionService.listUncategorized(userId, accountId, 100);
+    if (!rows.length) break;
+
+    const raw = await geminiClient.generateJson<unknown>(buildPrompt(rows));
+    const parsed = assignmentsSchema.safeParse(raw);
+    if (!parsed.success) {
+      logger.error("AI categorization output failed validation", parsed.error);
+      break;
+    }
+
+    const valid = new Set(rows.map((r) => r.id));
+    const assignments = parsed.data.assignments.filter(({ id }) => valid.has(id));
+    if (!assignments.length) break;
+    for (const { id, category } of assignments) {
+      await transactionService.applyAiCategory(id, userId, category);
+    }
+    categorized += assignments.length;
+    if (assignments.length < rows.length) break;
   }
   return { categorized };
 }

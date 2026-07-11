@@ -28,11 +28,11 @@ const UserDropdown = ({ user }: { user: User }) => {
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
-          className="flex h-10 items-center gap-2.5 rounded-xl border border-gray-600 bg-gray-800 px-1.5 pr-2 text-gray-400 hover:border-yellow-500/50 hover:bg-gray-700 hover:text-yellow-400 sm:px-2"
+          className="flex h-10 items-center gap-2.5 rounded-xl border border-gray-600 bg-gray-800 px-1.5 pr-2 text-gray-400 hover:border-brand-500/50 hover:bg-gray-700 hover:text-brand-400 sm:px-2"
         >
           <Avatar className="h-7 w-7">
             {user.image && <AvatarImage src={user.image} alt={user.name ?? "User"} />}
-            <AvatarFallback className="bg-yellow-500 text-sm font-bold text-white">
+            <AvatarFallback className="bg-brand-500 text-sm font-bold text-white">
               {user.name?.[0]?.toUpperCase() ?? "U"}
             </AvatarFallback>
           </Avatar>
@@ -49,7 +49,7 @@ const UserDropdown = ({ user }: { user: User }) => {
           <div className="relative flex items-center gap-3 rounded-md bg-gray-900/60 p-3">
             <Avatar className="h-10 w-10">
               {user.image && <AvatarImage src={user.image} alt={user.name ?? "User"} />}
-              <AvatarFallback className="bg-yellow-500 text-sm font-bold text-white">
+              <AvatarFallback className="bg-brand-500 text-sm font-bold text-white">
                 {user.name?.[0]?.toUpperCase() ?? "U"}
               </AvatarFallback>
             </Avatar>
@@ -62,19 +62,19 @@ const UserDropdown = ({ user }: { user: User }) => {
           </div>
         </DropdownMenuLabel>
         <DropdownMenuSeparator className="bg-gray-600" />
-        <DropdownMenuItem asChild className="text-sm font-medium text-gray-300 focus:bg-gray-700 focus:text-yellow-400">
+        <DropdownMenuItem asChild className="text-sm font-medium text-gray-300 focus:bg-gray-700 focus:text-brand-400">
           <Link href="/dashboard">
             <UserRound className="mr-2 h-4 w-4" />
             Net worth overview
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem asChild className="text-sm font-medium text-gray-300 focus:bg-gray-700 focus:text-yellow-400">
+        <DropdownMenuItem asChild className="text-sm font-medium text-gray-300 focus:bg-gray-700 focus:text-brand-400">
           <Link href="/settings">
             <ShieldCheck className="mr-2 h-4 w-4" />
             Security &amp; brokers
           </Link>
         </DropdownMenuItem>
-        <DropdownMenuItem asChild className="text-sm font-medium text-gray-300 focus:bg-gray-700 focus:text-yellow-400">
+        <DropdownMenuItem asChild className="text-sm font-medium text-gray-300 focus:bg-gray-700 focus:text-brand-400">
           <Link href="/settings">
             <Settings className="mr-2 h-4 w-4" />
             Preferences

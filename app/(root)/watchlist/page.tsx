@@ -12,14 +12,14 @@ const WatchlistPage = async () => {
 
   if (!symbols.length) {
     return (
-      <section className="cockpit-panel mx-auto mt-10 flex max-w-2xl flex-col items-center px-6 py-16 text-center">
+      <section className="panel mx-auto mt-10 flex max-w-2xl flex-col items-center px-6 py-16 text-center">
         <div className="watchlist-empty">
           <Star className="watchlist-star" aria-hidden="true" />
           <h1 className="empty-title">No stocks in your watchlist</h1>
           <p className="empty-description">
             Add stocks from a stock detail page to keep track of them here.
           </p>
-          <Link href="/search" className="yellow-btn inline-flex items-center px-5">
+          <Link href="/search" className="btn-brand inline-flex items-center px-5">
             Discover stocks
           </Link>
         </div>
@@ -38,12 +38,12 @@ const WatchlistPage = async () => {
           <Link
             key={symbol}
             href={`/stocks/${symbol}`}
-            className="cockpit-panel panel-hover group flex items-center justify-between p-5"
+            className="panel panel-hover group flex items-center justify-between p-5"
           >
             <span className="text-lg font-semibold text-gray-100">
               {symbol}
             </span>
-            <span className="flex items-center gap-2 text-xs text-gray-500"><span className="h-1.5 w-1.5 rounded-full bg-green-500" />Watching <Star className="h-4 w-4 text-yellow-500 transition-transform group-hover:scale-110" aria-hidden="true" /></span>
+            <span className="flex items-center gap-2 text-xs text-gray-500"><span className="h-1.5 w-1.5 rounded-full bg-green-500" />Watching <Star className="h-4 w-4 text-brand-500 transition-transform group-hover:scale-110" aria-hidden="true" /></span>
           </Link>
         ))}
       </div>

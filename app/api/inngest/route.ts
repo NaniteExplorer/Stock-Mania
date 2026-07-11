@@ -9,6 +9,8 @@ import {
   categorizeImportedTransactions,
   accrueGoldLease,
   pollDriveImports,
+  captureMonthlySnapshots,
+  captureUserSnapshot,
 } from "@/lib/inngest/functions";
 
 // Note: the welcome email is now sent directly from the sign-up action
@@ -24,5 +26,7 @@ export const { GET, POST, PUT } = serve({
     categorizeImportedTransactions,
     accrueGoldLease,
     pollDriveImports,
+    captureMonthlySnapshots,
+    captureUserSnapshot,
   ],
 });

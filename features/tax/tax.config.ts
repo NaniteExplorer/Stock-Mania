@@ -96,6 +96,10 @@ export function taxClassForKind(kind: InvestmentKind): TaxAssetClass {
       return "CRYPTO";
     case "DIGITAL_GOLD":
       return "GOLD";
+    case "COMMODITY":
+      // MCX commodity gains are typically slab-taxed (non-speculative business
+      // income); DEBT is the closest existing class (no capital-gains tiering).
+      return "DEBT";
     default:
       return "EQUITY";
   }

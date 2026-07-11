@@ -1,6 +1,5 @@
 import Link from "next/link";
 import UserDropdown from "@/components/UserDropdown";
-import ThemeToggle from "@/components/ThemeToggle";
 import SearchCommand from "@/components/SearchCommand";
 import { BrandMark } from "@/components/Logo";
 import { User } from "better-auth";
@@ -42,19 +41,18 @@ const Header = async ({ user }: { user: User }) => {
           </div>
           <Link
             href="/accounts"
-            className="hidden h-9 items-center gap-1.5 rounded-lg bg-yellow-500 px-3 text-sm font-semibold text-white transition-colors hover:brightness-110 sm:flex"
+            className="hidden h-9 items-center gap-1.5 rounded-lg bg-brand-500 px-3 text-sm font-semibold text-white transition-colors hover:brightness-110 sm:flex"
           >
             <Plus className="h-4 w-4" />
             Quick add
           </Link>
           <button
-            className="hidden h-9 w-9 items-center justify-center rounded-lg border border-gray-600 bg-gray-800 text-gray-400 transition-colors hover:border-yellow-500/50 hover:text-yellow-400 sm:flex"
+            className="hidden h-9 w-9 items-center justify-center rounded-lg border border-gray-600 bg-gray-800 text-gray-400 transition-colors hover:border-brand-500/50 hover:text-brand-400 sm:flex"
             aria-label="Notifications"
             title="Notifications"
           >
             <Bell className="h-4 w-4" />
           </button>
-          <ThemeToggle />
           <UserDropdown user={user} />
         </div>
       </div>

@@ -56,7 +56,7 @@ export default function GoldLeaseManager({ leases }: { leases: GoldLease[] }) {
       <div className="flex flex-wrap items-start justify-between gap-4 border-b border-gray-600 p-5">
         <div>
           <div className="flex items-center gap-2">
-            <Coins className="h-5 w-5 text-yellow-500" />
+            <Coins className="h-5 w-5 text-brand-500" />
             <h2 className="font-semibold text-gray-100">Gold lease</h2>
             <span className="pill pill-brand">Earns grams</span>
           </div>
@@ -94,7 +94,7 @@ export default function GoldLeaseManager({ leases }: { leases: GoldLease[] }) {
           <input type="number" inputMode="numeric" step="1" value={values.termMonths} onChange={(e) => set("termMonths", e.target.value)} placeholder="12" className="form-input mt-1.5 w-full" />
         </div>
         <div className="sm:col-span-2 lg:col-span-5 flex justify-end">
-          <button type="submit" disabled={pending} className="yellow-btn px-6">{pending ? "Saving…" : "Add lease"}</button>
+          <button type="submit" disabled={pending} className="btn-brand px-6">{pending ? "Saving…" : "Add lease"}</button>
         </div>
       </form>
 

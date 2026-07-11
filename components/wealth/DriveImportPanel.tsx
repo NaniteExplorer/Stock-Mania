@@ -29,14 +29,14 @@ export default function DriveImportPanel({ status }: { status: DriveImportStatus
     });
 
   return (
-    <section className="cockpit-panel flex flex-col gap-4 p-6">
+    <section className="panel flex flex-col gap-4 p-6">
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="icon-chip"><CloudDownload className="h-5 w-5" /></span>
           <div>
             <h2 className="text-base font-semibold text-gray-100">Drive auto-import</h2>
             <p className="text-xs text-gray-500">
-              Drop purchase PDFs (e.g. <code className="text-yellow-600">stock_zerodha_2026-06.pdf</code>) in the shared folder; they&apos;re parsed into trades on a schedule.
+              Drop purchase PDFs (e.g. <code className="text-brand-600">stock_zerodha_2026-06.pdf</code>) in the shared folder; they&apos;re parsed into trades on a schedule.
             </p>
           </div>
         </div>
@@ -45,7 +45,7 @@ export default function DriveImportPanel({ status }: { status: DriveImportStatus
             {status.configured ? <Check className="h-3 w-3" /> : <X className="h-3 w-3" />}
             {status.configured ? "Configured" : "Not set"}
           </span>
-          <button onClick={runNow} disabled={pending} className="rounded-md border border-yellow-600 bg-yellow-500/10 px-3 py-1.5 text-xs font-semibold text-yellow-400 hover:bg-yellow-500/20 disabled:opacity-50">
+          <button onClick={runNow} disabled={pending} className="rounded-md border border-brand-600 bg-brand-500/10 px-3 py-1.5 text-xs font-semibold text-brand-400 hover:bg-brand-500/20 disabled:opacity-50">
             {pending ? "Running…" : "Run now"}
           </button>
         </div>
@@ -53,9 +53,9 @@ export default function DriveImportPanel({ status }: { status: DriveImportStatus
 
       {!status.configured && (
         <p className="text-xs text-gray-500">
-          Set <code className="text-yellow-600">GOOGLE_SERVICE_ACCOUNT_JSON</code>,{" "}
-          <code className="text-yellow-600">DRIVE_FOLDER_ID</code> and{" "}
-          <code className="text-yellow-600">DRIVE_IMPORT_USER_ID</code>, then share the folder with the service-account email.
+          Set <code className="text-brand-600">GOOGLE_SERVICE_ACCOUNT_JSON</code>,{" "}
+          <code className="text-brand-600">DRIVE_FOLDER_ID</code> and{" "}
+          <code className="text-brand-600">DRIVE_IMPORT_USER_ID</code>, then share the folder with the service-account email.
         </p>
       )}
 

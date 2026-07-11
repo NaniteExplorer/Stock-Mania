@@ -10,6 +10,8 @@ import { goldLeaseService } from "@/features/gold-lease/gold-lease.service";
 import { driveImportService } from "@/features/imports/drive-import.service";
 import { signalService, buildSignalPrompt, parseSignalResponse } from "@/features/signals/signal.service";
 import { aiCategorizeAccount } from "@/features/transactions/ai-categorizer.service";
+import { snapshotService } from "@/features/tracking/snapshot.service";
+import { periodKeyOf } from "@/features/tracking/period";
 import { config } from "@/core/config/env";
 
 type UserForNewsEmail = {
@@ -160,6 +162,62 @@ export const accrueGoldLease = inngest.createFunction(
   },
   async ({ step }) => {
     return step.run("accrue-due", () => goldLeaseService.accrueDue());
+  },
+);
+
+/**
+ * Monthly net-worth snapshot — dispatcher. Runs on the 1st and fans out one
+ * durable event per user to capture the just-ended month. Idempotent: the
+ * per-user event id is keyed by period so a re-fired cron is a no-op.
+ */
+export const captureMonthlySnapshots = inngest.createFunction(
+  {
+    id: "monthly-networth-dispatch",
+    triggers: [{ event: "app/networth.snapshot" }, { cron: "0 3 1 * *" }], // 03:00 UTC, 1st of month
+  },
+  async ({ step }) => {
+    const users = await step.run("get-all-users", getAllUsersForNewsEmail);
+    if (!users || users.length === 0) return { success: false, message: "No users" };
+
+    // Capture the previous full month (the one that just ended yesterday).
+    const { asOf, periodKey } = await step.run("resolve-period", async () => {
+      const now = new Date();
+      const prevMonthEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0, 23, 59, 59));
+      return { asOf: prevMonthEnd.toISOString(), periodKey: periodKeyOf(prevMonthEnd) };
+    });
+
+    const events = (users as { id: string }[])
+      .filter((u) => u.id)
+      .map((u) => ({
+        name: "app/networth.snapshot.user",
+        id: `snap-${u.id}-${periodKey}`,
+        data: { userId: u.id, asOf },
+      }));
+
+    await step.sendEvent("fan-out-snapshots", events);
+    return { success: true, dispatched: events.length, periodKey };
+  },
+);
+
+/**
+ * Monthly net-worth snapshot — worker. Captures ONE user's snapshot for the
+ * given month. The {userId, periodKey} unique index makes this safe to retry.
+ */
+export const captureUserSnapshot = inngest.createFunction(
+  {
+    id: "networth-snapshot-user",
+    triggers: { event: "app/networth.snapshot.user" },
+    concurrency: { limit: 10 },
+    throttle: { limit: 30, period: "1m" },
+    retries: 3,
+  },
+  async ({ event, step }) => {
+    const { userId, asOf } = event.data as { userId: string; asOf: string };
+    if (!userId) return { success: false, reason: "missing-user" };
+    const result = await step.run("capture", () =>
+      snapshotService.capture(userId, { asOf: new Date(asOf), source: "AUTO" }),
+    );
+    return { success: true, userId, ...result };
   },
 );
 

@@ -69,7 +69,7 @@ export default function ProviderCombobox({
           <CommandList>
             <CommandEmpty>
               {query.trim() ? (
-                <button type="button" onClick={() => choose(query.trim())} className="w-full px-2 py-1.5 text-left text-sm text-yellow-400">
+                <button type="button" onClick={() => choose(query.trim())} className="w-full px-2 py-1.5 text-left text-sm text-brand-400">
                   Use “{query.trim()}”
                 </button>
               ) : (
@@ -82,7 +82,7 @@ export default function ProviderCombobox({
                   <ProviderMark providerId={provider.id} className="h-7 w-7" />
                   <span className="flex-1 truncate">{provider.name}</span>
                   <span className="text-xs text-gray-500">{provider.country}</span>
-                  {value === provider.name && <Check className="h-4 w-4 text-yellow-500" />}
+                  {value === provider.name && <Check className="h-4 w-4 text-brand-500" />}
                 </CommandItem>
               ))}
             </CommandGroup>

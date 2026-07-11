@@ -31,6 +31,9 @@ export interface ParsedStatementRow {
   balanceAfter?: number | null;
   currency?: string;
   occurrence?: number;
+  /** Account-level balance snapshot printed outside the transaction table. */
+  statementBalance?: number;
+  statementBalanceDate?: string;
 }
 
 export interface StatementImportResult {

@@ -35,7 +35,7 @@ export default function RefreshPricesButton() {
     <button
       onClick={run}
       disabled={loading}
-      className="inline-flex h-10 items-center gap-2 rounded-xl border border-gray-600 bg-gray-800 px-4 text-sm font-semibold text-gray-300 transition-colors hover:border-yellow-500/50 hover:text-yellow-500 disabled:opacity-50"
+      className="inline-flex h-10 items-center gap-2 rounded-xl border border-gray-600 bg-gray-800 px-4 text-sm font-semibold text-gray-300 transition-colors hover:border-brand-500/50 hover:text-brand-500 disabled:opacity-50"
     >
       <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
       {loading ? "Refreshing…" : "Refresh prices"}

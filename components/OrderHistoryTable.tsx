@@ -6,7 +6,7 @@ import { formatMoney } from "@/lib/utils";
 const STATUS_STYLE: Record<TradeOrder["status"], string> = {
   PLACED: "text-blue-400 bg-blue-500/10",
   COMPLETE: "text-green-400 bg-green-500/10",
-  PENDING: "text-yellow-400 bg-yellow-500/10",
+  PENDING: "text-brand-400 bg-brand-500/10",
   REJECTED: "text-red-400 bg-red-500/10",
   CANCELLED: "text-gray-400 bg-gray-800",
 };
@@ -25,7 +25,7 @@ export default function OrderHistoryTable({ orders }: OrderHistoryTableProps) {
   }
 
   return (
-    <div className="cockpit-table overflow-x-auto">
+    <div className="panel overflow-hidden overflow-x-auto">
       <table className="w-full text-sm">
         <thead className="bg-gray-700/70 text-gray-400">
           <tr>

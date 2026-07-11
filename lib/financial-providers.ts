@@ -19,13 +19,13 @@ export interface FinancialProvider {
 
 export const FINANCIAL_PROVIDERS: FinancialProvider[] = [
   // Indian banks
-  { id: "sbi", name: "State Bank of India", shortName: "SBI", aliases: ["state bank"], kind: "BANK", country: "IN", colors: ["#00A6E2", "#0867A9"], domain: "sbi.co.in" },
-  { id: "hdfc", name: "HDFC Bank", shortName: "HDFC", aliases: ["housing development finance"], kind: "BANK", country: "IN", colors: ["#E31E24", "#004C8F"], domain: "hdfcbank.com" },
-  { id: "axis", name: "Axis Bank", shortName: "AXIS", aliases: ["uti bank"], kind: "BANK", country: "IN", colors: ["#97144D", "#5E1236"], domain: "axisbank.com" },
+  { id: "sbi", name: "State Bank of India", shortName: "SBI", aliases: ["state bank"], kind: "BANK", country: "IN", colors: ["#00A6E2", "#0867A9"], domain: "sbi.co.in", logo: "/assets/providers/sbi.svg" },
+  { id: "hdfc", name: "HDFC Bank", shortName: "HDFC", aliases: ["housing development finance"], kind: "BANK", country: "IN", colors: ["#E31E24", "#004C8F"], domain: "hdfcbank.com", logo: "/assets/providers/hdfc.svg" },
+  { id: "axis", name: "Axis Bank", shortName: "AXIS", aliases: ["uti bank"], kind: "BANK", country: "IN", colors: ["#97144D", "#5E1236"], domain: "axisbank.com", logo: "/assets/providers/axis.svg" },
   { id: "icici", name: "ICICI Bank", shortName: "ICICI", aliases: [], kind: "BANK", country: "IN", colors: ["#F58220", "#A51C30"], domain: "icicibank.com" },
   { id: "kotak", name: "Kotak Mahindra Bank", shortName: "KOTAK", aliases: ["kotak 811"], kind: "BANK", country: "IN", colors: ["#ED1C24", "#123B72"], domain: "kotak.com" },
   { id: "bob", name: "Bank of Baroda", shortName: "BOB", aliases: ["baroda"], kind: "BANK", country: "IN", colors: ["#F26522", "#E64618"], domain: "bankofbaroda.in" },
-  { id: "pnb", name: "Punjab National Bank", shortName: "PNB", aliases: [], kind: "BANK", country: "IN", colors: ["#A20B35", "#F5A623"], domain: "pnbindia.in" },
+  { id: "pnb", name: "Punjab National Bank", shortName: "PNB", aliases: [], kind: "BANK", country: "IN", colors: ["#A20B35", "#F5A623"], domain: "pnbindia.in", logo: "/assets/providers/pnb.svg" },
   { id: "canara", name: "Canara Bank", shortName: "CANARA", aliases: [], kind: "BANK", country: "IN", colors: ["#00AEEF", "#FFC20E"], domain: "canarabank.com" },
   { id: "union-bank", name: "Union Bank of India", shortName: "UNION", aliases: [], kind: "BANK", country: "IN", colors: ["#E31E24", "#00529B"], domain: "unionbankofindia.co.in" },
   { id: "bank-of-india", name: "Bank of India", shortName: "BOI", aliases: [], kind: "BANK", country: "IN", colors: ["#F47920", "#1B3F8B"], domain: "bankofindia.co.in" },
@@ -39,7 +39,7 @@ export const FINANCIAL_PROVIDERS: FinancialProvider[] = [
   { id: "bandhan", name: "Bandhan Bank", shortName: "BANDHAN", aliases: [], kind: "BANK", country: "IN", colors: ["#E4002B", "#8A0019"], domain: "bandhanbank.com" },
   { id: "au-small-finance", name: "AU Small Finance Bank", shortName: "AU", aliases: [], kind: "BANK", country: "IN", colors: ["#F58220", "#5B2A82"], domain: "aubank.in" },
   // Indian wallets / payments banks
-  { id: "jio-payments", name: "Jio Payments Bank", shortName: "JIO", aliases: ["jio payments"], kind: "WALLET", country: "IN", colors: ["#0F3CC9", "#081E72"], domain: "jiopaymentsbank.com" },
+  { id: "jio-payments", name: "Jio Payments Bank", shortName: "JIO", aliases: ["jio payments"], kind: "WALLET", country: "IN", colors: ["#0F3CC9", "#081E72"], domain: "jiopaymentsbank.com", logo: "/assets/providers/jio-payments.svg" },
   { id: "airtel-payments", name: "Airtel Payments Bank", shortName: "AIRTEL", aliases: [], kind: "WALLET", country: "IN", colors: ["#ED1C24", "#A90F17"], domain: "airtel.in" },
   { id: "paytm-payments", name: "Paytm Payments Bank", shortName: "PAYTM", aliases: ["paytm"], kind: "WALLET", country: "IN", colors: ["#00BAF2", "#002E6E"], domain: "paytmbank.com" },
   // Brokers / investment platforms

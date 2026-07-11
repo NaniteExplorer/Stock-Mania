@@ -24,6 +24,7 @@ export interface Account {
   currency: string;
   type: AccountType;
   balance: number;
+  balanceAsOf: Date | null;
   last4: string | null;
   createdAt: Date;
   updatedAt: Date;

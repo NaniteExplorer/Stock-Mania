@@ -10,7 +10,7 @@
  */
 import { logger } from "@/core/logger";
 
-const MAX_PAGES = 40;
+const MAX_PAGES = 250; // multi-year statements can run to dozens of pages
 const Y_TOLERANCE = 3; // points; items within this Y delta belong to one line
 
 export class PdfPasswordError extends Error {

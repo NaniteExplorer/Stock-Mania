@@ -144,7 +144,7 @@ const SignUp = () => {
         <Button
           type="submit"
           disabled={isSubmitting}
-          className="yellow-btn w-full mt-5"
+          className="btn-brand w-full mt-5"
         >
           {isSubmitting ? "Creating account" : "Create secure workspace"}
         </Button>

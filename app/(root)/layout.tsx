@@ -2,16 +2,28 @@ import * as React from "react";
 import Header from "@/components/Header";
 import Sidebar from "@/components/Sidebar";
 import MobileNav from "@/components/MobileNav";
-import { getCurrentSession } from "@/lib/better-auth/auth";
+import {
+  getCurrentSession,
+  AuthUnavailableError,
+} from "@/lib/better-auth/auth";
 import { getNetWorthSummary } from "@/features/networth/networth.actions";
 import { redirect } from "next/navigation";
 import { User } from "better-auth";
 import { connection } from "next/server";
+import ServiceUnavailable from "@/components/ServiceUnavailable";
 
 const Layout = async ({ children }: { children: React.ReactNode }) => {
   await connection();
 
-  const session = await getCurrentSession();
+  let session;
+  try {
+    session = await getCurrentSession();
+  } catch (error) {
+    // DB outage — show a proper status screen instead of pretending the
+    // user is logged out (redirecting to /sign-in would fail there too).
+    if (error instanceof AuthUnavailableError) return <ServiceUnavailable />;
+    throw error;
+  }
 
   if (!session?.user) redirect("/sign-in");
   const user = session.user as User;
@@ -19,7 +31,7 @@ const Layout = async ({ children }: { children: React.ReactNode }) => {
   const summary = await getNetWorthSummary();
 
   return (
-    <div className="cockpit-shell flex min-h-screen text-gray-400">
+    <div className="flex min-h-screen text-gray-400">
       <Sidebar summary={summary} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Header user={user} />

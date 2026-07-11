@@ -59,15 +59,13 @@ async function checkKafka(): Promise<ServiceResult> {
 async function checkMongo(): Promise<ServiceResult> {
   if (!process.env.MONGODB_URI) return { status: "disabled" };
   try {
-    const { default: mongoose } = await import("mongoose");
+    // Reuse the app's cached connection — probing shouldn't open new pools,
+    // and during an outage it fails fast via the shared backoff.
+    const { connectToDatabase } = await import("@/core/db/connection");
     const t0 = Date.now();
-    const conn = await mongoose.createConnection(process.env.MONGODB_URI, {
-      serverSelectionTimeoutMS: 3000,
-      bufferCommands: false,
-    }).asPromise();
-    await conn.db?.command({ ping: 1 });
+    const conn = await connectToDatabase();
+    await conn.connection.db?.command({ ping: 1 });
     const latencyMs = Date.now() - t0;
-    await conn.close();
     return { status: "ok", latencyMs };
   } catch (e) {
     logger.error("MongoDB health check failed", e);

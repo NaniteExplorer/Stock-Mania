@@ -46,7 +46,7 @@ const MarketingHeader = ({ isAuthed }: { isAuthed: boolean }) => {
                 Sign in
               </Link>
             )}
-            <Link href={primaryHref} className="gold-glow-btn !h-10 !px-5">
+            <Link href={primaryHref} className="btn-glow !h-10 !px-5">
               {primaryLabel}
               <ArrowRight className="h-4 w-4" />
             </Link>
@@ -81,7 +81,7 @@ const MarketingHeader = ({ isAuthed }: { isAuthed: boolean }) => {
                   Sign in
                 </Link>
               )}
-              <Link href={primaryHref} className="gold-glow-btn w-full">
+              <Link href={primaryHref} className="btn-glow w-full">
                 {primaryLabel}
               </Link>
             </div>

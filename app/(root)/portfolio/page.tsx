@@ -55,11 +55,11 @@ export default async function PortfolioPage() {
       </div>
 
       {noConnections ? (
-        <div className="cockpit-panel border-dashed p-10 text-center">
+        <div className="panel border-dashed p-10 text-center">
           <p className="mb-4 text-gray-400">Connect a broker to see your portfolio.</p>
           <Link
             href="/settings"
-            className="inline-block rounded-lg border border-yellow-600 px-5 py-2 text-sm font-medium text-yellow-500 transition-colors hover:bg-yellow-500/10"
+            className="inline-block rounded-lg border border-brand-600 px-5 py-2 text-sm font-medium text-brand-500 transition-colors hover:bg-brand-500/10"
           >
             Go to Settings →
           </Link>

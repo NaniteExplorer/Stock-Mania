@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const INVESTMENT_KINDS = ["STOCK", "ETF", "MUTUAL_FUND", "BOND", "CRYPTO", "DIGITAL_GOLD"] as const;
+const INVESTMENT_KINDS = ["STOCK", "ETF", "MUTUAL_FUND", "BOND", "CRYPTO", "DIGITAL_GOLD", "COMMODITY"] as const;
 
 export const createInvestmentSchema = z.object({
   name: z.string().trim().min(1, "Name is required.").max(120),

@@ -18,6 +18,7 @@ type Row = {
   currency?: string;
   type: AccountEntity["type"];
   balance: number;
+  balanceAsOf?: Date | null;
   last4: string | null;
   createdAt: Date;
   updatedAt: Date;
@@ -32,6 +33,7 @@ const toEntity = (row: Row): AccountEntity => ({
   currency: row.currency ?? "INR",
   type: row.type,
   balance: row.balance,
+  balanceAsOf: row.balanceAsOf ?? null,
   last4: row.last4 ?? null,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
@@ -39,6 +41,7 @@ const toEntity = (row: Row): AccountEntity => ({
 
 export interface AccountRepository {
   listByUser(userId: string): Promise<AccountEntity[]>;
+  byId(id: string, userId: string): Promise<AccountEntity | null>;
   create(userId: string, input: CreateAccountInput): Promise<AccountEntity>;
   update(id: string, userId: string, input: UpdateAccountInput): Promise<void>;
   remove(id: string, userId: string): Promise<void>;
@@ -49,6 +52,12 @@ class MongoAccountRepository implements AccountRepository {
     await connectToDatabase();
     const rows = await Account.find({ userId }).sort({ createdAt: -1 }).lean<Row[]>();
     return rows.map(toEntity);
+  }
+
+  async byId(id: string, userId: string): Promise<AccountEntity | null> {
+    await connectToDatabase();
+    const row = await Account.findOne({ _id: id, userId }).lean<Row | null>();
+    return row ? toEntity(row) : null;
   }
 
   async create(userId: string, input: CreateAccountInput): Promise<AccountEntity> {

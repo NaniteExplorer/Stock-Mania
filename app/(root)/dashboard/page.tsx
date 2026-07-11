@@ -1,8 +1,11 @@
 import Link from "next/link";
-import Allocation3D from "@/components/wealth/Allocation3D";
+import AllocationDonut from "@/components/wealth/AllocationDonut";
+import NetWorthTimeline from "@/components/wealth/NetWorthTimeline";
 import { getNetWorthOverview } from "@/features/networth/networth.actions";
 import { getMyAccounts } from "@/features/accounts/account.actions";
 import { getMyInvestments } from "@/features/investments/investment.actions";
+import { getMySnapshotTimeline, getLatestSnapshot } from "@/features/tracking/snapshot.actions";
+import { getPortfolioReturns } from "@/features/returns/returns.actions";
 import { ACCOUNT_TYPE_LABELS } from "@/features/accounts/account.types";
 import {
   formatINR,
@@ -23,9 +26,8 @@ import {
   Plus,
   Sparkles,
   ShieldCheck,
-  Clock3,
   CircleGauge,
-  Target,
+  TrendingUp,
 } from "lucide-react";
 
 const CLASS_CARDS = [
@@ -44,11 +46,15 @@ const ONBOARD = [
 ];
 
 export default async function DashboardPage() {
-  const [overview, accounts, investments] = await Promise.all([
+  const [overview, accounts, investments, timeline, latestSnapshot, returns] = await Promise.all([
     getNetWorthOverview(),
     getMyAccounts(),
     getMyInvestments(),
+    getMySnapshotTimeline(),
+    getLatestSnapshot(),
+    getPortfolioReturns(),
   ]);
+  const portfolioXirr = returns.xirr;
 
   const positive = overview.dayChange >= 0;
   const liquidCashPercent = overview.totalAssets > 0 ? (overview.totals.accounts / overview.totalAssets) * 100 : 0;
@@ -60,6 +66,12 @@ export default async function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {overview.degraded && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+          We couldn&apos;t load your latest figures — the numbers below may be
+          incomplete. Refresh in a moment.
+        </div>
+      )}
       {/* Page header */}
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
@@ -68,7 +80,7 @@ export default async function DashboardPage() {
         </div>
         <Link
           href="/accounts"
-          className="inline-flex h-10 items-center gap-2 rounded-xl bg-yellow-500 px-4 text-sm font-semibold text-white transition-colors hover:brightness-110"
+          className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-500 px-4 text-sm font-semibold text-white transition-colors hover:brightness-110"
         >
           <Plus className="h-4 w-4" /> Add holding
         </Link>
@@ -76,7 +88,7 @@ export default async function DashboardPage() {
 
       {/* Hero + allocation */}
       <section className="grid gap-5 xl:grid-cols-[1.25fr_1fr]">
-        <div className="networth-hero cockpit-panel">
+        <div className="networth-hero panel">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <p className="text-sm font-medium text-gray-500">Total net worth</p>
@@ -148,20 +160,27 @@ export default async function DashboardPage() {
           </div>
         </div>
 
-        <div className="cockpit-panel p-6">
+        <div className="panel p-6">
           <span className="section-kicker">Wealth map</span>
-          <h2 className="mt-1 text-base font-semibold text-gray-100">Interactive allocation</h2>
+          <h2 className="mt-1 text-base font-semibold text-gray-100">Allocation</h2>
           <p className="mb-5 text-sm text-gray-500">Select a segment to inspect its source.</p>
           {overview.allocation.length > 0 ? (
-            <Allocation3D
+            <AllocationDonut
               slices={overview.allocation}
               centerLabel="Net worth"
               centerValue={formatINRCompact(overview.netWorth)}
+              links={{
+                accounts: "/accounts",
+                investments: "/investments",
+                brokerage: "/portfolio",
+                esops: "/esops",
+                assets: "/assets",
+              }}
             />
           ) : (
             <div className="flex h-44 flex-col items-center justify-center rounded-xl border border-dashed border-gray-600 text-center">
               <p className="text-sm text-gray-500">No holdings yet.</p>
-              <Link href="/accounts" className="mt-2 text-sm font-semibold text-yellow-500 hover:underline">
+              <Link href="/accounts" className="mt-2 text-sm font-semibold text-brand-500 hover:underline">
                 Add your first one →
               </Link>
             </div>
@@ -226,7 +245,7 @@ export default async function DashboardPage() {
         <div className="panel p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-base font-semibold text-gray-100">Accounts</h2>
-            <Link href="/accounts" className="text-sm font-medium text-yellow-500 hover:underline">
+            <Link href="/accounts" className="text-sm font-medium text-brand-500 hover:underline">
               Manage
             </Link>
           </div>
@@ -265,7 +284,7 @@ export default async function DashboardPage() {
         <div className="panel p-5">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="text-base font-semibold text-gray-100">Top movers</h2>
-            <Link href="/investments" className="text-sm font-medium text-yellow-500 hover:underline">
+            <Link href="/investments" className="text-sm font-medium text-brand-500 hover:underline">
               View all
             </Link>
           </div>
@@ -304,36 +323,48 @@ export default async function DashboardPage() {
         </div>
       </section>
 
-      <section className="cockpit-panel p-5 md:p-6">
+      <section className="panel p-5 md:p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <span className="section-kicker">Financial dynamics</span>
             <h2 className="mt-1 text-lg font-semibold text-gray-100">How your wealth is moving</h2>
-            <p className="mt-1 text-sm text-gray-500">Movement attribution begins as dated activity is recorded.</p>
+            <p className="mt-1 text-sm text-gray-500">
+              {latestSnapshot
+                ? `Net worth over time · attribution for ${latestSnapshot.periodKey}`
+                : "Movement attribution begins as snapshots are recorded."}
+            </p>
           </div>
-          <span className="data-status">Current values verified</span>
+          <Link href="/history" className="data-status hover:text-brand-500">Manage history →</Link>
         </div>
         <div className="mt-6 grid min-h-44 gap-4 lg:grid-cols-[1.6fr_1fr]">
           <div className="relative overflow-hidden rounded-xl border border-gray-600 bg-gray-900/45 p-5">
-            <div className="absolute inset-x-5 bottom-9 top-6 opacity-60 [background:repeating-linear-gradient(to_bottom,transparent,transparent_31px,var(--border)_32px)]" />
-            <div className="relative flex h-full flex-col items-center justify-center text-center">
-              <Clock3 className="h-6 w-6 text-yellow-500" />
-              <p className="mt-3 text-sm font-semibold text-gray-200">Your timeline starts with the next snapshot</p>
-              <p className="mt-1 max-w-md text-xs leading-5 text-gray-500">Future dated changes will separate contributions, market movement and debt reduction. No synthetic history is shown.</p>
-            </div>
+            <NetWorthTimeline points={timeline} />
           </div>
           <div className="grid grid-cols-2 gap-3">
-            {['Contributions', 'Market return', 'Income', 'Debt reduced'].map((label) => (
-              <div key={label} className="stat-tile"><p className="metric-label">{label}</p><p className="mt-3 text-xl font-bold text-gray-300">â€”</p><p className="mt-1 text-xs text-gray-500">Awaiting history</p></div>
+            {[
+              { label: "Contributions", value: latestSnapshot?.contributions, positive: true },
+              { label: "Market return", value: latestSnapshot?.marketMovement, signed: true },
+              { label: "Debt reduced", value: latestSnapshot?.debtReduction, signed: true },
+              { label: "Money out", value: latestSnapshot?.withdrawals, positive: false },
+            ].map(({ label, value, signed }) => (
+              <div key={label} className="stat-tile">
+                <p className="metric-label">{label}</p>
+                <p className={`mt-3 text-xl font-bold tnum ${
+                  value == null ? "text-gray-300" : signed ? (value >= 0 ? "text-green-500" : "text-red-500") : "text-gray-100"
+                }`}>
+                  {value == null ? "—" : signed ? formatSignedINRCompact(value) : formatINRCompact(value)}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">{latestSnapshot ? "vs previous month" : "Awaiting history"}</p>
+              </div>
             ))}
           </div>
         </div>
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
-        <div className="cockpit-panel p-5"><CircleGauge className="h-5 w-5 text-blue-500" /><p className="metric-label mt-4">Liquid position</p><p className="mt-2 text-2xl font-bold text-gray-100 tnum">{formatINRCompact(overview.totals.accounts)}</p><p className="mt-1 text-xs text-gray-500">{liquidCashPercent.toFixed(1)}% of assets in cash and accounts</p></div>
-        <div className="cockpit-panel p-5"><ShieldCheck className="h-5 w-5 text-green-500" /><p className="metric-label mt-4">Debt health</p><p className={`mt-2 text-2xl font-bold tnum ${debtRatio > 50 ? "text-red-500" : "text-gray-100"}`}>{debtRatio.toFixed(1)}%</p><p className="mt-1 text-xs text-gray-500">Liabilities as a share of total assets</p></div>
-        <div className="cockpit-panel p-5"><Target className="h-5 w-5 text-purple-500" /><p className="metric-label mt-4">Goals</p><p className="mt-2 text-2xl font-bold text-gray-100">Planning next</p><p className="mt-1 text-xs text-gray-500">Goal targets and probability ranges are on the roadmap</p></div>
+        <div className="panel p-5"><CircleGauge className="h-5 w-5 text-blue-500" /><p className="metric-label mt-4">Liquid position</p><p className="mt-2 text-2xl font-bold text-gray-100 tnum">{formatINRCompact(overview.totals.accounts)}</p><p className="mt-1 text-xs text-gray-500">{liquidCashPercent.toFixed(1)}% of assets in cash and accounts</p></div>
+        <div className="panel p-5"><ShieldCheck className="h-5 w-5 text-green-500" /><p className="metric-label mt-4">Debt health</p><p className={`mt-2 text-2xl font-bold tnum ${debtRatio > 50 ? "text-red-500" : "text-gray-100"}`}>{debtRatio.toFixed(1)}%</p><p className="mt-1 text-xs text-gray-500">Liabilities as a share of total assets</p></div>
+        <div className="panel p-5"><TrendingUp className="h-5 w-5 text-purple-500" /><p className="metric-label mt-4">Portfolio XIRR</p><p className={`mt-2 text-2xl font-bold tnum ${portfolioXirr == null ? "text-gray-100" : portfolioXirr >= 0 ? "text-green-500" : "text-red-500"}`}>{portfolioXirr == null ? "—" : formatSignedPercent(portfolioXirr * 100)}</p><p className="mt-1 text-xs text-gray-500">Annualized money-weighted return across your holdings</p></div>
       </section>
     </div>
   );
@@ -343,7 +374,7 @@ function EmptyRow({ href, label }: { href: string; label: string }) {
   return (
     <Link
       href={href}
-      className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-gray-600 py-8 text-sm font-medium text-gray-500 transition-colors hover:border-yellow-500/40 hover:text-yellow-500"
+      className="flex items-center justify-center gap-2 rounded-xl border border-dashed border-gray-600 py-8 text-sm font-medium text-gray-500 transition-colors hover:border-brand-500/40 hover:text-brand-500"
     >
       <Plus className="h-4 w-4" /> {label}
     </Link>

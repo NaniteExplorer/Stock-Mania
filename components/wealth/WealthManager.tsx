@@ -159,7 +159,7 @@ export default function WealthManager<T extends { id: string }>({
         </button>
         <button
           onClick={openCreate}
-          className="inline-flex h-10 items-center gap-2 rounded-xl bg-yellow-500 px-4 text-sm font-semibold text-white transition-colors hover:brightness-110"
+          className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-500 px-4 text-sm font-semibold text-white transition-colors hover:brightness-110"
         >
           <Plus className="h-4 w-4" /> {addLabel}
         </button>
@@ -171,7 +171,7 @@ export default function WealthManager<T extends { id: string }>({
           <p className="max-w-sm text-sm text-gray-500">{emptyDescription}</p>
           <button
             onClick={openCreate}
-            className="mt-3 inline-flex h-10 items-center gap-2 rounded-xl bg-yellow-500 px-4 text-sm font-semibold text-white transition-colors hover:brightness-110"
+            className="mt-3 inline-flex h-10 items-center gap-2 rounded-xl bg-brand-500 px-4 text-sm font-semibold text-white transition-colors hover:brightness-110"
           >
             <Plus className="h-4 w-4" /> {addLabel}
           </button>
@@ -179,12 +179,12 @@ export default function WealthManager<T extends { id: string }>({
       ) : (
         <ul className="flex flex-col gap-3">
           {visibleItems.map((item) => (
-            <li key={item.id} className="cockpit-panel flex items-center gap-3 p-4">
+            <li key={item.id} className="panel flex items-center gap-3 p-4">
               <div className="min-w-0 flex-1">{renderRow(item)}</div>
               <div className="flex shrink-0 items-center gap-1">
                 <button
                   onClick={() => openEdit(item)}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-600 bg-gray-700/40 text-gray-400 transition-colors hover:text-yellow-500"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-600 bg-gray-700/40 text-gray-400 transition-colors hover:text-brand-500"
                   aria-label="Edit"
                 >
                   <Pencil className="h-4 w-4" />
@@ -269,7 +269,7 @@ export default function WealthManager<T extends { id: string }>({
               >
                 Cancel
               </button>
-              <button type="submit" disabled={submitting} className="yellow-btn px-6">
+              <button type="submit" disabled={submitting} className="btn-brand px-6">
                 {submitting ? "Saving…" : editingId ? "Save changes" : "Add"}
               </button>
             </div>

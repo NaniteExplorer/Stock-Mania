@@ -1,7 +1,7 @@
 import Link from "next/link";
 import HeroVisual from "@/components/landing/HeroVisual";
 import TradingViewWidget from "@/components/TradingViewWidgets";
-import { getCurrentSession } from "@/lib/better-auth/auth";
+import { getOptionalSession } from "@/lib/better-auth/auth";
 import {
   TICKER_TAPE_WIDGET_CONFIG,
   MARKET_OVERVIEW_WIDGET_CONFIG,
@@ -65,7 +65,7 @@ const assetClasses = [
 ];
 
 const Landing = async () => {
-  const session = await getCurrentSession();
+  const session = await getOptionalSession();
   const isAuthed = Boolean(session?.user);
   const primaryHref = isAuthed ? "/dashboard" : "/sign-up";
   const primaryLabel = isAuthed ? "Open dashboard" : "Start for free";
@@ -102,7 +102,7 @@ const Landing = async () => {
             </p>
 
             <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <Link href={primaryHref} className="gold-glow-btn">
+              <Link href={primaryHref} className="btn-glow">
                 {primaryLabel}
                 <ArrowRight className="h-4 w-4" />
               </Link>
@@ -184,7 +184,7 @@ const Landing = async () => {
             </div>
             <div className="panel p-4">
               <div className="mb-3 flex items-center gap-2">
-                <Newspaper className="h-4 w-4 text-yellow-500" />
+                <Newspaper className="h-4 w-4 text-brand-500" />
                 <h3 className="text-base font-semibold text-gray-100">Top stories</h3>
               </div>
               <TradingViewWidget
@@ -212,9 +212,9 @@ const Landing = async () => {
           {wealthFeatures.map(({ icon: Icon, title, body }) => (
             <div
               key={title}
-              className="glass-card group p-6 transition-transform duration-300 hover:-translate-y-1"
+              className="panel group p-6 transition-transform duration-300 hover:-translate-y-1"
             >
-              <span className="icon-chip h-12 w-12 transition-colors group-hover:border-yellow-500/40">
+              <span className="icon-chip h-12 w-12 transition-colors group-hover:border-brand-500/40">
                 <Icon className="h-5 w-5" />
               </span>
               <h3 className="mt-5 text-lg font-semibold text-gray-100">{title}</h3>
@@ -226,7 +226,7 @@ const Landing = async () => {
 
       {/* ───────────── Asset classes ───────────── */}
       <section id="assets" className="container scroll-mt-24 pb-8">
-        <div className="glass-card overflow-hidden">
+        <div className="panel overflow-hidden">
           <div className="grid gap-10 p-8 md:p-12 lg:grid-cols-[1fr_1fr] lg:items-center">
             <div>
               <span className="eyebrow">Complete wealth</span>
@@ -238,7 +238,7 @@ const Landing = async () => {
               </p>
               <Link
                 href={primaryHref}
-                className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-yellow-500 hover:brightness-110"
+                className="mt-8 inline-flex items-center gap-2 text-sm font-semibold text-brand-500 hover:brightness-110"
               >
                 {isAuthed ? "Go to dashboard" : "Start tracking free"}
                 <ArrowRight className="h-4 w-4" />
@@ -264,7 +264,7 @@ const Landing = async () => {
 
       {/* ───────────── Intelligence + Security ───────────── */}
       <section className="container grid scroll-mt-24 gap-5 py-8 md:grid-cols-2">
-        <div id="intelligence" className="glass-card scroll-mt-24 p-8">
+        <div id="intelligence" className="panel scroll-mt-24 p-8">
           <span className="icon-chip h-12 w-12 text-green-500">
             <LineChart className="h-6 w-6" />
           </span>
@@ -276,7 +276,7 @@ const Landing = async () => {
             glance. Every surface is informational — you stay in control of the decision.
           </p>
         </div>
-        <div id="security" className="glass-card scroll-mt-24 p-8">
+        <div id="security" className="panel scroll-mt-24 p-8">
           <span className="icon-chip h-12 w-12 text-blue-500">
             <Lock className="h-6 w-6" />
           </span>
@@ -292,7 +292,7 @@ const Landing = async () => {
 
       {/* ───────────── CTA ───────────── */}
       <section className="container py-16 md:py-24">
-        <div className="glass-card relative overflow-hidden p-10 text-center md:p-16">
+        <div className="panel relative overflow-hidden p-10 text-center md:p-16">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(40rem_20rem_at_50%_-20%,rgba(124,108,255,0.20),transparent_60%)]" />
           <div className="relative">
             <span className="icon-chip mx-auto h-12 w-12">
@@ -306,7 +306,7 @@ const Landing = async () => {
               and markets into one elegant workspace.
             </p>
             <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <Link href={primaryHref} className="gold-glow-btn">
+              <Link href={primaryHref} className="btn-glow">
                 {primaryLabel}
                 <ArrowRight className="h-4 w-4" />
               </Link>

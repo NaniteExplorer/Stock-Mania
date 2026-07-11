@@ -14,7 +14,7 @@ export default function SpendSummary({ summary, currency }: { summary: Summary; 
   return (
     <section className="panel p-5">
       <div className="flex items-center gap-2">
-        <PieChart className="h-5 w-5 text-yellow-500" />
+        <PieChart className="h-5 w-5 text-brand-500" />
         <h2 className="font-semibold text-gray-100">Spending · last 90 days</h2>
         <span className="pill ml-auto">Transfers excluded</span>
       </div>
@@ -34,7 +34,7 @@ export default function SpendSummary({ summary, currency }: { summary: Summary; 
             <div key={slice.category} className="flex items-center gap-3">
               <span className="w-36 shrink-0 truncate text-xs text-gray-400">{slice.label}</span>
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-gray-700">
-                <div className="h-full rounded-full bg-gradient-to-r from-yellow-500 to-amber-400" style={{ width: `${(slice.total / max) * 100}%` }} />
+                <div className="h-full rounded-full bg-gradient-to-r from-brand-500 to-amber-400" style={{ width: `${(slice.total / max) * 100}%` }} />
               </div>
               <span className="w-24 shrink-0 text-right text-xs font-semibold text-gray-200 tnum">{formatCurrency(slice.total, currency, false)}</span>
             </div>

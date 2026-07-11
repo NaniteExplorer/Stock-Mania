@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { formatINRCompact } from "@/lib/utils";
 
 export interface DonutSlice {
@@ -15,11 +16,14 @@ const AllocationDonut = ({
   centerLabel,
   centerValue,
   size = 188,
+  links,
 }: {
   slices: DonutSlice[];
   centerLabel: string;
   centerValue: string;
   size?: number;
+  /** Optional slice-key → route map; legend rows become links when provided. */
+  links?: Record<string, string>;
 }) => {
   let acc = 0;
   const stops = slices
@@ -53,26 +57,45 @@ const AllocationDonut = ({
         </div>
       </div>
 
-      <ul className="flex w-full flex-col gap-2.5">
-        {slices.map((s) => (
-          <li key={s.key} className="flex items-center justify-between gap-3">
-            <span className="flex min-w-0 items-center gap-2.5">
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ background: s.color }}
-              />
-              <span className="truncate text-sm text-gray-400">{s.label}</span>
-            </span>
-            <span className="flex items-center gap-2 whitespace-nowrap">
-              <span className="text-sm font-semibold text-gray-100 tnum">
-                {formatINRCompact(s.value)}
+      <ul className="flex w-full flex-col gap-1">
+        {slices.map((s) => {
+          const href = links?.[s.key];
+          const row = (
+            <>
+              <span className="flex min-w-0 items-center gap-2.5">
+                <span
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
+                  style={{ background: s.color }}
+                />
+                <span className="truncate text-sm text-gray-400">{s.label}</span>
               </span>
-              <span className="w-11 text-right text-xs text-gray-500 tnum">
-                {s.percent.toFixed(1)}%
+              <span className="flex items-center gap-2 whitespace-nowrap">
+                <span className="text-sm font-semibold text-gray-100 tnum">
+                  {formatINRCompact(s.value)}
+                </span>
+                <span className="w-11 text-right text-xs text-gray-500 tnum">
+                  {s.percent.toFixed(1)}%
+                </span>
               </span>
-            </span>
-          </li>
-        ))}
+            </>
+          );
+          return (
+            <li key={s.key}>
+              {href ? (
+                <Link
+                  href={href}
+                  className="flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 transition hover:bg-gray-700/40"
+                >
+                  {row}
+                </Link>
+              ) : (
+                <span className="flex items-center justify-between gap-3 px-2 py-1.5">
+                  {row}
+                </span>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

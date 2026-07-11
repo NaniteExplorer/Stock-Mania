@@ -27,7 +27,7 @@ const Sidebar = ({ summary }: { summary?: SidebarSummary }) => {
       {summary && (
         <Link
           href="/dashboard"
-          className="mt-5 block rounded-2xl border border-gray-600 bg-gray-700/50 p-4 transition-colors hover:border-yellow-500/40"
+          className="mt-5 block rounded-2xl border border-gray-600 bg-gray-700/50 p-4 transition-colors hover:border-brand-500/40"
         >
           <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
             Net worth

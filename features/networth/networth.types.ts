@@ -29,6 +29,8 @@ export interface NetWorthOverview {
     liabilities: number;
   };
   hasData: boolean;
+  /** True when totals could not be computed (infrastructure error) — render "data unavailable", not ₹0. */
+  degraded?: boolean;
 }
 
 export interface NetWorthSummary {

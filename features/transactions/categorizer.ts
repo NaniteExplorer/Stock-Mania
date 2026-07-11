@@ -25,22 +25,60 @@ interface CategoryRule {
   match(haystack: string, input: CategorizerInput, ctx: CategorizerContext): TransactionCategory | null;
 }
 
-const has = (haystack: string, ...needles: string[]) => needles.some((n) => haystack.includes(n));
+/**
+ * Bank narrations are identifiers rather than prose: separators, reference
+ * numbers and repeated whitespace vary between institutions. Normalising them
+ * before matching is the first (merchant-cleansing) stage used by transaction
+ * enrichment pipelines and makes rules portable across statement formats.
+ */
+export const normalizeNarration = (value: string): string => value
+  .normalize("NFKD")
+  .toLowerCase()
+  .replace(/\b(?:utr|rrn|ref(?:erence)?|txn|transaction)\s*(?:no|id)?\s*[:#-]?\s*[a-z0-9-]{6,}\b/g, " ")
+  .replace(/[^a-z0-9]+/g, " ")
+  .replace(/\s+/g, " ")
+  .trim();
 
-// Merchant / keyword map, evaluated after the structural rules below.
+const has = (haystack: string, ...needles: string[]) => needles.some((needle) => {
+  const normalized = normalizeNarration(needle);
+  if (!normalized) return false;
+  // Short tokens are matched as complete narration tokens. Longer markers may
+  // intentionally be stems ("electr", "parkin") used across bank variants.
+  return normalized.length <= 4
+    ? (` ${haystack} `).includes(` ${normalized} `)
+    : haystack.includes(normalized);
+});
+
+// Investment platforms / instruments — a debit here is money moving into savings
+// or the markets, not spend. Checked before generic transfer/keyword rules.
+const INVESTMENT_MARKERS = [
+  "groww", "indstocks", "ind stocks", "indmoney", "ind money", "zerodha", "upstox", "kite",
+  "coindcx", "coin dcx", "safegold", "safe gold", "iccl", "icicl", "nextbillion", "finzoom",
+  "nsdl", "cdsl", "mutual fund", "sip", "elss", "nps", "ppf", "ippf", "axisppf", "epf",
+  "smallcase", "paytm money", "kuvera", "etmoney", "et money", "mbb-rd", "mbb rd", "recurring dep", "-rd/",
+];
+
+// Credit-card bill payments / CRED / bill-desk — settling a card is not fresh
+// spend (the spend was already on the card), so treat as a transfer.
+const CARD_PAYMENT_MARKERS = [
+  "creditcard payment", "credit card payment", "cred club", "cred store", "dreamplug",
+  "sbi card", "bill desk", "billdesk", "cc payment", "card bill", "credit card(bill",
+];
+
+// Merchant / keyword map, evaluated after the structural rules below. Includes
+// the short "purpose" tokens Indian UPI narrations carry (e.g. .../vegeta/...).
 const KEYWORD_MAP: [TransactionCategory, string[]][] = [
-  ["FOOD", ["swiggy", "zomato", "dominos", "mcdonald", "starbucks", "kfc", "restaurant", "cafe", "eatery", "food"]],
-  ["GROCERIES", ["bigbasket", "blinkit", "zepto", "grofers", "dmart", "reliance fresh", "supermarket", "kirana", "grocery"]],
-  ["TRANSPORT", ["uber", "ola", "rapido", "irctc", "indian oil", "hpcl", "bharat petroleum", "fuel", "petrol", "metro", "fastag", "toll"]],
-  ["UTILITIES", ["electricity", "bescom", "water bill", "gas bill", "broadband", "airtel", "jio", "vodafone", "vi ", "act fibernet", "recharge", "dth"]],
-  ["RENT", ["rent", "nobroker", "landlord", "lease"]],
-  ["SHOPPING", ["amazon", "flipkart", "myntra", "ajio", "nykaa", "meesho", "tatacliq", "mall", "store"]],
-  ["ENTERTAINMENT", ["netflix", "spotify", "hotstar", "prime video", "bookmyshow", "pvr", "inox", "youtube premium", "disney"]],
-  ["HEALTH", ["pharmacy", "apollo", "1mg", "pharmeasy", "hospital", "clinic", "diagnostic", "medical", "practo"]],
-  ["EDUCATION", ["udemy", "coursera", "unacademy", "byju", "school fee", "college", "tuition", "course"]],
-  ["INVESTMENT", ["zerodha", "groww", "indmoney", "ind money", "upstox", "mutual fund", "sip", "nps", "ppf", "fd ", "rd ", "elss"]],
-  ["FEES_CHARGES", ["charge", "fee", "gst", "penalty", "interest debit", "annual maintenance", "amc", "convenience fee"]],
-  ["INCOME", ["salary", "interest credit", "dividend", "cashback", "refund", "reversal"]],
+  ["GROCERIES", ["bigbasket", "blinkit", "zepto", "grofers", "dmart", "reliance fresh", "supermarket", "kirana", "grocery", "grocer", "vegeta", "vegetable", "tomato", "onion", "potato", "ginger", "adrak", "coriand", "corian", "cabbag", "capcic", "banana", "guava", "fruit", "atta", "sugar", "dhaniy", "moong", "paneer", "butter", "milk", "eggs", "egg ", "meat", "prawn", "fish"]],
+  ["FOOD", ["swiggy", "zomato", "dominos", "mcdonald", "starbucks", "kfc", "restaurant", "cafe", "eatery", "hotel", "bakery", "sweets", "sweet", "mishti", "dosa", "idli", "biryan", "biriyani", "snack", "chai", "tea ", "coffee", "mocha", "cold d", "cold m", "cold c", "colddr", "gupch", "chaat", "chast", "cake", "pastri", "pastry", "juice", "guguni", "chicke", "chicken", "mutton", "lunch", "dinner", "breakf", "break ", "pizza", "burger", "waffle", "browni", "khaja", "bara", "bhoga", "kurkur", "peanut", "thumbs", "pepsi", "soda", "drink", "water", "mineral", "cold m", "dahi", "guguni", "guchu", "snacks", "food"]],
+  ["TRANSPORT", ["uber", "ola", "rapido", "irctc", "indian oil", "hpcl", "bharat petroleum", "bpbhubaneswar", "bp ", "fuel", "petrol", "diesel", "metro", "fastag", "toll", "auto", "bus fa", "bus ti", "bike r", "bike p", "bike t", "bike w", "car fa", "car re", "scooty", "activa", "cab", "taxi", "parkin", "railway", "railways", "train", "e ticket", "osrtc", "seat f", "service station"]],
+  ["UTILITIES", ["electricity", "electr", "tpcodl", "bescom", "water bill", "gas bill", "broadband", "airtel", "jio recharge", "jio ", "vodafone", "vi ", "act fibernet", "recharge", "dth", "postpaid", "prepaid", "state tax"]],
+  ["RENT", ["rent", "nobroker", "landlord", "lease", "floor", "pg rent"]],
+  ["SHOPPING", ["amazon", "flipkart", "myntra", "ajio", "nykaa", "nyka", "meesho", "tatacliq", "zudio", "mall", "store", "cashify", "watch", "cosmetic", "cousmetic", "tooth", "slipper", "umbrella", "blanke", "cover", "camera", "speake", "mobile", "oppo", "print", "xerox", "statio", "notebo", "calend", "fashnear", "cred store"]],
+  ["ENTERTAINMENT", ["netflix", "spotify", "hotstar", "prime video", "bookmyshow", "pvr", "inox", "youtube premium", "disney", "horror", "movie", "resort", "retreat"]],
+  ["HEALTH", ["pharmacy", "apollo", "1mg", "pharmeasy", "hospital", "clinic", "diagnostic", "medical", "practo", "zandu", "vicks", "tablet", "medicine", "drug", "motion", "sabri"]],
+  ["EDUCATION", ["udemy", "coursera", "unacademy", "byju", "school fee", "college", "tuition", "course", "kiit"]],
+  ["FEES_CHARGES", ["charge", " fee", "gst", "penalty", "interest debit", "annual maintenance", "amc", "convenience fee", "mandate"]],
+  ["INCOME", ["salary", "interest credit", "int.pd", "int pd", "dividend", "cashback", "refund", "reversal", "food claim", "claim"]],
 ];
 
 const rules: CategoryRule[] = [
@@ -50,19 +88,47 @@ const rules: CategoryRule[] = [
     name: "self-transfer",
     match(haystack, _input, ctx) {
       const payees = ctx.selfPayees.map((p) => p.trim().toLowerCase()).filter(Boolean);
-      return payees.some((p) => p.length >= 3 && haystack.includes(p)) ? "SELF_TRANSFER" : null;
+      if (payees.some((p) => p.length >= 3 && haystack.includes(p))) return "SELF_TRANSFER";
+      // Common "moving my own money" markers in the narration.
+      return has(haystack, "/self t", "self transfer", "self loa", "/self ", "monthly self", "toward self")
+        ? "SELF_TRANSFER"
+        : null;
     },
   },
-  // 2. Explicit inter-account transfers (NEFT/RTGS/IMPS / "fund transfer").
+  // 2. Investments / savings vehicles (before transfer, since some arrive via NEFT/IMPS/UPI).
+  {
+    name: "investment",
+    match(haystack, input) {
+      if (input.direction !== "DEBIT") return null;
+      return has(haystack, ...INVESTMENT_MARKERS) ? "INVESTMENT" : null;
+    },
+  },
+  // 3. Credit-card bill settlement — a transfer, not new spend.
+  {
+    name: "card-payment",
+    match(haystack) {
+      return has(haystack, ...CARD_PAYMENT_MARKERS) ? "TRANSFER" : null;
+    },
+  },
+  // 4. Explicit transfers. NEFT/RTGS/IMPS are payment rails, not transaction
+  // intent, so the rail alone must never turn rent, salary or a purchase into a
+  // transfer. Require language that actually describes an account movement.
   {
     name: "transfer-mode",
     match(haystack) {
-      return has(haystack, "neft", "rtgs", "imps", "fund transfer", "fund trf", "self transfer", "a/c transfer", "account transfer")
+      return has(haystack, "fund transfer", "fund trf", "a/c transfer", "account transfer", "inter account", "own account", "trfr to", "trf to r")
         ? "TRANSFER"
         : null;
     },
   },
-  // 3. Keyword/merchant map.
+  // 5. Cash withdrawal at ATM — real outflow, bucket as miscellaneous.
+  {
+    name: "atm-cash",
+    match(haystack) {
+      return has(haystack, "atm-cash", "atm cash", "cash-axis", "cash/", "cwdr") ? "MISCELLANEOUS" : null;
+    },
+  },
+  // 6. Keyword/merchant map (groceries before food so "vegeta" wins over "food").
   {
     name: "keyword",
     match(haystack, input) {
@@ -78,7 +144,7 @@ const rules: CategoryRule[] = [
 
 export class TransactionCategorizer {
   categorize(input: CategorizerInput, ctx: CategorizerContext): TransactionCategory | null {
-    const haystack = `${input.description} ${input.reference ?? ""}`.toLowerCase();
+    const haystack = normalizeNarration(`${input.description} ${input.reference ?? ""}`);
     for (const rule of rules) {
       const result = rule.match(haystack, input, ctx);
       if (result) return result;
