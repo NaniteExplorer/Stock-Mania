@@ -29,7 +29,7 @@ const TradeSchema = new Schema<TradeDoc>(
     kind: {
       type: String,
       required: true,
-      enum: ["STOCK", "ETF", "MUTUAL_FUND", "BOND", "CRYPTO", "DIGITAL_GOLD", "COMMODITY"],
+      enum: ["STOCK", "ETF", "MUTUAL_FUND", "BOND", "CRYPTO", "DIGITAL_GOLD", "DIGITAL_SILVER", "COMMODITY"],
       default: "STOCK",
     },
     side: { type: String, required: true, enum: ["BUY", "SELL"] },

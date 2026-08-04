@@ -23,6 +23,7 @@ export const createAccountSchema = z.object({
     .string()
     .regex(/^\d{4}$/, "Last 4 must be 4 digits.")
     .nullish(),
+  interestRatePercent: z.number().min(0).max(100).nullish(),
 });
 
 export const updateAccountSchema = createAccountSchema.partial();

@@ -10,8 +10,9 @@ this order (server-side, cached 7 days):
 1. **Local asset** — `provider.logo` in `lib/financial-providers.ts` (preferred)
 2. **Real logo provider** — logo.dev / Brandfetch, when `LOGO_DEV_TOKEN` or
    `BRANDFETCH_CLIENT_ID` is set (gives proper brand logos, not favicons)
-3. **Favicon** — DuckDuckGo's icon service for `provider.domain` (keyless)
-4. **Gradient badge** — branded initials (always works, no network)
+3. **Clearbit logo API** — keyless real brand logos for `provider.domain`
+4. **Favicon** — Google/DuckDuckGo icon services (keyless, last resort)
+5. **Gradient badge** — branded initials (always works, no network)
 
 ## For real logos everywhere (recommended)
 

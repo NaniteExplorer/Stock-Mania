@@ -1,9 +1,10 @@
 "use server";
 
+import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { getCurrentSession } from "@/lib/better-auth/auth";
 import { logger } from "@/core/logger";
-import { eventBus } from "@/core/queue/event-bus";
+import { userPreferencesService } from "@/features/user/user.preferences";
 import { transactionService, type SpendSummary, type SpendTrendMonth } from "./transaction.service";
 import { budgetService, type BudgetItem } from "./budget.service";
 import { extractPdfText, PdfPasswordError } from "./pdf-parser";
@@ -69,21 +70,13 @@ export async function importAccountStatement(accountId: string, fileName: string
   try {
     const result = await transactionService.importStatement(session.user.id, parsed.data.accountId, parsed.data.fileName, parsed.data.rows);
     if (result.success) {
-      // Re-run the rule categorizer over everything (skips manual overrides) and
+      // Re-run the keyword categorizer over everything (skips manual overrides) and
       // recompute balances — so importing fixes categories AND balances in one go,
       // including rows imported before the rules/balance parsing improved.
       try {
         await transactionService.reprocess(session.user.id);
       } catch (reprocessError) {
         logger.warn("post-import reprocess failed (non-fatal)", { reprocessError });
-      }
-      // Kick off async AI categorization for rows the rules engine still left null.
-      // Publish even for a duplicate-only re-import: older uncategorized rows
-      // may still need enrichment after a previous worker/configuration outage.
-      try {
-        await eventBus.publish({ name: "app/transactions.imported", data: { userId: session.user.id, accountId } });
-      } catch (publishError) {
-        logger.warn("transactions.imported publish failed (non-fatal)", { publishError });
       }
     }
     revalidatePath("/accounts"); revalidatePath("/dashboard"); revalidatePath("/transactions"); revalidatePath("/spends");
@@ -128,20 +121,12 @@ export async function deleteAllTransactions(accountId?: string): Promise<{ succe
   }
 }
 
-/** Re-run categorization rules over existing transactions + recompute balances. */
+/** Re-run keyword categorization rules over existing transactions + recompute balances. */
 export async function reprocessTransactions(): Promise<{ success: boolean; recategorized?: number; balancesUpdated?: number; error?: string }> {
   const session = await getCurrentSession();
   if (!session?.user?.id) return { success: false, error: "You must be signed in." };
   try {
     const result = await transactionService.reprocess(session.user.id);
-    const accountIds = await transactionService.listUncategorizedAccountIds(session.user.id);
-    await Promise.all(accountIds.map(async (accountId) => {
-      try {
-        await eventBus.publish({ name: "app/transactions.imported", data: { userId: session.user.id, accountId } });
-      } catch (publishError) {
-        logger.warn("transaction recategorization publish failed (non-fatal)", { accountId, publishError });
-      }
-    }));
     revalidatePath("/transactions"); revalidatePath("/accounts"); revalidatePath("/spends"); revalidatePath("/dashboard");
     return { success: true, ...result };
   } catch (error) {
@@ -216,6 +201,55 @@ export async function setBudget(category: string, monthlyLimit: number): Promise
   } catch (error) {
     logger.error("setBudget failed", error);
     return { success: false, error: "Could not save the budget." };
+  }
+}
+
+const categoryRulesSchema = z.array(
+  z.object({
+    keyword: z.string().trim().min(1).max(80),
+    category: z.string().trim().min(1).max(40),
+  }),
+).max(500);
+
+/** Fetch the user's saved keyword→category rules. */
+export async function getCategoryRules(): Promise<{ keyword: string; category: string }[]> {
+  const session = await getCurrentSession();
+  if (!session?.user?.id) return [];
+  try {
+    const prefs = await userPreferencesService.get(session.user.id);
+    return prefs.categoryRules;
+  } catch (error) {
+    logger.error("getCategoryRules failed", error);
+    return [];
+  }
+}
+
+/**
+ * Replace the user's keyword→category rules and immediately re-categorise all
+ * non-manual transactions with them. Returns how many rows changed so the UI
+ * can confirm the impact.
+ */
+export async function saveCategoryRules(
+  rules: { keyword: string; category: string }[],
+): Promise<{ success: boolean; recategorized?: number; error?: string }> {
+  const session = await getCurrentSession();
+  if (!session?.user?.id) return { success: false, error: "You must be signed in." };
+  const parsed = categoryRulesSchema.safeParse(rules);
+  if (!parsed.success) return { success: false, error: "Each rule needs a keyword (≤80 chars) and a category." };
+  const invalid = parsed.data.find((rule) => !isTransactionCategory(rule.category));
+  if (invalid) return { success: false, error: `Unknown category: ${invalid.category}.` };
+
+  // De-duplicate on the normalized keyword, keeping the last-wins entry.
+  const deduped = [...new Map(parsed.data.map((rule) => [rule.keyword.toLowerCase(), rule])).values()];
+
+  try {
+    await userPreferencesService.update(session.user.id, { categoryRules: deduped });
+    const result = await transactionService.reprocess(session.user.id);
+    revalidatePath("/transactions"); revalidatePath("/spends"); revalidatePath("/accounts"); revalidatePath("/dashboard");
+    return { success: true, recategorized: result.recategorized };
+  } catch (error) {
+    logger.error("saveCategoryRules failed", error);
+    return { success: false, error: "Could not save the keyword rules." };
   }
 }
 

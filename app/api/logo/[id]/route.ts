@@ -1,3 +1,5 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import type { NextRequest } from "next/server";
 import { config } from "@/core/config/env";
 import { findFinancialProvider } from "@/lib/financial-providers";
@@ -34,6 +36,9 @@ function candidateSources(domain: string): Array<{ url: string; minBytes: number
   if (brandfetchClientId) {
     sources.push({ url: `https://cdn.brandfetch.io/${domain}/w/128/h/128?c=${brandfetchClientId}`, minBytes: MIN_ICON_BYTES });
   }
+  // Clearbit is keyless and serves real brand logos (128px+) — far better than
+  // any favicon, so it comes before the favicon fallbacks.
+  sources.push({ url: `https://logo.clearbit.com/${domain}?size=128`, minBytes: MIN_ICON_BYTES });
   // Keyless fallbacks — favicons (site icons), not full logos, but always free.
   // Google's service is tried first at 128px; DuckDuckGo's .ico is often 16-32px.
   sources.push({ url: `https://www.google.com/s2/favicons?domain=${domain}&sz=128`, minBytes: MIN_GOOGLE_ICON_BYTES });
@@ -53,7 +58,9 @@ async function fetchImage(url: string, minBytes: number): Promise<Response | nul
       status: 200,
       headers: {
         "Content-Type": contentType,
-        "Cache-Control": "public, max-age=86400, s-maxage=604800, immutable",
+        // No `immutable`: an upstream favicon can be superseded by a curated
+        // asset, and browsers must be able to pick that up within a day.
+        "Cache-Control": "public, max-age=86400, s-maxage=604800",
       },
     });
   } catch {
@@ -62,16 +69,34 @@ async function fetchImage(url: string, minBytes: number): Promise<Response | nul
 }
 
 export async function GET(
-  req: NextRequest,
+  _req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Response> {
   const { id } = await params;
   const provider = findFinancialProvider(id);
   if (!provider) return new Response(null, { status: 404 });
 
-  // 1. Curated local asset wins outright.
+  // 1. Curated local asset wins outright. Served inline (not a redirect) so
+  // the browser caches the crisp vector itself, never a stale redirect target.
   if (provider.logo) {
-    return Response.redirect(new URL(provider.logo, req.nextUrl.origin), 307);
+    try {
+      const filePath = path.join(process.cwd(), "public", provider.logo);
+      const bytes = await readFile(filePath);
+      const contentType = provider.logo.endsWith(".svg")
+        ? "image/svg+xml"
+        : provider.logo.endsWith(".webp")
+          ? "image/webp"
+          : "image/png";
+      return new Response(new Uint8Array(bytes), {
+        status: 200,
+        headers: {
+          "Content-Type": contentType,
+          "Cache-Control": "public, max-age=86400, s-maxage=604800",
+        },
+      });
+    } catch {
+      // fall through to remote sources if the curated file is missing
+    }
   }
   if (!provider.domain) return new Response(null, { status: 404 });
 

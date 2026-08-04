@@ -7,6 +7,7 @@ import type { CreateTradeInput } from "./trade.types";
 export function kindFromFilename(name: string): InvestmentKind {
   const lower = name.toLowerCase();
   if (lower.startsWith("digigold") || lower.startsWith("gold")) return "DIGITAL_GOLD";
+  if (lower.startsWith("silver")) return "DIGITAL_SILVER";
   if (lower.startsWith("crypto")) return "CRYPTO";
   if (lower.startsWith("etf")) return "ETF";
   if (lower.startsWith("mf") || lower.startsWith("mutual")) return "MUTUAL_FUND";

@@ -5,6 +5,7 @@ export type InvestmentKind =
   | "BOND"
   | "CRYPTO"
   | "DIGITAL_GOLD"
+  | "DIGITAL_SILVER"
   | "COMMODITY";
 
 export const INVESTMENT_KIND_LABELS: Record<InvestmentKind, string> = {
@@ -14,11 +15,12 @@ export const INVESTMENT_KIND_LABELS: Record<InvestmentKind, string> = {
   BOND: "Bond",
   CRYPTO: "Crypto",
   DIGITAL_GOLD: "Digital gold",
+  DIGITAL_SILVER: "Digital silver",
   COMMODITY: "Commodity (MCX)",
 };
 
 /** Kinds measured in grams rather than share/unit counts. */
-export const GRAM_KINDS: InvestmentKind[] = ["DIGITAL_GOLD"];
+export const GRAM_KINDS: InvestmentKind[] = ["DIGITAL_GOLD", "DIGITAL_SILVER"];
 
 export interface Investment {
   id: string;

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_GROUPS } from "@/lib/constants";
 import { BrandMark } from "@/components/Logo";
-import { ArrowUpRight, ArrowDownRight, Radio } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, PencilLine } from "lucide-react";
 
 export interface SidebarSummary {
   netWorth: string;
@@ -73,10 +73,10 @@ const Sidebar = ({ summary }: { summary?: SidebarSummary }) => {
 
       <div className="mt-3 rounded-xl border border-gray-600 bg-gray-700/40 p-3">
         <p className="flex items-center gap-2 text-xs font-semibold text-gray-300">
-          <Radio className="h-3.5 w-3.5 text-green-500" /> Data cockpit
+          <PencilLine className="h-3.5 w-3.5 text-green-500" /> Manual mode
         </p>
         <p className="mt-1 text-[11px] leading-4 text-gray-500">
-          Broker prices sync live. Manual values are estimates until verified.
+          Your entries change only when you edit them or request a price refresh.
         </p>
       </div>
     </aside>

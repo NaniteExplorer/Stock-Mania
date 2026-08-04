@@ -27,6 +27,8 @@ const toEntity = (row: Row): SnapshotEntity => ({
   totalLiabilities: row.totalLiabilities,
   netWorth: row.netWorth,
   breakdown: { ...EMPTY_BREAKDOWN, ...(row.breakdown ?? {}) },
+  values: row.values ? { ...row.values } : null,
+  metrics: row.metrics ? { ...row.metrics } : null,
   contributions: row.contributions ?? 0,
   withdrawals: row.withdrawals ?? 0,
   marketMovement: row.marketMovement ?? 0,

@@ -11,18 +11,15 @@
     "db:check": "node scripts/db-check.mjs",
     "docker:up": "docker-compose up -d",
     "docker:down": "docker-compose down",
-    "docker:logs": "docker-compose logs -f",
-    "inngest:dev": "npx inngest-cli@latest dev -u http://localhost:3000/api/inngest"
+    "docker:logs": "docker-compose logs -f"
   },
   "dependencies": {
-    "@googleapis/drive": "^20.2.0",
     "better-auth": "^1.6.10",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
-    "google-auth-library": "^10.9.0",
     "inngest": "^4.4.0",
     "ioredis": "^5.11.1",
     "kafkajs": "^2.2.4",

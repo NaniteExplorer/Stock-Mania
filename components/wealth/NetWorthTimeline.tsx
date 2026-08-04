@@ -11,15 +11,17 @@ import { formatINRCompact } from "@/lib/utils";
  */
 export default function NetWorthTimeline({ points }: { points: SnapshotTimelinePoint[] }) {
   const [active, setActive] = useState<number | null>(null);
+  const [monthlyContribution, setMonthlyContribution] = useState(0);
+  const [annualReturn, setAnnualReturn] = useState(8);
 
-  if (points.length < 2) {
+  if (points.length < 1) {
     return (
       <div className="flex h-full min-h-44 flex-col items-center justify-center text-center">
         <p className="text-sm font-semibold text-gray-200">
-          {points.length === 1 ? "One snapshot captured" : "Your timeline starts with the next snapshot"}
+          Your timeline starts with the next snapshot
         </p>
         <p className="mt-1 max-w-md text-xs leading-5 text-gray-500">
-          Capture at least two months (or import your history) to plot net worth over time.
+          Capture a snapshot (or import your history) to plot net worth and scenarios.
         </p>
       </div>
     );
@@ -30,16 +32,26 @@ export default function NetWorthTimeline({ points }: { points: SnapshotTimelineP
   const padX = 12;
   const padTop = 16;
   const padBottom = 28;
-  const values = points.map((p) => p.netWorth);
+  const forecastMonths = 24;
+  const monthlyRate = Math.pow(1 + Math.max(-0.99, annualReturn / 100), 1 / 12) - 1;
+  const forecast = Array.from({ length: forecastMonths + 1 }, (_, index) => {
+    let value = points[points.length - 1].netWorth;
+    for (let month = 0; month < index; month++) value = value * (1 + monthlyRate) + monthlyContribution;
+    return value;
+  });
+  const values = [...points.map((p) => p.netWorth), ...forecast];
   const min = Math.min(...values, 0);
   const max = Math.max(...values);
   const span = max - min || 1;
 
-  const x = (i: number) => padX + (i / (points.length - 1)) * (W - padX * 2);
+  const historicalSpan = points.length - 1;
+  const totalSpan = Math.max(1, historicalSpan + forecastMonths);
+  const x = (i: number) => padX + (i / totalSpan) * (W - padX * 2);
   const y = (v: number) => padTop + (1 - (v - min) / span) * (H - padTop - padBottom);
 
   const linePath = points.map((p, i) => `${i === 0 ? "M" : "L"}${x(i).toFixed(1)},${y(p.netWorth).toFixed(1)}`).join(" ");
   const areaPath = `${linePath} L${x(points.length - 1).toFixed(1)},${(H - padBottom).toFixed(1)} L${x(0).toFixed(1)},${(H - padBottom).toFixed(1)} Z`;
+  const forecastPath = forecast.map((value, i) => `${i === 0 ? "M" : "L"}${x(historicalSpan + i).toFixed(1)},${y(value).toFixed(1)}`).join(" ");
 
   const gridLines = 4;
   const last = points[points.length - 1];
@@ -71,6 +83,7 @@ export default function NetWorthTimeline({ points }: { points: SnapshotTimelineP
 
         <path d={areaPath} fill="url(#nw-area)" />
         <path d={linePath} fill="none" stroke="var(--chart-3)" strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
+        <path d={forecastPath} fill="none" stroke="var(--chart-3)" strokeWidth={2} strokeDasharray="7 6" strokeLinecap="round" opacity={0.8} />
 
         {/* Crosshair + marker for the active/last point */}
         <line x1={x(shown)} x2={x(shown)} y1={padTop} y2={H - padBottom} stroke="var(--chart-3)" strokeWidth={1} opacity={0.35} />
@@ -80,9 +93,9 @@ export default function NetWorthTimeline({ points }: { points: SnapshotTimelineP
         {points.map((p, i) => (
           <rect
             key={p.periodKey}
-            x={x(i) - (W - padX * 2) / (points.length - 1) / 2}
+            x={x(i) - (W - padX * 2) / totalSpan / 2}
             y={0}
-            width={(W - padX * 2) / (points.length - 1)}
+            width={(W - padX * 2) / totalSpan}
             height={H}
             fill="transparent"
             onMouseEnter={() => setActive(i)}
@@ -95,8 +108,19 @@ export default function NetWorthTimeline({ points }: { points: SnapshotTimelineP
         <span className="font-semibold text-gray-300">
           {shownPoint.periodKey} · {formatINRCompact(shownPoint.netWorth)}
         </span>
-        <span>{last.periodKey}</span>
+        <span>+24 months · {formatINRCompact(forecast[forecast.length - 1])}</span>
       </figcaption>
+      <div className="mt-4 grid gap-3 border-t border-gray-700/70 pt-4 sm:grid-cols-2">
+        <label className="text-xs text-gray-500">
+          Monthly amount invested
+          <input type="number" min="0" step="1000" value={monthlyContribution} onChange={(event) => setMonthlyContribution(Number(event.target.value) || 0)} className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 tnum" />
+        </label>
+        <label className="text-xs text-gray-500">
+          Expected annual return (%)
+          <input type="number" min="-99" max="100" step="0.5" value={annualReturn} onChange={(event) => setAnnualReturn(Number(event.target.value) || 0)} className="mt-1 w-full rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-gray-100 tnum" />
+        </label>
+      </div>
+      <p className="mt-2 text-[11px] leading-4 text-gray-600">Dotted values are a scenario, not a prediction or verified balance. They assume monthly compounding and the contribution entered above.</p>
     </figure>
   );
 }

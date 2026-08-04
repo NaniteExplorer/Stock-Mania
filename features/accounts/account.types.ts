@@ -26,6 +26,9 @@ export interface Account {
   balance: number;
   balanceAsOf: Date | null;
   last4: string | null;
+  /** Annual interest % for FD/RD/PPF/EPF — the accrual job grows the balance daily. */
+  interestRatePercent: number | null;
+  lastAccruedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -38,6 +41,7 @@ export interface CreateAccountInput {
   type: AccountType;
   balance: number;
   last4?: string | null;
+  interestRatePercent?: number | null;
 }
 
 export type UpdateAccountInput = Partial<CreateAccountInput>;

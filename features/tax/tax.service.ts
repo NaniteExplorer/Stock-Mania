@@ -5,6 +5,7 @@ import {
   type TaxConfig,
   type TaxTier,
 } from "./tax.config";
+import { TaxEngine, UserOverrideRegime, type TaxContext } from "./engine";
 import type { InvestmentKind } from "@/features/investments/investment.types";
 
 export interface TaxEstimate {
@@ -17,36 +18,34 @@ export interface TaxEstimate {
 }
 
 /**
- * Pure tax estimator. Given a resolved config and a single gain + holding
- * period, returns the estimated tax. Losses are never taxed; for crypto, losses
- * also can't offset other gains (handled at the aggregation layer).
+ * Per-holding tax estimate — thin façade over the rule engine so existing
+ * callers keep a flat result shape. The annual LTCG exemption is NOT applied
+ * here (it's a portfolio-level allowance); call `TaxEngine.compute` directly
+ * with `ltcgExemptionRemaining` for an aggregated, exemption-aware figure.
  */
 export function estimateTax(
   config: TaxConfig,
   args: { assetClass: TaxAssetClass; gain: number; holdingDays: number },
 ): TaxEstimate {
-  const rule = config.rules[args.assetClass];
-  const base = { assetClass: args.assetClass, taxableGain: Math.max(0, args.gain) };
-
-  if (args.gain <= 0) {
-    return { ...base, tier: "NONE", ratePercent: 0, taxAmount: 0, note: rule.allowLossOffset ? "Loss — may offset eligible gains" : "Loss — not deductible" };
-  }
-
-  if (rule.flat) {
-    const rate = rule.shortTermRatePercent;
-    return { ...base, tier: "FLAT", ratePercent: rate, taxAmount: (args.gain * rate) / 100, note: `Flat ${rate}%` };
-  }
-
-  const isLongTerm = rule.ltcgThresholdDays != null && args.holdingDays >= rule.ltcgThresholdDays;
-  if (isLongTerm) {
-    const rate = rule.longTermRatePercent;
-    return { ...base, tier: "LTCG", ratePercent: rate, taxAmount: (args.gain * rate) / 100, note: `LTCG ${rate}%` };
-  }
-
-  // Short-term (or no LTCG concept): slab assets use the user's slab rate.
-  const rate = rule.useSlabRate ? config.slabPercent : rule.shortTermRatePercent;
-  const tier: TaxTier = rule.ltcgThresholdDays == null && rule.useSlabRate ? "SLAB" : "STCG";
-  return { ...base, tier, ratePercent: rate, taxAmount: (args.gain * rate) / 100, note: `${tier} ${rate}%` };
+  const context: TaxContext = {
+    eventKind: "CAPITAL_GAIN",
+    assetClass: args.assetClass,
+    amount: args.gain,
+    holdingDays: args.holdingDays,
+    slabPercent: config.slabPercent,
+    ltcgExemptionRemaining: 0,
+    date: new Date(),
+  };
+  const { lineItems, taxAmount } = TaxEngine.compute(context, new UserOverrideRegime(config));
+  const item = lineItems[0];
+  return {
+    assetClass: args.assetClass,
+    tier: item?.tier ?? "NONE",
+    taxableGain: Math.max(0, args.gain),
+    ratePercent: item?.ratePercent ?? 0,
+    taxAmount,
+    note: item?.note ?? "",
+  };
 }
 
 /** Convenience: estimate from an investment kind. */

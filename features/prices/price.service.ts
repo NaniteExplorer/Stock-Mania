@@ -89,6 +89,14 @@ async function fetchGoldInrPerGram(fxCache: Map<string, number>): Promise<number
   return (quote.price * fx) / TROY_OUNCE_GRAMS;
 }
 
+async function fetchSilverInrPerGram(fxCache: Map<string, number>): Promise<number | null> {
+  const quote = await fetchYahoo("SI=F");
+  if (!quote) return null;
+  const fx = await fxToInr(quote.currency, fxCache);
+  if (fx == null) return null;
+  return (quote.price * fx) / TROY_OUNCE_GRAMS;
+}
+
 async function fetchMfNav(schemeCode: string): Promise<number | null> {
   const json = (await fetchJson(`${MFAPI}${schemeCode}/latest`)) as
     | { data?: Array<{ nav?: string }> }
@@ -106,16 +114,28 @@ function yahooSymbolFor(rawSymbol: string): string {
   return sym; // assume US / global
 }
 
-export const priceService = {
+export interface PriceLookupService {
+  goldInrPerGram(fxCache?: Map<string, number>): Promise<number | null>;
+  silverInrPerGram(fxCache?: Map<string, number>): Promise<number | null>;
+  getInrPrice(inv: Investment, fxCache: Map<string, number>): Promise<number | null>;
+}
+
+/** Single orchestration boundary for replaceable public market-data providers. */
+export class MarketPriceService implements PriceLookupService {
   /** Latest ₹/gram for gold (Yahoo GC=F × USDINR ÷ 31.1035), or null. */
   async goldInrPerGram(fxCache: Map<string, number> = new Map()): Promise<number | null> {
     return fetchGoldInrPerGram(fxCache);
-  },
+  }
+
+  async silverInrPerGram(fxCache: Map<string, number> = new Map()): Promise<number | null> {
+    return fetchSilverInrPerGram(fxCache);
+  }
 
   /** Latest price in INR for one holding, or null if it can't be resolved. */
   async getInrPrice(inv: Investment, fxCache: Map<string, number>): Promise<number | null> {
     // Digital gold is priced per gram and needs no symbol.
     if (inv.kind === "DIGITAL_GOLD") return fetchGoldInrPerGram(fxCache);
+    if (inv.kind === "DIGITAL_SILVER") return fetchSilverInrPerGram(fxCache);
 
     const symbol = (inv.symbol || "").trim();
     if (!symbol) return null;
@@ -128,5 +148,7 @@ export const priceService = {
     const fx = await fxToInr(quote.currency, fxCache);
     if (fx == null) return null;
     return quote.price * fx;
-  },
-};
+  }
+}
+
+export const priceService: PriceLookupService = new MarketPriceService();

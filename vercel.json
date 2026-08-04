@@ -1,8 +1,5 @@
 {
   "functions": {
-    "app/api/inngest/route.ts": {
-      "maxDuration": 60
-    },
     "app/api/prices/[symbol]/route.ts": {
       "maxDuration": 60
     }

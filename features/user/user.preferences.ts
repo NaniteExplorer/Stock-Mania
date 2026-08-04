@@ -1,6 +1,12 @@
 import { connectToDatabase } from "@/core/db/connection";
 import { Schema, model, models } from "mongoose";
 
+/** A user-maintained "if the narration contains X, categorise as Y" rule. */
+export interface CategoryKeywordRule {
+  keyword: string;
+  category: string;
+}
+
 interface UserPreferences {
   userId: string;
   whatsappNumber: string | null;
@@ -9,6 +15,8 @@ interface UserPreferences {
   displayCurrency: string;
   /** Own/family account numbers, UPI handles or names — used to flag self transfers. */
   selfPayees: string[];
+  /** User-defined keyword→category rules — applied before the built-in merchant map. */
+  categoryRules: CategoryKeywordRule[];
   updatedAt: Date;
 }
 
@@ -20,6 +28,10 @@ const prefsSchema = new Schema<UserPreferences>(
     emailAlertsEnabled: { type: Boolean, default: true },
     displayCurrency: { type: String, default: "INR", uppercase: true },
     selfPayees: { type: [String], default: [] },
+    categoryRules: {
+      type: [new Schema<CategoryKeywordRule>({ keyword: String, category: String }, { _id: false })],
+      default: [],
+    },
   },
   { timestamps: { createdAt: false, updatedAt: "updatedAt" } },
 );
@@ -40,6 +52,7 @@ export const userPreferencesService = {
         emailAlertsEnabled: true,
         displayCurrency: "INR",
         selfPayees: [],
+        categoryRules: [],
         updatedAt: new Date(),
       };
     }
@@ -50,6 +63,7 @@ export const userPreferencesService = {
       emailAlertsEnabled: doc.emailAlertsEnabled ?? true,
       displayCurrency: doc.displayCurrency ?? "INR",
       selfPayees: doc.selfPayees ?? [],
+      categoryRules: (doc.categoryRules ?? []).map((rule) => ({ keyword: rule.keyword, category: rule.category })),
       updatedAt: doc.updatedAt,
     };
   },

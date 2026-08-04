@@ -6,7 +6,7 @@
  * Self/family transfers are detected against a user-maintained payee list so
  * "moving my own money" is never counted as spend.
  */
-import type { TransactionCategory } from "./transaction.categories";
+import { isTransactionCategory, type TransactionCategory } from "./transaction.categories";
 import type { TransactionDirection } from "./transaction.types";
 
 export interface CategorizerInput {
@@ -18,6 +18,11 @@ export interface CategorizerInput {
 export interface CategorizerContext {
   /** Account numbers, UPI handles, or names that represent the user/their family. */
   selfPayees: string[];
+  /**
+   * User-maintained keyword→category rules. Applied before the built-in
+   * merchant map so the user can override or extend categorisation without code.
+   */
+  keywordRules?: { keyword: string; category: string }[];
 }
 
 interface CategoryRule {
@@ -71,7 +76,8 @@ const KEYWORD_MAP: [TransactionCategory, string[]][] = [
   ["GROCERIES", ["bigbasket", "blinkit", "zepto", "grofers", "dmart", "reliance fresh", "supermarket", "kirana", "grocery", "grocer", "vegeta", "vegetable", "tomato", "onion", "potato", "ginger", "adrak", "coriand", "corian", "cabbag", "capcic", "banana", "guava", "fruit", "atta", "sugar", "dhaniy", "moong", "paneer", "butter", "milk", "eggs", "egg ", "meat", "prawn", "fish"]],
   ["FOOD", ["swiggy", "zomato", "dominos", "mcdonald", "starbucks", "kfc", "restaurant", "cafe", "eatery", "hotel", "bakery", "sweets", "sweet", "mishti", "dosa", "idli", "biryan", "biriyani", "snack", "chai", "tea ", "coffee", "mocha", "cold d", "cold m", "cold c", "colddr", "gupch", "chaat", "chast", "cake", "pastri", "pastry", "juice", "guguni", "chicke", "chicken", "mutton", "lunch", "dinner", "breakf", "break ", "pizza", "burger", "waffle", "browni", "khaja", "bara", "bhoga", "kurkur", "peanut", "thumbs", "pepsi", "soda", "drink", "water", "mineral", "cold m", "dahi", "guguni", "guchu", "snacks", "food"]],
   ["TRANSPORT", ["uber", "ola", "rapido", "irctc", "indian oil", "hpcl", "bharat petroleum", "bpbhubaneswar", "bp ", "fuel", "petrol", "diesel", "metro", "fastag", "toll", "auto", "bus fa", "bus ti", "bike r", "bike p", "bike t", "bike w", "car fa", "car re", "scooty", "activa", "cab", "taxi", "parkin", "railway", "railways", "train", "e ticket", "osrtc", "seat f", "service station"]],
-  ["UTILITIES", ["electricity", "electr", "tpcodl", "bescom", "water bill", "gas bill", "broadband", "airtel", "jio recharge", "jio ", "vodafone", "vi ", "act fibernet", "recharge", "dth", "postpaid", "prepaid", "state tax"]],
+  ["HOUSEHOLD", ["detergent", "surf excel", "harpic", "lizol", "phenyl", "broom", "mop", "utensil", "bartan", "maid", "housemaid", "house help", "domestic help", "cook salary", "gas cylinder", "hp gas", "indane", "bharatgas", "bharat gas", "lpg", "cleaning", "cleaner", "repair", "plumber", "electrician", "carpenter", "pest control", "laundry", "iron cloth", "dhobi", "urban company", "urbanclap", "salon", "furniture", "mattress", "bucket", "soap", "shampoo", "household", "home need", "homeneed"]],
+  ["UTILITIES", ["electricity", "electr", "tpcodl", "bescom", "water bill", "gas bill", "broadband", "airtel", "jio recharge", "jio ", "vodafone", "vi ", "act fibernet", "recharge", "dth", "postpaid", "prepaid", "state tax", "bsnl", "tata play", "tataplay", "d2h", "sun direct", "wifi", "internet bill", "mobile recharge", "mobile bill", "phone bill", "bbps", "bharat billpay", "billpay", "municipal", "property tax", "maintenance society", "society maint"]],
   ["RENT", ["rent", "nobroker", "landlord", "lease", "floor", "pg rent"]],
   ["SHOPPING", ["amazon", "flipkart", "myntra", "ajio", "nykaa", "nyka", "meesho", "tatacliq", "zudio", "mall", "store", "cashify", "watch", "cosmetic", "cousmetic", "tooth", "slipper", "umbrella", "blanke", "cover", "camera", "speake", "mobile", "oppo", "print", "xerox", "statio", "notebo", "calend", "fashnear", "cred store"]],
   ["ENTERTAINMENT", ["netflix", "spotify", "hotstar", "prime video", "bookmyshow", "pvr", "inox", "youtube premium", "disney", "horror", "movie", "resort", "retreat"]],
@@ -82,6 +88,20 @@ const KEYWORD_MAP: [TransactionCategory, string[]][] = [
 ];
 
 const rules: CategoryRule[] = [
+  // 0. User-defined keyword rules — highest priority so a keyword the user
+  // maintains always wins over the built-in defaults (and even self-transfer).
+  // Longer keywords are matched first so specific rules beat generic ones.
+  {
+    name: "user-keyword",
+    match(haystack, _input, ctx) {
+      const userRules = [...(ctx.keywordRules ?? [])].sort((a, b) => b.keyword.length - a.keyword.length);
+      for (const rule of userRules) {
+        if (!isTransactionCategory(rule.category)) continue;
+        if (has(haystack, rule.keyword)) return rule.category;
+      }
+      return null;
+    },
+  },
   // 1. Self / family transfer — highest priority so internal money movement is
   // never mistaken for spend.
   {

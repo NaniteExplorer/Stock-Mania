@@ -11,6 +11,10 @@ export interface AccountDoc {
   balance: number;
   balanceAsOf: Date | null;
   last4: string | null;
+  /** Annual interest %, for deposit-type accounts the accrual job grows. */
+  interestRatePercent: number | null;
+  /** Last day the accrual job compounded this account. */
+  lastAccruedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -31,6 +35,8 @@ const AccountSchema = new Schema<AccountDoc>(
     balance: { type: Number, required: true, default: 0 },
     balanceAsOf: { type: Date, default: null },
     last4: { type: String, default: null },
+    interestRatePercent: { type: Number, default: null },
+    lastAccruedAt: { type: Date, default: null },
   },
   { timestamps: true },
 );

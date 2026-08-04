@@ -4,8 +4,27 @@ const money = z.number().finite("Must be a number.");
 
 export const captureSnapshotSchema = z.object({
   asOf: z.coerce.date().optional(),
-  source: z.enum(["AUTO", "MANUAL", "IMPORTED", "EDITED"]).optional(),
+  source: z.enum(["MANUAL", "IMPORTED", "EDITED"]).optional(),
   overwrite: z.boolean().optional(),
+});
+
+export const monthlyValuesSchema = z.object({
+  cash: money, indianStocks: money, usStocks: money, cryptoCurrency: money,
+  etfs: money, reits: money, digitalGold: money, creditCardLoans: money,
+  loans: money, sbiBank: money, jioPaymentsBank: money, axisBank: money,
+  mutualFunds: money, ppf: money, rdFd: money, nps: money, epfo: money,
+  equityCryptoPnl: money, lifeInsurance: money, healthInsurance: money,
+});
+
+const monthlyMetricsSchema = z.object({
+  inHand: money, cashExcludingSalary: money, midTerm: money, longTerm: money,
+  totalDebts: money, netWorth: money, totalWorth: money,
+});
+
+export const saveMonthlySnapshotSchema = z.object({
+  capturedAt: z.coerce.date(),
+  values: monthlyValuesSchema,
+  note: z.string().trim().max(280).nullish(),
 });
 
 const breakdownSchema = z
@@ -45,6 +64,8 @@ const csvRowSchema = z.object({
   totalAssets: money,
   totalLiabilities: money,
   netWorth: money,
+  values: monthlyValuesSchema,
+  metrics: monthlyMetricsSchema,
 });
 
 export const importSnapshotsSchema = z.object({

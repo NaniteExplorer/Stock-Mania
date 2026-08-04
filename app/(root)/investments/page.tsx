@@ -1,12 +1,10 @@
 import type { Metadata } from "next";
 import { getMyInvestments } from "@/features/investments/investment.actions";
 import { getMyTrades } from "@/features/trades/trade.actions";
-import { getMyGoldLeases } from "@/features/gold-lease/gold-lease.actions";
 import { getPortfolioReturns } from "@/features/returns/returns.actions";
 import InvestmentsManager from "@/components/wealth/InvestmentsManager";
 import HoldingsImporter from "@/components/wealth/HoldingsImporter";
 import TradeLedger from "@/components/wealth/TradeLedger";
-import GoldLeaseManager from "@/components/wealth/GoldLeaseManager";
 import ReturnsSummary from "@/components/wealth/ReturnsSummary";
 import AnalysisCard from "@/components/AnalysisCard";
 import RefreshPricesButton from "@/components/wealth/RefreshPricesButton";
@@ -16,10 +14,9 @@ import { LineChart } from "lucide-react";
 export const metadata: Metadata = { title: "Investments" };
 
 export default async function InvestmentsPage() {
-  const [items, trades, goldLeases, returns] = await Promise.all([
+  const [items, trades, returns] = await Promise.all([
     getMyInvestments(),
     getMyTrades(),
-    getMyGoldLeases(),
     getPortfolioReturns(),
   ]);
   const invested = items.reduce((s, i) => s + i.invested, 0);
@@ -77,7 +74,6 @@ export default async function InvestmentsPage() {
       <ReturnsSummary returns={returns} />
       <HoldingsImporter />
       <TradeLedger trades={trades} />
-      <GoldLeaseManager leases={goldLeases} />
       <AnalysisCard />
       <InvestmentsManager items={items} />
     </div>

@@ -64,7 +64,7 @@ export const transactionService = {
     if (!account) return { success: false, inserted: 0, skipped: 0, rejected: rows.length, balanceUpdated: false, error: "Account not found." };
     if (!rows.length || rows.length > 5000) return { success: false, inserted: 0, skipped: 0, rejected: rows.length, balanceUpdated: false, error: "A statement must contain between 1 and 5,000 transactions." };
 
-    const { selfPayees } = await userPreferencesService.get(userId);
+    const { selfPayees, categoryRules } = await userPreferencesService.get(userId);
 
     let inserted = 0, skipped = 0, rejected = 0;
     const validRows = rows.filter((row) => {
@@ -78,7 +78,7 @@ export const transactionService = {
       // async AI fallback to fill in.
       const ruleCategory = transactionCategorizer.categorize(
         { description: row.description, reference: row.reference ?? null, direction: row.direction },
-        { selfPayees },
+        { selfPayees, keywordRules: categoryRules },
       );
       const parsedBalance = Number.isFinite(row.balanceAfter) ? row.balanceAfter : null;
       // Bank exports commonly provide only a date. Preserve their row order so
@@ -193,7 +193,7 @@ export const transactionService = {
    */
   async reprocess(userId: string): Promise<{ recategorized: number; balancesUpdated: number }> {
     await connectToDatabase();
-    const { selfPayees } = await userPreferencesService.get(userId);
+    const { selfPayees, categoryRules } = await userPreferencesService.get(userId);
 
     // Re-categorize everything the user hasn't manually set.
     const rows = await Transaction.find({ userId, categorySource: { $ne: "MANUAL" } })
@@ -203,7 +203,7 @@ export const transactionService = {
     for (const row of rows) {
       const category = transactionCategorizer.categorize(
         { description: row.description, reference: row.reference ?? null, direction: row.direction },
-        { selfPayees },
+        { selfPayees, keywordRules: categoryRules },
       );
       if (category && category !== row.category) {
         ops.push({ updateOne: { filter: { _id: row._id }, update: { $set: { category, categorySource: "RULE" } } } });
@@ -305,32 +305,4 @@ export const transactionService = {
     await Transaction.updateOne({ _id: id, userId }, { $set: { category, categorySource: "MANUAL" } });
   },
 
-  /** Fetch rows the rules engine couldn't classify (for the AI fallback). */
-  async listUncategorized(userId: string, accountId: string, limit = 100) {
-    await connectToDatabase();
-    const rows = await Transaction.find({ userId, accountId, category: null })
-      .select("description reference direction amount")
-      .limit(limit)
-      .lean();
-    return rows.map((row) => ({
-      id: String(row._id), description: row.description, reference: row.reference ?? null,
-      direction: row.direction, amount: row.amount,
-    }));
-  },
-
-  /** Accounts that still contain unresolved rows, used to retry enrichment. */
-  async listUncategorizedAccountIds(userId: string): Promise<string[]> {
-    await connectToDatabase();
-    const ids = await Transaction.distinct("accountId", { userId, category: null });
-    return ids.map(String);
-  },
-
-  /** Persist an AI-assigned category, but never clobber a manual override. */
-  async applyAiCategory(id: string, userId: string, category: string): Promise<void> {
-    await connectToDatabase();
-    await Transaction.updateOne(
-      { _id: id, userId, categorySource: { $ne: "MANUAL" } },
-      { $set: { category, categorySource: "AI" } },
-    );
-  },
 };

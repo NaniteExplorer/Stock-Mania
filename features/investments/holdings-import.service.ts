@@ -46,7 +46,8 @@ const COLUMN_ALIASES = {
 export function kindFromLabel(value: string, fallback: InvestmentKind): InvestmentKind {
   const v = value.toLowerCase();
   if (/crypto|coin|usdt|\bbtc\b|\beth\b/.test(v)) return "CRYPTO";
-  if (/gold|silver|metal|bullion/.test(v)) return "DIGITAL_GOLD";
+  if (/silver/.test(v)) return "DIGITAL_SILVER";
+  if (/gold|metal|bullion/.test(v)) return "DIGITAL_GOLD";
   if (/\betf\b/.test(v)) return "ETF";
   if (/mutual|\bmf\b|fund/.test(v)) return "MUTUAL_FUND";
   if (/bond|debenture|g-?sec/.test(v)) return "BOND";
@@ -116,9 +117,9 @@ const aiHoldingSchema = z.object({
   })),
 });
 
-async function parsePdfHoldings(data: Uint8Array, password: string, defaultKind: InvestmentKind = "STOCK"): Promise<ParsedHolding[]> {
+/** Parse holdings from already-extracted document text (CAS, broker PDFs). */
+export async function parseHoldingsFromText(text: string, defaultKind: InvestmentKind = "STOCK"): Promise<ParsedHolding[]> {
   if (!geminiClient.isConfigured()) throw new Error("PDF holdings need AI — set GEMINI_API_KEY or use a CSV/XLSX export.");
-  const text = await extractPdfText(data, password);
   const prompt = [
     "Extract the investment/stock holdings from this broker statement text.",
     'Return ONLY JSON: { "holdings": [ { "name": string, "symbol": string|null, "units": number, "avgCost": number, "currentPrice": number } ] }.',
@@ -134,6 +135,10 @@ async function parsePdfHoldings(data: Uint8Array, password: string, defaultKind:
     name: h.name, symbol: h.symbol ?? null, kind: defaultKind,
     units: h.units, avgCost: h.avgCost, currentPrice: h.currentPrice,
   }));
+}
+
+async function parsePdfHoldings(data: Uint8Array, password: string, defaultKind: InvestmentKind = "STOCK"): Promise<ParsedHolding[]> {
+  return parseHoldingsFromText(await extractPdfText(data, password), defaultKind);
 }
 
 export async function parseHoldingsFile(file: File, password = "", defaultKind: InvestmentKind = "STOCK"): Promise<ParsedHolding[]> {

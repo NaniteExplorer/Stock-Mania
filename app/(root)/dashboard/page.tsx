@@ -17,12 +17,10 @@ import {
   ArrowDownRight,
   ArrowRight,
   ArrowUpRight,
-  Building2,
   CreditCard,
   Gem,
   Landmark,
   LineChart,
-  BriefcaseBusiness,
   Plus,
   Sparkles,
   ShieldCheck,
@@ -33,15 +31,12 @@ import {
 const CLASS_CARDS = [
   { key: "accounts", label: "Cash & Bank", href: "/accounts", icon: Landmark, totalKey: "accounts" as const },
   { key: "investments", label: "Investments", href: "/investments", icon: LineChart, totalKey: "investments" as const },
-  { key: "brokerage", label: "Brokerage", href: "/portfolio", icon: BriefcaseBusiness, totalKey: "brokerage" as const },
-  { key: "esops", label: "ESOPs", href: "/esops", icon: Building2, totalKey: "esops" as const },
   { key: "assets", label: "Assets", href: "/assets", icon: Gem, totalKey: "assets" as const },
 ];
 
 const ONBOARD = [
   { label: "Link a bank account", desc: "Track cash & deposits", href: "/accounts", icon: Landmark },
   { label: "Add investments", desc: "Stocks, ETFs & funds", href: "/investments", icon: LineChart },
-  { label: "Add ESOP grants", desc: "Vested equity value", href: "/esops", icon: Building2 },
   { label: "Add assets", desc: "Property, gold & more", href: "/assets", icon: Gem },
 ];
 
@@ -55,6 +50,9 @@ export default async function DashboardPage() {
     getPortfolioReturns(),
   ]);
   const portfolioXirr = returns.xirr;
+  const displayedNetWorth = latestSnapshot?.metrics?.totalWorth ?? overview.netWorth;
+  const displayedAssets = latestSnapshot?.totalAssets ?? overview.totalAssets;
+  const displayedLiabilities = latestSnapshot?.totalLiabilities ?? overview.totalLiabilities;
 
   const positive = overview.dayChange >= 0;
   const liquidCashPercent = overview.totalAssets > 0 ? (overview.totals.accounts / overview.totalAssets) * 100 : 0;
@@ -93,7 +91,7 @@ export default async function DashboardPage() {
             <div>
               <p className="text-sm font-medium text-gray-500">Total net worth</p>
               <p className="mt-2 text-4xl font-bold tracking-tight text-gray-100 tnum md:text-5xl">
-                {formatINR(overview.netWorth)}
+                {formatINR(displayedNetWorth)}
               </p>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <span className={`chip ${positive ? "chip-pos" : "chip-neg"}`}>
@@ -109,17 +107,17 @@ export default async function DashboardPage() {
               <p className="mt-2 text-xs text-gray-500">
                 Assets{" "}
                 <span className="font-semibold text-gray-300 tnum">
-                  {formatINRCompact(overview.totalAssets)}
+                  {formatINRCompact(displayedAssets)}
                 </span>
                 {"  ·  "}Liabilities{" "}
                 <span className="font-semibold text-red-500 tnum">
-                  {formatINRCompact(overview.totalLiabilities)}
+                  {formatINRCompact(displayedLiabilities)}
                 </span>
               </p>
             </div>
             <span className="pill pill-brand">
               <Sparkles className="h-3.5 w-3.5" />
-              Live + manual
+              Manual + on-demand prices
             </span>
           </div>
 
@@ -142,13 +140,13 @@ export default async function DashboardPage() {
             <div className="stat-tile">
               <p className="text-xs text-gray-500">Total assets</p>
               <p className="mt-1 text-lg font-bold text-gray-100 tnum">
-                {formatINRCompact(overview.totalAssets)}
+                {formatINRCompact(displayedAssets)}
               </p>
             </div>
             <div className="stat-tile">
               <p className="text-xs text-gray-500">Liabilities</p>
               <p className="mt-1 text-lg font-bold text-red-500 tnum">
-                {formatINRCompact(overview.totalLiabilities)}
+                {formatINRCompact(displayedLiabilities)}
               </p>
             </div>
             <div className="stat-tile">
@@ -168,12 +166,12 @@ export default async function DashboardPage() {
             <AllocationDonut
               slices={overview.allocation}
               centerLabel="Net worth"
-              centerValue={formatINRCompact(overview.netWorth)}
+              centerValue={formatINRCompact(displayedNetWorth)}
               links={{
                 accounts: "/accounts",
                 investments: "/investments",
-                brokerage: "/portfolio",
-                esops: "/esops",
+                brokerage: "/investments",
+                esops: "/assets",
                 assets: "/assets",
               }}
             />

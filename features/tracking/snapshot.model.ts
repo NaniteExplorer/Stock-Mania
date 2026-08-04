@@ -1,5 +1,5 @@
 import { Model, Schema, model, models } from "mongoose";
-import type { SnapshotSource } from "./tracking.types";
+import type { MonthlyWealthMetrics, MonthlyWealthValues, SnapshotSource } from "./tracking.types";
 
 export interface SnapshotBreakdownDoc {
   accounts: number;
@@ -21,6 +21,8 @@ export interface NetWorthSnapshotDoc {
   totalLiabilities: number;
   netWorth: number;
   breakdown: SnapshotBreakdownDoc;
+  values: MonthlyWealthValues | null;
+  metrics: MonthlyWealthMetrics | null;
   contributions: number;
   withdrawals: number;
   marketMovement: number;
@@ -45,6 +47,32 @@ const BreakdownSchema = new Schema<SnapshotBreakdownDoc>(
   { _id: false },
 );
 
+const MonthlyValuesSchema = new Schema<MonthlyWealthValues>(
+  {
+    cash: { type: Number, default: 0 }, indianStocks: { type: Number, default: 0 },
+    usStocks: { type: Number, default: 0 }, cryptoCurrency: { type: Number, default: 0 },
+    etfs: { type: Number, default: 0 }, reits: { type: Number, default: 0 },
+    digitalGold: { type: Number, default: 0 }, creditCardLoans: { type: Number, default: 0 },
+    loans: { type: Number, default: 0 }, sbiBank: { type: Number, default: 0 },
+    jioPaymentsBank: { type: Number, default: 0 }, axisBank: { type: Number, default: 0 },
+    mutualFunds: { type: Number, default: 0 }, ppf: { type: Number, default: 0 },
+    rdFd: { type: Number, default: 0 }, nps: { type: Number, default: 0 },
+    epfo: { type: Number, default: 0 }, equityCryptoPnl: { type: Number, default: 0 },
+    lifeInsurance: { type: Number, default: 0 }, healthInsurance: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
+
+const MonthlyMetricsSchema = new Schema<MonthlyWealthMetrics>(
+  {
+    inHand: { type: Number, default: 0 }, cashExcludingSalary: { type: Number, default: 0 },
+    midTerm: { type: Number, default: 0 }, longTerm: { type: Number, default: 0 },
+    totalDebts: { type: Number, default: 0 }, netWorth: { type: Number, default: 0 },
+    totalWorth: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
+
 const SnapshotSchema = new Schema<NetWorthSnapshotDoc>(
   {
     userId: { type: String, required: true, index: true },
@@ -55,12 +83,14 @@ const SnapshotSchema = new Schema<NetWorthSnapshotDoc>(
     totalLiabilities: { type: Number, required: true, default: 0 },
     netWorth: { type: Number, required: true, default: 0 },
     breakdown: { type: BreakdownSchema, default: () => ({}) },
+    values: { type: MonthlyValuesSchema, default: null },
+    metrics: { type: MonthlyMetricsSchema, default: null },
     contributions: { type: Number, default: 0 },
     withdrawals: { type: Number, default: 0 },
     marketMovement: { type: Number, default: 0 },
     income: { type: Number, default: 0 },
     debtReduction: { type: Number, default: 0 },
-    source: { type: String, required: true, enum: ["AUTO", "MANUAL", "IMPORTED", "EDITED"], default: "AUTO" },
+    source: { type: String, required: true, enum: ["MANUAL", "IMPORTED", "EDITED"], default: "MANUAL" },
     note: { type: String, default: null },
   },
   { timestamps: true },

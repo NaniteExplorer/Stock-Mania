@@ -38,6 +38,7 @@ interface Props<T extends { id: string }> {
   emptyDescription: string;
   toValues: (item: T) => Values;
   renderRow: (item: T) => React.ReactNode;
+  renderActions?: (item: T) => React.ReactNode;
   onCreate: (values: Values) => Promise<Result>;
   onUpdate: (id: string, values: Values) => Promise<Result>;
   onDelete: (id: string) => Promise<Result>;
@@ -70,6 +71,7 @@ export default function WealthManager<T extends { id: string }>({
   emptyDescription,
   toValues,
   renderRow,
+  renderActions,
   onCreate,
   onUpdate,
   onDelete,
@@ -182,6 +184,7 @@ export default function WealthManager<T extends { id: string }>({
             <li key={item.id} className="panel flex items-center gap-3 p-4">
               <div className="min-w-0 flex-1">{renderRow(item)}</div>
               <div className="flex shrink-0 items-center gap-1">
+                {renderActions?.(item)}
                 <button
                   onClick={() => openEdit(item)}
                   className="flex h-9 w-9 items-center justify-center rounded-lg border border-gray-600 bg-gray-700/40 text-gray-400 transition-colors hover:text-brand-500"

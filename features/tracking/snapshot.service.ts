@@ -12,7 +12,11 @@ import type {
   SnapshotBreakdown,
   SnapshotCsvRow,
   SnapshotTimelinePoint,
+  MonthlyWealthMetrics,
+  MonthlyWealthValues,
+  SaveMonthlySnapshotInput,
 } from "./tracking.types";
+import { calculateMonthlyWealth, toSnapshotBreakdown } from "./monthly-wealth";
 
 /** Investment-bearing classes whose value change we attribute to market vs. flows. */
 function investedValue(b: SnapshotBreakdown): number {
@@ -89,6 +93,8 @@ async function buildWrite(
   netWorth: number,
   source: SnapshotWrite["source"],
   note: string | null,
+  values: MonthlyWealthValues | null = null,
+  metrics: MonthlyWealthMetrics | null = null,
 ): Promise<SnapshotWrite> {
   const prev = await snapshotRepository.priorTo(userId, capturedAt);
   const attribution: Attribution = prev
@@ -103,6 +109,8 @@ async function buildWrite(
     totalLiabilities,
     netWorth,
     breakdown,
+    values,
+    metrics,
     ...attribution,
     source,
     note,
@@ -141,16 +149,34 @@ export const snapshotService = {
       overview.totalAssets,
       overview.totalLiabilities,
       overview.netWorth,
-      input.source ?? "AUTO",
+      input.source ?? "MANUAL",
       null,
     );
     const outcome = await snapshotRepository.upsertByPeriod(userId, write, input.overwrite ?? false);
     return { outcome, periodKey };
   },
 
-  /** Capture the previous full month for every user — the monthly cron worker path. */
-  async captureForUser(userId: string, asOf: Date): Promise<void> {
-    await this.capture(userId, { asOf, source: "AUTO" });
+  /** Save or replace the user's explicit monthly closing entry. */
+  async saveMonthly(userId: string, input: SaveMonthlySnapshotInput): Promise<void> {
+    const prefs = await userPreferencesService.get(userId);
+    const metrics = calculateMonthlyWealth(input.values);
+    const breakdown = toSnapshotBreakdown(input.values);
+    const periodKey = periodKeyOf(input.capturedAt);
+    const write = await buildWrite(
+      userId,
+      periodKey,
+      input.capturedAt,
+      prefs.displayCurrency || "INR",
+      breakdown,
+      metrics.inHand + metrics.midTerm + metrics.longTerm,
+      Math.abs(metrics.totalDebts),
+      metrics.totalWorth,
+      "MANUAL",
+      input.note ?? null,
+      input.values,
+      metrics,
+    );
+    await snapshotRepository.upsertByPeriod(userId, write, true);
   },
 
   list(userId: string): Promise<NetWorthSnapshot[]> {
@@ -236,6 +262,8 @@ export const snapshotService = {
           row.netWorth,
           "IMPORTED",
           "backfilled",
+          row.values,
+          row.metrics,
         );
         const outcome = await snapshotRepository.upsertByPeriod(userId, write, overwrite);
         if (outcome === "inserted") inserted += 1;

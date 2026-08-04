@@ -26,7 +26,7 @@ export async function importBrokerHoldings(formData: FormData): Promise<Holdings
 
   const password = String(formData.get("password") ?? "");
   const kindRaw = String(formData.get("kind") ?? "STOCK").toUpperCase();
-  const kind = (["STOCK", "ETF", "MUTUAL_FUND", "BOND", "CRYPTO", "DIGITAL_GOLD", "COMMODITY"] as const).includes(
+  const kind = (["STOCK", "ETF", "MUTUAL_FUND", "BOND", "CRYPTO", "DIGITAL_GOLD", "DIGITAL_SILVER", "COMMODITY"] as const).includes(
     kindRaw as never,
   )
     ? (kindRaw as CreateInvestmentInput["kind"])

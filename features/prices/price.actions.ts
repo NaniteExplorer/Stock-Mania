@@ -31,7 +31,7 @@ export async function refreshInvestmentPrices(): Promise<
 
     for (const inv of investments) {
       // Digital gold is priced per gram and needs no symbol; everything else does.
-      if (!inv.symbol && inv.kind !== "DIGITAL_GOLD") {
+      if (!inv.symbol && inv.kind !== "DIGITAL_GOLD" && inv.kind !== "DIGITAL_SILVER") {
         skipped++;
         continue;
       }

@@ -5,8 +5,8 @@ import { getCurrentSession } from "@/lib/better-auth/auth";
 import { logger } from "@/core/logger";
 import { parseInput } from "@/core/validation/parse";
 import { snapshotService } from "./snapshot.service";
-import { captureSnapshotSchema, editSnapshotSchema, importSnapshotsSchema } from "./snapshot.schema";
-import type { EditSnapshotInput, NetWorthSnapshot, SnapshotCsvRow, SnapshotTimelinePoint } from "./tracking.types";
+import { captureSnapshotSchema, editSnapshotSchema, importSnapshotsSchema, saveMonthlySnapshotSchema } from "./snapshot.schema";
+import type { EditSnapshotInput, NetWorthSnapshot, SaveMonthlySnapshotInput, SnapshotCsvRow, SnapshotTimelinePoint } from "./tracking.types";
 
 type ActionResult = { success: boolean; error?: string };
 
@@ -56,6 +56,22 @@ export async function captureSnapshotNow(): Promise<ActionResult> {
   } catch (err) {
     logger.error("captureSnapshotNow failed", err);
     return { success: false, error: "Failed to capture snapshot." };
+  }
+}
+
+export async function saveMonthlySnapshot(input: SaveMonthlySnapshotInput): Promise<ActionResult> {
+  const session = await getCurrentSession();
+  if (!session?.user?.id) return { success: false, error: "You must be signed in." };
+  const parsed = parseInput(saveMonthlySnapshotSchema, input);
+  if (!parsed.success) return { success: false, error: parsed.error };
+  try {
+    await snapshotService.saveMonthly(session.user.id, parsed.data as SaveMonthlySnapshotInput);
+    revalidatePath("/dashboard");
+    revalidatePath("/history");
+    return { success: true };
+  } catch (err) {
+    logger.error("saveMonthlySnapshot failed", err);
+    return { success: false, error: "Failed to save the monthly entry." };
   }
 }
 

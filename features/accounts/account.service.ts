@@ -35,6 +35,9 @@ export const accountService = {
     const [accounts, derived] = await Promise.all([accountRepository.listByUser(userId), ledgerBalances(userId)]);
     return accounts.map((a) => withDerivedBalance(a, derived));
   },
+  byId(id: string, userId: string): Promise<Account | null> {
+    return accountRepository.byId(id, userId);
+  },
   create(userId: string, input: CreateAccountInput): Promise<Account> {
     return accountRepository.create(userId, input);
   },

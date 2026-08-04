@@ -12,7 +12,7 @@ export default async function HistoryPage() {
       <div>
         <h1 className="page-title">Net worth history</h1>
         <p className="page-subtitle">
-          Monthly snapshots of your wealth. Captured automatically, importable from your sheet, and correctable by hand.
+          Manual month-end entries with spreadsheet import and transparent calculated totals.
         </p>
       </div>
       <HistoryManager snapshots={snapshots} />

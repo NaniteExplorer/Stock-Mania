@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const INVESTMENT_KINDS = ["STOCK", "ETF", "MUTUAL_FUND", "BOND", "CRYPTO", "DIGITAL_GOLD", "COMMODITY"] as const;
+const INVESTMENT_KINDS = ["STOCK", "ETF", "MUTUAL_FUND", "BOND", "CRYPTO", "DIGITAL_GOLD", "DIGITAL_SILVER", "COMMODITY"] as const;
 
 export const createTradeSchema = z.object({
   symbol: z

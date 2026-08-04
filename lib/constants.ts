@@ -1,18 +1,12 @@
 import {
   LayoutDashboard,
-  Search,
-  Star,
-  BriefcaseBusiness,
-  Zap,
   History,
   CalendarClock,
   Settings,
   Landmark,
   LineChart,
-  Building2,
   Gem,
   CreditCard,
-  PieChart,
 } from "lucide-react";
 
 /**
@@ -32,21 +26,9 @@ export const NAV_GROUPS = [
     items: [
       { href: "/accounts", label: "Accounts", icon: Landmark },
       { href: "/transactions", label: "Transactions", icon: History },
-      { href: "/spends", label: "Spending", icon: PieChart },
       { href: "/investments", label: "Investments", icon: LineChart },
-      { href: "/esops", label: "ESOPs", icon: Building2 },
       { href: "/assets", label: "Assets", icon: Gem },
       { href: "/liabilities", label: "Liabilities", icon: CreditCard },
-    ],
-  },
-  {
-    label: "Markets",
-    items: [
-      { href: "/portfolio", label: "Portfolio", icon: BriefcaseBusiness },
-      { href: "/watchlist", label: "Watchlist", icon: Star },
-      { href: "/signals", label: "AI Signals", icon: Zap },
-      { href: "/orders", label: "Orders", icon: History },
-      { href: "/search", label: "Search", icon: Search },
     ],
   },
   {
@@ -62,7 +44,7 @@ export const MOBILE_NAV_ITEMS = [
   { href: "/dashboard", label: "Net Worth", icon: LayoutDashboard },
   { href: "/accounts", label: "Accounts", icon: Landmark },
   { href: "/investments", label: "Invest", icon: LineChart },
-  { href: "/portfolio", label: "Portfolio", icon: BriefcaseBusiness },
+  { href: "/history", label: "Monthly", icon: CalendarClock },
   { href: "/settings", label: "Settings", icon: Settings },
 ] as const;
 

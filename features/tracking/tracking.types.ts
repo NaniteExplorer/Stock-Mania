@@ -44,7 +44,41 @@ export interface Valuation extends RecordProvenance {
 }
 
 /** How a snapshot came to exist. Distinguishes auto-captured from corrected rows. */
-export type SnapshotSource = "AUTO" | "MANUAL" | "IMPORTED" | "EDITED";
+export type SnapshotSource = "MANUAL" | "IMPORTED" | "EDITED";
+
+/** The editable cells from the monthly wealth sheet. Derived totals are never stored as inputs. */
+export interface MonthlyWealthValues {
+  cash: number;
+  indianStocks: number;
+  usStocks: number;
+  cryptoCurrency: number;
+  etfs: number;
+  reits: number;
+  digitalGold: number;
+  creditCardLoans: number;
+  loans: number;
+  sbiBank: number;
+  jioPaymentsBank: number;
+  axisBank: number;
+  mutualFunds: number;
+  ppf: number;
+  rdFd: number;
+  nps: number;
+  epfo: number;
+  equityCryptoPnl: number;
+  lifeInsurance: number;
+  healthInsurance: number;
+}
+
+export interface MonthlyWealthMetrics {
+  inHand: number;
+  cashExcludingSalary: number;
+  midTerm: number;
+  longTerm: number;
+  totalDebts: number;
+  netWorth: number;
+  totalWorth: number;
+}
 
 /**
  * Per-class value split retained on each snapshot so the timeline can show
@@ -72,6 +106,8 @@ export interface NetWorthSnapshot {
   totalLiabilities: number;
   netWorth: number;
   breakdown: SnapshotBreakdown;
+  values: MonthlyWealthValues | null;
+  metrics: MonthlyWealthMetrics | null;
   // Attribution deltas vs the previous snapshot (0 when not derivable).
   contributions: number;
   withdrawals: number;
@@ -101,6 +137,12 @@ export interface CaptureSnapshotInput {
   overwrite?: boolean;
 }
 
+export interface SaveMonthlySnapshotInput {
+  capturedAt: Date;
+  values: MonthlyWealthValues;
+  note?: string | null;
+}
+
 /** Editable fields for a manual correction. */
 export interface EditSnapshotInput {
   totalAssets?: number;
@@ -118,6 +160,8 @@ export interface SnapshotCsvRow {
   totalLiabilities: number;
   /** Authoritative net worth from the CSV when present; else computed. */
   netWorth: number;
+  values: MonthlyWealthValues;
+  metrics: MonthlyWealthMetrics;
 }
 
 export interface FinancialGoal {

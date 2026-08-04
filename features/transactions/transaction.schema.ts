@@ -40,6 +40,6 @@ export const transactionQuerySchema = z.object({
   search: z.string().max(200).optional(),
   from: z.string().max(40).optional(),
   to: z.string().max(40).optional(),
-  page: z.number().int().min(1).max(100_000).optional(),
+  page: z.number().int().min(0).max(100_000).optional(),
   pageSize: z.number().int().min(1).max(200).optional(),
 });

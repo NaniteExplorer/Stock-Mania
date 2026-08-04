@@ -20,6 +20,8 @@ type Row = {
   balance: number;
   balanceAsOf?: Date | null;
   last4: string | null;
+  interestRatePercent?: number | null;
+  lastAccruedAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -35,6 +37,8 @@ const toEntity = (row: Row): AccountEntity => ({
   balance: row.balance,
   balanceAsOf: row.balanceAsOf ?? null,
   last4: row.last4 ?? null,
+  interestRatePercent: row.interestRatePercent ?? null,
+  lastAccruedAt: row.lastAccruedAt ?? null,
   createdAt: row.createdAt,
   updatedAt: row.updatedAt,
 });
@@ -71,6 +75,7 @@ class MongoAccountRepository implements AccountRepository {
       type: input.type,
       balance: input.balance,
       last4: input.last4 ?? null,
+      interestRatePercent: input.interestRatePercent ?? null,
     });
     return toEntity(doc.toObject() as Row);
   }

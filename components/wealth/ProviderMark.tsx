@@ -32,7 +32,11 @@ export default function ProviderMark({
 
   // Single same-origin proxy URL — it resolves a local asset or the real icon
   // server-side (cached) and 404s when none exists, so we fall to the badge.
-  const sources = provider.domain || provider.logo ? [`/api/logo/${provider.id}`] : [];
+  // `v` busts browser caches when a provider gains a curated asset: without it
+  // the old low-res favicon (cached with a long max-age) keeps rendering.
+  const sources = provider.domain || provider.logo
+    ? [`/api/logo/${provider.id}?v=${provider.logo ? 3 : 2}`]
+    : [];
 
   if (sourceIndex < sources.length) {
     return (

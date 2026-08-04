@@ -4,11 +4,7 @@ import { getCurrentSession } from "@/lib/better-auth/auth";
 import { userPreferencesService } from "@/features/user/user.preferences";
 
 interface SavePrefsInput {
-  whatsappNumber: string | null;
-  whatsappAlertsEnabled: boolean;
-  emailAlertsEnabled: boolean;
   displayCurrency: string;
-  selfPayees: string[];
 }
 
 export async function saveUserPreferences(

@@ -10,6 +10,7 @@ export type TransactionCategory =
   | "INCOME"
   | "FOOD"
   | "GROCERIES"
+  | "HOUSEHOLD"
   | "TRANSPORT"
   | "UTILITIES"
   | "RENT"
@@ -36,6 +37,7 @@ export const CATEGORY_META: Record<TransactionCategory, CategoryMeta> = {
   INCOME: { label: "Income", excludeFromSpend: true },
   FOOD: { label: "Food & dining", excludeFromSpend: false },
   GROCERIES: { label: "Groceries", excludeFromSpend: false },
+  HOUSEHOLD: { label: "Household", excludeFromSpend: false },
   TRANSPORT: { label: "Transport & fuel", excludeFromSpend: false },
   UTILITIES: { label: "Bills & utilities", excludeFromSpend: false },
   RENT: { label: "Rent & housing", excludeFromSpend: false },
