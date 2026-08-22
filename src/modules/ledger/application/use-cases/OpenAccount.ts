@@ -1,11 +1,6 @@
-import { Err, Ok, type Result } from "@/shared/kernel/Result";
-import type { UseCase } from "@/shared/kernel/UseCase";
-import type { UserId } from "@/shared/kernel/UserId";
-import type { Clock } from "@/shared/kernel/Clock";
-import type { Money } from "@/shared/money/Money";
-import { Currency } from "@/shared/money/Currency";
-import { CalendarDate } from "@/shared/time/CalendarDate";
-import { NotFoundError, ValidationError, type AppError } from "@/shared/errors/AppError";
+import { Err, Ok, type Result, type UseCase, type UserId, type Clock, NotFoundError, ValidationError, type AppError } from "@/core/kernel";
+import { type Money, Currency } from "@/core/money";
+import { CalendarDate } from "@/core/time";
 import { Account, type AccountSubtype } from "../../domain/entities/Account";
 import { JournalEntry } from "../../domain/entities/JournalEntry";
 import type { AccountId } from "../../domain/ids";

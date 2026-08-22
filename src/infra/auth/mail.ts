@@ -1,7 +1,7 @@
 import "server-only";
 
 import nodemailer, { type Transporter } from "nodemailer";
-import { config } from "@/shared/config/env";
+import { config } from "@/core/config";
 import { BRAND } from "@/branding/brand";
 import { WELCOME_EMAIL_TEMPLATE } from "@/lib/nodemailer/templates";
 import { PASSWORD_RESET_EMAIL_TEMPLATE } from "@/lib/nodemailer/reset-template";

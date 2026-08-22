@@ -1,9 +1,5 @@
-import { Err, Ok, type Result } from "@/shared/kernel/Result";
-import type { UseCase } from "@/shared/kernel/UseCase";
-import type { UserId } from "@/shared/kernel/UserId";
-import type { Clock } from "@/shared/kernel/Clock";
-import { CalendarDate } from "@/shared/time/CalendarDate";
-import { NotFoundError, type AppError } from "@/shared/errors/AppError";
+import { Err, Ok, type Result, type UseCase, type UserId, type Clock, NotFoundError, type AppError } from "@/core/kernel";
+import { CalendarDate } from "@/core/time";
 import { EntryAlreadyReversedError } from "../../domain/errors";
 import type { JournalEntryId } from "../../domain/ids";
 import type { JournalRepository } from "../../domain/ports/JournalRepository";

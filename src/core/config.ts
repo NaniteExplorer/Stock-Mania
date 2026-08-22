@@ -1,12 +1,15 @@
 /**
  * Validated, server-only configuration.
  *
+ * The plan of record's file tree omits this module; `core/` is where it belongs,
+ * since everything from the db client to the auth instance reads it.
+ *
  * Each group is read lazily on first access, so importing this module never
  * throws during `next build` when unrelated variables happen to be absent — a
  * missing SMTP password must not break a page that only reads the ledger.
  *
  * Never import this from a Client Component; it reads secrets. Client-safe
- * values belong in `src/shared/config/public.ts`.
+ * values belong in `src/core/public.ts`.
  */
 
 export class MissingEnvError extends Error {

@@ -1,4 +1,4 @@
-import type { UserId } from "@/shared/kernel/UserId";
+import { type UserId } from "@/core/kernel";
 import type { Account } from "../entities/Account";
 import type { AccountId } from "../ids";
 import type { AccountCode } from "../value-objects/AccountCode";

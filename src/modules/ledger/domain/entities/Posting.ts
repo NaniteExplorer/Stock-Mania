@@ -1,6 +1,5 @@
-import { Entity } from "@/shared/kernel/Entity";
-import { Money } from "@/shared/money/Money";
-import { DomainError } from "@/shared/errors/AppError";
+import { Entity, DomainError } from "@/core/kernel";
+import { Money } from "@/core/money";
 import { AccountId, PostingId } from "../ids";
 import type { AccountType } from "../value-objects/AccountType";
 import { oppositeOf, type PostingDirection } from "../value-objects/PostingDirection";

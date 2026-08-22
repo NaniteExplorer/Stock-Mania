@@ -1,11 +1,9 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import { journalEntries, ledgerAccounts, postings } from "@/db/schema";
-import type { UserId } from "@/shared/kernel/UserId";
-import { Currency } from "@/shared/money/Currency";
-import { Money } from "@/shared/money/Money";
-import { CalendarDate } from "@/shared/time/CalendarDate";
-import type { DateRange } from "@/shared/time/DateRange";
+import { type UserId } from "@/core/kernel";
+import { Currency, Money } from "@/core/money";
+import { CalendarDate, type DateRange } from "@/core/time";
 import { AccountId } from "../../domain/ids";
 import type {
   AccountBalance,

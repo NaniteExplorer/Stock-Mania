@@ -1,7 +1,7 @@
 import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
 import type { Database } from "@/db/client";
 import { ledgerAccounts, postings } from "@/db/schema";
-import type { UserId } from "@/shared/kernel/UserId";
+import { type UserId } from "@/core/kernel";
 import type { Account } from "../../domain/entities/Account";
 import type { AccountId } from "../../domain/ids";
 import type { AccountRepository } from "../../domain/ports/AccountRepository";

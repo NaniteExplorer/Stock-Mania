@@ -1,5 +1,5 @@
-import { Money } from "@/shared/money/Money";
-import { DomainError } from "@/shared/errors/AppError";
+import { Money } from "@/core/money";
+import { DomainError } from "@/core/kernel";
 
 /**
  * The ledger's invariant violations.

@@ -1,8 +1,6 @@
-import { AggregateRoot } from "@/shared/kernel/Entity";
-import type { UserId } from "@/shared/kernel/UserId";
-import { Money } from "@/shared/money/Money";
-import type { Currency } from "@/shared/money/Currency";
-import type { CalendarDate } from "@/shared/time/CalendarDate";
+import { AggregateRoot, type UserId } from "@/core/kernel";
+import { Money, type Currency } from "@/core/money";
+import { type CalendarDate } from "@/core/time";
 import { AccountId, JournalEntryId } from "../ids";
 import {
   InsufficientPostingsError,

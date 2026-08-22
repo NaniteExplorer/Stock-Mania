@@ -1,5 +1,5 @@
-import { Money } from "@/shared/money/Money";
-import { Percentage } from "@/shared/numeric/Percentage";
+import { Money } from "@/core/money";
+import { Percentage } from "@/core/numeric";
 
 /**
  * Money and percentage formatting for the UI.

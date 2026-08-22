@@ -6,7 +6,7 @@ import { nextCookies } from "better-auth/next-js";
 
 import { db } from "@/db/client";
 import { users, sessions, authAccounts, verifications } from "@/db/schema/auth";
-import { config } from "@/shared/config/env";
+import { config } from "@/core/config";
 import { sendPasswordResetEmail, sendVerificationEmail } from "./mail";
 
 const isProduction = config.app().nodeEnv === "production";

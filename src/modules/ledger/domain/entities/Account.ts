@@ -1,6 +1,5 @@
-import { AggregateRoot } from "@/shared/kernel/Entity";
-import type { UserId } from "@/shared/kernel/UserId";
-import { Currency } from "@/shared/money/Currency";
+import { AggregateRoot, type UserId } from "@/core/kernel";
+import { Currency } from "@/core/money";
 import { AccountCycleError, SystemAccountError } from "../errors";
 import { AccountId } from "../ids";
 import { AccountCode } from "../value-objects/AccountCode";

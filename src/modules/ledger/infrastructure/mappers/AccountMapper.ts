@@ -1,5 +1,5 @@
-import { UserId } from "@/shared/kernel/UserId";
-import { Currency } from "@/shared/money/Currency";
+import { UserId } from "@/core/kernel";
+import { Currency } from "@/core/money";
 import type { ledgerAccounts } from "@/db/schema";
 import { Account, type AccountSubtype } from "../../domain/entities/Account";
 import { AccountId } from "../../domain/ids";

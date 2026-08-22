@@ -1,7 +1,6 @@
-import { UserId } from "@/shared/kernel/UserId";
-import { Money } from "@/shared/money/Money";
-import { CalendarDate } from "@/shared/time/CalendarDate";
-import { DateRange } from "@/shared/time/DateRange";
+import { UserId } from "@/core/kernel";
+import { Money } from "@/core/money";
+import { CalendarDate, DateRange } from "@/core/time";
 import { Account } from "@/modules/ledger/domain/entities/Account";
 import { JournalEntry } from "@/modules/ledger/domain/entities/JournalEntry";
 import { Posting } from "@/modules/ledger/domain/entities/Posting";

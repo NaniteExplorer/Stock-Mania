@@ -1,7 +1,5 @@
-import { Money } from "@/shared/money/Money";
-import { Currency } from "@/shared/money/Currency";
-import type { CalendarDate } from "@/shared/time/CalendarDate";
-import type { DateRange } from "@/shared/time/DateRange";
+import { Money, Currency } from "@/core/money";
+import { type CalendarDate, type DateRange } from "@/core/time";
 import type { Account } from "../entities/Account";
 import type { JournalEntry } from "../entities/JournalEntry";
 import type { AccountId } from "../ids";

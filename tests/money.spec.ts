@@ -1,8 +1,6 @@
-import { Money } from "@/shared/money/Money";
-import { Quantity } from "@/shared/numeric/Quantity";
-import { Percentage } from "@/shared/numeric/Percentage";
-import { CalendarDate } from "@/shared/time/CalendarDate";
-import { FinancialYear } from "@/shared/time/FinancialYear";
+import { Money } from "@/core/money";
+import { Quantity, Percentage } from "@/core/numeric";
+import { CalendarDate, FinancialYear } from "@/core/time";
 
 let failures = 0;
 const check = (label: string, actual: unknown, expected: unknown) => {
@@ -47,7 +45,7 @@ check("GST 18% on 44.55", Percentage.of("18").applyTo(Money.fromRupees("44.55"))
 
 console.log("-- currency safety --");
 try {
-  Money.fromRupees("1", (await import("@/shared/money/Currency")).Currency.USD).plus(Money.fromRupees("1"));
+  Money.fromRupees("1", (await import("@/core/money")).Currency.USD).plus(Money.fromRupees("1"));
   check("mixing currencies throws", "no throw", "throw");
 } catch {
   check("mixing currencies throws", "throw", "throw");

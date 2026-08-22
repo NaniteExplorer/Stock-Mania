@@ -1,6 +1,159 @@
-import { ValueObject } from "@/shared/kernel/ValueObject";
-import { Currency } from "./Currency";
-import { divideRounded, pow10, type RoundingMode } from "./rounding";
+/**
+ * Money — exact integer minor units, and the rounding rules that go with it.
+ *
+ * Consolidated from `src/shared/money/`. Rounding comes first because both
+ * Currency and Money depend on it; nothing here depends on anything outside
+ * `core/kernel`.
+ *
+ * No `number` appears on a money path. `times()` takes an integer only, and any
+ * fractional operation demands an explicit RoundingMode at the call site.
+ */
+
+import { ValueObject } from "./kernel";
+
+/* ─── Rounding ─────────────────────────────────────────────── */
+
+/**
+ * Exact integer division with an explicit rounding rule.
+ *
+ * All money arithmetic that is not closed over integers — a percentage of an
+ * amount, a price times a fractional unit count, splitting a bill three ways —
+ * funnels through here. Making the rounding rule a required, named argument is
+ * deliberate: silent rounding is how ledgers end up off by a paisa, and the
+ * right rule genuinely differs by context (statutory charges round up, splits
+ * round half-up, interest accrual rounds half-even).
+ */
+export type RoundingMode =
+  /** Toward zero (truncate). */
+  | "DOWN"
+  /** Away from zero. */
+  | "UP"
+  /** Nearest; exact halves go away from zero. The usual rule for money. */
+  | "HALF_UP"
+  /** Nearest; exact halves go to the even neighbour. Avoids upward bias. */
+  | "HALF_EVEN";
+
+/**
+ * Divides `numerator` by `denominator`, returning an integer rounded per `mode`.
+ * Sign is handled symmetrically: the magnitude is rounded, then the sign
+ * reapplied, so `-5/2` and `5/2` round to the same magnitude.
+ */
+export function divideRounded(
+  numerator: bigint,
+  denominator: bigint,
+  mode: RoundingMode,
+): bigint {
+  if (denominator === 0n) {
+    throw new RangeError("Division by zero");
+  }
+
+  const isNegative = numerator < 0n !== denominator < 0n;
+  const absNumerator = numerator < 0n ? -numerator : numerator;
+  const absDenominator = denominator < 0n ? -denominator : denominator;
+
+  const quotient = absNumerator / absDenominator;
+  const remainder = absNumerator % absDenominator;
+
+  if (remainder === 0n) return isNegative ? -quotient : quotient;
+
+  const magnitude = roundMagnitude(quotient, remainder, absDenominator, mode);
+  return isNegative ? -magnitude : magnitude;
+}
+
+function roundMagnitude(
+  quotient: bigint,
+  remainder: bigint,
+  denominator: bigint,
+  mode: RoundingMode,
+): bigint {
+  switch (mode) {
+    case "DOWN":
+      return quotient;
+    case "UP":
+      return quotient + 1n;
+    case "HALF_UP":
+      return remainder * 2n >= denominator ? quotient + 1n : quotient;
+    case "HALF_EVEN": {
+      const doubled = remainder * 2n;
+      if (doubled > denominator) return quotient + 1n;
+      if (doubled < denominator) return quotient;
+      // Exactly half — pick the even neighbour.
+      return quotient % 2n === 0n ? quotient : quotient + 1n;
+    }
+  }
+}
+
+/** 10 raised to a non-negative integer power, as a bigint. */
+export function pow10(exponent: number): bigint {
+  if (!Number.isInteger(exponent) || exponent < 0) {
+    throw new RangeError(`pow10 needs a non-negative integer, got ${exponent}`);
+  }
+  return 10n ** BigInt(exponent);
+}
+
+/* ─── Currency ─────────────────────────────────────────────── */
+
+/**
+ * A currency, defined by its ISO 4217 code and how many decimal places it has.
+ *
+ * The `exponent` is what lets {@link Money} store an exact integer: INR has
+ * exponent 2, so ₹12.40 is 1240 paise. Currencies genuinely differ here (JPY is
+ * 0, KWD is 3), so it cannot be hardcoded to 2.
+ */
+export class Currency extends ValueObject {
+  private constructor(
+    readonly code: string,
+    readonly exponent: number,
+    readonly symbol: string,
+    /** BCP 47 locale used to format amounts in this currency. */
+    readonly locale: string,
+  ) {
+    super();
+  }
+
+  /** Number of minor units in one major unit — 100 for INR. */
+  get minorUnitsPerMajor(): bigint {
+    return pow10(this.exponent);
+  }
+
+  protected components(): readonly unknown[] {
+    return [this.code];
+  }
+
+  toString(): string {
+    return this.code;
+  }
+
+  static readonly INR = new Currency("INR", 2, "₹", "en-IN");
+  static readonly USD = new Currency("USD", 2, "$", "en-US");
+
+  private static readonly REGISTRY: ReadonlyMap<string, Currency> = new Map([
+    [Currency.INR.code, Currency.INR],
+    [Currency.USD.code, Currency.USD],
+  ]);
+
+  /** The app's reporting currency — every total is expressed in this. */
+  static get reporting(): Currency {
+    return Currency.INR;
+  }
+
+  /** Resolves a stored currency code. Throws on an unknown code rather than guessing. */
+  static of(code: string): Currency {
+    const currency = Currency.REGISTRY.get(code.toUpperCase());
+    if (!currency) {
+      throw new RangeError(
+        `Unsupported currency "${code}". Add it to Currency.REGISTRY to use it.`,
+      );
+    }
+    return currency;
+  }
+
+  static all(): readonly Currency[] {
+    return [...Currency.REGISTRY.values()];
+  }
+}
+
+/* ─── Money ─────────────────────────────────────────────── */
 
 const DECIMAL_PATTERN = /^-?(\d+)(?:\.(\d+))?$/;
 

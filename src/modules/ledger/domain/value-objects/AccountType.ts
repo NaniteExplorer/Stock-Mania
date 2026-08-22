@@ -1,4 +1,4 @@
-import { ValueObject } from "@/shared/kernel/ValueObject";
+import { ValueObject } from "@/core/kernel";
 import type { PostingDirection } from "./PostingDirection";
 
 export type AccountTypeName = "ASSET" | "LIABILITY" | "EQUITY" | "INCOME" | "EXPENSE";

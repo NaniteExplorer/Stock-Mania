@@ -1,4 +1,4 @@
-import { ValueObject } from "@/shared/kernel/ValueObject";
+import { ValueObject } from "@/core/kernel";
 
 const SEGMENT_PATTERN = /^[A-Za-z0-9][A-Za-z0-9 &.'()-]*$/;
 const SEPARATOR = ":";

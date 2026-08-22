@@ -1,6 +1,5 @@
-import type { UserId } from "@/shared/kernel/UserId";
-import type { CalendarDate } from "@/shared/time/CalendarDate";
-import type { DateRange } from "@/shared/time/DateRange";
+import { type UserId } from "@/core/kernel";
+import { type CalendarDate, type DateRange } from "@/core/time";
 import type { JournalEntry } from "../entities/JournalEntry";
 import type { AccountId, JournalEntryId } from "../ids";
 

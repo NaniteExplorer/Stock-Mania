@@ -1,7 +1,6 @@
-import type { UserId } from "@/shared/kernel/UserId";
-import type { Money } from "@/shared/money/Money";
-import type { CalendarDate } from "@/shared/time/CalendarDate";
-import type { DateRange } from "@/shared/time/DateRange";
+import { type UserId } from "@/core/kernel";
+import { type Money } from "@/core/money";
+import { type CalendarDate, type DateRange } from "@/core/time";
 import type { AccountId } from "../ids";
 import type { AccountTypeName } from "../value-objects/AccountType";
 

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Coins, Settings as SettingsIcon, ShieldCheck } from "lucide-react";
 import { getCurrentSession } from "@/infra/auth/session";
-import { Currency } from "@/shared/money/Currency";
+import { Currency } from "@/core/money";
 
 export const metadata: Metadata = { title: "Settings" };
 

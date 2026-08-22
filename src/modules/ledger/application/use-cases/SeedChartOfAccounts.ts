@@ -1,7 +1,4 @@
-import { Ok, type Result } from "@/shared/kernel/Result";
-import type { UseCase } from "@/shared/kernel/UseCase";
-import type { UserId } from "@/shared/kernel/UserId";
-import type { AppError } from "@/shared/errors/AppError";
+import { Ok, type Result, type UseCase, type UserId, type AppError } from "@/core/kernel";
 import { Account } from "../../domain/entities/Account";
 import type { AccountId } from "../../domain/ids";
 import type { AccountRepository } from "../../domain/ports/AccountRepository";

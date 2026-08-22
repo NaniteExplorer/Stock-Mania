@@ -1,4 +1,4 @@
-import { newUuid, UniqueId } from "@/shared/kernel/UniqueId";
+import { newUuid, UniqueId } from "@/core/kernel";
 
 /**
  * The ledger's identifier types.

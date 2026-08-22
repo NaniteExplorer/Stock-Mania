@@ -1,7 +1,6 @@
-import { UserId } from "@/shared/kernel/UserId";
-import { Currency } from "@/shared/money/Currency";
-import { Money } from "@/shared/money/Money";
-import { CalendarDate } from "@/shared/time/CalendarDate";
+import { UserId } from "@/core/kernel";
+import { Currency, Money } from "@/core/money";
+import { CalendarDate } from "@/core/time";
 import type { journalEntries, postings } from "@/db/schema";
 import {
   JournalEntry,

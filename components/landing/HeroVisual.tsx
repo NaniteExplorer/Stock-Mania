@@ -1,4 +1,4 @@
-import { Money } from "@/shared/money/Money";
+import { Money } from "@/core/money";
 import { formatMoneyCompact } from "@/ui/format";
 
 /**
