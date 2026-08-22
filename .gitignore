@@ -40,3 +40,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local libSQL database file
+/data
+
+# Test-runner build output
+/tmp

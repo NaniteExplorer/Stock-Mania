@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
-    "target": "ES2017",
+    // ES2020 or later is required for `bigint` literals (`100n`), which the
+    // Money / Quantity / Percentage value objects are built on.
+    "target": "ES2022",
     "lib": ["dom", "dom.iterable", "esnext"],
     "allowJs": true,
     "skipLibCheck": true,
@@ -18,8 +20,11 @@
         "name": "next"
       }
     ],
+    // `src/*` first, repo root second. The root fallback exists only while the
+    // v1 tree is being removed; drop it once `features/`, `core/` and `lib/` are
+    // gone so a stale import fails loudly instead of silently resolving.
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./src/*", "./*"]
     }
   },
   "include": [
