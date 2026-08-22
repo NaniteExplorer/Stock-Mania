@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Frozen v1 snapshot, kept for porting only — never imported, never shipped.
+    "_reference/**",
+    // Test-runner scratch output (esbuild bundles), not source.
+    "tmp/**",
   ]),
 ]);
 

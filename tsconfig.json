@@ -35,5 +35,7 @@
     ".next/dev/types/**/*.ts",
     "**/*.mts"
   ],
-  "exclude": ["node_modules"]
+  // `_reference/` is a frozen snapshot of v1 kept for porting only. Excluding it is
+  // what stops it re-creating the very type errors deleting v1 removes.
+  "exclude": ["node_modules", "_reference"]
 }
