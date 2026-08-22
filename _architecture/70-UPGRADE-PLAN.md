@@ -313,18 +313,48 @@ absent, so mail was sent with `undefined` credentials rather than skipped.
 
 *Cheap, and everything after it depends on it.*
 
-- [ ] **Float prohibition, layer 2.** ESLint rule banning `parseFloat`, `Number(`, unary `+`
+- [x] **Float prohibition, layer 2.** ESLint rule banning `parseFloat`, `Number(`, unary `+`
       and bare `*` `/` on any identifier typed `Money`, plus any float column in a migration.
-      **Done when** a PR adding `parseFloat` to a money path fails `npm run lint`.
-- [ ] **Float prohibition, layer 3.** Test asserting no column matching
+      **Done when** a PR adding `parseFloat` to a money path fails `npm run lint`. ✔
+      *Two rules in `eslint-rules/`. Amended in one respect: the plan's syntactic bans on
+      `Number(`, `Math.round(` and `.toFixed()` are unusable as written — they fired eight
+      times on correct code (`CalendarDate.parse` does `Number(year)`; two repositories do
+      `Number(row.postingCount)` on a COUNT). Those moved into the type-aware rule, where
+      the checker distinguishes money from an integer; only `parseFloat` stays syntactic.
+      Exempting the flagged files instead would have left a rule that looked enforced and
+      covered nothing. The rule also catches what the plan did not list: `String(money)`,
+      interpolation into a template literal, and `Number(money.minor)` — the specific
+      defect `30 §1.2` names.*
+- [x] **Float prohibition, layer 3.** Test asserting no column matching
       `%amount%|%price%|%balance%|%cost%|%value%|%minor%` has a non-integer type.
-      **Done when** adding a `REAL` amount column fails `npm test`.
-- [ ] **Test runner upgrade.** Keep `scripts/run-tests.mjs` (it works, zero deps) but add
+      **Done when** adding a `REAL` amount column fails `npm test`. ✔ *Made stronger: the
+      primary assertion is that **no column anywhere** has REAL affinity, matching SQLite's
+      own affinity rule rather than a name list — a name-based check only catches names you
+      predicted, and `nav`, `stt` and `dp_charges` are the ones a contributor will spell
+      differently. Verified by injecting `real("regression_probe_amount")`, generating the
+      migration, watching both layers fail, then reverting. Three further assertions came
+      free: `*_at` columns are epoch integers, accounting dates are date-only TEXT, and a
+      table with a `*_minor` column carries a currency — which found four pre-existing gaps
+      (`trades`, `net_worth_snapshots`, `budgets`, `tax_settings`), now pinned as a list
+      that can only shrink.*
+- [x] **Test runner upgrade.** Keep `scripts/run-tests.mjs` (it works, zero deps) but add
       `assertProperty(gen, predicate, runs)` so property tests can be written without a
       framework. **Done when** the nine properties in §9.1 of `30-CALCULATIONS.md` have a
-      place to live.
-- [ ] **CI gate.** `typecheck → lint → test` on every push.
-      **Done when** a red test blocks the branch.
+      place to live. ✔ *`tests/harness.ts`, with a seeded PRNG so run `i` draws from
+      `mulberry32(seed + i)` and any failure replays exactly via `SEED=<n>`. The seed prints
+      on every property, pass or fail, so a CI log always suffices. Two of the nine
+      properties land now (allocate sums exactly at 10k runs; plus/minus inverse); the rest
+      arrive with the code they describe. Three assertions prove the harness reports
+      failure — a property runner that silently passes everything is worse than none, and
+      that failure mode is invisible by construction.*
+- [x] **CI gate.** `typecheck → lint → test` on every push.
+      **Done when** a red test blocks the branch. ✔ *`npm test` added — the workflow ran
+      typecheck, lint and build but never the tests, so a red assertion could not block a
+      branch and every gate below was decorative. Test runs before build so a failure
+      surfaces in seconds. Node pinned to 22 (Next needs ≥20.9; 20 is out of active LTS).
+      v1's secrets dropped; `DATABASE_URL` added because `config.db()` throws without it.
+      `scripts/check-env.mjs` rewritten — it demanded seven keys that no longer exist and,
+      loading only `.env`, reported every variable missing on a working machine.*
 
 **Gate:** a commit that puts a float on a money path cannot merge.
 
@@ -680,7 +710,7 @@ existing file, proven by doing it once.
 | Phase | Scope | Items | Status |
 |---|---|---|---|
 | F | Foundation — delete v1, auth on libSQL, layout migration, green gate | 4 | ✔ Complete (4/4) |
-| 0 | Guardrails | 4 | ☐ Not started |
+| 0 | Guardrails | 4 | ✔ Complete (4/4) |
 | 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 27 | ◐ In progress (1/27) |
 | 2 | Banking | 9 | ☐ Not started |
 | 3 | Credit cards | 7 | ☐ Not started |
