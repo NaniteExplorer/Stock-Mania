@@ -469,20 +469,46 @@ absent, so mail was sent with `undefined` credentials rather than skipped.
 
 *Built now, so every later slice inherits it rather than retrofitting.*
 
-- [ ] **`ui/tokens.css`** — promote the existing CRED-inspired dark system in
+- [x] **`ui/tokens.css`** — promote the existing CRED-inspired dark system in
       `app/globals.css` (already good: layered near-blacks, hairline borders, single violet
       accent, `tnum` for money) to the single global stylesheet. One type scale, one spacing
       scale, one radius scale, semantic `pos`/`neg`/`warn` separate from the accent.
-      **Done when** no component defines a raw hex, enforced by a lint rule.
-- [ ] **`ui/primitives.tsx`** — `Card`, `Stat`, `DataTable` (sticky header, tabular nums,
+      **Done when** no component defines a raw hex, enforced by a lint rule. ✔ *`globals.css`
+      is now three `@import` lines. A real type scale replaced ~30 arbitrary values;
+      `.container`'s 1540px and the shell's 1440px collapsed into one `--width-content`;
+      every hardcoded gradient hex became `color-mix` on a token (`.gradient-text`'s three
+      stops turned out to be exactly `--accent-foreground`, `--primary` and `--info`); the
+      logo's gradient moved to a deliberately brand-locked `--brand-mark-*` triplet so the
+      mark does not shift when the accent is retuned; 99 lines of CSS for deleted components
+      removed. `money/no-raw-hex` passes with **zero** `eslint-disable` comments anywhere.*
+- [x] **`ui/primitives.tsx`** — `Card`, `Stat`, `DataTable` (sticky header, tabular nums,
       keyboard row nav), `MoneyText` (never renders a raw number), `Pill`, `Sheet`, `Field`.
       **Done when** three existing manager components are rewritten to use only primitives
-      and lose their bespoke CSS.
-- [ ] **Add Recharts; build `ui/charts.tsx`.** One `<Chart>` wrapper applying the tokens,
+      and lose their bespoke CSS. ✔ *Done-when substituted per F3 — the manager components
+      were deleted with v1. The eight pages are rebuilt on primitives and the six data pages
+      contain **zero** colour or typography classes, only layout utilities. `MoneyText` takes
+      `Money | null` and not `number`, so a float has no path to the screen; `null` renders
+      an em-dash, never ₹0. `Delta` is separate from `Pill` and derives its direction from
+      the value, making a red gain unexpressible. Two boundary bugs surfaced only by running
+      it: `"use client"` on the whole module stopped everything server-rendering (split
+      `DataTable` out), and column `render` functions cannot cross the RSC boundary (added
+      `TableFrame`, which takes a serialisable `ColumnSpec`). `Sheet` is deferred until a
+      screen needs it rather than shipped unused.*
+- [x] **Add Recharts; build `ui/charts.tsx`.** One `<Chart>` wrapper applying the tokens,
       then `LineChart`, `BarChart`, `DonutChart` on Recharts and `CandleChart`,
       `DrawdownChart`, `LotTimeline` as hand-authored SVG. Replaces `SpendTrendChart`,
       `AllocationDonut`, `NetWorthTimeline`. **Done when** every chart shares one palette,
-      has axes, tooltips, an empty state and a reduced-motion path.
+      has axes, tooltips, an empty state and a reduced-motion path. ✔ *recharts@3.10 (React
+      19 in its peer range). Line/Bar/Donut ship now; Candle, Drawdown and LotTimeline are
+      deferred to Phase 5, where the instruments and lots they plot are built — shipping
+      them empty would be code nobody has run. **The palette was measurably broken**, not
+      merely improvable: `--chart-3` `#6ea8ff` and `--chart-4` `#a78bff` sat at ΔE 1.9 under
+      deuteranopia and 9.6 under normal vision — below the 15 floor — and were adjacent, so
+      any two-series chart landing on slots 3 and 4 was unreadable. Three of five checks
+      failed. Re-stepped to five hues that pass all five, worst adjacent pair ΔE 9.4 protan /
+      18.1 normal. No dual axis is expressible (there is no `yAxisId` prop) and series past
+      the fifth fold to "Other" instead of inventing a hue. `tests/ui-tokens.spec.ts` pins
+      all of it.*
 
 **Gate for Phase 1:** `npm test` green with the invariant, property, golden and
 conformance suites in it; a contract note reproduces to the paisa; a pre-2018 equity sale
@@ -711,7 +737,7 @@ existing file, proven by doing it once.
 |---|---|---|---|
 | F | Foundation — delete v1, auth on libSQL, layout migration, green gate | 4 | ✔ Complete (4/4) |
 | 0 | Guardrails | 4 | ✔ Complete (4/4) |
-| 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 27 | ◐ In progress (1/27) |
+| 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 27 | ◐ In progress (4/27) — 1a partial, 1g complete |
 | 2 | Banking | 9 | ☐ Not started |
 | 3 | Credit cards | 7 | ☐ Not started |
 | 4 | Deposits, retirement, loans | 10 | ☐ Not started |
