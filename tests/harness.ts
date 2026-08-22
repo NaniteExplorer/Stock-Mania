@@ -241,6 +241,9 @@ export const genWeights = (maxLen = 12): Gen<number[]> => (rng) => {
   const w: number[] = Array.from({ length: n }, () =>
     rng() < 0.3 ? 0 : Math.floor(rng() * 1_000_000),
   );
-  if (w.every((x) => x === 0)) w[0] = 1; // allocate rejects an all-zero vector
+  // `some(x => x !== 0)` rather than `every(x => x === 0)`: TypeScript infers a
+  // type predicate from the latter and narrows `w` to `0[]`, which then rejects
+  // the assignment below. `allocate` rejects an all-zero weight vector.
+  if (!w.some((x) => x !== 0)) w[0] = 1;
   return w;
 };
