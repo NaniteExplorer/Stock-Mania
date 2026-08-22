@@ -272,6 +272,33 @@ v1 in the tree. So v1 goes first, in one commit, and the strangler ordering is d
       `next build` succeeds. ✔ *Verified: 39 → **0** errors, lint 0 errors / 8 warnings,
       tests 3/3, build emits 13 routes + 3 API routes.*
 
+- [x] **The rest of the layout migration.** `src/db/**` → `src/infra/db/` with the eight
+      schema files consolidated into one and the migrations moved by `git mv` rather than
+      regenerated; `src/modules/ledger/**` (22 files, four layers of directories) →
+      `src/domain/{accounts,transactions}.ts`, `src/app/ledger.usecases.ts` and
+      `src/infra/repositories.ts`. **Done when** the gate is green after each step with no
+      assertion edited. ✔ *`src/` is now 21 files, down from 52. Verified per step: schema
+      consolidation confirmed by `db:generate` reporting "No schema changes, nothing to
+      migrate", which is drizzle attesting the one file describes exactly the schema the
+      eight did; ledger consolidation confirmed by 54-for-54 export parity.*
+- [x] **`tests/layout.spec.ts`.** Guards the `src/app/` trap in both directions — Next
+      ignores `src/app/` only while a root `app/` exists — and asserts the dependency arrow:
+      `domain/` imports no driver, no framework and no `infra/`; `app/` imports no `infra/`.
+      **Done when** it fails on a violation. ✔ *It caught one on its first run:
+      `domain/transactions.ts` had acquired an `@/infra/db/schema` import because a function
+      parameter named `postings` shares its name with the schema table. Nothing else in the
+      toolchain would have flagged that — it typechecks, lints and builds clean.*
+
+**Decisions this phase added to the plan** (amend, do not skip — Rule 4):
+
+| # | Finding | Resolution |
+|---|---|---|
+| F1 | This document's file tree has no home for `config/env.ts`, the repository **port interfaces**, or money formatting | `core/config.ts`; ports go in the `domain/` file owning the aggregate (in `infra/` they would invert the arrow); `src/ui/format.ts` |
+| F2 | `PostingDirection` is consumed by `AccountType.signedEffect()` | Lives in `domain/accounts.ts`, not `transactions.ts`, so the arrow stays one-way |
+| F3 | Phase 1g's *Done when* — "three manager components rewritten to use only primitives" — is unsatisfiable once `components/wealth/` is deleted | Substitute: the interim pages carry no colour or typography classes, which is grep-checkable |
+| F4 | The `--chart-*` tokens are not usable as a series palette: `--chart-3` `#6ea8ff` and `--chart-4` `#a78bff` are perceptually identical (ΔE 1.9 deuteranopia, 9.6 normal vision) **and adjacent in the ramp** | Re-step to five validated hues in Phase 1g |
+| F5 | Rate limiting silently regressed to zero when `core/ratelimit` was deleted (v1 capped sign-in at 5 per 15 min) | better-auth's own `rateLimit` with `customRules`, no Redis |
+
 **Two live v1 defects fixed on the way through**, both found by reading rather than by
 testing: `proxy.ts` redirected `/forgot-password` and `/reset-password` to `/sign-in` for
 signed-out users, so password reset could never complete; and `lib/nodemailer` read
@@ -310,11 +337,16 @@ absent, so mail was sent with `undefined` credentials rather than skipped.
 
 ### 1a — Consolidate and complete the core primitives
 
-- [ ] **Merge `src/shared/**` (13 files) into `src/core/` (4 files).** Pure moves plus
+- [x] **Merge `src/shared/**` (13 files) into `src/core/` (4 files).** Pure moves plus
       barrel deletion — `Money`, `Quantity`, `Percentage`, `CalendarDate`, `DateRange`,
       `FinancialYear`, `Clock`, `Result`, `Entity`, `ValueObject`, `UniqueId`, `AppError`
       are all **correct today and carry over unchanged**. **Done when** `tests/money.spec.ts`
       and `tests/ledger-domain.spec.ts` pass against the new paths with no logic edits.
+      ✔ *Landed as 5 files, not 4: `core/config.ts` is the fifth — this plan's tree has no
+      home for `env.ts` and everything from the db client to the auth instance reads it.
+      Verified as a pure move: 36 exported names before, 36 after, none added or missing;
+      tests pass with no assertion edited. Two module-private `SCALE` constants collided
+      when `Quantity` and `Percentage` merged and are now prefixed.*
 - [ ] **Add `Money.allocate` property test** — `sum(allocate(m, w)) === m` for generated
       inputs. **Done when** 10k generated cases pass.
 - [ ] **Add `MarketCalendar` to `core/time.ts`** — NSE/BSE holiday table as seed data,
@@ -647,9 +679,9 @@ existing file, proven by doing it once.
 
 | Phase | Scope | Items | Status |
 |---|---|---|---|
-| F | Foundation — delete v1, auth on libSQL, green gate | 2 | ✔ Complete (2/2) |
+| F | Foundation — delete v1, auth on libSQL, layout migration, green gate | 4 | ✔ Complete (4/4) |
 | 0 | Guardrails | 4 | ☐ Not started |
-| 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 27 | ☐ Not started |
+| 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 27 | ◐ In progress (1/27) |
 | 2 | Banking | 9 | ☐ Not started |
 | 3 | Credit cards | 7 | ☐ Not started |
 | 4 | Deposits, retirement, loans | 10 | ☐ Not started |
