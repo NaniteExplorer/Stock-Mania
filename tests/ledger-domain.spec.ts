@@ -8,25 +8,8 @@ import { AccountCode } from "@/domain/accounts";
 import { AccountType } from "@/domain/accounts";
 import { BalanceCalculator } from "@/domain/transactions";
 import { resolveDefaultChart } from "@/domain/accounts";
+import { check, throws, done } from "./harness";
 
-let failures = 0;
-const check = (label: string, actual: unknown, expected: unknown) => {
-  const ok = String(actual) === String(expected);
-  if (!ok) failures++;
-  console.log(`${ok ? "PASS" : "FAIL"}  ${label}: ${actual}${ok ? "" : " (expected " + expected + ")"}`);
-};
-const throws = (label: string, fn: () => unknown, fragment: string) => {
-  try {
-    fn();
-    failures++;
-    console.log("FAIL  " + label + ": no throw");
-  } catch (e) {
-    const msg = (e as Error).message;
-    const ok = msg.includes(fragment);
-    if (!ok) failures++;
-    console.log(`${ok ? "PASS" : "FAIL"}  ${label}: ${(e as Error).name}${ok ? "" : ' — got "' + msg + '"'}`);
-  }
-};
 
 const userId = UserId.from("user_test_1");
 const acct = (code: string, type: AccountType) =>
@@ -178,5 +161,4 @@ const systemAccount = Account.open({
 throws("system account cannot be closed", () => systemAccount.close(), "cannot be closed");
 throws("cycle rejected", () => hdfc.moveUnder(hdfc.id, []), "cannot be moved under");
 
-console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURE(S)");
-process.exit(failures === 0 ? 0 : 1);
+done();

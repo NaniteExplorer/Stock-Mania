@@ -1,13 +1,8 @@
 import { Money } from "@/core/money";
 import { Quantity, Percentage } from "@/core/numeric";
 import { CalendarDate, FinancialYear } from "@/core/time";
+import { check, throws, done } from "./harness";
 
-let failures = 0;
-const check = (label: string, actual: unknown, expected: unknown) => {
-  const ok = String(actual) === String(expected);
-  if (!ok) failures++;
-  console.log(`${ok ? "PASS" : "FAIL"}  ${label}: ${actual}${ok ? "" : ` (expected ${expected})`}`);
-};
 
 // The exact bug v1 had: floats do not sum to zero.
 console.log("-- float vs Money --");
@@ -64,5 +59,4 @@ check("FY 2025-26 range", FinancialYear.parse("2025-26").range.toString(), "2025
 check("holding days 2025-01-15 -> 2026-01-14", CalendarDate.parse("2025-01-15").daysUntil(CalendarDate.parse("2026-01-14")), 364);
 check("31 Jan + 1 month clamps", CalendarDate.parse("2026-01-31").plusMonths(1).toISO(), "2026-02-28");
 
-console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
-process.exit(failures === 0 ? 0 : 1);
+done();

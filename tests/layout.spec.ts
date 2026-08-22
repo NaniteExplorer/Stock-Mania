@@ -1,4 +1,4 @@
-import { readdirSync, existsSync, statSync } from "node:fs";
+import { readdirSync, existsSync, statSync, readFileSync } from "node:fs";
 
 /**
  * Guards the file layout itself.
@@ -18,12 +18,6 @@ import { readdirSync, existsSync, statSync } from "node:fs";
  * a build.
  */
 
-let failures = 0;
-const check = (label: string, actual: unknown, expected: unknown) => {
-  const ok = String(actual) === String(expected);
-  if (!ok) failures++;
-  console.log(`${ok ? "PASS" : "FAIL"}  ${label}: ${actual}${ok ? "" : ` (expected ${expected})`}`);
-};
 
 console.log("-- the src/app trap --");
 
@@ -62,7 +56,7 @@ console.log("-- the dependency arrow --");
 // domain/ must never import a driver or the framework. This is the one rule
 // whose violation is invisible until something needs to run domain code in a
 // test without a database.
-import { readFileSync } from "node:fs";
+import { check, done } from "./harness";
 const FORBIDDEN_IN_DOMAIN = ["drizzle-orm", "next/", "@/infra/", "@/app/", "server-only"];
 for (const file of readdirSync("src/domain")) {
   const src = readFileSync(`src/domain/${file}`, "utf8");
@@ -79,5 +73,4 @@ for (const file of readdirSync("src/app")) {
   check(`app/${file} does not import infra`, bad.join(",") || "none", "none");
 }
 
-console.log(failures === 0 ? "\nALL PASS" : `\n${failures} FAILURE(S)`);
-process.exit(failures === 0 ? 0 : 1);
+done();

@@ -17,13 +17,8 @@ import { SeedChartOfAccounts } from "@/app/ledger.usecases";
 import { OpenAccount } from "@/app/ledger.usecases";
 import { RecordTransaction } from "@/app/ledger.usecases";
 import { ReverseTransaction } from "@/app/ledger.usecases";
+import { check, throws, done } from "./harness";
 
-let failures = 0;
-const check = (label: string, actual: unknown, expected: unknown) => {
-  const ok = String(actual) === String(expected);
-  if (!ok) failures++;
-  console.log(`${ok ? "PASS" : "FAIL"}  ${label}: ${actual}${ok ? "" : " (expected " + expected + ")"}`);
-};
 
 const DB_FILE = "./tmp/integration.db";
 
@@ -224,8 +219,7 @@ async function main() {
   check("cross-user findById returns null", await accountRepo.findById(otherUser, hdfcId), null);
 
   client.close();
-  console.log(failures === 0 ? "\nALL PASS" : "\n" + failures + " FAILURE(S)");
-  process.exit(failures === 0 ? 0 : 1);
+  done();
 }
 
 main().catch((e) => { console.error(e); process.exit(1); });
