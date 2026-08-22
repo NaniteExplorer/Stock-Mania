@@ -1,22 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import {
-  Landmark,
-  LineChart,
-  Gem,
-  CreditCard,
-  ArrowLeftRight,
-  PieChart,
-  TrendingUp,
-} from "lucide-react";
-import {
-  PageHeader,
-  Pill,
-  Stat,
-  Card,
-  EmptyState,
-  MoneyText,
-} from "@/ui/primitives";
+import { Landmark, LineChart, Gem, CreditCard, ArrowLeftRight } from "lucide-react";
+import { PageHeader, Pill, Stat, MoneyText } from "@/ui/primitives";
+import { AllocationChart, NetWorthTrendChart } from "@/ui/chart-placeholders";
 
 export const metadata: Metadata = { title: "Net Worth" };
 
@@ -95,20 +81,8 @@ export default function DashboardPage() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title="Allocation" padding="none">
-          <EmptyState
-            icon={PieChart}
-            title="Nothing to allocate yet"
-            body="How net worth splits across cash, investments, physical assets and retirement schemes. Needs accounts before it can say anything true."
-          />
-        </Card>
-        <Card title="Net worth over time" padding="none">
-          <EmptyState
-            icon={TrendingUp}
-            title="No history yet"
-            body="A monthly series projected from postings, rebuilt on demand rather than snapshotted."
-          />
-        </Card>
+        <AllocationChart />
+        <NetWorthTrendChart />
       </div>
 
       <section>
