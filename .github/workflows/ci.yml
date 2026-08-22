@@ -8,6 +8,11 @@ on:
 permissions:
   contents: read
 
+env:
+  # Node 20 is out of active LTS and Next 16 requires >= 20.9; pin 22 rather than
+  # letting "20" float to whatever 20.x the runner has.
+  NODE_VERSION: "22"
+
 jobs:
   secret-scan:
     name: Secret scan (gitleaks)
@@ -22,28 +27,41 @@ jobs:
           # GITLEAKS_LICENSE is only required for GitHub *organizations*.
 
   verify:
-    name: Typecheck · Lint · Build
+    name: Typecheck · Lint · Test · Build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
-      - run: npx tsc --noEmit
-      - run: npm run lint
-      - run: npm run build
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint
+
+      # Before the build, so a red assertion fails in seconds rather than after a
+      # full production compile. The specs create their own libSQL file under
+      # tmp/ and apply the migrations themselves, so no service is needed.
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
         env:
-          # Provide these via GitHub repository/organization secrets.
+          # v2 takes no API keys. DATABASE_URL is required rather than optional:
+          # config.db() throws without it, and any statically analysed route that
+          # imports the db client would fail the build.
+          DATABASE_URL: file:./data/ci.db
           NEXT_PUBLIC_BASE_URL: http://localhost:3000
           BETTER_AUTH_URL: http://localhost:3000
-          MONGODB_URI: ${{ secrets.MONGODB_URI }}
-          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
-          NODEMAILER_EMAIL: ${{ secrets.NODEMAILER_EMAIL }}
-          NODEMAILER_PASSWORD: ${{ secrets.NODEMAILER_PASSWORD }}
-          FINNHUB_API_KEY: ${{ secrets.FINNHUB_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # Build-time only. Deliberately a literal, not a secret: nothing is
+          # signed or served from this job, and a real secret here would be a
+          # secret in a log for no benefit.
+          BETTER_AUTH_SECRET: ci-build-only-not-a-real-secret-000000
 
   audit:
     name: Dependency audit
@@ -52,7 +70,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - run: npm ci
       # Fail only on high/critical advisories; report the rest.
