@@ -9,9 +9,26 @@ import {
   PieChart,
   TrendingUp,
 } from "lucide-react";
-import { StatRow, PendingStat, EmptyPanel } from "@/ui/placeholder";
+import {
+  PageHeader,
+  Pill,
+  Stat,
+  Card,
+  EmptyState,
+  MoneyText,
+} from "@/ui/primitives";
 
 export const metadata: Metadata = { title: "Net Worth" };
+
+/**
+ * The dashboard.
+ *
+ * Net worth is the one figure that must never be wrong, so it is derived from
+ * postings at request time and stored nowhere. v1 kept a copy on each account and
+ * hardcoded three zeros into the total (`dayChange`, `esops`, `brokerage`); this
+ * shows an em-dash until the ledger can answer, because an em-dash is honest and
+ * a zero is a claim.
+ */
 
 const ONBOARD = [
   {
@@ -32,7 +49,12 @@ const ONBOARD = [
     href: "/investments",
     icon: LineChart,
   },
-  { label: "Add assets", desc: "Property, gold and more", href: "/assets", icon: Gem },
+  {
+    label: "Add assets",
+    desc: "Property, gold and more",
+    href: "/assets",
+    icon: Gem,
+  },
   {
     label: "Add liabilities",
     desc: "Cards and loans",
@@ -44,43 +66,49 @@ const ONBOARD = [
 export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-6">
+      <PageHeader
+        title="Net worth"
+        subtitle="Assets less liabilities, summed from journal postings. There is no second copy of this figure anywhere in the system, so nothing can disagree with it."
+        badge={<Pill tone="brand">Phase 1 — engines</Pill>}
+      />
+
       <section className="networth-hero">
         <p className="metric-label">Total net worth</p>
-        <p
-          className="tnum mt-2 text-4xl font-bold text-gray-100 md:text-5xl"
-          aria-label="no data yet"
-        >
-          —
+        <p className="mt-2 text-4xl font-bold md:text-5xl">
+          <MoneyText value={null} tone="neutral" />
         </p>
         <p className="mt-3 max-w-xl text-sm text-gray-500">
-          Assets less liabilities, summed from journal postings at today&apos;s date.
-          There is no second copy of this figure anywhere in the system, so nothing
-          can disagree with it.
+          Derived, never stored. A backdated entry corrects history here rather
+          than contradicting it.
         </p>
-        <div className="mt-6 flex flex-wrap gap-2">
-          <span className="pill pill-brand">Ledger rebuild in progress</span>
-          <span className="pill">Phase 1 — engines</span>
-        </div>
       </section>
 
-      <StatRow>
-        <PendingStat label="Assets" hint="Sum of asset accounts" />
-        <PendingStat label="Liabilities" hint="Sum of liability accounts" />
-        <PendingStat label="Invested" hint="Cost plus buy charges" />
-        <PendingStat label="Savings rate" hint="Income less expenses" />
-      </StatRow>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Stat label="Assets" value={null} hint="Sum of asset accounts" />
+        <Stat
+          label="Liabilities"
+          value={null}
+          hint="Sum of liability accounts"
+        />
+        <Stat label="Invested" value={null} hint="Cost plus buy charges" />
+        <Stat label="Savings rate" value={null} hint="Income less expenses" />
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <EmptyPanel
-          icon={PieChart}
-          title="Allocation"
-          body="How your net worth splits across cash, investments, physical assets and retirement schemes. Needs accounts before it can say anything true."
-        />
-        <EmptyPanel
-          icon={TrendingUp}
-          title="Net worth over time"
-          body="A monthly series projected from postings. Because it is derived, backdating an entry corrects history rather than contradicting it."
-        />
+        <Card title="Allocation" padding="none">
+          <EmptyState
+            icon={PieChart}
+            title="Nothing to allocate yet"
+            body="How net worth splits across cash, investments, physical assets and retirement schemes. Needs accounts before it can say anything true."
+          />
+        </Card>
+        <Card title="Net worth over time" padding="none">
+          <EmptyState
+            icon={TrendingUp}
+            title="No history yet"
+            body="A monthly series projected from postings, rebuilt on demand rather than snapshotted."
+          />
+        </Card>
       </div>
 
       <section>
@@ -93,10 +121,12 @@ export default function DashboardPage() {
               className="panel panel-hover focus-brand flex items-start gap-3 p-4"
             >
               <span className="icon-chip">
-                <Icon className="h-5 w-5" />
+                <Icon className="h-5 w-5" aria-hidden />
               </span>
               <span>
-                <span className="block text-sm font-semibold text-gray-100">{label}</span>
+                <span className="block text-sm font-semibold text-gray-100">
+                  {label}
+                </span>
                 <span className="block text-xs text-gray-500">{desc}</span>
               </span>
             </Link>

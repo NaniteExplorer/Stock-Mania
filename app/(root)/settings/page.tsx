@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Coins, Settings as SettingsIcon, ShieldCheck } from "lucide-react";
+import { Coins, ShieldCheck } from "lucide-react";
 import { getCurrentSession } from "@/infra/auth/session";
 import { Currency } from "@/core/money";
+import { Card, PageHeader, Pill } from "@/ui/primitives";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -22,15 +23,11 @@ export default async function SettingsPage() {
 
   return (
     <div className="flex max-w-3xl flex-col gap-6">
-      <div className="flex items-center gap-3">
-        <span className="icon-chip h-11 w-11">
-          <SettingsIcon className="h-5 w-5" />
-        </span>
-        <div>
-          <h1 className="page-title">Settings</h1>
-          <p className="page-subtitle">A deliberately small, manual-first setup.</p>
-        </div>
-      </div>
+      <PageHeader
+        title="Settings"
+        subtitle="A deliberately small, manual-first setup."
+        badge={<Pill tone="brand">Read-only until Phase 2</Pill>}
+      />
 
       <section className="panel p-6">
         <h2 className="font-semibold text-gray-100">Account</h2>
@@ -50,8 +47,8 @@ export default async function SettingsPage() {
           <div>
             <h2 className="font-semibold text-gray-100">Reporting currency</h2>
             <p className="text-xs text-gray-500">
-              Amounts are stored in the currency they were entered in and reported in
-              this one.
+              Amounts are stored in the currency they were entered in and
+              reported in this one.
             </p>
           </div>
         </div>
@@ -59,8 +56,8 @@ export default async function SettingsPage() {
           {reporting.symbol} · {reporting.code}
         </p>
         <p className="mt-2 text-xs text-gray-500">
-          Choosing a different reporting currency needs a preferences table and an FX
-          rate book, both of which arrive with the pricing engine.
+          Choosing a different reporting currency needs a preferences table and
+          an FX rate book, both of which arrive with the pricing engine.
         </p>
       </section>
 
@@ -69,9 +66,10 @@ export default async function SettingsPage() {
           <ShieldCheck className="h-5 w-5" />
         </span>
         <p className="text-gray-400">
-          <strong className="text-gray-100">Manual mode is active.</strong> No broker,
-          mailbox, cloud drive or scheduled sync is connected — and none is planned.
-          Everything here is entered by you or imported from a file you already have.
+          <strong className="text-gray-100">Manual mode is active.</strong> No
+          broker, mailbox, cloud drive or scheduled sync is connected — and none
+          is planned. Everything here is entered by you or imported from a file
+          you already have.
         </p>
       </section>
     </div>

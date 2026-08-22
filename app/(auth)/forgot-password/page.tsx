@@ -28,7 +28,8 @@ const ForgotPassword = () => {
       await requestPasswordReset(email);
       setSentTo(email);
       toast.success("Check your inbox", {
-        description: "If an account exists for that email, a reset link is on its way.",
+        description:
+          "If an account exists for that email, a reset link is on its way.",
       });
     } catch {
       toast.error("Something went wrong", {
@@ -45,10 +46,15 @@ const ForgotPassword = () => {
         </span>
         <h1 className="form-title">Check your email</h1>
         <p className="mb-8 text-sm leading-6 text-gray-500">
-          If an account exists for <span className="font-semibold text-gray-300">{sentTo}</span>,
-          we&apos;ve sent a link to reset your password. The link expires in 1 hour.
+          If an account exists for{" "}
+          <span className="font-semibold text-gray-300">{sentTo}</span>,
+          we&apos;ve sent a link to reset your password. The link expires in 1
+          hour.
         </p>
-        <Link href="/sign-in" className="btn-brand inline-flex items-center justify-center px-6">
+        <Link
+          href="/sign-in"
+          className="btn-brand inline-flex items-center justify-center px-6"
+        >
           Back to sign in
         </Link>
       </div>
@@ -72,11 +78,18 @@ const ForgotPassword = () => {
           error={errors.email}
           validation={{
             required: "Email is required",
-            pattern: { value: /^\w+@\w+\.\w+$/, message: "Enter a valid email" },
+            pattern: {
+              value: /^\w+@\w+\.\w+$/,
+              message: "Enter a valid email",
+            },
           }}
         />
 
-        <Button type="submit" disabled={isSubmitting} className="btn-brand mt-2 w-full">
+        <Button
+          type="submit"
+          disabled={isSubmitting}
+          className="btn-brand mt-2 w-full"
+        >
           {isSubmitting ? "Sending link…" : "Send reset link"}
         </Button>
 

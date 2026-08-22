@@ -96,9 +96,9 @@ const Landing = async () => {
               <span className="gradient-text">move together.</span>
             </h1>
             <p className="mt-6 max-w-xl text-base leading-7 text-gray-400 md:text-lg">
-              Live NASDAQ and Indian markets, heatmaps, charts and news — free and
-              open. Sign in to bring your accounts, stocks, ETFs, ESOPs and assets
-              into one elegant net-worth workspace.
+              Live NASDAQ and Indian markets, heatmaps, charts and news — free
+              and open. Sign in to bring your accounts, stocks, ETFs, ESOPs and
+              assets into one elegant net-worth workspace.
             </p>
 
             <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -114,7 +114,9 @@ const Landing = async () => {
             <dl className="mt-12 grid max-w-lg grid-cols-3 gap-6">
               {stats.map((s) => (
                 <div key={s.label}>
-                  <dt className="text-lg font-bold text-gray-100 md:text-xl">{s.value}</dt>
+                  <dt className="text-lg font-bold text-gray-100 md:text-xl">
+                    {s.value}
+                  </dt>
                   <dd className="mt-1 text-xs text-gray-500">{s.label}</dd>
                 </div>
               ))}
@@ -131,7 +133,9 @@ const Landing = async () => {
       <section id="markets" className="container scroll-mt-24 py-16 md:py-20">
         <div className="mx-auto max-w-2xl text-center">
           <span className="eyebrow">Live markets</span>
-          <h2 className="section-title mt-5">Global &amp; Indian markets, in real time</h2>
+          <h2 className="section-title mt-5">
+            Global &amp; Indian markets, in real time
+          </h2>
           <p className="mt-4 text-gray-400">
             Powered by TradingView — no login required to watch the tape.
           </p>
@@ -185,7 +189,9 @@ const Landing = async () => {
             <div className="panel p-4">
               <div className="mb-3 flex items-center gap-2">
                 <Newspaper className="h-4 w-4 text-brand-500" />
-                <h3 className="text-base font-semibold text-gray-100">Top stories</h3>
+                <h3 className="text-base font-semibold text-gray-100">
+                  Top stories
+                </h3>
               </div>
               <TradingViewWidget
                 scriptUrl={`${TV}timeline.js`}
@@ -204,7 +210,8 @@ const Landing = async () => {
           <span className="eyebrow">After you sign in</span>
           <h2 className="section-title mt-5">A complete wealth workspace</h2>
           <p className="mt-4 text-gray-400">
-            Everything above, plus your entire financial life — organised and always current.
+            Everything above, plus your entire financial life — organised and
+            always current.
           </p>
         </div>
 
@@ -217,7 +224,9 @@ const Landing = async () => {
               <span className="icon-chip h-12 w-12 transition-colors group-hover:border-brand-500/40">
                 <Icon className="h-5 w-5" />
               </span>
-              <h3 className="mt-5 text-lg font-semibold text-gray-100">{title}</h3>
+              <h3 className="mt-5 text-lg font-semibold text-gray-100">
+                {title}
+              </h3>
               <p className="mt-2 text-sm leading-6 text-gray-400">{body}</p>
             </div>
           ))}
@@ -230,11 +239,13 @@ const Landing = async () => {
           <div className="grid gap-10 p-8 md:p-12 lg:grid-cols-[1fr_1fr] lg:items-center">
             <div>
               <span className="eyebrow">Complete wealth</span>
-              <h2 className="section-title mt-5">Every asset class, one net worth.</h2>
+              <h2 className="section-title mt-5">
+                Every asset class, one net worth.
+              </h2>
               <p className="mt-4 max-w-lg text-gray-400">
-                Bank accounts, manual investments, ESOPs, real assets and your live
-                brokerage portfolio — unified into a single, always-current view of
-                everything you own.
+                Bank accounts, manual investments, ESOPs, real assets and your
+                live brokerage portfolio — unified into a single, always-current
+                view of everything you own.
               </p>
               <Link
                 href={primaryHref}
@@ -247,11 +258,16 @@ const Landing = async () => {
 
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {assetClasses.map(({ label, icon: Icon }) => (
-                <div key={label} className="rounded-2xl border border-gray-600 bg-gray-700/50 p-4">
+                <div
+                  key={label}
+                  className="rounded-2xl border border-gray-600 bg-gray-700/50 p-4"
+                >
                   <span className="icon-chip h-9 w-9">
                     <Icon className="h-4 w-4" />
                   </span>
-                  <p className="mt-3 text-sm font-semibold text-gray-100">{label}</p>
+                  <p className="mt-3 text-sm font-semibold text-gray-100">
+                    {label}
+                  </p>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-green-500">
                     Live
                   </p>
@@ -273,7 +289,8 @@ const Landing = async () => {
           </h3>
           <p className="mt-3 text-sm leading-6 text-gray-400">
             AI summaries, signal candidates and risk flags give you context at a
-            glance. Every surface is informational — you stay in control of the decision.
+            glance. Every surface is informational — you stay in control of the
+            decision.
           </p>
         </div>
         <div id="security" className="panel scroll-mt-24 p-8">
@@ -284,8 +301,8 @@ const Landing = async () => {
             Private and secure by design
           </h3>
           <p className="mt-3 text-sm leading-6 text-gray-400">
-            Secure authentication and a privacy-first posture mean your financial
-            picture stays yours.
+            Secure authentication and a privacy-first posture mean your
+            financial picture stays yours.
           </p>
         </div>
       </section>
@@ -302,8 +319,8 @@ const Landing = async () => {
               See your whole net worth today
             </h2>
             <p className="mx-auto mt-4 max-w-xl text-gray-400">
-              Join stockMania and bring your accounts, investments, ESOPs, assets
-              and markets into one elegant workspace.
+              Join stockMania and bring your accounts, investments, ESOPs,
+              assets and markets into one elegant workspace.
             </p>
             <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
               <Link href={primaryHref} className="btn-glow">
