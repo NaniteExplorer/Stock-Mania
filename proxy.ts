@@ -7,8 +7,21 @@ import { getSessionCookie } from "better-auth/cookies";
  * redirect signed-out users early. Real authorization is enforced per page/route
  * via getCurrentSession(). Do not treat this as a security boundary.
  */
-/** Public routes that never require a session cookie. */
-const PUBLIC_PATHS = new Set(["/", "/sign-in", "/sign-up"]);
+/**
+ * Public routes that never require a session cookie.
+ *
+ * `/forgot-password` and `/reset-password` are here for a reason: without them a
+ * signed-out user clicking the emailed reset link was redirected straight to
+ * /sign-in, which made password reset impossible to complete. They are reached
+ * precisely when there is no session.
+ */
+const PUBLIC_PATHS = new Set([
+  "/",
+  "/sign-in",
+  "/sign-up",
+  "/forgot-password",
+  "/reset-password",
+]);
 
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;

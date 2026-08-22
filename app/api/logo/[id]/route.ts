@@ -1,8 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import type { NextRequest } from "next/server";
-import { config } from "@/core/config/env";
-import { findFinancialProvider } from "@/lib/financial-providers";
+import { findFinancialProvider } from "@/ui/providers";
 
 /**
  * Logo proxy. The client always requests this single same-origin URL; we
@@ -13,9 +12,8 @@ import { findFinancialProvider } from "@/lib/financial-providers";
  *  - the upstream fetch is cached (Next data cache + Cache-Control), so a slow
  *    or rate-limited logo host is hit at most once per revalidation window
  *  - a curated local asset (provider.logo) always wins
- *  - a real logo PROVIDER (logo.dev / Brandfetch) is used when a token is set,
- *    giving proper brand logos rather than favicons
- *  - favicon is the keyless fallback; a 404 lets the client render our own
+ *  - Clearbit gives real brand logos with no API key
+ *  - favicons are the last-resort fallback; a 404 lets the client render our own
  *    branded gradient badge. We never fabricate a bank's logo.
  */
 export const runtime = "nodejs";
@@ -26,24 +24,23 @@ const MIN_ICON_BYTES = 100; // guard against empty/placeholder responses
 // 16px stub. Require a real 128px-worth of bytes or skip to the next source.
 const MIN_GOOGLE_ICON_BYTES = 1500;
 
-/** Ordered upstream logo URLs for a domain — real-logo providers first. */
+/**
+ * Ordered upstream logo URLs for a domain, keyless only.
+ *
+ * v1 also tried logo.dev and Brandfetch when their API keys were set. Both are
+ * gone: v2 takes no API keys, so the ladder is Clearbit (real brand logos, no
+ * key) then two favicon services. A favicon is not a logo, which is why a
+ * curated local asset always wins and a miss returns 404 rather than a guess.
+ */
 function candidateSources(domain: string): Array<{ url: string; minBytes: number }> {
-  const { logoDevToken, brandfetchClientId } = config.logo();
-  const sources: Array<{ url: string; minBytes: number }> = [];
-  if (logoDevToken) {
-    sources.push({ url: `https://img.logo.dev/${domain}?token=${logoDevToken}&size=128&format=png&retina=true`, minBytes: MIN_ICON_BYTES });
-  }
-  if (brandfetchClientId) {
-    sources.push({ url: `https://cdn.brandfetch.io/${domain}/w/128/h/128?c=${brandfetchClientId}`, minBytes: MIN_ICON_BYTES });
-  }
-  // Clearbit is keyless and serves real brand logos (128px+) — far better than
-  // any favicon, so it comes before the favicon fallbacks.
-  sources.push({ url: `https://logo.clearbit.com/${domain}?size=128`, minBytes: MIN_ICON_BYTES });
-  // Keyless fallbacks — favicons (site icons), not full logos, but always free.
-  // Google's service is tried first at 128px; DuckDuckGo's .ico is often 16-32px.
-  sources.push({ url: `https://www.google.com/s2/favicons?domain=${domain}&sz=128`, minBytes: MIN_GOOGLE_ICON_BYTES });
-  sources.push({ url: `https://icons.duckduckgo.com/ip3/${domain}.ico`, minBytes: MIN_ICON_BYTES });
-  return sources;
+  return [
+    { url: `https://logo.clearbit.com/${domain}?size=128`, minBytes: MIN_ICON_BYTES },
+    {
+      url: `https://www.google.com/s2/favicons?domain=${domain}&sz=128`,
+      minBytes: MIN_GOOGLE_ICON_BYTES,
+    },
+    { url: `https://icons.duckduckgo.com/ip3/${domain}.ico`, minBytes: MIN_ICON_BYTES },
+  ];
 }
 
 async function fetchImage(url: string, minBytes: number): Promise<Response | null> {

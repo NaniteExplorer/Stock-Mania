@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { NAV_GROUPS } from "@/lib/constants";
+import { NAV_GROUPS } from "@/ui/nav";
 import { BrandMark } from "@/components/Logo";
 import { ArrowUpRight, ArrowDownRight, PencilLine } from "lucide-react";
 

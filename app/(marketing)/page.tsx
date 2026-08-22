@@ -1,7 +1,7 @@
 import Link from "next/link";
 import HeroVisual from "@/components/landing/HeroVisual";
 import TradingViewWidget from "@/components/TradingViewWidgets";
-import { getOptionalSession } from "@/lib/better-auth/auth";
+import { getOptionalSession } from "@/infra/auth/session";
 import {
   TICKER_TAPE_WIDGET_CONFIG,
   MARKET_OVERVIEW_WIDGET_CONFIG,
@@ -9,7 +9,7 @@ import {
   INDIA_HEATMAP_WIDGET_CONFIG,
   MARKET_DATA_WIDGET_CONFIG,
   TOP_STORIES_WIDGET_CONFIG,
-} from "@/lib/constants";
+} from "@/ui/tradingview";
 import {
   ArrowRight,
   BarChart3,

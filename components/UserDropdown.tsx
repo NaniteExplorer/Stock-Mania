@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { LogOut, Settings, ShieldCheck, UserRound } from "lucide-react";
 import { User } from "better-auth";
-import { signOut } from "@/lib/actions/auth.actions";
+import { signOut } from "@/infra/auth/actions";
 
 const UserDropdown = ({ user }: { user: User }) => {
   const router = useRouter();

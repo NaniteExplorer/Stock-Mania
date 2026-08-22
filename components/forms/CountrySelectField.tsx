@@ -1,15 +1,21 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
 import { useState } from "react";
 import { Control, Controller, FieldError, FieldValues, Path } from "react-hook-form";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Check, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import countryList from "react-select-country-list";
+import { COUNTRIES, countryByCode, flagEmoji } from "@/ui/countries";
 
 type CountrySelectProps<T extends FieldValues> = {
   name: Path<T>;
@@ -27,18 +33,7 @@ const CountrySelect = ({
   onChange: (value: string) => void;
 }) => {
   const [open, setOpen] = useState(false);
-
-  // Get country options with flags
-  const countries = countryList().getData();
-
-  // Helper function to get flag emoji
-  const getFlagEmoji = (countryCode: string) => {
-    const codePoints = countryCode
-      .toUpperCase()
-      .split("")
-      .map((char) => 127397 + char.charCodeAt(0));
-    return String.fromCodePoint(...codePoints);
-  };
+  const selected = value ? countryByCode(value) : undefined;
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -49,10 +44,10 @@ const CountrySelect = ({
           aria-expanded={open}
           className="country-select-trigger"
         >
-          {value ? (
+          {selected ? (
             <span className="flex items-center gap-2">
-              <span>{getFlagEmoji(value)}</span>
-              <span>{countries.find((c) => c.value === value)?.label}</span>
+              <span aria-hidden>{flagEmoji(selected.code)}</span>
+              <span>{selected.name}</span>
             </span>
           ) : (
             "Select your country..."
@@ -60,26 +55,18 @@ const CountrySelect = ({
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent
-        className="w-full p-0 bg-gray-800 border-gray-600"
-        align="start"
-      >
+      <PopoverContent className="w-full p-0 bg-gray-800 border-gray-600" align="start">
         <Command className="bg-gray-800 border-gray-600">
-          <CommandInput
-            placeholder="Search countries..."
-            className="country-select-input"
-          />
-          <CommandEmpty className="country-select-empty">
-            No country found.
-          </CommandEmpty>
+          <CommandInput placeholder="Search countries..." className="country-select-input" />
+          <CommandEmpty className="country-select-empty">No country found.</CommandEmpty>
           <CommandList className="max-h-60 bg-gray-800 scrollbar-hide-default">
             <CommandGroup className="bg-gray-800">
-              {countries.map((country) => (
+              {COUNTRIES.map((country) => (
                 <CommandItem
-                  key={country.value}
-                  value={`${country.label} ${country.value}`}
+                  key={country.code}
+                  value={`${country.name} ${country.code}`}
                   onSelect={() => {
-                    onChange(country.value);
+                    onChange(country.code);
                     setOpen(false);
                   }}
                   className="country-select-item"
@@ -87,12 +74,12 @@ const CountrySelect = ({
                   <Check
                     className={cn(
                       "mr-2 h-4 w-4 text-brand-500",
-                      value === country.value ? "opacity-100" : "opacity-0",
+                      value === country.code ? "opacity-100" : "opacity-0",
                     )}
                   />
                   <span className="flex items-center gap-2">
-                    <span>{getFlagEmoji(country.value)}</span>
-                    <span>{country.label}</span>
+                    <span aria-hidden>{flagEmoji(country.code)}</span>
+                    <span>{country.name}</span>
                   </span>
                 </CommandItem>
               ))}
@@ -119,16 +106,14 @@ export const CountrySelectField = <T extends FieldValues>({
       <Controller
         name={name}
         control={control}
-        rules={{
-          required: required ? `Please select ${label.toLowerCase()}` : false,
-        }}
+        rules={{ required: required ? `Please select ${label.toLowerCase()}` : false }}
         render={({ field }) => (
           <CountrySelect value={field.value} onChange={field.onChange} />
         )}
       />
       {error && <p className="text-sm text-red-500">{error.message}</p>}
       <p className="text-xs text-gray-500">
-        Helps us show market data and news relevant to you.
+        Used to pick sensible currency and market defaults.
       </p>
     </div>
   );

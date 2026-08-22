@@ -20,11 +20,17 @@
         "name": "next"
       }
     ],
-    // `src/*` first, repo root second. The root fallback exists only while the
-    // v1 tree is being removed; drop it once `features/`, `core/` and `lib/` are
-    // gone so a stale import fails loudly instead of silently resolving.
+    // `@/*` resolves into `src/` only. The old `["./src/*", "./*"]` fallback let a
+    // stale `@/features/x` import silently resolve against the repo root; with v1
+    // deleted, a bad path must fail loudly instead. The four explicit entries below
+    // exist because those directories still live at the root — delete each one as it
+    // folds into `src/ui/`.
     "paths": {
-      "@/*": ["./src/*", "./*"]
+      "@/*": ["./src/*"],
+      "@/components/*": ["./components/*"],
+      "@/hooks/*": ["./hooks/*"],
+      "@/lib/*": ["./lib/*"],
+      "@/branding/*": ["./branding/*"]
     }
   },
   "include": [

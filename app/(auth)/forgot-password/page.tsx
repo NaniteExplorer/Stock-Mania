@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { MailCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import InputField from "@/components/forms/InputField";
-import { requestPasswordReset } from "@/lib/actions/auth.actions";
+import { requestPasswordReset } from "@/infra/auth/actions";
 
 interface ForgotForm {
   email: string;
@@ -23,15 +23,13 @@ const ForgotPassword = () => {
 
   const onSubmit = async ({ email }: ForgotForm) => {
     try {
-      const result = await requestPasswordReset(email);
-      if (result.success) {
-        setSentTo(email);
-        toast.success("Check your inbox", {
-          description: "If an account exists for that email, a reset link is on its way.",
-        });
-      } else {
-        toast.error("Couldn't send reset link", { description: result.error });
-      }
+      // Always reports success — the response must not reveal whether an
+      // account exists for this address.
+      await requestPasswordReset(email);
+      setSentTo(email);
+      toast.success("Check your inbox", {
+        description: "If an account exists for that email, a reset link is on its way.",
+      });
     } catch {
       toast.error("Something went wrong", {
         description: "Please try again in a moment.",

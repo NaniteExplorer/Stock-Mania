@@ -56,100 +56,109 @@ it never sees a driver.
 
 ## 3. Folder structure
 
+> **Amended.** This section previously described a four-layer tree under
+> `src/modules/<context>/{domain,application,infrastructure,presentation}` and put
+> the Next routes at `src/app/`. `_architecture/70-UPGRADE-PLAN.md` — the plan of
+> record, written later — chose a consolidated layout instead: **one file per
+> concept, not per class**, landing at ~30 files while adding far more capability.
+> That decision wins, and this section now describes it. The layering did not go
+> away; it moved from directory nesting to a dependency direction between files.
+
 ```
 src/
-  app/                            # Next.js routes ONLY. No logic, no queries.
-    (auth)/                       #   sign-in, sign-up, password reset
-    (app)/                        #   authenticated shell
-      dashboard/  accounts/  transactions/  investments/
-      budgets/  reports/  tax/  settings/
-    api/                          #   health + auth handler only
-    layout.tsx  globals.css
-
-  modules/                        # bounded contexts — the whole application
-    ledger/                       #   THE accounting core; everything else reads it
-    investments/                  #   instruments, lots, trades, charges, returns
-    tax/                          #   India capital-gains + slab engine
-    budgeting/                    #   categorization rules + budget envelopes
-    analytics/                    #   read-only projections: net worth, comparisons
-    importing/                    #   CSV/statement ingestion
-    pricing/                      #   free keyless quote gateways
-    identity/                     #   session + user preferences
-
-  shared/
-    kernel/                       # Entity, AggregateRoot, ValueObject, UniqueId, Result, Clock
-    money/                        # Money, Currency
-    time/                         # CalendarDate, DateRange, FinancialYear
-    errors/                       # AppError hierarchy
-    container/                    # composition root — wires ports to adapters
-
-  db/
-    schema/                       # Drizzle table definitions
-    client.ts                     # libSQL connection
-    migrations/                   # generated SQL
-
-  ui/                             # design system: primitives + shared app components
-```
-
-### Inside a module
-
-Each bounded context is four layers, and the dependency arrows point **inward
-only**:
-
-```
-presentation  →  application  →  domain  ←  infrastructure
-```
-
-```
-modules/ledger/
+  core/
+    kernel.ts        Entity, AggregateRoot, ValueObject, UniqueId, Result, UseCase, AppError, Clock
+    money.ts         Money, Currency, RoundingMode, ROUNDING, divideRounded, allocate
+    numeric.ts       Quantity, Percentage, Rate
+    time.ts          CalendarDate, DateRange, FinancialYear, MarketCalendar
+    config.ts        validated, server-only environment configuration
   domain/
-    entities/            Account.ts, JournalEntry.ts, Posting.ts
-    value-objects/       AccountCode.ts, Balance.ts
-    services/            DoubleEntryValidator.ts, BalanceProjector.ts
-    ports/               AccountRepository.ts, JournalRepository.ts   ← interfaces
-    errors/              UnbalancedEntryError.ts, AccountClosedError.ts
-  application/
-    use-cases/           RecordExpense.ts, RecordTransfer.ts, OpenAccount.ts
-    dto/                 plain data crossing the boundary
-  infrastructure/
-    persistence/         DrizzleAccountRepository.ts   ← implements the port
-    mappers/             AccountMapper.ts              ← row ⇄ entity
-  presentation/
-    actions/             account.actions.ts            ← "use server"
-    components/          AccountList.tsx
+    accounts.ts      AccountType, AccountSubtype, AccountCode, Account, ChartOfAccounts
+    transactions.ts  Posting, Transaction (abstract) + 13 subclasses, TransactionContext
+    assets.ts        Asset (abstract) -> MarketInstrument / DepositProduct / CashProduct /
+                     CreditProduct / PhysicalAsset hierarchies
+    lots.ts          Lot, LotBook, LotSelectionStrategy (FIFO/LIFO/HIFO/Average/SpecificId)
+    charges.ts       BrokerChargeModel (abstract) + Zerodha/Groww/Generic, ChargeBreakdown
+    tax.ts           TaxEngine, TaxRegime, TaxRule (abstract) + ~14 rules, TaxAssessment
+    pricing.ts       Quote, PriceBook, PriceResolution, FxBook, Valuation
+    corporate.ts     CorporateAction (abstract) + Split/Bonus/Merger/Spinoff/Dividend/...
+    portfolio.ts     Portfolio, Position, ReturnSeries, Xirr, Twr, RiskMetrics
+    reports.ts       NetWorth, BalanceSheet, IncomeStatement, CashFlow, Allocation
+  app/
+    ledger.usecases.ts     open account, record transaction, reverse, seed chart
+    banking.usecases.ts    statements, import, categorise, budgets, reconcile
+    investing.usecases.ts  trades, lots, corporate actions, valuation, returns
+    tax.usecases.ts        assess FY, harvest, export
+  infra/
+    auth/            better-auth instance, session, actions, mail
+    db/schema.ts     all tables, grouped by section
+    db/client.ts     libSQL connection + migration runner
+    repositories.ts  every Drizzle repository, one class each
+    providers.ts     PriceProvider (abstract) + concrete keyless providers + registry
+  ui/
+    tokens.css       the one global stylesheet (design system)
+    primitives.tsx   Card, Stat, DataTable, MoneyText, Pill, Delta, Sheet, Field
+    charts.tsx       Chart wrapper + Line/Bar/Donut/Candle/Drawdown
+    format.ts        money and percentage formatting — takes Money, never number
+```
+
+`app/` (Next routes) and `components/` stay at the repository root.
+
+**A trap worth naming.** Next ignores `src/app/` **only while a root `app/` exists**
+(`next/dist/docs/01-app/03-api-reference/03-file-conventions/src-folder.md`). So
+`src/app/*.usecases.ts` is safe today, but adding `src/app/page.tsx` would create
+dead code that looks alive, and deleting the root `app/` would silently promote
+`src/app/` to the router. `tests/layout.spec.ts` asserts both directions.
+
+### Inside a concept file
+
+The dependency arrows that the old per-module tree enforced by nesting are now
+enforced between files, and the ordering *within* a file follows the same
+direction — value objects, then entities, then services, then ports:
+
+```
+core/  <-  domain/  <-  app/  <-  infra/
+                                 <-  ui/   (types only)
 ```
 
 **Rules, enforced by ESLint `no-restricted-imports`:**
 
-1. `domain/` imports **nothing** outside `domain/` and `shared/`. No Drizzle, no
-   Next, no Zod. It is plain TypeScript, unit-testable with zero I/O.
-2. `application/` imports `domain/` and its ports. Never `infrastructure/`.
-3. `infrastructure/` implements ports. It is the only layer that knows `db/`.
-4. `presentation/` imports `application/`. Never a repository directly.
-5. Modules talk to each other **only** through another module's `application/`
-   layer — never by reaching into its `domain/` or its tables.
+1. `domain/` imports only `core/` and other `domain/` files. No Drizzle, no Next,
+   no Zod. Plain TypeScript, unit-testable with zero I/O.
+2. `app/` imports `domain/` and `core/`. Never `infra/`.
+3. `infra/` implements the ports declared in `domain/`. It is the only layer that
+   knows `db/`.
+4. `ui/` imports `core/` types for rendering (`Money`, `Percentage`) and nothing
+   else from the domain.
+5. Route handlers and server actions in `app/` (the Next one) import
+   `src/app/*.usecases.ts`. Never a repository directly.
 
-Why this beats v1's five-files-per-domain: v1 mandated a repository file for
-every domain even where it only forwarded to Mongoose, and let services import
-each other's internals (`networth.service` reached into four sibling services and
-hardcoded zeros for the rest). Here a port exists because the domain must not
-know SQL, and cross-module reads go through one narrow, explicit door.
+**Where the ports live.** A repository interface belongs in the `domain/` file that
+owns its aggregate — `AccountRepository` in `domain/accounts.ts`,
+`JournalRepository` in `domain/transactions.ts`. Putting them in
+`infra/repositories.ts` would invert rule 1. The plan of record does not say this;
+it is the one place its file list was under-specified.
+
+Why this beats v1's five-files-per-domain: v1 mandated a repository file for every
+domain even where it only forwarded to Mongoose, and let services import each
+other's internals (`networth.service` reached into four sibling services and
+hardcoded zeros for the rest). Why it also beats the per-class tree this section
+used to describe: 52 files of one class each, for a domain whose classes are only
+meaningful in clusters, made the shape of the domain harder to see, not easier.
 
 ### Composition root
 
-`shared/container` builds the object graph once and hands out use cases. It is
-typed factory functions, not a reflection framework:
+`core/kernel.ts` carries the `UseCase` contract; the wiring itself is typed factory
+functions, not a reflection framework:
 
 ```ts
 const ledger = container.ledger()
-await ledger.recordExpense.execute(dto)
+await ledger.recordTransaction.execute(dto)
 ```
 
 Server actions resolve from the container; nothing else constructs a repository.
 Swapping libSQL for Postgres, or a repository for an in-memory fake in tests, is
-one line here.
-
----
+one line there.
 
 ## 4. The accounting core
 

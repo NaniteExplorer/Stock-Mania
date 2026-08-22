@@ -2,15 +2,10 @@
 import { useForm } from "react-hook-form";
 import { Button } from "@/components/ui/button";
 import InputField from "@/components/forms/InputField";
-import SelectField from "@/components/forms/SelectField";
-import {
-  INVESTMENT_GOALS,
-  PREFERRED_INDUSTRIES,
-  RISK_TOLERANCE_OPTIONS,
-} from "@/lib/constants";
 import { CountrySelectField } from "@/components/forms/CountrySelectField";
+import { DEFAULT_COUNTRY_CODE } from "@/ui/countries";
 import FooterLink from "@/components/forms/FooterLink";
-import { signUpWithEmail } from "@/lib/actions/auth.actions";
+import { signUpWithEmail } from "@/infra/auth/actions";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -26,10 +21,7 @@ const SignUp = () => {
       fullName: "",
       email: "",
       password: "",
-      country: "IN",
-      investmentGoals: "Growth",
-      riskTolerance: "Medium",
-      preferredIndustry: "Technology",
+      country: DEFAULT_COUNTRY_CODE,
     },
     mode: "onBlur",
   });
@@ -57,7 +49,7 @@ const SignUp = () => {
       <h1 className="form-title">Start tracking your net worth</h1>
       <p className="mb-8 text-sm leading-6 text-gray-500">
         Create your account to bring accounts, investments, ESOPs and assets
-        together — alongside live markets and AI signals.
+        together in one exact, double-entry ledger.
       </p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
@@ -77,9 +69,11 @@ const SignUp = () => {
           register={register}
           error={errors.email}
           validation={{
-            required: "Email name is required",
-            pattern: /^\w+@\w+\.\w+$/,
-            message: "Email address is required",
+            required: "Email is required",
+            pattern: {
+              value: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+              message: "Enter a valid email address",
+            },
           }}
         />
 
@@ -108,36 +102,6 @@ const SignUp = () => {
           label="Country"
           control={control}
           error={errors.country}
-          required
-        />
-
-        <SelectField
-          name="investmentGoals"
-          label="Investment Goals"
-          placeholder="Select your investment goal"
-          options={INVESTMENT_GOALS}
-          control={control}
-          error={errors.investmentGoals}
-          required
-        />
-
-        <SelectField
-          name="riskTolerance"
-          label="Risk Tolerance"
-          placeholder="Select your risk level"
-          options={RISK_TOLERANCE_OPTIONS}
-          control={control}
-          error={errors.riskTolerance}
-          required
-        />
-
-        <SelectField
-          name="preferredIndustry"
-          label="Preferred Industry"
-          placeholder="Select your preferred industry"
-          options={PREFERRED_INDUSTRIES}
-          control={control}
-          error={errors.preferredIndustry}
           required
         />
 

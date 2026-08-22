@@ -1,28 +1,29 @@
 import type { Metadata } from "next";
-import { queryTransactions } from "@/features/transactions/transaction.actions";
-import { getMyAccounts } from "@/features/accounts/account.actions";
-import TransactionsList from "@/components/wealth/TransactionsList";
+import { ArrowLeftRight } from "lucide-react";
+import { PageHeader, StatRow, PendingStat, EmptyPanel } from "@/ui/placeholder";
 
 export const metadata: Metadata = { title: "Transactions" };
 
-export default async function TransactionsPage() {
-  const [{ transactions, total, grandTotal }, accounts] = await Promise.all([
-    queryTransactions({ page: 0, pageSize: 50 }),
-    getMyAccounts(),
-  ]);
-
+export default function Page() {
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="page-title">Transactions</h1>
-        <p className="page-subtitle">Every imported transaction across your accounts — search, filter by date/category, and recategorize.</p>
-      </div>
-      <TransactionsList
-        initialTransactions={transactions}
-        initialTotal={total}
-        grandTotal={grandTotal}
-        accounts={accounts}
+    <>
+      <PageHeader
+        title="Transactions"
+        subtitle="The register: every posting, keyboard-driven, categorised by your own keyword rules."
+        phase="Phase 2"
       />
-    </div>
+      <StatRow>
+        <PendingStat label="Inflow" hint="Current month" />
+        <PendingStat label="Outflow" hint="Current month" />
+        <PendingStat label="Net" hint="Inflow less outflow" />
+        <PendingStat label="Uncategorised" hint="Awaiting a rule" />
+      </StatRow>
+      <EmptyPanel
+        icon={ArrowLeftRight}
+        title="No transactions yet"
+        body="Statement import, the three-pass duplicate matcher and keyword categorisation all arrive in Phase 2."
+        columns={["Date", "Narration", "Category", "Account", "Amount"]}
+      />
+    </>
   );
 }

@@ -1,4 +1,5 @@
-import { formatINRCompact } from "@/lib/utils";
+import { Money } from "@/shared/money/Money";
+import { formatMoneyCompact } from "@/ui/format";
 
 /**
  * Static, zero-dependency hero visual: a layered "wealth cockpit" preview —
@@ -36,7 +37,7 @@ const HeroVisual = () => (
         </span>
       </div>
       <p className="mt-2 font-mono text-4xl font-bold tracking-tight text-gray-100 sm:text-5xl">
-        {formatINRCompact(24800000)}
+        {formatMoneyCompact(Money.fromRupees(24_800_000))}
       </p>
 
       {/* Sparkline */}
@@ -86,7 +87,7 @@ const HeroVisual = () => (
         This month
       </p>
       <p className="mt-0.5 font-mono text-lg font-bold text-gray-100">
-        +{formatINRCompact(342000)}
+        +{formatMoneyCompact(Money.fromRupees(342_000))}
       </p>
     </div>
   </div>

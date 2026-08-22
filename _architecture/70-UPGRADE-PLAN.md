@@ -231,6 +231,57 @@ mark stale past the per-class threshold → **`null`, never zero**.
 
 ---
 
+## Phase F — Foundation: a green tree and a running shell
+
+*Not in the original plan. Added because the audit's premise turned out to be wrong in a
+way that blocks every gate below.*
+
+**Why this phase exists.** This document assumed v1 was live and could be strangled slice
+by slice, each phase deleting one v1 folder. It is not live. The `f7966e7 wip: savepoint
+before v2 redesign` commit uninstalled `mongoose`, `ioredis`, `kafkajs`, `kiteconnect`,
+`inngest` and `twilio` while leaving the ~120 files that import them in place, so
+`tsc --noEmit` reported **39 errors** and `next build` could not run at all. Every phase
+gate below is `typecheck && lint && test` — none of them could ever have gone green with
+v1 in the tree. So v1 goes first, in one commit, and the strangler ordering is dropped.
+
+**Decisions taken** (with the user, before starting):
+
+| Decision | Choice |
+|---|---|
+| Layout | This document's consolidated ~30-file tree wins; `ARCHITECTURE.md` §3 is amended to match |
+| v1 removal | One commit up front, after freezing the port-reference sources under `_reference/v1/` |
+| Live broker orders, Zerodha/Alpaca | Dropped permanently — Phase 6's risk-gate item takes its "or disable the live order path" branch |
+| All AI (Gemini parsers, `analysis/`, `signals/`, §7's LLM ingestion) | Dropped permanently; categorisation stays keyword-only |
+| SMS/WhatsApp alerts, news digest | Dropped permanently |
+| TradingView widgets | Kept — free and keyless |
+| Data providers | Keyless only: AMFI, MFAPI, Yahoo, NSE public, IBJA, CoinGecko, ECB, Manual. No Finnhub/EODHD/Kite/AlphaVantage |
+
+- [x] **Freeze the port-reference sources.** The six pure-logic files this plan names under
+      *Files that carry over unchanged*, plus `transaction.categories.ts`, the two `lib/`
+      data tables and the three hand-rolled charts, copied verbatim to `_reference/v1/` and
+      excluded from `tsconfig` and ESLint. **Done when** the snapshot exists and the type
+      error count is unchanged by it. ✔ *Verified: 39 before, 39 after, 0 from `_reference/`.*
+- [x] **Delete v1; rebuild `app/` on the v2 stack.** Removes `features/`, `core/`,
+      `lib/{actions,better-auth,inngest,constants,currencies,financial-providers}`, the two
+      `instrumentation` files, the stray `app/tsconfig.json`, the Finnhub price route, nine
+      empty API directories, eight already-empty route directories, `components/wealth/` and
+      nine dead components. Moves better-auth from `mongodbAdapter` to `drizzleAdapter`
+      against the existing libSQL auth tables. Narrows `tsconfig` `paths` so a stale
+      `@/features/*` fails loudly instead of resolving against the repo root.
+      **Done when** `tsc --noEmit` is 0, `lint` has no errors, `npm test` is green and
+      `next build` succeeds. ✔ *Verified: 39 → **0** errors, lint 0 errors / 8 warnings,
+      tests 3/3, build emits 13 routes + 3 API routes.*
+
+**Two live v1 defects fixed on the way through**, both found by reading rather than by
+testing: `proxy.ts` redirected `/forgot-password` and `/reset-password` to `/sign-in` for
+signed-out users, so password reset could never complete; and `lib/nodemailer` read
+`NODEMAILER_*` unguarded while `config.email()` reads `SMTP_*` and returns `null` when
+absent, so mail was sent with `undefined` credentials rather than skipped.
+
+**Gate:** the app builds, signs a user in, and renders every route. ✔
+
+---
+
 ## Phase 0 — Guardrails before domain code
 
 *Cheap, and everything after it depends on it.*
@@ -596,6 +647,7 @@ existing file, proven by doing it once.
 
 | Phase | Scope | Items | Status |
 |---|---|---|---|
+| F | Foundation — delete v1, auth on libSQL, green gate | 2 | ✔ Complete (2/2) |
 | 0 | Guardrails | 4 | ☐ Not started |
 | 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 27 | ☐ Not started |
 | 2 | Banking | 9 | ☐ Not started |

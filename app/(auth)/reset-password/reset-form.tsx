@@ -6,7 +6,7 @@ import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import InputField from "@/components/forms/InputField";
-import { resetPassword } from "@/lib/actions/auth.actions";
+import { resetPassword } from "@/infra/auth/actions";
 
 interface ResetForm {
   newPassword: string;

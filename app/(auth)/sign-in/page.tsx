@@ -7,7 +7,7 @@ import InputField from "../../../components/forms/InputField";
 import FooterLink from "@/components/forms/FooterLink";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
-import { signInWithEmail } from "@/lib/actions/auth.actions";
+import { signInWithEmail } from "@/infra/auth/actions";
 
 const SignIn = () => {
   const router = useRouter();

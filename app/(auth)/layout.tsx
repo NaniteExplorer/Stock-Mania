@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { BrandMark } from "@/components/Logo";
-import { getOptionalSession } from "@/lib/better-auth/auth";
+import { getOptionalSession } from "@/infra/auth/session";
 import { redirect } from "next/navigation";
 import { connection } from "next/server";
 import { ArrowLeft, Landmark, LineChart, ShieldCheck, Sparkles, Star } from "lucide-react";

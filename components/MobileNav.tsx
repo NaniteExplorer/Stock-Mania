@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { MOBILE_NAV_ITEMS } from "@/lib/constants";
+import { MOBILE_NAV_ITEMS } from "@/ui/nav";
 
 const isActive = (pathname: string, href: string) =>
   href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(href);
