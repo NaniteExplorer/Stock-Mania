@@ -234,11 +234,13 @@ export const genWeights = (maxLen = 12): Gen<number[]> => (rng) => {
   const shape = rng();
   if (shape < 0.25) return Array.from({ length: n }, () => 1);
   if (shape < 0.4) {
-    const w = Array.from({ length: n }, () => 0);
+    const w: number[] = Array.from({ length: n }, () => 0);
     w[Math.floor(rng() * n)] = 1;
     return w;
   }
-  const w = Array.from({ length: n }, () => (rng() < 0.3 ? 0 : Math.floor(rng() * 1_000_000)));
+  const w: number[] = Array.from({ length: n }, () =>
+    rng() < 0.3 ? 0 : Math.floor(rng() * 1_000_000),
+  );
   if (w.every((x) => x === 0)) w[0] = 1; // allocate rejects an all-zero vector
   return w;
 };
