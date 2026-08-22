@@ -1,0 +1,433 @@
+/**
+ * Ledger use cases.
+ *
+ * The four files formerly under `application/use-cases/`, in one file per the
+ * plan of record. A use case is the only thing a server action may call: it
+ * resolves ports, enforces the invariants that need more than one aggregate, and
+ * returns a `Result` the UI can render.
+ *
+ * Note this is `src/app/`, not the Next router at the repository root. Next
+ * ignores `src/app/` while a root `app/` exists, which `tests/layout.spec.ts`
+ * asserts in both directions.
+ */
+
+import { AppError, Clock, Err, NotFoundError, Ok, Result, UseCase, UserId, ValidationError } from "@/core/kernel";
+import { Currency, Money } from "@/core/money";
+import { CalendarDate } from "@/core/time";
+import { Account, AccountClosedError, AccountCode, AccountId, AccountRepository, AccountSubtype, AccountType, AccountTypeName, SystemAccountCodes, resolveDefaultChart } from "@/domain/accounts";
+import { EntryAlreadyReversedError, EntryKind, EntrySource, JournalEntry, JournalEntryId, JournalRepository } from "@/domain/transactions";
+/* ═══ SeedChartOfAccounts ═════════════════════════════════════════════ */
+
+export interface SeedChartOfAccountsInput {
+  userId: UserId;
+}
+
+export interface SeedChartOfAccountsOutput {
+  created: number;
+  /** Already present, so left alone. */
+  skipped: number;
+}
+
+/**
+ * Gives a new user a working chart of accounts.
+ *
+ * **Idempotent**: it only creates codes that are missing, so running it again
+ * after a partial failure — or after a later release adds categories — tops up
+ * rather than duplicating. That matters because it runs on first sign-in, where a
+ * retry is likely and a duplicate-code crash would lock the user out of an empty
+ * app.
+ *
+ * Parents are created before children in one pass, which the seed list's
+ * declaration order guarantees.
+ */
+export class SeedChartOfAccounts
+  implements UseCase<SeedChartOfAccountsInput, SeedChartOfAccountsOutput>
+{
+  constructor(private readonly accounts: AccountRepository) {}
+
+  async execute(input: SeedChartOfAccountsInput): Promise<Result<SeedChartOfAccountsOutput, AppError>> {
+    const existing = await this.accounts.list(input.userId, { includeClosed: true });
+    const idByCode = new Map<string, AccountId>(
+      existing.map((account) => [account.code.toString(), account.id]),
+    );
+
+    const toCreate: Account[] = [];
+    for (const seed of resolveDefaultChart()) {
+      const code = seed.code.toString();
+      if (idByCode.has(code)) continue;
+
+      const parentCode = seed.code.parent?.toString();
+      const account = Account.open({
+        userId: input.userId,
+        code: seed.code,
+        name: seed.name,
+        type: seed.type,
+        subtype: seed.subtype,
+        // Resolved from this same map, which the loop fills as it goes — hence
+        // the requirement that parents are declared first.
+        parentId: parentCode ? idByCode.get(parentCode) ?? null : null,
+        isSystem: seed.isSystem,
+        sortOrder: seed.sortOrder,
+      });
+
+      idByCode.set(code, account.id);
+      toCreate.push(account);
+    }
+
+    if (toCreate.length > 0) {
+      await this.accounts.saveMany(toCreate);
+    }
+
+    return Ok({ created: toCreate.length, skipped: existing.length });
+  }
+}
+
+/* ═══ OpenAccount ═════════════════════════════════════════════════════ */
+
+export interface OpenAccountInput {
+  userId: UserId;
+  name: string;
+  type: AccountTypeName;
+  subtype?: AccountSubtype | null;
+  /** Where it sits in the tree. Defaults to the type's root (`Assets`, …). */
+  parentId?: AccountId | null;
+  institution?: string | null;
+  accountNumberSuffix?: string | null;
+  currency?: Currency;
+  /**
+   * The balance the account already has today. Booked against
+   * `Equity:Opening Balances` so the ledger stays balanced from the first day —
+   * this is the piece that lets a user start mid-life without inventing history.
+   *
+   * For a liability, pass the amount owed as a positive number.
+   */
+  openingBalance?: Money | null;
+  openingBalanceOn?: CalendarDate;
+}
+
+export interface OpenAccountOutput {
+  accountId: AccountId;
+  code: string;
+}
+
+/**
+ * Creates an account, and optionally seeds its current balance.
+ *
+ * The opening balance is the interesting part. A user starting today has ₹3.4
+ * lakh in a bank account and no transaction history to explain it, and a
+ * single-sided "just set the balance" would leave debits and credits unequal
+ * forever. Posting it against `Equity:Opening Balances` is the standard
+ * bookkeeping answer: net worth is right immediately, the ledger still balances,
+ * and the equity account makes explicit how much of the position was never
+ * recorded as income.
+ */
+export class OpenAccount implements UseCase<OpenAccountInput, OpenAccountOutput> {
+  constructor(
+    private readonly accounts: AccountRepository,
+    private readonly journal: JournalRepository,
+    private readonly clock: Clock,
+  ) {}
+
+  async execute(input: OpenAccountInput): Promise<Result<OpenAccountOutput, AppError>> {
+    const name = input.name.trim();
+    if (name.length === 0) {
+      return Err(new ValidationError("Give the account a name.", { name: ["Required"] }));
+    }
+
+    const type = AccountType.of(input.type);
+    if (!type.isUserCreatable) {
+      return Err(
+        new ValidationError(
+          `${type.label} accounts are maintained by the app and cannot be created by hand.`,
+          { type: ["Not allowed"] },
+        ),
+      );
+    }
+
+    const parent = input.parentId
+      ? await this.accounts.findById(input.userId, input.parentId)
+      : await this.accounts.findByCode(input.userId, AccountCode.parse(type.label));
+
+    if (input.parentId && !parent) {
+      return Err(new NotFoundError("Parent account", input.parentId.value));
+    }
+    if (parent && parent.type !== type) {
+      return Err(
+        new ValidationError(
+          `A ${type.label.toLowerCase()} account cannot sit under ${parent.displayName}, ` +
+            `which is ${parent.type.label.toLowerCase()}.`,
+          { parentId: ["Type mismatch"] },
+        ),
+      );
+    }
+
+    // Codes are unique per user; disambiguate rather than rejecting a name the
+    // user reasonably wants to reuse ("HDFC" for both a savings and a salary
+    // account).
+    const baseCode = parent ? parent.code.child(name) : AccountCode.parse(name);
+    const code = await this.uniqueCode(input.userId, baseCode);
+
+    const account = Account.open({
+      userId: input.userId,
+      code,
+      name,
+      type,
+      subtype: input.subtype ?? parent?.subtype ?? null,
+      parentId: parent?.id ?? null,
+      currency: input.currency ?? Currency.reporting,
+      institution: input.institution ?? parent?.institution ?? null,
+      accountNumberSuffix: input.accountNumberSuffix ?? null,
+    });
+
+    await this.accounts.save(account);
+
+    const opening = input.openingBalance;
+    if (opening && !opening.isZero) {
+      const equity = await this.accounts.findByCode(
+        input.userId,
+        AccountCode.parse(SystemAccountCodes.openingBalances),
+      );
+      if (!equity) {
+        return Err(
+          new NotFoundError(
+            `System account "${SystemAccountCodes.openingBalances}" — seed the chart of accounts first`,
+          ),
+        );
+      }
+
+      // An asset's opening balance debits the asset; a liability's credits it.
+      // Using `signedEffect` keeps this from being a hand-written sign decision.
+      const increasesWithDebit = type.signedEffect("DEBIT") === 1;
+      const entry = JournalEntry.twoLegged({
+        userId: input.userId,
+        postedOn: input.openingBalanceOn ?? CalendarDate.parse(this.clock.today()),
+        narration: `Opening balance — ${account.displayName}`,
+        kind: "OPENING",
+        debitAccountId: increasesWithDebit ? account.id : equity.id,
+        creditAccountId: increasesWithDebit ? equity.id : account.id,
+        amount: opening.abs(),
+      });
+      await this.journal.save(entry);
+    }
+
+    return Ok({ accountId: account.id, code: code.toString() });
+  }
+
+  /** Appends ` 2`, ` 3`, … until the code is free. */
+  private async uniqueCode(userId: UserId, base: AccountCode): Promise<AccountCode> {
+    if (!(await this.accounts.findByCode(userId, base))) return base;
+
+    const parent = base.parent;
+    for (let suffix = 2; suffix < 50; suffix += 1) {
+      const candidate = parent
+        ? parent.child(`${base.leaf} ${suffix}`)
+        : AccountCode.parse(`${base.leaf} ${suffix}`);
+      if (!(await this.accounts.findByCode(userId, candidate))) return candidate;
+    }
+    throw new Error(`Could not find a free account code based on "${base.toString()}"`);
+  }
+}
+
+/* ═══ RecordTransaction ═══════════════════════════════════════════════ */
+
+export interface RecordTransactionInput {
+  userId: UserId;
+  /** Where the money comes FROM — credited. */
+  fromAccountId: AccountId;
+  /** Where the money goes TO — debited. */
+  toAccountId: AccountId;
+  amount: Money;
+  postedOn: CalendarDate;
+  narration: string;
+  reference?: string | null;
+  source?: EntrySource;
+  importBatchId?: string | null;
+  fingerprint?: string | null;
+}
+
+export interface RecordTransactionOutput {
+  entryId: JournalEntryId;
+  kind: EntryKind;
+}
+
+/**
+ * Records any single movement of money between two accounts.
+ *
+ * **One use case covers expenses, income, transfers and card spending**, because
+ * in double-entry they are the same operation: debit the destination, credit the
+ * source. Working through the four cases with that one rule:
+ *
+ * | From → To | Debit / Credit | Result |
+ * | --- | --- | --- |
+ * | HDFC → Groceries | Dr Groceries, Cr HDFC | expense up, bank down |
+ * | Salary → HDFC | Dr HDFC, Cr Salary | bank up, income up |
+ * | HDFC → Credit Card | Dr Card, Cr HDFC | debt down, bank down |
+ * | Credit Card → Groceries | Dr Groceries, Cr Card | expense up, debt up |
+ *
+ * All four fall out of the account types' normal balances, so there is no
+ * per-case sign logic to get wrong — which is what v1's separate transaction,
+ * transfer and credit-card paths each got wrong differently. `kind` is *derived*
+ * from the two account types for display only; it never affects the arithmetic.
+ */
+export class RecordTransaction
+  implements UseCase<RecordTransactionInput, RecordTransactionOutput>
+{
+  constructor(
+    private readonly accounts: AccountRepository,
+    private readonly journal: JournalRepository,
+  ) {}
+
+  async execute(input: RecordTransactionInput): Promise<Result<RecordTransactionOutput, AppError>> {
+    if (!input.amount.isPositive) {
+      return Err(
+        new ValidationError("Enter an amount greater than zero.", {
+          amount: ["Must be greater than zero"],
+        }),
+      );
+    }
+    if (input.fromAccountId.equals(input.toAccountId)) {
+      return Err(
+        new ValidationError("Pick two different accounts — money cannot move to itself.", {
+          toAccountId: ["Must differ from the source account"],
+        }),
+      );
+    }
+    if (input.narration.trim().length === 0) {
+      return Err(
+        new ValidationError("Add a description so you can recognise this later.", {
+          narration: ["Required"],
+        }),
+      );
+    }
+
+    const [from, to] = await Promise.all([
+      this.accounts.findById(input.userId, input.fromAccountId),
+      this.accounts.findById(input.userId, input.toAccountId),
+    ]);
+    if (!from) return Err(new NotFoundError("Source account", input.fromAccountId.value));
+    if (!to) return Err(new NotFoundError("Destination account", input.toAccountId.value));
+
+    for (const account of [from, to]) {
+      if (!account.acceptsPostings) return Err(new AccountClosedError(account.displayName));
+    }
+
+    // Both legs must share the entry's currency; the aggregate would reject a
+    // mismatch, but catching it here gives the user a usable message.
+    if (from.currency.code !== input.amount.currency.code || to.currency.code !== input.amount.currency.code) {
+      return Err(
+        new ValidationError(
+          `${from.displayName} and ${to.displayName} must both be in ${input.amount.currency.code} ` +
+            `to record this in ${input.amount.currency.code}.`,
+        ),
+      );
+    }
+
+    // An imported row we already have is a friendly no-op, not an error — the
+    // unique index would otherwise surface as a driver exception.
+    if (input.fingerprint) {
+      const seen = await this.journal.existsWithFingerprint(input.userId, input.fingerprint);
+      if (seen) {
+        return Err(
+          new ValidationError("This transaction is already recorded.", {
+            fingerprint: ["Duplicate"],
+          }),
+        );
+      }
+    }
+
+    const entry = JournalEntry.twoLegged({
+      userId: input.userId,
+      postedOn: input.postedOn,
+      narration: input.narration,
+      kind: RecordTransaction.deriveKind(from, to),
+      debitAccountId: to.id,
+      creditAccountId: from.id,
+      amount: input.amount,
+      source: input.source ?? "MANUAL",
+      reference: input.reference ?? null,
+      importBatchId: input.importBatchId ?? null,
+      fingerprint: input.fingerprint ?? null,
+    });
+
+    await this.journal.save(entry);
+
+    return Ok({ entryId: entry.id, kind: entry.kind });
+  }
+
+  /**
+   * Labels the entry from the shape of the movement. Presentation only — two
+   * balance-sheet accounts is a transfer (and so must not change net worth),
+   * money arriving from an income account is income, and so on.
+   */
+  private static deriveKind(from: Account, to: Account): EntryKind {
+    if (from.type === AccountType.INCOME) return "INCOME";
+    if (to.type === AccountType.EXPENSE) return "EXPENSE";
+    if (from.type === AccountType.EQUITY || to.type === AccountType.EQUITY) return "OPENING";
+    if (from.type.isBalanceSheet && to.type.isBalanceSheet) return "TRANSFER";
+    return "ADJUSTMENT";
+  }
+}
+
+/* ═══ ReverseTransaction ══════════════════════════════════════════════ */
+
+export interface ReverseTransactionInput {
+  userId: UserId;
+  entryId: JournalEntryId;
+  /** Defaults to the original entry's date, so the fix lands in the right period. */
+  reversedOn?: CalendarDate;
+  narration?: string;
+}
+
+export interface ReverseTransactionOutput {
+  reversalEntryId: JournalEntryId;
+}
+
+/**
+ * Undoes a transaction by posting its mirror image.
+ *
+ * This is the *only* way to correct the ledger, and there is deliberately no
+ * `EditTransaction` or `DeleteTransaction` beside it. Editing a posted entry would
+ * silently change every report that had already been produced from it; reversing
+ * leaves both the mistake and the correction visible, and the pair nets to zero
+ * everywhere. It is also how real accounting systems behave, which matters when
+ * the numbers feed a tax return.
+ *
+ * To restate a transaction, reverse it and record the correct one.
+ */
+export class ReverseTransaction
+  implements UseCase<ReverseTransactionInput, ReverseTransactionOutput>
+{
+  constructor(
+    private readonly journal: JournalRepository,
+    private readonly clock: Clock,
+  ) {}
+
+  async execute(input: ReverseTransactionInput): Promise<Result<ReverseTransactionOutput, AppError>> {
+    const original = await this.journal.findById(input.userId, input.entryId);
+    if (!original) return Err(new NotFoundError("Transaction", input.entryId.value));
+
+    // Reversing a reversal would leave the user unable to tell what the current
+    // state is; they should reverse the original instead.
+    if (original.isReversal) {
+      return Err(new EntryAlreadyReversedError());
+    }
+    if (await this.journal.hasReversal(input.userId, original.id)) {
+      return Err(new EntryAlreadyReversedError());
+    }
+
+    const reversedOn = input.reversedOn ?? original.postedOn;
+    // A reversal dated in the future would sit outside every report until that
+    // date arrives, leaving the original apparently un-corrected.
+    const today = CalendarDate.parse(this.clock.today());
+    const effectiveDate = reversedOn.isAfter(today) ? today : reversedOn;
+
+    const reversal = original.reverse({
+      reversedOn: effectiveDate,
+      narration: input.narration,
+    });
+
+    await this.journal.save(reversal);
+
+    return Ok({ reversalEntryId: reversal.id });
+  }
+}

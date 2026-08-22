@@ -7,16 +7,16 @@ import type { Database } from "@/infra/db/client";
 import { UserId, FixedClock } from "@/core/kernel";
 import { Money } from "@/core/money";
 import { CalendarDate, DateRange } from "@/core/time";
-import { AccountCode } from "@/modules/ledger/domain/value-objects/AccountCode";
-import { AccountType } from "@/modules/ledger/domain/value-objects/AccountType";
-import { BalanceCalculator } from "@/modules/ledger/domain/services/BalanceCalculator";
-import { DrizzleAccountRepository } from "@/modules/ledger/infrastructure/persistence/DrizzleAccountRepository";
-import { DrizzleJournalRepository } from "@/modules/ledger/infrastructure/persistence/DrizzleJournalRepository";
-import { DrizzleBalanceQuery } from "@/modules/ledger/infrastructure/persistence/DrizzleBalanceQuery";
-import { SeedChartOfAccounts } from "@/modules/ledger/application/use-cases/SeedChartOfAccounts";
-import { OpenAccount } from "@/modules/ledger/application/use-cases/OpenAccount";
-import { RecordTransaction } from "@/modules/ledger/application/use-cases/RecordTransaction";
-import { ReverseTransaction } from "@/modules/ledger/application/use-cases/ReverseTransaction";
+import { AccountCode } from "@/domain/accounts";
+import { AccountType } from "@/domain/accounts";
+import { BalanceCalculator } from "@/domain/transactions";
+import { DrizzleAccountRepository } from "@/infra/repositories";
+import { DrizzleJournalRepository } from "@/infra/repositories";
+import { DrizzleBalanceQuery } from "@/infra/repositories";
+import { SeedChartOfAccounts } from "@/app/ledger.usecases";
+import { OpenAccount } from "@/app/ledger.usecases";
+import { RecordTransaction } from "@/app/ledger.usecases";
+import { ReverseTransaction } from "@/app/ledger.usecases";
 
 let failures = 0;
 const check = (label: string, actual: unknown, expected: unknown) => {

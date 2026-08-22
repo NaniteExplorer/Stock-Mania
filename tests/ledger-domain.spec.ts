@@ -1,13 +1,13 @@
 import { UserId } from "@/core/kernel";
 import { Money } from "@/core/money";
 import { CalendarDate, DateRange } from "@/core/time";
-import { Account } from "@/modules/ledger/domain/entities/Account";
-import { JournalEntry } from "@/modules/ledger/domain/entities/JournalEntry";
-import { Posting } from "@/modules/ledger/domain/entities/Posting";
-import { AccountCode } from "@/modules/ledger/domain/value-objects/AccountCode";
-import { AccountType } from "@/modules/ledger/domain/value-objects/AccountType";
-import { BalanceCalculator } from "@/modules/ledger/domain/services/BalanceCalculator";
-import { resolveDefaultChart } from "@/modules/ledger/domain/ChartOfAccounts";
+import { Account } from "@/domain/accounts";
+import { JournalEntry } from "@/domain/transactions";
+import { Posting } from "@/domain/transactions";
+import { AccountCode } from "@/domain/accounts";
+import { AccountType } from "@/domain/accounts";
+import { BalanceCalculator } from "@/domain/transactions";
+import { resolveDefaultChart } from "@/domain/accounts";
 
 let failures = 0;
 const check = (label: string, actual: unknown, expected: unknown) => {
