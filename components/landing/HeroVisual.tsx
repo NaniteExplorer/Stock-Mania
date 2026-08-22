@@ -52,7 +52,7 @@ const HeroVisual = () => (
         <polyline
           points={SPARK}
           fill="none"
-          stroke="#7c6cff"
+          stroke="var(--primary)"
           strokeWidth="1.5"
           strokeLinecap="round"
           strokeLinejoin="round"

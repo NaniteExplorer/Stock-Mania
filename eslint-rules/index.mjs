@@ -1,5 +1,6 @@
 import noFloatMoney from "./no-float-money.mjs";
 import noFloatColumns from "./no-float-columns.mjs";
+import noRawHex from "./no-raw-hex.mjs";
 
 /**
  * The project's own ESLint plugin.
@@ -11,5 +12,6 @@ export default {
   rules: {
     "no-float-money": noFloatMoney,
     "no-float-columns": noFloatColumns,
+    "no-raw-hex": noRawHex,
   },
 };

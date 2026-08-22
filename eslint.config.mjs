@@ -73,6 +73,13 @@ const eslintConfig = defineConfig([
     rules: { "money/no-float-money": "off" },
   },
 
+  // ── The design system: no raw hex outside tokens.css ─────────────────────
+  {
+    files: ["components/**/*.tsx", "app/**/*.tsx", "src/ui/**/*.tsx"],
+    plugins: { money },
+    rules: { "money/no-raw-hex": "error" },
+  },
+
   // ── The schema: no floating-point columns ────────────────────────────────
   {
     files: ["src/infra/db/**/*.ts"],

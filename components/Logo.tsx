@@ -16,13 +16,13 @@ export const Logo = ({ className }: { className?: string }) => (
   >
     <defs>
       <linearGradient id="sm-logo-grad" x1="0" y1="0" x2="1" y2="1">
-        <stop offset="0%" stopColor="#9d90ff" />
-        <stop offset="55%" stopColor="#6d5cff" />
-        <stop offset="100%" stopColor="#5b50e8" />
+        <stop offset="0%" stopColor="var(--brand-mark-1)" />
+        <stop offset="55%" stopColor="var(--brand-mark-2)" />
+        <stop offset="100%" stopColor="var(--brand-mark-3)" />
       </linearGradient>
       <linearGradient id="sm-logo-shine" x1="0" y1="0" x2="0" y2="1">
-        <stop offset="0%" stopColor="#ffffff" stopOpacity="0.28" />
-        <stop offset="45%" stopColor="#ffffff" stopOpacity="0" />
+        <stop offset="0%" stopColor="white" stopOpacity="0.28" />
+        <stop offset="45%" stopColor="white" stopOpacity="0" />
       </linearGradient>
     </defs>
     <rect width="40" height="40" rx="11" fill="url(#sm-logo-grad)" />
@@ -31,13 +31,13 @@ export const Logo = ({ className }: { className?: string }) => (
     <path
       d="M9 25 L16 19 L21 22 L31 13"
       fill="none"
-      stroke="#ffffff"
+      stroke="white"
       strokeOpacity="0.9"
       strokeWidth="2.2"
       strokeLinecap="round"
       strokeLinejoin="round"
     />
-    <circle cx="31" cy="13" r="2.1" fill="#ffffff" />
+    <circle cx="31" cy="13" r="2.1" fill="white" />
   </svg>
 );
 
