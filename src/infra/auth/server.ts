@@ -4,8 +4,8 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 
-import { db } from "@/db/client";
-import { users, sessions, authAccounts, verifications } from "@/db/schema/auth";
+import { db } from "@/infra/db/client";
+import { users, sessions, authAccounts, verifications } from "@/infra/db/schema";
 import { config } from "@/core/config";
 import { sendPasswordResetEmail, sendVerificationEmail } from "./mail";
 

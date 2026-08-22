@@ -1,9 +1,9 @@
 import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
-import * as schema from "@/db/schema";
-import { users } from "@/db/schema";
-import type { Database } from "@/db/client";
+import * as schema from "@/infra/db/schema";
+import { users } from "@/infra/db/schema";
+import type { Database } from "@/infra/db/client";
 import { UserId, FixedClock } from "@/core/kernel";
 import { Money } from "@/core/money";
 import { CalendarDate, DateRange } from "@/core/time";
@@ -36,7 +36,7 @@ async function main() {
   const db = drizzle(client, { schema }) as unknown as Database;
 
   // Apply the generated migrations exactly as production would.
-  const dir = "./src/db/migrations";
+  const dir = "./src/infra/db/migrations";
   for (const file of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
     const sqlText = readFileSync(`${dir}/${file}`, "utf8");
     for (const statement of sqlText.split("--> statement-breakpoint")) {

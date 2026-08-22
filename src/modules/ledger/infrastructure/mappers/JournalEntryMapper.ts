@@ -1,7 +1,7 @@
 import { UserId } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { CalendarDate } from "@/core/time";
-import type { journalEntries, postings } from "@/db/schema";
+import type { journalEntries, postings } from "@/infra/db/schema";
 import {
   JournalEntry,
   type EntryKind,

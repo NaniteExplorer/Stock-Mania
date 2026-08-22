@@ -1,6 +1,6 @@
 import { and, asc, count, desc, eq, gte, inArray, like, lte, min, or, sql } from "drizzle-orm";
-import type { Database } from "@/db/client";
-import { journalEntries, postings } from "@/db/schema";
+import type { Database } from "@/infra/db/client";
+import { journalEntries, postings } from "@/infra/db/schema";
 import { type UserId } from "@/core/kernel";
 import { CalendarDate } from "@/core/time";
 import type { JournalEntry } from "../../domain/entities/JournalEntry";

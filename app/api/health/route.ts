@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { db } from "@/db/client";
+import { db } from "@/infra/db/client";
 
 /**
  * Readiness probe. `k8s/` points at this path, so the path and the response

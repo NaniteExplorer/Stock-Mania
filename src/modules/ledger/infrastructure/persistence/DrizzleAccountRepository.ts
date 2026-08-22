@@ -1,6 +1,6 @@
 import { and, asc, count, eq, inArray, sql } from "drizzle-orm";
-import type { Database } from "@/db/client";
-import { ledgerAccounts, postings } from "@/db/schema";
+import type { Database } from "@/infra/db/client";
+import { ledgerAccounts, postings } from "@/infra/db/schema";
 import { type UserId } from "@/core/kernel";
 import type { Account } from "../../domain/entities/Account";
 import type { AccountId } from "../../domain/ids";

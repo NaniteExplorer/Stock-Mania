@@ -1,6 +1,6 @@
 import { UserId } from "@/core/kernel";
 import { Currency } from "@/core/money";
-import type { ledgerAccounts } from "@/db/schema";
+import type { ledgerAccounts } from "@/infra/db/schema";
 import { Account, type AccountSubtype } from "../../domain/entities/Account";
 import { AccountId } from "../../domain/ids";
 import { AccountCode } from "../../domain/value-objects/AccountCode";

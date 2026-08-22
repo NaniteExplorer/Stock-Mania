@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
-import type { Database } from "@/db/client";
-import { journalEntries, ledgerAccounts, postings } from "@/db/schema";
+import type { Database } from "@/infra/db/client";
+import { journalEntries, ledgerAccounts, postings } from "@/infra/db/schema";
 import { type UserId } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { CalendarDate, type DateRange } from "@/core/time";

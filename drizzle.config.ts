@@ -15,8 +15,8 @@ if (!url) {
 
 export default defineConfig({
   dialect: "turso",
-  schema: "./src/db/schema/index.ts",
-  out: "./src/db/migrations",
+  schema: "./src/infra/db/schema.ts",
+  out: "./src/infra/db/migrations",
   dbCredentials: {
     url,
     authToken: process.env.DATABASE_AUTH_TOKEN,
