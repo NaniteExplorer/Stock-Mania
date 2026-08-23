@@ -11,15 +11,16 @@
  * audit event.
  */
 
-import { UserId } from "@/core/kernel";
+import { UserId, newUuid } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { CalendarDate, DateRange } from "@/core/time";
 import { Account, AccountCode, AccountId, AccountRepository, AccountSubtype, AccountType, AccountTypeName, PostingDirection } from "@/domain/accounts";
-import { Quantity } from "@/core/numeric";
+import { Quantity, UnitPrice } from "@/core/numeric";
+import { FxQuote, FxRateRepository, PriceDivergence, PriceSourceType, Quote, QuoteRepository, QuoteType, StoredFxRate } from "@/domain/pricing";
 import { AccountBalance, AccountFlow, BalanceQuery, MonthlyFlow, Posting, PostingId, PostingStatus, StoredTransaction, Transaction, TransactionId, TransactionKind, TransactionPage, TransactionQuery, TransactionRepository, TransactionSource, TypeTotals } from "@/domain/transactions";
-import { ledgerAccounts, postings, transactions } from "@/infra/db/schema";
+import { fxRates, ledgerAccounts, postings, priceDivergences, priceQuotes, transactions } from "@/infra/db/schema";
 import { Database } from "@/infra/db/client";
-import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, min, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, max, min, or, sql } from "drizzle-orm";
 /* ═══ AccountMapper ═══════════════════════════════════════════════════ */
 
 type AccountRow = typeof ledgerAccounts.$inferSelect;
@@ -842,6 +843,240 @@ export class DrizzleBalanceQuery implements BalanceQuery {
     return rows.map((row) => {
       running = running.plus(this.money(row.delta));
       return { date: CalendarDate.parse(row.date), balance: running };
+    });
+  }
+}
+
+/* ═══ DrizzleQuoteRepository ═══════════════════════════════════════════ */
+
+/**
+ * libSQL implementation of {@link QuoteRepository}.
+ *
+ * **Append-only, and there is no method that is not.** A vendor correction inserts
+ * a row and points the old one at it through {@link supersede}; nothing overwrites a
+ * price. That is what makes "what did we believe this was worth on 31 March, using
+ * the data we had then" answerable years later, and it is the one thing all four
+ * reference implementations get wrong — every one of them updates prices in place.
+ *
+ * The unique index includes `ingestedAt` for the same reason: with §3.8's
+ * four-column key, a correction would have to overwrite the original and the second
+ * time axis would be decoration.
+ */
+export class DrizzleQuoteRepository implements QuoteRepository {
+  constructor(private readonly db: Database) {}
+
+  async append(quotes: readonly Quote[]): Promise<void> {
+    if (quotes.length === 0) return;
+    const rows = quotes.map((quote) => ({
+      id: newUuid(),
+      instrumentId: quote.instrumentId,
+      asOf: quote.asOf.toISO(),
+      quoteType: quote.quoteType,
+      priceScaled: quote.price.toScaledNumber(),
+      currency: quote.price.currency.code,
+      providerId: quote.providerId,
+      sourceType: quote.sourceType,
+      ingestedAt: quote.ingestedAt,
+    }));
+
+    await this.db.transaction(async (tx) => {
+      for (let i = 0; i < rows.length; i += 200) {
+        await tx
+          .insert(priceQuotes)
+          .values(rows.slice(i, i + 200))
+          // Re-ingesting the same provider's same belief at the same instant is a
+          // repeated fetch, not a correction — so it is a no-op rather than an error
+          // a scheduler would have to catch.
+          .onConflictDoNothing();
+      }
+    });
+  }
+
+  async supersede(supersededQuoteId: string, bySupersedingQuoteId: string): Promise<void> {
+    await this.db
+      .update(priceQuotes)
+      .set({ supersededBy: bySupersedingQuoteId })
+      .where(eq(priceQuotes.id, supersededQuoteId));
+  }
+
+  async findLatestOnOrBefore(
+    instrumentId: string,
+    quoteType: QuoteType,
+    asOf: CalendarDate,
+    limit = 50,
+  ): Promise<readonly Quote[]> {
+    const rows = await this.db
+      .select()
+      .from(priceQuotes)
+      .where(
+        and(
+          eq(priceQuotes.instrumentId, instrumentId),
+          eq(priceQuotes.quoteType, quoteType),
+          lte(priceQuotes.asOf, asOf.toISO()),
+        ),
+      )
+      // Newest date first, then newest belief about that date — the order the
+      // resolution ladder walks.
+      .orderBy(desc(priceQuotes.asOf), desc(priceQuotes.ingestedAt))
+      .limit(limit);
+
+    return rows.map(QuoteMapper.toDomain);
+  }
+
+  async findRange(
+    instrumentId: string,
+    quoteType: QuoteType,
+    dateRange: DateRange,
+  ): Promise<readonly Quote[]> {
+    const rows = await this.db
+      .select()
+      .from(priceQuotes)
+      .where(
+        and(
+          eq(priceQuotes.instrumentId, instrumentId),
+          eq(priceQuotes.quoteType, quoteType),
+          gte(priceQuotes.asOf, dateRange.start.toISO()),
+          lte(priceQuotes.asOf, dateRange.end.toISO()),
+          isNull(priceQuotes.supersededBy),
+        ),
+      )
+      .orderBy(asc(priceQuotes.asOf), desc(priceQuotes.ingestedAt));
+
+    return rows.map(QuoteMapper.toDomain);
+  }
+
+  async coverage(
+    instrumentId: string,
+    quoteType: QuoteType,
+  ): Promise<{ from: CalendarDate; through: CalendarDate } | null> {
+    const [row] = await this.db
+      .select({ from: min(priceQuotes.asOf), through: max(priceQuotes.asOf) })
+      .from(priceQuotes)
+      .where(and(eq(priceQuotes.instrumentId, instrumentId), eq(priceQuotes.quoteType, quoteType)));
+
+    if (!row?.from || !row.through) return null;
+    return { from: CalendarDate.parse(row.from), through: CalendarDate.parse(row.through) };
+  }
+
+  async recordDivergence(divergence: PriceDivergence): Promise<void> {
+    await this.db.insert(priceDivergences).values({
+      id: newUuid(),
+      instrumentId: divergence.instrumentId,
+      asOf: divergence.asOf.toISO(),
+      quoteType: divergence.quoteType,
+      providerA: divergence.providerA,
+      providerB: divergence.providerB,
+      // Stored as money because a divergence report is read by a person, and the
+      // paisa-level difference between two vendors is not the interesting part.
+      priceAMinor: divergence.priceA.toMoney().toMinorNumber(),
+      priceBMinor: divergence.priceB.toMoney().toMinorNumber(),
+      currency: divergence.priceA.currency.code,
+      deltaPercentScaled: divergence.deltaPercent.toScaledNumber(),
+    });
+  }
+}
+
+const QuoteMapper = {
+  toDomain(row: typeof priceQuotes.$inferSelect): Quote {
+    return {
+      instrumentId: row.instrumentId,
+      asOf: CalendarDate.parse(row.asOf),
+      quoteType: row.quoteType as QuoteType,
+      price: UnitPrice.fromScaled(row.priceScaled, Currency.of(row.currency)),
+      providerId: row.providerId,
+      sourceType: row.sourceType as PriceSourceType,
+      ingestedAt: row.ingestedAt,
+      supersededBy: row.supersededBy,
+    };
+  },
+};
+
+/* ═══ DrizzleFxRateRepository ══════════════════════════════════════════ */
+
+/**
+ * libSQL implementation of {@link FxRateRepository}.
+ *
+ * A user-asserted rate is a **row**, not a column update on the provider's row.
+ * Both are returned by the same query and `FxBook` decides; storing the assertion
+ * by overwriting would lose what the vendor said, and "why is this year's return
+ * different from what I filed" needs both numbers.
+ */
+export class DrizzleFxRateRepository implements FxRateRepository {
+  constructor(private readonly db: Database) {}
+
+  async append(rates: readonly FxQuote[]): Promise<void> {
+    if (rates.length === 0) return;
+    await this.db
+      .insert(fxRates)
+      .values(
+        rates.map((rate) => ({
+          id: newUuid(),
+          userId: null,
+          base: rate.base,
+          quote: rate.quote,
+          asOf: rate.asOf.toISO(),
+          providerId: rate.providerId,
+          providerRateScaled: rate.rate.toScaledNumber(),
+          userRateScaled: null,
+          sourceType: rate.sourceType,
+          derivation: rate.derivation ?? null,
+          ingestedAt: rate.ingestedAt,
+        })),
+      )
+      .onConflictDoNothing();
+  }
+
+  async findLatestOnOrBefore(
+    base: string,
+    quote: string,
+    asOf: CalendarDate,
+    userId?: UserId,
+    limit = 50,
+  ): Promise<readonly StoredFxRate[]> {
+    const rows = await this.db
+      .select()
+      .from(fxRates)
+      .where(
+        and(
+          eq(fxRates.base, base),
+          eq(fxRates.quote, quote),
+          lte(fxRates.asOf, asOf.toISO()),
+          // A provider row is everyone's; a user's assertion is only theirs.
+          userId
+            ? or(isNull(fxRates.userId), eq(fxRates.userId, userId.value))
+            : isNull(fxRates.userId),
+        ),
+      )
+      .orderBy(desc(fxRates.asOf), desc(fxRates.ingestedAt))
+      .limit(limit);
+
+    return rows.map((row) => ({
+      base: row.base,
+      quote: row.quote,
+      asOf: CalendarDate.parse(row.asOf),
+      rate: Quantity.fromScaled(row.providerRateScaled ?? row.userRateScaled ?? 0),
+      providerId: row.providerId,
+      sourceType: row.sourceType as PriceSourceType,
+      ingestedAt: row.ingestedAt,
+      derivation: row.derivation,
+      userId: row.userId,
+      userRate: row.userRateScaled === null ? null : Quantity.fromScaled(row.userRateScaled),
+    }));
+  }
+
+  async setUserRate(rate: FxQuote & { userId: UserId }): Promise<void> {
+    await this.db.insert(fxRates).values({
+      id: newUuid(),
+      userId: rate.userId.value,
+      base: rate.base,
+      quote: rate.quote,
+      asOf: rate.asOf.toISO(),
+      providerId: rate.providerId,
+      providerRateScaled: null,
+      userRateScaled: rate.rate.toScaledNumber(),
+      sourceType: "MANUAL",
+      derivation: null,
+      ingestedAt: rate.ingestedAt,
     });
   }
 }

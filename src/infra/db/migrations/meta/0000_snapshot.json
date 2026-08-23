@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f0678828-dafa-44c7-8d1a-4d8d82a4949a",
+  "id": "97d6c2c6-904a-4da4-b5a4-26de273e14c0",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "audit_events": {
@@ -3052,8 +3052,8 @@
           "autoincrement": false,
           "default": "'CLOSE'"
         },
-        "price_minor": {
-          "name": "price_minor",
+        "price_scaled": {
+          "name": "price_scaled",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -3156,7 +3156,7 @@
       "checkConstraints": {
         "price_quotes_price_positive": {
           "name": "price_quotes_price_positive",
-          "value": "\"price_quotes\".\"price_minor\" > 0"
+          "value": "\"price_quotes\".\"price_scaled\" > 0"
         }
       }
     },

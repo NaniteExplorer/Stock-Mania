@@ -10,7 +10,7 @@
  */
 
 import { ValueObject } from "./kernel";
-import { Money, divideRounded, pow10, type RoundingMode } from "./money";
+import { Currency, Money, divideRounded, pow10, type RoundingMode } from "./money";
 
 /* ─── Quantity ─────────────────────────────────────────────── */
 
@@ -185,6 +185,139 @@ export class Quantity extends ValueObject {
 
   toJSON(): string {
     return this.toDecimalString();
+  }
+}
+
+/* ─── UnitPrice ──────────────────────────────────────────────── */
+
+/**
+ * A price per unit: an exact decimal to eight places, in a currency.
+ *
+ * **Not `Money`, and the distinction is not pedantry.** `Money` is an amount, held
+ * in the currency's own minor units — two decimals for the rupee — because an
+ * amount of money that is not a whole number of paise cannot exist. A *price* has
+ * no such limit: AMFI publishes NAV to four decimals, a fund unit costs
+ * ₹84.5612, and `Money.fromRupees("84.5612")` rounds that to ₹84.56 without
+ * complaint. On a 10,000-unit holding that is ₹12 of invented value, and the
+ * rounding happens at ingestion where nothing can see it.
+ *
+ * So a price is a rate, like {@link Rate} and unlike {@link Money}, and rounding
+ * belongs at the multiplication — {@link times} — where the result really is an
+ * amount of money and there is one place to state the mode.
+ *
+ * This is the `NUMERIC(38,18)` of `20-DOMAIN-MODEL.md` §3.8, at `Quantity`'s scale:
+ * eight decimals covers every published price (four for NAV, two for equities,
+ * eight for crypto) and shares `Quantity`'s factor, so `units × price` is one exact
+ * integer multiplication.
+ */
+export class UnitPrice extends ValueObject {
+  private constructor(
+    readonly scaled: bigint,
+    readonly currency: Currency,
+  ) {
+    super();
+  }
+
+  static of(value: string | number, currency: Currency = Currency.reporting): UnitPrice {
+    return new UnitPrice(Quantity.fromString(typeof value === "number" ? value.toFixed(QUANTITY_SCALE) : value).scaled, currency);
+  }
+
+  /** From the stored scaled integer. Only mappers should call this. */
+  static fromScaled(scaled: bigint | number, currency: Currency = Currency.reporting): UnitPrice {
+    return new UnitPrice(BigInt(scaled), currency);
+  }
+
+  /** A price that happens to be a whole number of minor units. */
+  static fromMoney(amount: Money): UnitPrice {
+    return new UnitPrice(
+      (BigInt(amount.toMinorNumber()) * QUANTITY_FACTOR) / amount.currency.minorUnitsPerMajor,
+      amount.currency,
+    );
+  }
+
+  get isPositive(): boolean {
+    return this.scaled > 0n;
+  }
+
+  get isZero(): boolean {
+    return this.scaled === 0n;
+  }
+
+  /**
+   * What `quantity` units cost at this price.
+   *
+   * The single rounding point: `HALF_EVEN` by default because a valuation is an
+   * accrual rather than a statutory charge, and repeated half-up rounding across a
+   * portfolio biases the total upward.
+   */
+  times(quantity: Quantity, mode: RoundingMode = "HALF_EVEN"): Money {
+    return Money.fromMinor(
+      divideRounded(
+        this.scaled * quantity.scaled * this.currency.minorUnitsPerMajor,
+        QUANTITY_FACTOR * QUANTITY_FACTOR,
+        mode,
+      ),
+      this.currency,
+    );
+  }
+
+  /** The price of one unit, as money. For display, and it rounds. */
+  toMoney(mode: RoundingMode = "HALF_EVEN"): Money {
+    return this.times(Quantity.fromString("1"), mode);
+  }
+
+  compareTo(other: UnitPrice): -1 | 0 | 1 {
+    this.assertSameCurrency(other);
+    if (this.scaled < other.scaled) return -1;
+    if (this.scaled > other.scaled) return 1;
+    return 0;
+  }
+
+  /**
+   * How far this price is from `other`, as a percentage of `other`.
+   *
+   * Here rather than at the call site because both the >1% vendor-divergence rule
+   * and the >50% suspicious-move rule ask exactly this question, and asking it two
+   * ways is how two thresholds end up meaning different things.
+   */
+  percentDifferenceFrom(other: UnitPrice): Percentage {
+    this.assertSameCurrency(other);
+    if (other.scaled === 0n) {
+      throw new RangeError("Cannot express a difference as a percentage of zero");
+    }
+    const difference = this.scaled > other.scaled ? this.scaled - other.scaled : other.scaled - this.scaled;
+    const denominator = other.scaled < 0n ? -other.scaled : other.scaled;
+    return Percentage.fromScaled((difference * 100n * PERCENT_FACTOR) / denominator);
+  }
+
+  private assertSameCurrency(other: UnitPrice): void {
+    if (this.currency.code !== other.currency.code) {
+      throw new TypeError(
+        `Cannot compare a ${this.currency.code} price with a ${other.currency.code} one`,
+      );
+    }
+  }
+
+  /** Trimmed decimal text: `"84.5612"`, `"1543.25"`. */
+  toDecimalString(): string {
+    return Quantity.fromScaled(this.scaled).toDecimalString();
+  }
+
+  /** For the `INTEGER` database column. */
+  toScaledNumber(): number {
+    return Number(this.scaled);
+  }
+
+  protected components(): readonly unknown[] {
+    return [this.scaled, this.currency.code];
+  }
+
+  toString(): string {
+    return `${this.toDecimalString()} ${this.currency.code}`;
+  }
+
+  toJSON(): { price: string; currency: string } {
+    return { price: this.toDecimalString(), currency: this.currency.code };
   }
 }
 

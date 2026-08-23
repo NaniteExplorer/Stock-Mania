@@ -421,7 +421,7 @@ CREATE TABLE `price_quotes` (
 	`instrument_id` text NOT NULL,
 	`as_of` text NOT NULL,
 	`quote_type` text DEFAULT 'CLOSE' NOT NULL,
-	`price_minor` integer NOT NULL,
+	`price_scaled` integer NOT NULL,
 	`currency` text(3) DEFAULT 'INR' NOT NULL,
 	`provider_id` text DEFAULT 'manual' NOT NULL,
 	`source_type` text DEFAULT 'MANUAL' NOT NULL,
@@ -429,7 +429,7 @@ CREATE TABLE `price_quotes` (
 	`superseded_by` text,
 	`raw_payload_hash` text,
 	FOREIGN KEY (`instrument_id`) REFERENCES `instruments`(`id`) ON UPDATE no action ON DELETE cascade,
-	CONSTRAINT "price_quotes_price_positive" CHECK("price_quotes"."price_minor" > 0)
+	CONSTRAINT "price_quotes_price_positive" CHECK("price_quotes"."price_scaled" > 0)
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `price_quotes_bitemporal_uq` ON `price_quotes` (`instrument_id`,`as_of`,`quote_type`,`provider_id`,`ingested_at`);--> statement-breakpoint

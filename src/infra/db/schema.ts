@@ -800,7 +800,17 @@ export const priceQuotes = sqliteTable(
      * "price" per day.
      */
     quoteType: text("quote_type", { enum: QUOTE_TYPES }).notNull().default("CLOSE"),
-    priceMinor: moneyMinor("price_minor").notNull(),
+    /**
+     * The price, scaled by 1e8 — a `UnitPrice`, not `Money`.
+     *
+     * Was `price_minor` (paise). That column could not hold a four-decimal NAV:
+     * AMFI publishes ₹84.5612, paise rounds it to ₹84.56, and on a 10,000-unit
+     * holding that is ₹12 of invented value introduced at ingestion where nothing
+     * can see it. `20-DOMAIN-MODEL.md` §3.8 specifies `NUMERIC(38,18)` for exactly
+     * this reason; 1e8 is the scale `Quantity` already uses, so `units × price` is
+     * one exact integer multiplication.
+     */
+    priceScaled: quantityScaled("price_scaled").notNull(),
     currency: currencyCode(),
     /** Which provider said so. Part of the key, so two may disagree on one date. */
     providerId: text("provider_id").notNull().default("manual"),
@@ -837,7 +847,7 @@ export const priceQuotes = sqliteTable(
     /** Scanning current beliefs only. */
     index("price_quotes_current_idx").on(table.instrumentId, table.asOf, table.supersededBy),
     /** Q01: a price is positive. Options and futures are the documented exception, and neither exists yet. */
-    check("price_quotes_price_positive", sql`${table.priceMinor} > 0`),
+    check("price_quotes_price_positive", sql`${table.priceScaled} > 0`),
   ],
 );
 
@@ -1224,7 +1234,17 @@ export const fxRates = sqliteTable(
     quote: text("quote", { length: 3 }).notNull(),
     asOf: calendarDate("as_of").notNull(),
     providerId: text("provider_id").notNull(),
+    /**
+     * Units of `quote` per one unit of `base`, scaled by 1e8 — the same scale as
+     * `Quantity` and `price_scaled`, because an FX rate is the same kind of number
+     * as a price: a ratio, not an amount.
+     */
     providerRateScaled: integer("provider_rate_scaled"),
+    /**
+     * The rate the user says they got, which is the rate their return is assessed
+     * on. Beside the provider's rather than instead of it, so a report can say
+     * which one it used — adopted from Firefly's `user_rate` (Dossier 03 §5).
+     */
     userRateScaled: integer("user_rate_scaled"),
     sourceType: text("source_type", { enum: PRICE_SOURCE_TYPES }).notNull(),
     /**
