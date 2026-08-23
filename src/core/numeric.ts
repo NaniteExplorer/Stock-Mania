@@ -496,6 +496,17 @@ export class Rate extends ValueObject {
     return new Rate(0n, dayCount);
   }
 
+  /**
+   * Rehydration from a stored scaled integer plus its convention. Mappers only.
+   *
+   * The day count is a parameter rather than a default here, deliberately: a rate
+   * read back without the convention it was stored under is a number that looks
+   * right and accrues wrong, and defaulting it would let a mapper forget.
+   */
+  static fromScaled(scaled: bigint | number, dayCount: DayCount): Rate {
+    return new Rate(BigInt(scaled), dayCount);
+  }
+
   private static parseScaled(value: string): bigint {
     const trimmed = value.trim();
     const negative = trimmed.startsWith("-");
@@ -599,6 +610,22 @@ export class Rate extends ValueObject {
     const d1 = Math.min(from.day, 30);
     const d2 = from.day >= 30 ? Math.min(to.day, 30) : to.day;
     return 360 * (to.year - from.year) + 30 * (to.month - from.month) + (d2 - d1);
+  }
+
+  /**
+   * The scaled integer, for the INTEGER column that stores it.
+   *
+   * Exact by construction rather than by hope: ten decimal places of a rate below
+   * 900,000% still fits inside a safe integer, and anything that would not is
+   * rejected rather than silently rounded — a rate that lost precision on the way
+   * to the database would accrue wrong for the life of the row.
+   */
+  toScaledNumber(): number {
+    const asNumber = Number(this.scaled);
+    if (!Number.isSafeInteger(asNumber)) {
+      throw new RangeError(`Rate ${this.toString()} does not fit a safe integer.`);
+    }
+    return asNumber;
   }
 
   toString(): string {

@@ -15,7 +15,7 @@ import { AppError, Clock, Err, NotFoundError, Ok, Result, UseCase, UserId, Valid
 import { Currency, Money } from "@/core/money";
 import { CalendarDate } from "@/core/time";
 import { Account, AccountClosedError, AccountCode, AccountId, AccountRepository, AccountSubtype, AccountType, AccountTypeName, SystemAccountCodes, resolveDefaultChart } from "@/domain/accounts";
-import { Charge, Expense, Income, OpeningBalance, Transaction, TransactionAlreadyReversedError, TransactionId, TransactionKind, TransactionRepository, TransactionSource, Transfer, accountRef } from "@/domain/transactions";
+import { Charge, Expense, Income, OpeningBalance, Refund, Transaction, TransactionAlreadyReversedError, TransactionId, TransactionKind, TransactionRepository, TransactionSource, Transfer, accountRef } from "@/domain/transactions";
 /* ═══ SeedChartOfAccounts ═════════════════════════════════════════════ */
 
 export interface SeedChartOfAccountsInput {
@@ -389,6 +389,14 @@ export class RecordTransaction
     deductibility: RecordTransactionInput["chargeDeductibility"],
   ): Result<Transaction, AppError> {
     if (from.type === AccountType.INCOME) return Ok(Income.record(context, movement));
+
+    // An expense account as the *source* is a refund — the one case the legality
+    // matrix permits it (§3.6), and the reason L07 is a matrix rule rather than a
+    // blanket check. Money is coming back from a category, so the category is on
+    // the source and the budget for that category is reduced.
+    if (from.type === AccountType.EXPENSE && to.type.isBalanceSheet) {
+      return Ok(Refund.record(context, movement));
+    }
 
     if (to.type === AccountType.EXPENSE) {
       return Ok(

@@ -7,6 +7,7 @@ import {
   DrizzleAccountRepository,
   DrizzleBalanceQuery,
   DrizzleBudgetRepository,
+  DrizzleCardTermsRepository,
   DrizzleCategoryRuleRepository,
   DrizzleImportRepository,
   DrizzleSelfPayeeQuery,
@@ -14,7 +15,13 @@ import {
 } from "@/infra/repositories";
 import { OpenAccount, RecordTransaction, ReverseTransaction, SeedChartOfAccounts } from "@/app/ledger.usecases";
 import {
+  AccrueCardCharges,
   ConfirmUnmatchedRows,
+  ListCards,
+  OpenCreditCard,
+  PayCard,
+  UpdateCardTerms,
+  ViewCard,
   ListCashPositions,
   OpenCashAccount,
   PlanBudgets,
@@ -53,13 +60,15 @@ export const services = cache(() => {
   const rules = new DrizzleCategoryRuleRepository(db);
   const selfPayees = new DrizzleSelfPayeeQuery(db);
   const budgets = new DrizzleBudgetRepository(db);
+  const cardTerms = new DrizzleCardTermsRepository(db);
 
   const record = new RecordTransaction(accounts, journal);
   const openAccount = new OpenAccount(accounts, journal, clock);
+  const transfer = new RecordAccountTransfer(accounts, record);
 
   return {
     clock,
-    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets },
+    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms },
     ledger: {
       seedChart: new SeedChartOfAccounts(accounts),
       openAccount,
@@ -71,7 +80,7 @@ export const services = cache(() => {
       listCashPositions: new ListCashPositions(accounts, balances),
       recordSpend: new RecordSpend(accounts, record),
       recordReceipt: new RecordReceipt(accounts, record),
-      recordTransfer: new RecordAccountTransfer(accounts, record),
+      recordTransfer: transfer,
       stageImport: new StageStatementImport(accounts, journal, imports, rules, selfPayees),
       confirmUnmatched: new ConfirmUnmatchedRows(imports),
       reviewRow: new ReviewImportRow(imports, accounts),
@@ -80,6 +89,14 @@ export const services = cache(() => {
       reconcile: new ReconcileAccount(accounts, balances, imports),
       planBudgets: new PlanBudgets(budgets, balances),
       seedRules: new SeedCategoryRules(accounts, rules),
+    },
+    cards: {
+      open: new OpenCreditCard(openAccount, cardTerms),
+      updateTerms: new UpdateCardTerms(accounts, cardTerms),
+      list: new ListCards(accounts, journal, balances, cardTerms),
+      view: new ViewCard(accounts, journal, balances, cardTerms),
+      pay: new PayCard(accounts, transfer),
+      accrueCharges: new AccrueCardCharges(accounts, journal, balances, cardTerms, record),
     },
   };
 });

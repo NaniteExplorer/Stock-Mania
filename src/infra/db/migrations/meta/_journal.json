@@ -15,6 +15,13 @@
       "when": 1787494335668,
       "tag": "0001_phase2_budget_carryover",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1787496580495,
+      "tag": "0002_phase3_credit_card_terms",
+      "breakpoints": true
     }
   ]
 }

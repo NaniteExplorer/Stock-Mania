@@ -16,9 +16,10 @@
 
 import { AppError, Clock, Err, NotFoundError, Ok, Result, UseCase, UserId, ValidationError, newUuid } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
+import { Percentage, Quantity } from "@/core/numeric";
 import { CalendarDate, DateRange } from "@/core/time";
 import { Account, AccountCode, AccountId, AccountRepository, AccountSubtype, AccountType, SystemAccountCodes } from "@/domain/accounts";
-import { BalanceSource, CashAsset, LiquidPosition, liquidPositions, totalLiquid } from "@/domain/assets";
+import { BalanceSource, BillingCycle, CardMovement, CardStatement, CardTerms, CardTermsRepository, CashAsset, CreditCard, LiquidPosition, RewardPointBalance, liquidPositions, totalLiquid } from "@/domain/assets";
 import {
   BudgetLedger,
   BudgetRepository,
@@ -936,6 +937,495 @@ export class SeedCategoryRules implements UseCase<{ userId: UserId }, { created:
     const byCode = new Map(chart.map((account) => [account.code.toString(), account.id]));
     const created = await this.rules.saveMany(input.userId, Categoriser.seedRules(byCode));
     return Ok({ created });
+  }
+}
+
+
+/* ═══ Cards ═══════════════════════════════════════════════════════════ */
+
+export interface OpenCreditCardInput {
+  userId: UserId;
+  name: string;
+  institution?: string | null;
+  accountNumberSuffix?: string | null;
+  terms: CardTerms;
+  /** The balance already owed, as a positive amount. */
+  openingBalance?: Money | null;
+  openingBalanceOn?: CalendarDate;
+}
+
+/**
+ * Opens a credit card.
+ *
+ * The opening balance is passed straight through as a positive amount owed:
+ * `OpeningBalance` reads which side to debit off the account's legality role, so
+ * the liability case and the asset case cannot diverge here and there. Nothing in
+ * this use case knows that a card is negative to net worth — that comes from
+ * `AccountType.LIABILITY`, which is the point of the plan's done-when.
+ */
+export class OpenCreditCard
+  implements UseCase<OpenCreditCardInput, { accountId: AccountId; code: string }>
+{
+  constructor(
+    private readonly openAccount: OpenAccount,
+    private readonly cardTerms: CardTermsRepository,
+  ) {}
+
+  async execute(
+    input: OpenCreditCardInput,
+  ): Promise<Result<{ accountId: AccountId; code: string }, AppError>> {
+    if (input.terms.creditLimit.isNegative) {
+      return Err(
+        new ValidationError("A credit limit is a positive amount.", {
+          creditLimit: ["Must not be negative"],
+        }),
+      );
+    }
+
+    const opened = await this.openAccount.execute({
+      userId: input.userId,
+      name: input.name,
+      type: "LIABILITY",
+      subtype: "CREDIT_CARD",
+      institution: input.institution,
+      accountNumberSuffix: input.accountNumberSuffix,
+      openingBalance: input.openingBalance,
+      openingBalanceOn: input.openingBalanceOn,
+    });
+    if (!opened.ok) return opened;
+
+    await this.cardTerms.save(input.userId, opened.value.accountId, input.terms);
+    return Ok({ accountId: opened.value.accountId, code: opened.value.code });
+  }
+}
+
+/** Terms can be edited without touching a posting — a limit increase is not an event. */
+export class UpdateCardTerms
+  implements UseCase<{ userId: UserId; accountId: AccountId; terms: CardTerms }, { updated: true }>
+{
+  constructor(
+    private readonly accounts: AccountRepository,
+    private readonly cardTerms: CardTermsRepository,
+  ) {}
+
+  async execute(
+    input: { userId: UserId; accountId: AccountId; terms: CardTerms },
+  ): Promise<Result<{ updated: true }, AppError>> {
+    const account = await this.accounts.findById(input.userId, input.accountId);
+    if (!account) return Err(new NotFoundError("Card", input.accountId.value));
+    if (!CreditCard.classify(account, input.terms)) {
+      return Err(
+        new ValidationError(
+          `${account.displayName} is not a credit card, so card terms do not apply to it.`,
+        ),
+      );
+    }
+    await this.cardTerms.save(input.userId, input.accountId, input.terms);
+    return Ok({ updated: true as const });
+  }
+}
+
+export interface CardSummary {
+  readonly card: CreditCard;
+  /** Positive means owed. */
+  readonly owed: Money;
+  readonly available: Money;
+  readonly utilisation: Percentage;
+  readonly cycle: BillingCycle;
+  /** What the last generated statement says is due, and by when. */
+  readonly statement: CardStatement;
+  readonly daysToDue: number;
+}
+
+/**
+ * Every card, with the figures the list screen shows.
+ *
+ * The statement is built for the cycle that has **closed most recently**, not the
+ * one in progress: "amount due" is a statement fact, and quoting the running
+ * balance of an open cycle as the amount due would tell the user to pay money the
+ * issuer has not yet billed.
+ */
+export class ListCards implements UseCase<{ userId: UserId; asOf: CalendarDate }, { cards: readonly CardSummary[] }> {
+  constructor(
+    private readonly accounts: AccountRepository,
+    private readonly journal: TransactionRepository,
+    private readonly balances: BalanceSource,
+    private readonly cardTerms: CardTermsRepository,
+  ) {}
+
+  async execute(
+    input: { userId: UserId; asOf: CalendarDate },
+  ): Promise<Result<{ cards: readonly CardSummary[] }, AppError>> {
+    const accounts = await this.accounts.list(input.userId, { includeClosed: false });
+    const cardSubtype = accounts.filter((account) => account.subtype === "CREDIT_CARD");
+    const termsById = await this.cardTerms.findManyFor(
+      input.userId,
+      cardSubtype.map((account) => account.id),
+    );
+
+    /*
+     * The seeded chart's own `Liabilities:Credit Cards` group account has the card
+     * subtype too, so "every account with subtype CREDIT_CARD" listed a card the
+     * user never opened. A card is one that has *terms* — which `OpenCreditCard`
+     * always writes — or one carrying a balance, so a card created through the
+     * generic account path is not hidden from its owner either.
+     */
+    const balancesById = new Map(
+      await Promise.all(
+        cardSubtype.map(
+          async (account) =>
+            [
+              account.id.value,
+              await this.balances.balanceOf(input.userId, account.id, input.asOf),
+            ] as const,
+        ),
+      ),
+    );
+    const cardAccounts = cardSubtype.filter(
+      (account) =>
+        termsById.has(account.id.value) || !(balancesById.get(account.id.value)?.isZero ?? true),
+    );
+
+    const summaries = await Promise.all(
+      cardAccounts.map(async (account) => {
+        const terms = termsById.get(account.id.value) ?? CreditCard.defaultTerms(account.currency);
+        const card = new CreditCard(account, terms);
+
+        // The last cycle whose statement has been generated.
+        const current = card.cycleFor(input.asOf);
+        const closed = current.through.isOnOrBefore(input.asOf)
+          ? current
+          : terms.cycle.cycleContaining(current.from.plusDays(-1));
+
+        const [owed, statement] = await Promise.all([
+          card.valueOn(input.asOf, this.balances),
+          buildCardStatement({
+            card,
+            cycle: closed,
+            userId: input.userId,
+            accounts,
+            journal: this.journal,
+            balances: this.balances,
+          }),
+        ]);
+
+        return {
+          card,
+          owed,
+          available: card.availableCredit(owed),
+          utilisation: card.utilisation(owed),
+          cycle: current,
+          statement,
+          daysToDue: input.asOf.daysUntil(closed.dueOn),
+        };
+      }),
+    );
+
+    return Ok({ cards: summaries });
+  }
+}
+
+export interface CardDetailInput {
+  userId: UserId;
+  accountId: AccountId;
+  asOf: CalendarDate;
+  /** How many closed cycles of history to build. */
+  cycles?: number;
+}
+
+export interface CardDetail {
+  readonly card: CreditCard;
+  readonly owed: Money;
+  readonly available: Money;
+  readonly utilisation: Percentage;
+  readonly currentCycle: BillingCycle;
+  /** Newest last, so a timeline reads left to right. */
+  readonly statements: readonly CardStatement[];
+  readonly points: RewardPointBalance;
+}
+
+/**
+ * One card, with a run of statements rebuilt from the ledger.
+ *
+ * Statements are *reconstructed*, never stored, so history is answerable for
+ * months that predate the app. Reward points are computed from the spends the
+ * ledger holds rather than tracked as a balance, because a stored points balance
+ * would be a second number nothing reconciles — and points are exactly the kind of
+ * figure an issuer silently adjusts.
+ */
+export class ViewCard implements UseCase<CardDetailInput, CardDetail> {
+  constructor(
+    private readonly accounts: AccountRepository,
+    private readonly journal: TransactionRepository,
+    private readonly balances: BalanceSource,
+    private readonly cardTerms: CardTermsRepository,
+  ) {}
+
+  async execute(input: CardDetailInput): Promise<Result<CardDetail, AppError>> {
+    const accounts = await this.accounts.list(input.userId, { includeClosed: true });
+    const account = accounts.find((candidate) => candidate.id.equals(input.accountId));
+    if (!account) return Err(new NotFoundError("Card", input.accountId.value));
+
+    const terms =
+      (await this.cardTerms.findFor(input.userId, input.accountId)) ??
+      CreditCard.defaultTerms(account.currency);
+    const card = CreditCard.classify(account, terms);
+    if (!card) {
+      return Err(new ValidationError(`${account.displayName} is not a credit card.`));
+    }
+
+    const cycles = card.recentCycles(input.asOf, input.cycles ?? 6);
+    const statements = await Promise.all(
+      cycles.map((cycle) =>
+        buildCardStatement({
+          card,
+          cycle,
+          userId: input.userId,
+          accounts,
+          journal: this.journal,
+          balances: this.balances,
+        }),
+      ),
+    );
+
+    const owed = await card.valueOn(input.asOf, this.balances);
+    const earned = statements.reduce(
+      (total, statement) => total.plus(card.pointsFor(statement.spends)),
+      Quantity.ZERO,
+    );
+
+    return Ok({
+      card,
+      owed,
+      available: card.availableCredit(owed),
+      utilisation: card.utilisation(owed),
+      currentCycle: card.cycleFor(input.asOf),
+      statements,
+      points: new RewardPointBalance(earned),
+    });
+  }
+}
+
+/**
+ * Builds one statement from the postings on the card account.
+ *
+ * The mapping from a posting to a movement kind is the part with an opinion:
+ *
+ *   - a **credit** on the card increases the debt, so it is a `SPEND` — or a
+ *     `CHARGE` when the transaction is one (a fee, interest), because rolling a
+ *     ₹590 late fee into "spent on food" is a wrong budget nobody can see;
+ *   - a **debit** reduces it, and is a `PAYMENT` when the other leg is an account
+ *     the user owns and a `REFUND` when it is a category. That distinction cannot
+ *     be read off the card's own leg, which is why the other leg is consulted.
+ */
+async function buildCardStatement(context: {
+  card: CreditCard;
+  cycle: BillingCycle;
+  userId: UserId;
+  accounts: readonly Account[];
+  journal: TransactionRepository;
+  balances: BalanceSource;
+}): Promise<CardStatement> {
+  const { card, cycle, userId, accounts, journal, balances } = context;
+  const byId = new Map(accounts.map((account) => [account.id.value, account]));
+
+  const [opening, page] = await Promise.all([
+    balances.balanceOf(userId, card.id, cycle.from.plusDays(-1)),
+    journal.find(userId, { accountIds: [card.id], range: cycle.range, limit: 5000 }),
+  ]);
+
+  const movements: CardMovement[] = [];
+  for (const txn of page.transactions) {
+    for (const posting of txn.postings()) {
+      if (!posting.accountId.equals(card.id)) continue;
+
+      const otherLeg = txn
+        .postings()
+        .find((candidate) => !candidate.accountId.equals(card.id));
+      const otherAccount = otherLeg ? byId.get(otherLeg.accountId.value) : undefined;
+
+      const kind: CardMovement["kind"] = posting.isDebit
+        ? otherAccount?.type.isIncomeStatement
+          ? "REFUND"
+          : "PAYMENT"
+        : txn.kind === "FEE" || txn.kind === "INTEREST" || txn.kind === "OPENING_BALANCE"
+          ? "CHARGE"
+          : "SPEND";
+
+      movements.push({
+        on: txn.txnDate,
+        amount: posting.amount,
+        kind,
+        description: txn.description,
+      });
+    }
+  }
+
+  return card.statementFor(cycle, opening, movements);
+}
+
+export interface PayCardInput {
+  userId: UserId;
+  fromAccountId: AccountId;
+  cardAccountId: AccountId;
+  amount: Money;
+  postedOn: CalendarDate;
+  narration?: string;
+}
+
+/**
+ * Pays a card bill.
+ *
+ * A `Transfer`, never an expense — the plan's done-when, and it falls out of
+ * {@link RecordAccountTransfer} rather than being enforced here: both sides are
+ * balance-sheet accounts, so `RecordTransaction` builds a `Transfer`, which by
+ * construction carries no budget category (L12). The spending was already
+ * recorded when the card was used; counting the payment as spending too would
+ * double every rupee that goes through a card.
+ */
+export class PayCard implements UseCase<PayCardInput, { transactionId: string }> {
+  constructor(
+    private readonly accounts: AccountRepository,
+    private readonly transfer: RecordAccountTransfer,
+  ) {}
+
+  async execute(input: PayCardInput): Promise<Result<{ transactionId: string }, AppError>> {
+    const card = await this.accounts.findById(input.userId, input.cardAccountId);
+    if (!card) return Err(new NotFoundError("Card", input.cardAccountId.value));
+    if (card.subtype !== "CREDIT_CARD") {
+      return Err(new ValidationError(`${card.displayName} is not a credit card.`));
+    }
+
+    return this.transfer.execute({
+      userId: input.userId,
+      fromAccountId: input.fromAccountId,
+      toAccountId: input.cardAccountId,
+      amount: input.amount,
+      postedOn: input.postedOn,
+      narration: input.narration?.trim() || `Payment to ${card.displayName}`,
+    });
+  }
+}
+
+/**
+ * Posts the interest and fees a cycle earned, as `Charge` transactions.
+ *
+ * Interest is computed from the daily balances the ledger already implies, so the
+ * figure is reproducible from the postings rather than taken from the issuer's
+ * statement on trust — which is what makes "the issuer billed something else" a
+ * question the app can answer instead of a discrepancy it inherits.
+ *
+ * Each charge is booked to an expense account (`Expenses:Fees:Interest`,
+ * `Expenses:Fees:Bank`) *from* the card, so it increases the debt and appears as a
+ * cost. Interest on a card is genuinely an expense; a payment is not.
+ */
+export interface AccrueCardChargesInput {
+  userId: UserId;
+  cardAccountId: AccountId;
+  /** The cycle to charge for — normally the one that has just closed. */
+  statementDate: CalendarDate;
+  /** Set when the cardholder missed the minimum due, so the late fee applies. */
+  lateFeeApplies?: boolean;
+  /** Set on the anniversary, so the annual fee applies. */
+  annualFeeApplies?: boolean;
+}
+
+export interface AccrueCardChargesOutput {
+  interest: Money;
+  fees: Money;
+  gst: Money;
+  transactionIds: readonly string[];
+}
+
+export class AccrueCardCharges
+  implements UseCase<AccrueCardChargesInput, AccrueCardChargesOutput>
+{
+  constructor(
+    private readonly accounts: AccountRepository,
+    private readonly journal: TransactionRepository,
+    private readonly balances: BalanceSource,
+    private readonly cardTerms: CardTermsRepository,
+    private readonly record: RecordTransaction,
+  ) {}
+
+  async execute(input: AccrueCardChargesInput): Promise<Result<AccrueCardChargesOutput, AppError>> {
+    const accounts = await this.accounts.list(input.userId, { includeClosed: false });
+    const account = accounts.find((candidate) => candidate.id.equals(input.cardAccountId));
+    if (!account) return Err(new NotFoundError("Card", input.cardAccountId.value));
+
+    const terms =
+      (await this.cardTerms.findFor(input.userId, input.cardAccountId)) ??
+      CreditCard.defaultTerms(account.currency);
+    const card = CreditCard.classify(account, terms);
+    if (!card) return Err(new ValidationError(`${account.displayName} is not a credit card.`));
+
+    const cycle = card.cycleFor(input.statementDate);
+    const previous = terms.cycle.cycleContaining(cycle.from.plusDays(-1));
+
+    // Interest is charged only on what was carried past the previous due date.
+    const carried = await this.balances.balanceOf(input.userId, card.id, previous.dueOn);
+    const dailyBalances: { on: CalendarDate; owed: Money }[] = [];
+    if (carried.isPositive) {
+      for (let cursor = previous.dueOn; cursor.isOnOrBefore(cycle.through); cursor = cursor.plusDays(1)) {
+        dailyBalances.push({
+          on: cursor,
+          owed: await this.balances.balanceOf(input.userId, card.id, cursor),
+        });
+      }
+    }
+
+    const finance = card.financeChargeFor({ dailyBalances });
+    const interestAccount = accounts.find(
+      (candidate) => candidate.code.toString() === "Expenses:Fees:Interest",
+    );
+    const feeAccount = accounts.find(
+      (candidate) => candidate.code.toString() === "Expenses:Fees:Bank",
+    );
+    if (!interestAccount || !feeAccount) {
+      return Err(
+        new NotFoundError("System fee accounts — seed the chart of accounts first"),
+      );
+    }
+
+    const transactionIds: string[] = [];
+    let fees = Money.zero(account.currency);
+    let gst = finance.gstOnInterest;
+
+    const post = async (amount: Money, to: Account, narration: string) => {
+      if (!amount.isPositive) return;
+      const result = await this.record.execute({
+        userId: input.userId,
+        fromAccountId: card.id,
+        toAccountId: to.id,
+        amount,
+        postedOn: input.statementDate,
+        narration,
+        chargeDeductibility: "NOT_DEDUCTIBLE",
+      });
+      if (result.ok) transactionIds.push(result.value.transactionId.value);
+    };
+
+    await post(finance.interest, interestAccount, `Finance charge — ${cycle.label}`);
+    await post(finance.gstOnInterest, feeAccount, `GST on finance charge — ${cycle.label}`);
+
+    if (input.lateFeeApplies) {
+      const fee = terms.lateFee;
+      const feeGst = terms.gstOnCharges.applyTo(fee);
+      fees = fees.plus(fee);
+      gst = gst.plus(feeGst);
+      await post(fee, feeAccount, `Late payment fee — ${cycle.label}`);
+      await post(feeGst, feeAccount, `GST on late payment fee — ${cycle.label}`);
+    }
+    if (input.annualFeeApplies) {
+      const fee = terms.annualFee;
+      const feeGst = terms.gstOnCharges.applyTo(fee);
+      fees = fees.plus(fee);
+      gst = gst.plus(feeGst);
+      await post(fee, feeAccount, `Annual fee — ${cycle.label}`);
+      await post(feeGst, feeAccount, `GST on annual fee — ${cycle.label}`);
+    }
+
+    return Ok({ interest: finance.interest, fees, gst, transactionIds });
   }
 }
 

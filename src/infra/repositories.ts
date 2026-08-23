@@ -15,11 +15,12 @@ import { UserId, newUuid } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { CalendarDate, DateRange } from "@/core/time";
 import { Account, AccountCode, AccountId, AccountRepository, AccountSubtype, AccountType, AccountTypeName, PostingDirection } from "@/domain/accounts";
-import { Quantity, UnitPrice } from "@/core/numeric";
+import { BillingCycleRule, CardTerms, CardTermsRepository } from "@/domain/assets";
+import { Percentage, Quantity, Rate, UnitPrice } from "@/core/numeric";
 import { FxQuote, FxRateRepository, PriceDivergence, PriceSourceType, Quote, QuoteRepository, QuoteType, StoredFxRate } from "@/domain/pricing";
 import { AccountBalance, AccountFlow, BalanceQuery, MonthlyFlow, Posting, PostingId, PostingStatus, StoredTransaction, Transaction, TransactionId, TransactionKind, TransactionPage, TransactionQuery, TransactionRepository, TransactionSource, TypeTotals } from "@/domain/transactions";
 import { BudgetRepository, CategoryRuleRepository, ImportBatchRecord, ImportBatchStatus, ImportRepository, ImportRowStatus, KeywordRule, MovementIntent, RowDirection, SelfPayeeQuery, StagedRow, StoredBudget } from "@/domain/banking";
-import { budgets, categoryRules, counterparties, fxRates, importBatches, importRows, ledgerAccounts, postings, priceDivergences, priceQuotes, transactions } from "@/infra/db/schema";
+import { budgets, categoryRules, counterparties, creditCardTerms, fxRates, importBatches, importRows, ledgerAccounts, postings, priceDivergences, priceQuotes, transactions } from "@/infra/db/schema";
 import { Database } from "@/infra/db/client";
 import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, max, min, or, sql } from "drizzle-orm";
 /* ═══ AccountMapper ═══════════════════════════════════════════════════ */
@@ -1511,3 +1512,100 @@ export class DrizzleBudgetRepository implements BudgetRepository {
       .where(and(eq(budgets.userId, userId.value), eq(budgets.id, budgetId)));
   }
 }
+
+/* ═══ DrizzleCardTermsRepository ══════════════════════════════════════ */
+
+/**
+ * libSQL implementation of {@link CardTermsRepository}.
+ *
+ * Every scaled integer is rehydrated through the value object that owns its scale
+ * — `Rate.fromScaled` would be wrong here because `Rate` has no such constructor
+ * that keeps the day count, so the day count travels in its own column and the
+ * two are recombined in one place rather than at every call site.
+ */
+export class DrizzleCardTermsRepository implements CardTermsRepository {
+  constructor(private readonly db: Database) {}
+
+  async findFor(userId: UserId, accountId: AccountId): Promise<CardTerms | null> {
+    const [row] = await this.db
+      .select()
+      .from(creditCardTerms)
+      .where(
+        and(
+          eq(creditCardTerms.userId, userId.value),
+          isNull(creditCardTerms.deletedAt),
+          eq(creditCardTerms.accountId, accountId.value),
+        ),
+      )
+      .limit(1);
+    return row ? CardTermsMapper.toDomain(row) : null;
+  }
+
+  async findManyFor(
+    userId: UserId,
+    accountIds: readonly AccountId[],
+  ): Promise<ReadonlyMap<string, CardTerms>> {
+    if (accountIds.length === 0) return new Map();
+    const rows = await this.db
+      .select()
+      .from(creditCardTerms)
+      .where(
+        and(
+          eq(creditCardTerms.userId, userId.value),
+          isNull(creditCardTerms.deletedAt),
+          inArray(
+            creditCardTerms.accountId,
+            accountIds.map((id) => id.value),
+          ),
+        ),
+      );
+    return new Map(rows.map((row) => [row.accountId, CardTermsMapper.toDomain(row)]));
+  }
+
+  async save(userId: UserId, accountId: AccountId, terms: CardTerms): Promise<void> {
+    const row = {
+      id: newUuid(),
+      userId: userId.value,
+      accountId: accountId.value,
+      currency: terms.creditLimit.currency.code,
+      creditLimitMinor: terms.creditLimit.toMinorNumber(),
+      statementDay: terms.cycle.statementDay,
+      graceDays: terms.cycle.graceDays,
+      financeRateScaled: terms.financeRate.toScaledNumber(),
+      financeConvention: terms.financeRate.dayCount,
+      minimumDuePercentScaled: terms.minimumDuePercent.toScaledNumber(),
+      minimumDueFloorMinor: terms.minimumDueFloor.toMinorNumber(),
+      lateFeeMinor: terms.lateFee.toMinorNumber(),
+      annualFeeMinor: terms.annualFee.toMinorNumber(),
+      gstOnChargesPercentScaled: terms.gstOnCharges.toScaledNumber(),
+      pointsPerHundredScaled: terms.pointsPerHundred.toScaledNumber(),
+      updatedAt: new Date(),
+    };
+    await this.db
+      .insert(creditCardTerms)
+      .values(row)
+      .onConflictDoUpdate({
+        target: creditCardTerms.accountId,
+        set: { ...row, id: undefined, deletedAt: null },
+      });
+  }
+}
+
+type CardTermsRow = typeof creditCardTerms.$inferSelect;
+
+export const CardTermsMapper = {
+  toDomain(row: CardTermsRow): CardTerms {
+    const currency = Currency.of(row.currency);
+    return {
+      creditLimit: Money.fromMinor(row.creditLimitMinor, currency),
+      cycle: new BillingCycleRule(row.statementDay, row.graceDays),
+      financeRate: Rate.fromScaled(row.financeRateScaled, row.financeConvention),
+      minimumDuePercent: Percentage.fromScaled(row.minimumDuePercentScaled),
+      minimumDueFloor: Money.fromMinor(row.minimumDueFloorMinor, currency),
+      lateFee: Money.fromMinor(row.lateFeeMinor, currency),
+      annualFee: Money.fromMinor(row.annualFeeMinor, currency),
+      gstOnCharges: Percentage.fromScaled(row.gstOnChargesPercentScaled),
+      pointsPerHundred: Quantity.fromScaled(row.pointsPerHundredScaled),
+    };
+  },
+};

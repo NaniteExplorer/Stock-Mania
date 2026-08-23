@@ -16,6 +16,7 @@ import {
   LineChart,
   PiggyBank,
   Upload,
+  Wallet,
   Gem,
   CreditCard,
 } from "lucide-react";
@@ -41,7 +42,8 @@ export const NAV_GROUPS = [
       { href: "/imports", label: "Import", icon: Upload },
       { href: "/investments", label: "Investments", icon: LineChart },
       { href: "/assets", label: "Assets", icon: Gem },
-      { href: "/liabilities", label: "Liabilities", icon: CreditCard },
+      { href: "/cards", label: "Cards", icon: CreditCard },
+      { href: "/liabilities", label: "Liabilities", icon: Wallet },
     ],
   },
   {

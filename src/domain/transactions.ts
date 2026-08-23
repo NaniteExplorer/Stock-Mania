@@ -1189,6 +1189,50 @@ export class Income extends TwoLegged<MovementDetails> {
 }
 
 /**
+ * Money coming *back* from a category: a returned purchase, a cancelled booking,
+ * a reversed fee.
+ *
+ * A fourteenth subclass, added in Phase 3 to close a real gap. `REFUND` was
+ * already in `TRANSACTION_KINDS` and the legality matrix already permitted
+ * `INCOME`/`EXPENSE` as its source (§3.6), but no class could construct one — so
+ * a returned ₹1,299 pair of headphones had nowhere to go. Recording it as negative
+ * spending was the alternative, and it is worse: a negative posting amount is
+ * exactly the ambiguity `Posting`'s positive-amount-plus-direction rule exists to
+ * prevent.
+ *
+ * The category sits on the **source**, because the account being refunded is the
+ * one the money originally went to: a refund of groceries reduces groceries, and a
+ * budget that ignored it would report the month as overspent for a purchase that
+ * was returned.
+ *
+ * This is the one transaction type where an expense account legitimately appears
+ * as a source, which is why L07 is a rule of the legality matrix rather than a
+ * blanket check — the matrix says `REFUND` may do it and `WITHDRAWAL` may not.
+ */
+export class Refund extends TwoLegged<MovementDetails> {
+  get kind(): "REFUND" {
+    return "REFUND";
+  }
+  protected get categoryOn(): "SOURCE" {
+    return "SOURCE";
+  }
+
+  constructor(id: TransactionId, context: TransactionContext, details: MovementDetails) {
+    super(id, context, details);
+  }
+
+  static record(context: TransactionContext, details: MovementDetails): Refund {
+    return new Refund(TransactionId.create(), context, details);
+  }
+
+  override cashflows(): readonly Cashflow[] {
+    // Positive: money is coming back in. Signed the same way as income rather than
+    // as a negative expense, so a cashflow series cannot double-count it.
+    return [{ onDate: this.txnDate, amount: this.movementAmount, kind: "INCOME", instrumentId: null }];
+  }
+}
+
+/**
  * Money moved between two of the user's own accounts — including a credit-card
  * payment, which is a transfer and never an expense.
  *

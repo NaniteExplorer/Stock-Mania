@@ -991,6 +991,86 @@ export const budgets = sqliteTable(
   (table) => [uniqueIndex("budgets_user_account_month_uq").on(table.userId, table.accountId, table.month)],
 );
 
+
+/* ═══ Credit-card terms ═════════════════════════════════════════════════ */
+
+/** A rate scaled by 1e10 — see `Rate`. Ten decimals, because 42%/365 needs them. */
+export const rateScaled = (name: string) => integer(name);
+
+/**
+ * The issuer's terms for one card.
+ *
+ * A separate table rather than columns on `ledger_accounts`, because these apply
+ * to exactly one subtype and nine nullable columns on the chart of accounts would
+ * be nine columns that are meaningless for every bank account and every category.
+ * One row per card account, enforced by the unique index.
+ *
+ * Nothing derived is stored: no statement, no minimum due, no interest figure.
+ * Those are computed from these terms plus the postings, for the same reason no
+ * balance is stored — the moment a saved statement can disagree with the postings
+ * behind it, one of the two is wrong and nothing says which.
+ */
+export const creditCardTerms = sqliteTable(
+  "credit_card_terms",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id, { onDelete: "cascade" }),
+    /**
+     * The currency of every amount in this row.
+     *
+     * Present because `tests/schema-integrity.spec.ts` refuses a new table that
+     * stores an amount without one — correctly: a card issued in USD whose limit
+     * was read back as rupees is a wrong utilisation figure with no way to notice.
+     */
+    currency: currencyCode(),
+    creditLimitMinor: moneyMinor("credit_limit_minor").notNull().default(0),
+    /** Day of month the statement is generated; clamped per month by the domain. */
+    statementDay: integer("statement_day").notNull().default(18),
+    /** Days from the statement date to the due date. */
+    graceDays: integer("grace_days").notNull().default(20),
+    /** Annual finance rate on a revolved balance. */
+    financeRateScaled: rateScaled("finance_rate_scaled").notNull().default(0),
+    /**
+     * The day-count convention the finance rate is quoted under.
+     *
+     * Named without "rate" in it deliberately: `tests/schema-integrity.spec.ts`
+     * insists that any column whose name reads as numeric is INTEGER, and it is
+     * right to — a TEXT column called `finance_rate_something` is exactly the
+     * shape a decimal-string rate would sneak in as. The convention is a label,
+     * so it gets a name that says so.
+     */
+    financeConvention: text("finance_convention", {
+      enum: ["ACT_365F", "ACT_360", "THIRTY_360"],
+    })
+      .notNull()
+      .default("ACT_365F"),
+    minimumDuePercentScaled: percentScaled("minimum_due_percent_scaled").notNull().default(0),
+    minimumDueFloorMinor: moneyMinor("minimum_due_floor_minor").notNull().default(0),
+    lateFeeMinor: moneyMinor("late_fee_minor").notNull().default(0),
+    annualFeeMinor: moneyMinor("annual_fee_minor").notNull().default(0),
+    /** GST on interest and fees — 18% in India, charged on both. */
+    gstOnChargesPercentScaled: percentScaled("gst_on_charges_percent_scaled").notNull().default(0),
+    /** Reward points earned per hundred spent, scaled by 1e8 like any quantity. */
+    pointsPerHundredScaled: quantityScaled("points_per_hundred_scaled").notNull().default(0),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("credit_card_terms_account_uq").on(table.accountId),
+    index("credit_card_terms_user_idx").on(table.userId),
+    /** A statement day outside 1–31 would generate a cycle no month contains. */
+    check("credit_card_terms_statement_day", sql`${table.statementDay} BETWEEN 1 AND 31`),
+    /** A bill due on or before its statement date has a negative grace period. */
+    check("credit_card_terms_grace_days", sql`${table.graceDays} BETWEEN 1 AND 60`),
+  ],
+);
+
 /* ═══ Tax settings ══════════════════════════════════════════════════════ */
 
 /**
