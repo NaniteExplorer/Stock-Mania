@@ -15,8 +15,9 @@ import { UserId } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { CalendarDate, DateRange } from "@/core/time";
 import { Account, AccountCode, AccountId, AccountRepository, AccountSubtype, AccountType, AccountTypeName, PostingDirection } from "@/domain/accounts";
-import { AccountBalance, AccountFlow, BalanceQuery, EntryKind, EntrySource, JournalEntry, JournalEntryId, JournalPage, JournalQuery, JournalRepository, MonthlyFlow, Posting, PostingId, TypeTotals } from "@/domain/transactions";
-import { journalEntries, ledgerAccounts, postings } from "@/infra/db/schema";
+import { Quantity } from "@/core/numeric";
+import { AccountBalance, AccountFlow, BalanceQuery, MonthlyFlow, Posting, PostingId, PostingStatus, StoredTransaction, Transaction, TransactionId, TransactionKind, TransactionPage, TransactionQuery, TransactionRepository, TransactionSource, TypeTotals } from "@/domain/transactions";
+import { ledgerAccounts, postings, transactions } from "@/infra/db/schema";
 import { Database } from "@/infra/db/client";
 import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, min, or, sql } from "drizzle-orm";
 /* ═══ AccountMapper ═══════════════════════════════════════════════════ */
@@ -71,30 +72,45 @@ export const AccountMapper = {
   },
 };
 
-/* ═══ JournalEntryMapper ══════════════════════════════════════════════ */
+/* ═══ TransactionMapper ═══════════════════════════════════════════════ */
 
-type EntryRow = typeof journalEntries.$inferSelect;
-type EntryInsert = typeof journalEntries.$inferInsert;
+type TxnRow = typeof transactions.$inferSelect;
+type TxnInsert = typeof transactions.$inferInsert;
 type PostingRow = typeof postings.$inferSelect;
 type PostingInsert = typeof postings.$inferInsert;
 
 /**
- * Translates between the `journal_entries` + `postings` rows and the
- * `JournalEntry` aggregate.
+ * Translates between the `transactions` + `postings` rows and the `Transaction`
+ * aggregate.
  *
- * Always both tables together. Rehydrating an entry without its postings would
- * produce an object that fails its own constructor, so there is no method here
- * that maps one without the other.
+ * Always both tables together. Rehydrating a transaction without its postings
+ * would produce an object that fails its own constructor, so there is no method
+ * here that maps one without the other.
+ *
+ * It rehydrates to {@link StoredTransaction}, not to the subclass that wrote the
+ * row. That is the honest mapping: the row carries the postings and the type, and
+ * a `Sell` needs the lots it consumed, which live in `lots` rather than here.
+ * Reconstructing a `Sell` from two postings would have to invent a disposal list,
+ * and an invented cost basis is a wrong tax number.
  */
-export const JournalEntryMapper = {
-  toDomain(entry: EntryRow, postingRows: readonly PostingRow[]): JournalEntry {
-    return JournalEntry.rehydrate({
-      id: JournalEntryId.from(entry.id),
-      userId: UserId.from(entry.userId),
-      postedOn: CalendarDate.parse(entry.postedOn),
-      narration: entry.narration,
-      kind: entry.kind as EntryKind,
-      source: entry.source as EntrySource,
+export const TransactionMapper = {
+  toDomain(txn: TxnRow, postingRows: readonly PostingRow[]): Transaction {
+    return StoredTransaction.rehydrate({
+      id: TransactionId.from(txn.id),
+      kind: txn.txnType as TransactionKind,
+      context: {
+        userId: UserId.from(txn.userId),
+        txnDate: CalendarDate.parse(txn.txnDate),
+        description: txn.description,
+        settlementDate: txn.settlementDate ? CalendarDate.parse(txn.settlementDate) : null,
+        counterpartyId: txn.counterpartyId,
+        txnSource: txn.source as TransactionSource,
+        reference: txn.reference,
+        externalId: txn.externalId,
+        importBatchId: txn.importBatchId,
+        fingerprint: txn.fingerprint,
+        isForecast: txn.isForecast,
+      },
       postings: postingRows.map((row) =>
         Posting.rehydrate({
           id: PostingId.from(row.id),
@@ -103,45 +119,57 @@ export const JournalEntryMapper = {
           amount: Money.fromMinor(row.amountMinor, Currency.of(row.currency)),
           seq: row.seq,
           memo: row.memo,
+          instrumentId: row.instrumentId,
+          quantity: row.quantityScaled === null ? null : Quantity.fromScaled(row.quantityScaled),
+          unitCost:
+            row.unitCostMinor === null
+              ? null
+              : Money.fromMinor(row.unitCostMinor, Currency.of(row.currency)),
+          categoryId: row.categoryId,
+          status: row.status as PostingStatus,
         }),
       ),
-      reference: entry.reference,
-      importBatchId: entry.importBatchId,
-      reversesEntryId: entry.reversesEntryId ? JournalEntryId.from(entry.reversesEntryId) : null,
-      fingerprint: entry.fingerprint,
+      reversesTransactionId: txn.reversesTransactionId
+        ? TransactionId.from(txn.reversesTransactionId)
+        : null,
     });
   },
 
-  /** Groups flat join rows into one aggregate per entry, preserving order. */
-  toDomainMany(entryRows: readonly EntryRow[], postingRows: readonly PostingRow[]): JournalEntry[] {
-    const byEntry = new Map<string, PostingRow[]>();
+  /** Groups flat rows into one aggregate per transaction, preserving order. */
+  toDomainMany(txnRows: readonly TxnRow[], postingRows: readonly PostingRow[]): Transaction[] {
+    const byTransaction = new Map<string, PostingRow[]>();
     for (const posting of postingRows) {
-      const bucket = byEntry.get(posting.entryId);
+      const bucket = byTransaction.get(posting.transactionId);
       if (bucket) bucket.push(posting);
-      else byEntry.set(posting.entryId, [posting]);
+      else byTransaction.set(posting.transactionId, [posting]);
     }
-    return entryRows.map((entry) => JournalEntryMapper.toDomain(entry, byEntry.get(entry.id) ?? []));
+    return txnRows.map((txn) => TransactionMapper.toDomain(txn, byTransaction.get(txn.id) ?? []));
   },
 
-  toEntryRow(entry: JournalEntry): EntryInsert {
+  toTransactionRow(txn: Transaction): TxnInsert {
+    const context = txn.context;
     return {
-      id: entry.id.value,
-      userId: entry.userId.value,
-      postedOn: entry.postedOn.toISO(),
-      narration: entry.narration,
-      kind: entry.kind,
-      source: entry.source,
-      reference: entry.reference,
-      importBatchId: entry.importBatchId,
-      reversesEntryId: entry.reversesEntryId?.value ?? null,
-      fingerprint: entry.fingerprint,
+      id: txn.id.value,
+      userId: txn.userId.value,
+      txnType: txn.kind,
+      txnDate: txn.txnDate.toISO(),
+      settlementDate: context.settlementDate?.toISO() ?? null,
+      description: txn.description,
+      source: context.txnSource ?? "MANUAL",
+      reference: context.reference ?? null,
+      externalId: context.externalId ?? null,
+      counterpartyId: context.counterpartyId ?? null,
+      importBatchId: context.importBatchId ?? null,
+      reversesTransactionId: txn.reversesTransactionId?.value ?? null,
+      isForecast: context.isForecast ?? false,
+      fingerprint: context.fingerprint ?? null,
     };
   },
 
-  toPostingRows(entry: JournalEntry): PostingInsert[] {
-    return entry.postings.map((posting) => ({
+  toPostingRows(txn: Transaction): PostingInsert[] {
+    return txn.postings().map((posting) => ({
       id: posting.id.value,
-      entryId: entry.id.value,
+      transactionId: txn.id.value,
       accountId: posting.accountId.value,
       direction: posting.direction,
       // `Money` already holds the exact integer this column wants.
@@ -149,6 +177,11 @@ export const JournalEntryMapper = {
       currency: posting.amount.currency.code,
       seq: posting.seq,
       memo: posting.memo,
+      instrumentId: posting.instrumentId,
+      quantityScaled: posting.quantity?.toScaledNumber() ?? null,
+      unitCostMinor: posting.unitCost?.toMinorNumber() ?? null,
+      categoryId: posting.categoryId,
+      status: posting.status,
     }));
   },
 };
@@ -304,84 +337,84 @@ export class DrizzleAccountRepository implements AccountRepository {
   }
 }
 
-/* ═══ DrizzleJournalRepository ════════════════════════════════════════ */
+/* ═══ DrizzleTransactionRepository ════════════════════════════════════════ */
 
 /** SQLite caps parameters per statement; batch anything unbounded. */
 const PARAM_CHUNK = 400;
 
 /**
- * libSQL implementation of {@link JournalRepository}.
+ * libSQL implementation of {@link TransactionRepository}.
  *
  * Entries and their postings are always written inside a single transaction. That
- * is not a nicety: a half-written entry is an unbalanced entry, which is the one
- * state the whole design exists to make impossible. `JournalEntry`'s constructor
+ * is not a nicety: a half-written txn is an unbalanced txn, which is the one
+ * state the whole design exists to make impossible. `Transaction`'s constructor
  * guards the in-memory shape; this transaction guards the stored one.
  */
-export class DrizzleJournalRepository implements JournalRepository {
+export class DrizzleTransactionRepository implements TransactionRepository {
   constructor(private readonly db: Database) {}
 
-  async save(entry: JournalEntry): Promise<void> {
+  async save(txn: Transaction): Promise<void> {
     await this.db.transaction(async (tx) => {
-      await tx.insert(journalEntries).values(JournalEntryMapper.toEntryRow(entry));
-      await tx.insert(postings).values(JournalEntryMapper.toPostingRows(entry));
+      await tx.insert(transactions).values(TransactionMapper.toTransactionRow(txn));
+      await tx.insert(postings).values(TransactionMapper.toPostingRows(txn));
     });
   }
 
-  async saveMany(entries: readonly JournalEntry[]): Promise<void> {
-    if (entries.length === 0) return;
+  async saveMany(txns: readonly Transaction[]): Promise<void> {
+    if (txns.length === 0) return;
     await this.db.transaction(async (tx) => {
       // Chunked so a large import does not exceed the statement parameter limit,
       // while still being one transaction overall — an import lands whole.
-      for (let i = 0; i < entries.length; i += 50) {
-        const batch = entries.slice(i, i + 50);
-        await tx.insert(journalEntries).values(batch.map(JournalEntryMapper.toEntryRow));
-        await tx.insert(postings).values(batch.flatMap(JournalEntryMapper.toPostingRows));
+      for (let i = 0; i < txns.length; i += 50) {
+        const batch = txns.slice(i, i + 50);
+        await tx.insert(transactions).values(batch.map(TransactionMapper.toTransactionRow));
+        await tx.insert(postings).values(batch.flatMap(TransactionMapper.toPostingRows));
       }
     });
   }
 
-  async findById(userId: UserId, id: JournalEntryId): Promise<JournalEntry | null> {
-    const [entry] = await this.db
+  async findById(userId: UserId, id: TransactionId): Promise<Transaction | null> {
+    const [txn] = await this.db
       .select()
-      .from(journalEntries)
-      .where(and(eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt), eq(journalEntries.id, id.value)))
+      .from(transactions)
+      .where(and(eq(transactions.userId, userId.value), isNull(transactions.deletedAt), eq(transactions.id, id.value)))
       .limit(1);
-    if (!entry) return null;
+    if (!txn) return null;
 
     const postingRows = await this.db
       .select()
       .from(postings)
-      .where(eq(postings.entryId, entry.id))
+      .where(eq(postings.transactionId, txn.id))
       .orderBy(asc(postings.seq));
 
-    return JournalEntryMapper.toDomain(entry, postingRows);
+    return TransactionMapper.toDomain(txn, postingRows);
   }
 
-  async find(userId: UserId, query: JournalQuery): Promise<JournalPage> {
-    const conditions = [eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt)];
+  async find(userId: UserId, query: TransactionQuery): Promise<TransactionPage> {
+    const conditions = [eq(transactions.userId, userId.value), isNull(transactions.deletedAt)];
 
     if (query.range) {
-      conditions.push(gte(journalEntries.postedOn, query.range.start.toISO()));
-      conditions.push(lte(journalEntries.postedOn, query.range.end.toISO()));
+      conditions.push(gte(transactions.txnDate, query.range.start.toISO()));
+      conditions.push(lte(transactions.txnDate, query.range.end.toISO()));
     }
     if (query.importBatchId) {
-      conditions.push(eq(journalEntries.importBatchId, query.importBatchId));
+      conditions.push(eq(transactions.importBatchId, query.importBatchId));
     }
     if (query.search?.trim()) {
       const term = `%${query.search.trim().toLowerCase()}%`;
       conditions.push(
         or(
-          like(sql`lower(${journalEntries.narration})`, term),
-          like(sql`lower(coalesce(${journalEntries.reference}, ''))`, term),
+          like(sql`lower(${transactions.description})`, term),
+          like(sql`lower(coalesce(${transactions.reference}, ''))`, term),
         )!,
       );
     }
     if (query.accountIds?.length) {
       // Entries touching any of these accounts. A subquery keeps the result one
-      // row per entry — a join would duplicate an entry that has two matching legs.
+      // row per txn — a join would duplicate an txn that has two matching legs.
       conditions.push(
-        sql`${journalEntries.id} IN (
-          SELECT ${postings.entryId} FROM ${postings}
+        sql`${transactions.id} IN (
+          SELECT ${postings.transactionId} FROM ${postings}
           WHERE ${inArray(
             postings.accountId,
             query.accountIds.map((id) => id.value),
@@ -392,19 +425,19 @@ export class DrizzleJournalRepository implements JournalRepository {
 
     const where = and(...conditions);
 
-    const [[totals], entryRows] = await Promise.all([
-      this.db.select({ total: count() }).from(journalEntries).where(where),
+    const [[totals], txnRows] = await Promise.all([
+      this.db.select({ total: count() }).from(transactions).where(where),
       this.db
         .select()
-        .from(journalEntries)
+        .from(transactions)
         .where(where)
-        .orderBy(desc(journalEntries.postedOn), desc(journalEntries.createdAt))
+        .orderBy(desc(transactions.txnDate), desc(transactions.createdAt))
         .limit(query.limit ?? 100)
         .offset(query.offset ?? 0),
     ]);
 
-    if (entryRows.length === 0) {
-      return { entries: [], totalCount: totals?.total ?? 0 };
+    if (txnRows.length === 0) {
+      return { transactions: [], totalCount: totals?.total ?? 0 };
     }
 
     const postingRows = await this.db
@@ -412,24 +445,24 @@ export class DrizzleJournalRepository implements JournalRepository {
       .from(postings)
       .where(
         inArray(
-          postings.entryId,
-          entryRows.map((row) => row.id),
+          postings.transactionId,
+          txnRows.map((row) => row.id),
         ),
       )
       .orderBy(asc(postings.seq));
 
     return {
-      entries: JournalEntryMapper.toDomainMany(entryRows, postingRows),
+      transactions: TransactionMapper.toDomainMany(txnRows, postingRows),
       totalCount: totals?.total ?? 0,
     };
   }
 
   async existsWithFingerprint(userId: UserId, fingerprint: string): Promise<boolean> {
     const [row] = await this.db
-      .select({ id: journalEntries.id })
-      .from(journalEntries)
+      .select({ id: transactions.id })
+      .from(transactions)
       .where(
-        and(eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt), eq(journalEntries.fingerprint, fingerprint)),
+        and(eq(transactions.userId, userId.value), isNull(transactions.deletedAt), eq(transactions.fingerprint, fingerprint)),
       )
       .limit(1);
     return row !== undefined;
@@ -443,10 +476,10 @@ export class DrizzleJournalRepository implements JournalRepository {
     for (let i = 0; i < fingerprints.length; i += PARAM_CHUNK) {
       const chunk = fingerprints.slice(i, i + PARAM_CHUNK);
       const rows = await this.db
-        .select({ fingerprint: journalEntries.fingerprint })
-        .from(journalEntries)
+        .select({ fingerprint: transactions.fingerprint })
+        .from(transactions)
         .where(
-          and(eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt), inArray(journalEntries.fingerprint, chunk)),
+          and(eq(transactions.userId, userId.value), isNull(transactions.deletedAt), inArray(transactions.fingerprint, chunk)),
         );
       for (const row of rows) {
         if (row.fingerprint) found.add(row.fingerprint);
@@ -455,12 +488,12 @@ export class DrizzleJournalRepository implements JournalRepository {
     return found;
   }
 
-  async hasReversal(userId: UserId, id: JournalEntryId): Promise<boolean> {
+  async hasReversal(userId: UserId, id: TransactionId): Promise<boolean> {
     const [row] = await this.db
-      .select({ id: journalEntries.id })
-      .from(journalEntries)
+      .select({ id: transactions.id })
+      .from(transactions)
       .where(
-        and(eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt), eq(journalEntries.reversesEntryId, id.value)),
+        and(eq(transactions.userId, userId.value), isNull(transactions.deletedAt), eq(transactions.reversesTransactionId, id.value)),
       )
       .limit(1);
     return row !== undefined;
@@ -473,7 +506,7 @@ export class DrizzleJournalRepository implements JournalRepository {
    * with it. That destroyed the evidence of what was imported, so "undo the
    * import and tell me what it had done" was unanswerable. Stamping `deletedAt`
    * keeps the rows; the postings are excluded by the same filter through their
-   * entry.
+   * txn.
    */
   async softDeleteByImportBatch(
     userId: UserId,
@@ -481,40 +514,40 @@ export class DrizzleJournalRepository implements JournalRepository {
     at: Date,
   ): Promise<number> {
     const updated = await this.db
-      .update(journalEntries)
+      .update(transactions)
       .set({ deletedAt: at })
       .where(
         and(
-          eq(journalEntries.userId, userId.value),
-          eq(journalEntries.importBatchId, importBatchId),
-          isNull(journalEntries.deletedAt),
+          eq(transactions.userId, userId.value),
+          eq(transactions.importBatchId, importBatchId),
+          isNull(transactions.deletedAt),
         ),
       )
-      .returning({ id: journalEntries.id });
+      .returning({ id: transactions.id });
     return updated.length;
   }
 
   /**
    * Soft delete — invariant A03.
    *
-   * Note this is not how a *mistake* is corrected. An entry that posted the wrong
-   * amount is fixed with a reversing entry, so both the error and the correction
-   * are visible. This is for an entry that should never have existed at all, such
+   * Note this is not how a *mistake* is corrected. An txn that posted the wrong
+   * amount is fixed with a reversing txn, so both the error and the correction
+   * are visible. This is for an txn that should never have existed at all, such
    * as a duplicate from a re-import.
    */
-  async softDelete(userId: UserId, id: JournalEntryId, at: Date): Promise<void> {
+  async softDelete(userId: UserId, id: TransactionId, at: Date): Promise<void> {
     await this.db
-      .update(journalEntries)
+      .update(transactions)
       .set({ deletedAt: at })
-      .where(and(eq(journalEntries.userId, userId.value), eq(journalEntries.id, id.value)));
+      .where(and(eq(transactions.userId, userId.value), eq(transactions.id, id.value)));
   }
 
-  async earliestPostedOn(userId: UserId): Promise<CalendarDate | null> {
+  async earliestTxnDate(userId: UserId): Promise<CalendarDate | null> {
     const [row] = await this.db
-      .select({ earliest: min(journalEntries.postedOn) })
-      .from(journalEntries)
-      // A tombstoned entry must not set the start of the net-worth timeline.
-      .where(and(eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt)));
+      .select({ earliest: min(transactions.txnDate) })
+      .from(transactions)
+      // A tombstoned txn must not set the start of the net-worth timeline.
+      .where(and(eq(transactions.userId, userId.value), isNull(transactions.deletedAt)));
     return row?.earliest ? CalendarDate.parse(row.earliest) : null;
   }
 }
@@ -582,10 +615,10 @@ export class DrizzleBalanceQuery implements BalanceQuery {
         postings,
         and(
           eq(postings.accountId, ledgerAccounts.id),
-          sql`${postings.entryId} IN (
-            SELECT ${journalEntries.id} FROM ${journalEntries}
-            WHERE ${journalEntries.userId} = ${userId.value}
-              AND ${journalEntries.postedOn} <= ${asOf.toISO()}
+          sql`${postings.transactionId} IN (
+            SELECT ${transactions.id} FROM ${transactions}
+            WHERE ${transactions.userId} = ${userId.value}
+              AND ${transactions.txnDate} <= ${asOf.toISO()}
           )`,
         ),
       )
@@ -619,12 +652,12 @@ export class DrizzleBalanceQuery implements BalanceQuery {
       .select({ balance: sql<number>`COALESCE(SUM(${SIGNED_AMOUNT}), 0)` })
       .from(postings)
       .innerJoin(ledgerAccounts, eq(postings.accountId, ledgerAccounts.id))
-      .innerJoin(journalEntries, eq(postings.entryId, journalEntries.id))
+      .innerJoin(transactions, eq(postings.transactionId, transactions.id))
       .where(
         and(
-          eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt),
+          eq(transactions.userId, userId.value), isNull(transactions.deletedAt),
           eq(postings.accountId, accountId.value),
-          sql`${journalEntries.postedOn} <= ${asOf.toISO()}`,
+          sql`${transactions.txnDate} <= ${asOf.toISO()}`,
         ),
       );
     return this.money(row?.balance ?? 0);
@@ -638,9 +671,9 @@ export class DrizzleBalanceQuery implements BalanceQuery {
       })
       .from(postings)
       .innerJoin(ledgerAccounts, eq(postings.accountId, ledgerAccounts.id))
-      .innerJoin(journalEntries, eq(postings.entryId, journalEntries.id))
+      .innerJoin(transactions, eq(postings.transactionId, transactions.id))
       .where(
-        and(eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt), sql`${journalEntries.postedOn} <= ${asOf.toISO()}`),
+        and(eq(transactions.userId, userId.value), isNull(transactions.deletedAt), sql`${transactions.txnDate} <= ${asOf.toISO()}`),
       )
       .groupBy(ledgerAccounts.type);
 
@@ -663,22 +696,22 @@ export class DrizzleBalanceQuery implements BalanceQuery {
   async monthlyFlows(userId: UserId, range: DateRange): Promise<MonthlyFlow[]> {
     const rows = await this.db
       .select({
-        month: sql<string>`substr(${journalEntries.postedOn}, 1, 7)`,
+        month: sql<string>`substr(${transactions.txnDate}, 1, 7)`,
         type: ledgerAccounts.type,
         total: sql<number>`COALESCE(SUM(${SIGNED_AMOUNT}), 0)`,
       })
       .from(postings)
       .innerJoin(ledgerAccounts, eq(postings.accountId, ledgerAccounts.id))
-      .innerJoin(journalEntries, eq(postings.entryId, journalEntries.id))
+      .innerJoin(transactions, eq(postings.transactionId, transactions.id))
       .where(
         and(
-          eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt),
-          sql`${journalEntries.postedOn} >= ${range.start.toISO()}`,
-          sql`${journalEntries.postedOn} <= ${range.end.toISO()}`,
+          eq(transactions.userId, userId.value), isNull(transactions.deletedAt),
+          sql`${transactions.txnDate} >= ${range.start.toISO()}`,
+          sql`${transactions.txnDate} <= ${range.end.toISO()}`,
           sql`${ledgerAccounts.type} IN ('INCOME', 'EXPENSE')`,
         ),
       )
-      .groupBy(sql`substr(${journalEntries.postedOn}, 1, 7)`, ledgerAccounts.type);
+      .groupBy(sql`substr(${transactions.txnDate}, 1, 7)`, ledgerAccounts.type);
 
     const zero = Money.zero(this.currency);
     const byMonth = new Map<string, MonthlyFlow>();
@@ -725,11 +758,11 @@ export class DrizzleBalanceQuery implements BalanceQuery {
         postings,
         and(
           eq(postings.accountId, ledgerAccounts.id),
-          sql`${postings.entryId} IN (
-            SELECT ${journalEntries.id} FROM ${journalEntries}
-            WHERE ${journalEntries.userId} = ${userId.value}
-              AND ${journalEntries.postedOn} >= ${range.start.toISO()}
-              AND ${journalEntries.postedOn} <= ${range.end.toISO()}
+          sql`${postings.transactionId} IN (
+            SELECT ${transactions.id} FROM ${transactions}
+            WHERE ${transactions.userId} = ${userId.value}
+              AND ${transactions.txnDate} >= ${range.start.toISO()}
+              AND ${transactions.txnDate} <= ${range.end.toISO()}
           )`,
         ),
       )
@@ -788,22 +821,22 @@ export class DrizzleBalanceQuery implements BalanceQuery {
 
     const rows = await this.db
       .select({
-        date: journalEntries.postedOn,
+        date: transactions.txnDate,
         delta: sql<number>`COALESCE(SUM(${SIGNED_AMOUNT}), 0)`,
       })
       .from(postings)
       .innerJoin(ledgerAccounts, eq(postings.accountId, ledgerAccounts.id))
-      .innerJoin(journalEntries, eq(postings.entryId, journalEntries.id))
+      .innerJoin(transactions, eq(postings.transactionId, transactions.id))
       .where(
         and(
-          eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt),
+          eq(transactions.userId, userId.value), isNull(transactions.deletedAt),
           eq(postings.accountId, accountId.value),
-          sql`${journalEntries.postedOn} >= ${range.start.toISO()}`,
-          sql`${journalEntries.postedOn} <= ${range.end.toISO()}`,
+          sql`${transactions.txnDate} >= ${range.start.toISO()}`,
+          sql`${transactions.txnDate} <= ${range.end.toISO()}`,
         ),
       )
-      .groupBy(journalEntries.postedOn)
-      .orderBy(journalEntries.postedOn);
+      .groupBy(transactions.txnDate)
+      .orderBy(transactions.txnDate);
 
     let running = opening;
     return rows.map((row) => {

@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "b9fba64d-28f0-4620-9836-1421a7f0eaf7",
+  "id": "f0678828-dafa-44c7-8d1a-4d8d82a4949a",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "audit_events": {
@@ -1667,8 +1667,8 @@
           "autoincrement": false,
           "default": "'INR'"
         },
-        "journal_entry_id": {
-          "name": "journal_entry_id",
+        "transaction_id": {
+          "name": "transaction_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -1727,12 +1727,12 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "instrument_incomes_journal_entry_id_journal_entries_id_fk": {
-          "name": "instrument_incomes_journal_entry_id_journal_entries_id_fk",
+        "instrument_incomes_transaction_id_transactions_id_fk": {
+          "name": "instrument_incomes_transaction_id_transactions_id_fk",
           "tableFrom": "instrument_incomes",
-          "tableTo": "journal_entries",
+          "tableTo": "transactions",
           "columnsFrom": [
-            "journal_entry_id"
+            "transaction_id"
           ],
           "columnsTo": [
             "id"
@@ -1904,153 +1904,6 @@
           "tableTo": "ledger_accounts",
           "columnsFrom": [
             "asset_account_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "journal_entries": {
-      "name": "journal_entries",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "posted_on": {
-          "name": "posted_on",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "narration": {
-          "name": "narration",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'MANUAL'"
-        },
-        "reference": {
-          "name": "reference",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "import_batch_id": {
-          "name": "import_batch_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "reverses_entry_id": {
-          "name": "reverses_entry_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "fingerprint": {
-          "name": "fingerprint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "deleted_at": {
-          "name": "deleted_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch() * 1000)"
-        }
-      },
-      "indexes": {
-        "journal_entries_user_date_idx": {
-          "name": "journal_entries_user_date_idx",
-          "columns": [
-            "user_id",
-            "posted_on"
-          ],
-          "isUnique": false
-        },
-        "journal_entries_batch_idx": {
-          "name": "journal_entries_batch_idx",
-          "columns": [
-            "import_batch_id"
-          ],
-          "isUnique": false
-        },
-        "journal_entries_fingerprint_uq": {
-          "name": "journal_entries_fingerprint_uq",
-          "columns": [
-            "user_id",
-            "fingerprint"
-          ],
-          "isUnique": true
-        }
-      },
-      "foreignKeys": {
-        "journal_entries_user_id_user_id_fk": {
-          "name": "journal_entries_user_id_user_id_fk",
-          "tableFrom": "journal_entries",
-          "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "journal_entries_reverses_entry_id_journal_entries_id_fk": {
-          "name": "journal_entries_reverses_entry_id_journal_entries_id_fk",
-          "tableFrom": "journal_entries",
-          "tableTo": "journal_entries",
-          "columnsFrom": [
-            "reverses_entry_id"
           ],
           "columnsTo": [
             "id"
@@ -2875,8 +2728,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "entry_id": {
-          "name": "entry_id",
+        "transaction_id": {
+          "name": "transaction_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -2978,10 +2831,10 @@
           ],
           "isUnique": false
         },
-        "postings_entry_idx": {
-          "name": "postings_entry_idx",
+        "postings_transaction_idx": {
+          "name": "postings_transaction_idx",
           "columns": [
-            "entry_id"
+            "transaction_id"
           ],
           "isUnique": false
         },
@@ -2994,17 +2847,17 @@
         }
       },
       "foreignKeys": {
-        "postings_entry_id_journal_entries_id_fk": {
-          "name": "postings_entry_id_journal_entries_id_fk",
+        "postings_transaction_id_transactions_id_fk": {
+          "name": "postings_transaction_id_transactions_id_fk",
           "tableFrom": "postings",
-          "tableTo": "journal_entries",
+          "tableTo": "transactions",
           "columnsFrom": [
-            "entry_id"
+            "transaction_id"
           ],
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
+          "onDelete": "restrict",
           "onUpdate": "no action"
         },
         "postings_account_id_ledger_accounts_id_fk": {
@@ -3037,9 +2890,13 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
-        "postings_amount_positive": {
-          "name": "postings_amount_positive",
-          "value": "\"postings\".\"amount_minor\" > 0"
+        "postings_amount_not_negative": {
+          "name": "postings_amount_not_negative",
+          "value": "\"postings\".\"amount_minor\" >= 0"
+        },
+        "postings_moves_something": {
+          "name": "postings_moves_something",
+          "value": "\"postings\".\"amount_minor\" <> 0 OR (\"postings\".\"quantity_scaled\" IS NOT NULL AND \"postings\".\"quantity_scaled\" <> 0)"
         },
         "postings_commodity_coherent": {
           "name": "postings_commodity_coherent",
@@ -3950,8 +3807,8 @@
           "autoincrement": false,
           "default": 0
         },
-        "journal_entry_id": {
-          "name": "journal_entry_id",
+        "transaction_id": {
+          "name": "transaction_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -4033,12 +3890,12 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "trades_journal_entry_id_journal_entries_id_fk": {
-          "name": "trades_journal_entry_id_journal_entries_id_fk",
+        "trades_transaction_id_transactions_id_fk": {
+          "name": "trades_transaction_id_transactions_id_fk",
           "tableFrom": "trades",
-          "tableTo": "journal_entries",
+          "tableTo": "transactions",
           "columnsFrom": [
-            "journal_entry_id"
+            "transaction_id"
           ],
           "columnsTo": [
             "id"
@@ -4072,6 +3929,199 @@
           "value": "\"trades\".\"price_per_unit_minor\" >= 0"
         }
       }
+    },
+    "transactions": {
+      "name": "transactions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "txn_type": {
+          "name": "txn_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "txn_date": {
+          "name": "txn_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "settlement_date": {
+          "name": "settlement_date",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'MANUAL'"
+        },
+        "reference": {
+          "name": "reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "external_id": {
+          "name": "external_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "counterparty_id": {
+          "name": "counterparty_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "import_batch_id": {
+          "name": "import_batch_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "reverses_transaction_id": {
+          "name": "reverses_transaction_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "is_forecast": {
+          "name": "is_forecast",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "fingerprint": {
+          "name": "fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "deleted_at": {
+          "name": "deleted_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch() * 1000)"
+        }
+      },
+      "indexes": {
+        "transactions_user_date_idx": {
+          "name": "transactions_user_date_idx",
+          "columns": [
+            "user_id",
+            "txn_date"
+          ],
+          "isUnique": false
+        },
+        "transactions_batch_idx": {
+          "name": "transactions_batch_idx",
+          "columns": [
+            "import_batch_id"
+          ],
+          "isUnique": false
+        },
+        "transactions_fingerprint_uq": {
+          "name": "transactions_fingerprint_uq",
+          "columns": [
+            "user_id",
+            "fingerprint"
+          ],
+          "isUnique": true
+        },
+        "transactions_external_id_uq": {
+          "name": "transactions_external_id_uq",
+          "columns": [
+            "user_id",
+            "external_id"
+          ],
+          "isUnique": true,
+          "where": "\"transactions\".\"external_id\" IS NOT NULL AND \"transactions\".\"deleted_at\" IS NULL"
+        }
+      },
+      "foreignKeys": {
+        "transactions_user_id_user_id_fk": {
+          "name": "transactions_user_id_user_id_fk",
+          "tableFrom": "transactions",
+          "tableTo": "user",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "transactions_reverses_transaction_id_transactions_id_fk": {
+          "name": "transactions_reverses_transaction_id_transactions_id_fk",
+          "tableFrom": "transactions",
+          "tableTo": "transactions",
+          "columnsFrom": [
+            "reverses_transaction_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
     },
     "txn_type_legality": {
       "name": "txn_type_legality",

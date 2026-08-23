@@ -118,7 +118,7 @@ const repoSource = stripComments(read("src/infra/repositories.ts"));
 const occurrences = (haystack: string, needle: string): number =>
   haystack.split(needle).length - 1;
 
-for (const table of ["ledgerAccounts", "journalEntries"] as const) {
+for (const table of ["ledgerAccounts", "transactions"] as const) {
   const scopedNeedle = "eq(" + table + ".userId, userId.value)";
   const guardedNeedle = scopedNeedle + ", isNull(" + table + ".deletedAt)";
   const scoped = occurrences(repoSource, scopedNeedle);

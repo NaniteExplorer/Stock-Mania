@@ -1,5 +1,6 @@
 import type { Database } from "./client";
 import { MarketCalendar } from "@/core/time";
+import { legalityRows } from "@/domain/transactions";
 import {
   chargeRates,
   costInflationIndex,
@@ -23,97 +24,15 @@ import {
 
 /* ═══ Legality matrix — 20-DOMAIN-MODEL.md §3.6 ═════════════════════════ */
 
-const ASSET_ROLES = [
-  "ASSET_CASH",
-  "ASSET_BANK",
-  "ASSET_SAVINGS",
-  "ASSET_BROKERAGE",
-  "ASSET_RETIREMENT",
-  "ASSET_DEPOSIT",
-  "ASSET_PROPERTY",
-  "ASSET_OTHER",
-] as const;
-
-const LIABILITY_ROLES = [
-  "LIABILITY_CREDIT_CARD",
-  "LIABILITY_LOAN",
-  "LIABILITY_MORTGAGE",
-  "LIABILITY_OTHER",
-] as const;
-
-const SPENDABLE = ["ASSET_CASH", "ASSET_BANK", "ASSET_SAVINGS"] as const;
-
-type LegalityRow = {
-  txnType: (typeof txnTypeLegality.$inferInsert)["txnType"];
-  sourceRole: string;
-  destinationRole: string;
-};
-
-/**
- * The matrix, expanded from wildcards at seed time.
+/*
+ * The rows come from the domain, not from here.
  *
- * `20 §3.6` writes rows like `FEE | ASSET_* | EXPENSE`. Expanding them here
- * rather than pattern-matching at check time means the rejection message can name
- * the exact missing row, so the error doubles as the fix.
- *
- * Note what is absent: no row has `EXPENSE` as a source. That is invariant L07,
- * and it is L06's data rather than a second check — there is no such row to find.
+ * They used to be generated in this file, which meant the table SQL reporting
+ * joins against and the matrix a transaction is checked against were two
+ * statements of one fact — and the one that would have been wrong is the one
+ * nobody diffed. `legalityRows()` now lives beside the constructor that enforces
+ * it, and this table is its projection.
  */
-function legalityRows(): LegalityRow[] {
-  const rows: LegalityRow[] = [];
-  const add = (
-    txnType: LegalityRow["txnType"],
-    sources: readonly string[],
-    destinations: readonly string[],
-  ) => {
-    for (const sourceRole of sources) {
-      for (const destinationRole of destinations) {
-        if (sourceRole === destinationRole && txnType === "TRANSFER") continue;
-        rows.push({ txnType, sourceRole, destinationRole });
-      }
-    }
-  };
-
-  // Spending and earning.
-  add("WITHDRAWAL", [...ASSET_ROLES, ...LIABILITY_ROLES], ["EXPENSE"]);
-  add("DEPOSIT", ["INCOME"], [...ASSET_ROLES]);
-  add("FEE", [...ASSET_ROLES, ...LIABILITY_ROLES], ["EXPENSE"]);
-  add("TAX", [...ASSET_ROLES], ["EXPENSE"]);
-  add("REFUND", ["INCOME", "EXPENSE"], [...ASSET_ROLES, ...LIABILITY_ROLES]);
-
-  // Moving your own money. A card payment is a TRANSFER, never an expense (L12).
-  add("TRANSFER", [...ASSET_ROLES], [...ASSET_ROLES, ...LIABILITY_ROLES]);
-  add("TRANSFER", [...LIABILITY_ROLES], [...ASSET_ROLES]);
-  add("TRANSFER_IN_KIND", ["ASSET_BROKERAGE"], ["ASSET_BROKERAGE", "ASSET_RETIREMENT"]);
-
-  // Opening balances and corrections, against the pseudo-accounts that make
-  // sum-to-zero hold universally.
-  add("OPENING_BALANCE", ["EQUITY_OPENING"], [...ASSET_ROLES, ...LIABILITY_ROLES]);
-  add("OPENING_BALANCE", [...ASSET_ROLES, ...LIABILITY_ROLES], ["EQUITY_OPENING"]);
-  add("RECONCILIATION", [...ASSET_ROLES, ...LIABILITY_ROLES], ["EQUITY_ADJUSTMENT"]);
-  add("RECONCILIATION", ["EQUITY_ADJUSTMENT"], [...ASSET_ROLES, ...LIABILITY_ROLES]);
-  add("VALUATION_ADJUSTMENT", ["ASSET_PROPERTY", "ASSET_OTHER"], ["EQUITY_ADJUSTMENT"]);
-  add("VALUATION_ADJUSTMENT", ["EQUITY_ADJUSTMENT"], ["ASSET_PROPERTY", "ASSET_OTHER"]);
-  add("LIABILITY_CREDIT", ["EQUITY_ADJUSTMENT"], [...LIABILITY_ROLES]);
-  add("REVERSAL", [...ASSET_ROLES, ...LIABILITY_ROLES, "EQUITY_OPENING", "EQUITY_ADJUSTMENT", "INCOME"], [
-    ...ASSET_ROLES,
-    ...LIABILITY_ROLES,
-    "EXPENSE",
-    "EQUITY_OPENING",
-    "EQUITY_ADJUSTMENT",
-  ]);
-
-  // Investing — the seven rows §3.6 adds to Firefly's matrix.
-  add("BUY", [...SPENDABLE, "ASSET_BROKERAGE"], ["ASSET_BROKERAGE", "ASSET_RETIREMENT"]);
-  add("SELL", ["ASSET_BROKERAGE", "ASSET_RETIREMENT"], [...SPENDABLE, "ASSET_BROKERAGE"]);
-  add("DIVIDEND", ["INCOME"], [...SPENDABLE, "ASSET_BROKERAGE"]);
-  add("INTEREST", ["INCOME"], [...SPENDABLE, "ASSET_DEPOSIT", "ASSET_RETIREMENT"]);
-  add("CORPORATE_ACTION", ["ASSET_BROKERAGE"], ["ASSET_BROKERAGE", "EQUITY_ADJUSTMENT"]);
-  add("CORPORATE_ACTION", ["EQUITY_ADJUSTMENT"], ["ASSET_BROKERAGE"]);
-  add("FX_CONVERSION", [...ASSET_ROLES], [...ASSET_ROLES]);
-
-  return rows;
-}
 
 /* ═══ Tax rules — the SQL mirror of the shipped regimes ═════════════════ */
 

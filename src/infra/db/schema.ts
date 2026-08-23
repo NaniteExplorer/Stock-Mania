@@ -191,17 +191,14 @@ export const ACCOUNT_SUBTYPES = [
   "OTHER",
 ] as const;
 
-export const ENTRY_KINDS = [
-  "OPENING",
-  "EXPENSE",
-  "INCOME",
-  "TRANSFER",
-  "TRADE",
-  "ADJUSTMENT",
-  "REVERSAL",
-] as const;
-
-export const ENTRY_SOURCES = ["MANUAL", "IMPORT", "TRADE"] as const;
+/**
+ * How a transaction reached the ledger.
+ *
+ * The old `ENTRY_KINDS` — seven loose labels on one `JournalEntry` — is gone
+ * rather than widened: what kind of event a transaction is, is now the class that
+ * built it, and `TRANSACTION_KINDS` below is the stored projection of that.
+ */
+export const TRANSACTION_SOURCES = ["MANUAL", "IMPORT", "TRADE"] as const;
 
 /**
  * The remaining enum catalogue — `20-DOMAIN-MODEL.md` §2.
@@ -210,7 +207,7 @@ export const ENTRY_SOURCES = ["MANUAL", "IMPORT", "TRADE"] as const;
  * type, so adding a value is a code change and not a table rebuild.
  */
 
-/** §2.3, the 18 transaction types. Supersedes the 7 loose `ENTRY_KINDS`. */
+/** §2.3, the 18 transaction types. Mirrored by `TRANSACTION_KIND_NAMES` in the domain. */
 export const TRANSACTION_KINDS = [
   "OPENING_BALANCE",
   "WITHDRAWAL",
@@ -403,35 +400,57 @@ export const ledgerAccounts = sqliteTable(
 );
 
 /**
- * A journal entry: the atomic financial event. Its postings must balance, which
- * the domain enforces on construction — the database cannot express "the sum of
- * these child rows is zero", so the invariant lives in `JournalEntry`.
+ * A transaction: the atomic financial event. Its postings must sum to zero **per
+ * currency**, which the domain enforces on construction — the database cannot
+ * express "the sum of these child rows is zero", so the invariant lives in
+ * `Transaction`.
  *
- * Append-only. A mistake is corrected with a REVERSAL entry pointing at the
- * original via `reversesEntryId`, never by updating history.
+ * Renamed from `journal_entries` with 1b. The rename is not cosmetic: the row no
+ * longer carries a loose seven-value `kind` but the `txn_type` of
+ * `20-DOMAIN-MODEL.md` §2.3, which is the projection of the class that wrote it,
+ * and it gains the columns §3.4 specifies — a settlement date distinct from the
+ * accounting date, the provider's own id, a forecast flag, and a version.
+ *
+ * Append-only. A mistake is corrected with a REVERSAL pointing at the original via
+ * `reversesTransactionId`, never by updating history.
  */
-export const journalEntries = sqliteTable(
-  "journal_entries",
+export const transactions = sqliteTable(
+  "transactions",
   {
     id: text("id").primaryKey(),
     userId: text("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    /** The date the money moved, not when the row was written. */
-    postedOn: calendarDate("posted_on").notNull(),
-    narration: text("narration").notNull(),
-    kind: text("kind", { enum: ENTRY_KINDS }).notNull(),
-    source: text("source", { enum: ENTRY_SOURCES }).notNull().default("MANUAL"),
+    txnType: text("txn_type", { enum: TRANSACTION_KINDS }).notNull(),
+    /** The accounting date: a day, never an instant (§3.4). */
+    txnDate: calendarDate("txn_date").notNull(),
+    /**
+     * When the money actually settles — T+1 for Indian equities.
+     *
+     * Separate from `txnDate` because a trade on 31 March settling on 1 April falls
+     * in one financial year for tax and the other for the bank statement, and one
+     * column cannot answer both.
+     */
+    settlementDate: calendarDate("settlement_date"),
+    description: text("description").notNull(),
+    source: text("source", { enum: TRANSACTION_SOURCES }).notNull().default("MANUAL"),
     /** Bank reference / cheque number / UTR, when known. */
     reference: text("reference"),
+    /** The provider's own id for this row — unique per user among live rows (L09). */
+    externalId: text("external_id"),
+    counterpartyId: text("counterparty_id"),
     importBatchId: text("import_batch_id"),
-    reversesEntryId: text("reverses_entry_id").references(
-      (): AnySQLiteColumn => journalEntries.id,
+    reversesTransactionId: text("reverses_transaction_id").references(
+      (): AnySQLiteColumn => transactions.id,
       { onDelete: "restrict" },
     ),
+    /** A dated-ahead transaction is legitimate only when marked a forecast (L11). */
+    isForecast: integer("is_forecast", { mode: "boolean" }).notNull().default(false),
+    /** Bumped by any correction that produces a reversal pair, for optimistic reads. */
+    version: integer("version").notNull().default(1),
     /**
-     * Stable hash of (account, date, amount, description) for imported rows.
-     * The unique index below is what makes re-importing an overlapping statement
+     * Stable hash of (account, date, amount, description) for imported rows. The
+     * unique index below is what makes re-importing an overlapping statement
      * idempotent instead of duplicating months of transactions.
      */
     fingerprint: text("fingerprint"),
@@ -439,24 +458,28 @@ export const journalEntries = sqliteTable(
     createdAt: createdAt(),
   },
   (table) => [
-    index("journal_entries_user_date_idx").on(table.userId, table.postedOn),
-    index("journal_entries_batch_idx").on(table.importBatchId),
-    uniqueIndex("journal_entries_fingerprint_uq").on(table.userId, table.fingerprint),
+    index("transactions_user_date_idx").on(table.userId, table.txnDate),
+    index("transactions_batch_idx").on(table.importBatchId),
+    uniqueIndex("transactions_fingerprint_uq").on(table.userId, table.fingerprint),
+    /** L09, among live rows only — a tombstoned import must not block a re-import. */
+    uniqueIndex("transactions_external_id_uq")
+      .on(table.userId, table.externalId)
+      .where(sql`${table.externalId} IS NOT NULL AND ${table.deletedAt} IS NULL`),
   ],
 );
 
 /**
- * One leg of an entry. `amountMinor` is always positive; `direction` carries the
- * sign, which is what keeps "is this a negative expense or a positive refund?"
+ * One leg of a transaction. `amountMinor` is never negative; `direction` carries
+ * the sign, which is what keeps "is this a negative expense or a positive refund?"
  * from ever being ambiguous.
  */
 export const postings = sqliteTable(
   "postings",
   {
     id: text("id").primaryKey(),
-    entryId: text("entry_id")
+    transactionId: text("transaction_id")
       .notNull()
-      .references(() => journalEntries.id, { onDelete: "cascade" }),
+      .references(() => transactions.id, { onDelete: "restrict" }),
     accountId: text("account_id")
       .notNull()
       .references(() => ledgerAccounts.id, { onDelete: "restrict" }),
@@ -490,9 +513,18 @@ export const postings = sqliteTable(
   },
   (table) => [
     index("postings_account_idx").on(table.accountId),
-    index("postings_entry_idx").on(table.entryId),
+    index("postings_transaction_idx").on(table.transactionId),
     index("postings_instrument_idx").on(table.instrumentId),
-    check("postings_amount_positive", sql`${table.amountMinor} > 0`),
+    /**
+     * L03. Zero is legal, negative is not: a bonus issue moves units and no money,
+     * so the old `> 0` would have rejected it — but a posting with neither an
+     * amount nor a quantity records nothing at all.
+     */
+    check("postings_amount_not_negative", sql`${table.amountMinor} >= 0`),
+    check(
+      "postings_moves_something",
+      sql`${table.amountMinor} <> 0 OR (${table.quantityScaled} IS NOT NULL AND ${table.quantityScaled} <> 0)`,
+    ),
     /**
      * L04, commodity coherence: either all three commodity columns are absent, or
      * an instrument and a quantity are both present. A quantity with no
@@ -521,14 +553,14 @@ export const ledgerAccountRelations = relations(ledgerAccounts, ({ one, many }) 
   postings: many(postings),
 }));
 
-export const journalEntryRelations = relations(journalEntries, ({ many }) => ({
+export const transactionRelations = relations(transactions, ({ many }) => ({
   postings: many(postings),
 }));
 
 export const postingRelations = relations(postings, ({ one }) => ({
-  entry: one(journalEntries, {
-    fields: [postings.entryId],
-    references: [journalEntries.id],
+  transaction: one(transactions, {
+    fields: [postings.transactionId],
+    references: [transactions.id],
   }),
   account: one(ledgerAccounts, {
     fields: [postings.accountId],
@@ -644,8 +676,8 @@ export const trades = sqliteTable(
     dpChargesMinor: moneyMinor("dp_charges_minor").notNull().default(0),
     otherChargesMinor: moneyMinor("other_charges_minor").notNull().default(0),
 
-    /** The entry this trade wrote. Deleting a trade reverses that entry. */
-    journalEntryId: text("journal_entry_id").references(() => journalEntries.id, {
+    /** The transaction this trade wrote. Deleting a trade reverses it. */
+    transactionId: text("transaction_id").references(() => transactions.id, {
       onDelete: "restrict",
     }),
     /** Which of the user's accounts the cash came from or went to. */
@@ -825,7 +857,7 @@ export const instrumentIncomes = sqliteTable(
     amountMinor: moneyMinor("amount_minor").notNull(),
     taxDeductedMinor: moneyMinor("tax_deducted_minor").notNull().default(0),
     currency: currencyCode(),
-    journalEntryId: text("journal_entry_id").references(() => journalEntries.id, {
+    transactionId: text("transaction_id").references(() => transactions.id, {
       onDelete: "restrict",
     }),
     deletedAt: deletedAt(),

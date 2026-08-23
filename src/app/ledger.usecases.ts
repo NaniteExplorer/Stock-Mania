@@ -15,7 +15,7 @@ import { AppError, Clock, Err, NotFoundError, Ok, Result, UseCase, UserId, Valid
 import { Currency, Money } from "@/core/money";
 import { CalendarDate } from "@/core/time";
 import { Account, AccountClosedError, AccountCode, AccountId, AccountRepository, AccountSubtype, AccountType, AccountTypeName, SystemAccountCodes, resolveDefaultChart } from "@/domain/accounts";
-import { EntryAlreadyReversedError, EntryKind, EntrySource, JournalEntry, JournalEntryId, JournalRepository } from "@/domain/transactions";
+import { Charge, Expense, Income, OpeningBalance, Transaction, TransactionAlreadyReversedError, TransactionId, TransactionKind, TransactionRepository, TransactionSource, Transfer, accountRef } from "@/domain/transactions";
 /* ═══ SeedChartOfAccounts ═════════════════════════════════════════════ */
 
 export interface SeedChartOfAccountsInput {
@@ -124,7 +124,7 @@ export interface OpenAccountOutput {
 export class OpenAccount implements UseCase<OpenAccountInput, OpenAccountOutput> {
   constructor(
     private readonly accounts: AccountRepository,
-    private readonly journal: JournalRepository,
+    private readonly journal: TransactionRepository,
     private readonly clock: Clock,
   ) {}
 
@@ -195,19 +195,21 @@ export class OpenAccount implements UseCase<OpenAccountInput, OpenAccountOutput>
         );
       }
 
-      // An asset's opening balance debits the asset; a liability's credits it.
-      // Using `signedEffect` keeps this from being a hand-written sign decision.
-      const increasesWithDebit = type.signedEffect("DEBIT") === 1;
-      const entry = JournalEntry.twoLegged({
-        userId: input.userId,
-        postedOn: input.openingBalanceOn ?? CalendarDate.parse(this.clock.today()),
-        narration: `Opening balance — ${account.displayName}`,
-        kind: "OPENING",
-        debitAccountId: increasesWithDebit ? account.id : equity.id,
-        creditAccountId: increasesWithDebit ? equity.id : account.id,
-        amount: opening.abs(),
-      });
-      await this.journal.save(entry);
+      // Which side the account is debited on is `OpeningBalance`'s business, not
+      // this use case's: it reads it off the account's legality role, so the asset
+      // and liability cases cannot diverge here and there.
+      const txn = OpeningBalance.record(
+        {
+          userId: input.userId,
+          txnDate: input.openingBalanceOn ?? CalendarDate.parse(this.clock.today()),
+          description: `Opening balance — ${account.displayName}`,
+          source: accountRef(equity),
+          destination: accountRef(account),
+          today: CalendarDate.parse(this.clock.today()),
+        },
+        { amount: opening.abs(), account: accountRef(account) },
+      );
+      await this.journal.save(txn);
     }
 
     return Ok({ accountId: account.id, code: code.toString() });
@@ -240,14 +242,23 @@ export interface RecordTransactionInput {
   postedOn: CalendarDate;
   narration: string;
   reference?: string | null;
-  source?: EntrySource;
+  source?: TransactionSource;
   importBatchId?: string | null;
   fingerprint?: string | null;
+  /** Budget category, for a spend or a receipt. Rejected on a transfer (L12). */
+  categoryId?: string | null;
+  /**
+   * Books the spend as a {@link Charge} rather than an {@link Expense}: a fee is a
+   * cost of holding or trading something, and the tax engine may deduct it.
+   */
+  chargeDeductibility?: "DEDUCTIBLE" | "NOT_DEDUCTIBLE" | "CAPITALISED";
 }
 
 export interface RecordTransactionOutput {
-  entryId: JournalEntryId;
-  kind: EntryKind;
+  transactionId: TransactionId;
+  kind: TransactionKind;
+  /** Non-blocking findings, e.g. L11's future-dated warning. */
+  warnings: readonly string[];
 }
 
 /**
@@ -274,7 +285,7 @@ export class RecordTransaction
 {
   constructor(
     private readonly accounts: AccountRepository,
-    private readonly journal: JournalRepository,
+    private readonly journal: TransactionRepository,
   ) {}
 
   async execute(input: RecordTransactionInput): Promise<Result<RecordTransactionOutput, AppError>> {
@@ -335,36 +346,86 @@ export class RecordTransaction
       }
     }
 
-    const entry = JournalEntry.twoLegged({
+    const context = {
       userId: input.userId,
-      postedOn: input.postedOn,
-      narration: input.narration,
-      kind: RecordTransaction.deriveKind(from, to),
-      debitAccountId: to.id,
-      creditAccountId: from.id,
-      amount: input.amount,
-      source: input.source ?? "MANUAL",
+      txnDate: input.postedOn,
+      description: input.narration.trim(),
+      source: accountRef(from),
+      destination: accountRef(to),
+      txnSource: input.source ?? "MANUAL",
       reference: input.reference ?? null,
       importBatchId: input.importBatchId ?? null,
       fingerprint: input.fingerprint ?? null,
-    });
+    };
+    const movement = {
+      amount: input.amount,
+      categoryId: input.categoryId ?? null,
+    };
 
-    await this.journal.save(entry);
+    const built = RecordTransaction.build(from, to, context, movement, input.chargeDeductibility);
+    if (!built.ok) return built;
+    const txn = built.value;
 
-    return Ok({ entryId: entry.id, kind: entry.kind });
+    await this.journal.save(txn);
+
+    return Ok({ transactionId: txn.id, kind: txn.kind, warnings: txn.warnings });
   }
 
   /**
-   * Labels the entry from the shape of the movement. Presentation only — two
-   * balance-sheet accounts is a transfer (and so must not change net worth),
-   * money arriving from an income account is income, and so on.
+   * Chooses the subclass from the shape of the movement.
+   *
+   * This replaces v1's `deriveKind`, which returned a *label* — and a label is
+   * exactly what a ledger must not decide by. The class chosen here is what
+   * answers the lot, tax and cashflow questions later, so getting it wrong is a
+   * wrong number rather than a wrong icon. The mapping is the same reading of the
+   * account types that produced the label, and the legality matrix independently
+   * rejects a combination that has no meaning.
    */
-  private static deriveKind(from: Account, to: Account): EntryKind {
-    if (from.type === AccountType.INCOME) return "INCOME";
-    if (to.type === AccountType.EXPENSE) return "EXPENSE";
-    if (from.type === AccountType.EQUITY || to.type === AccountType.EQUITY) return "OPENING";
-    if (from.type.isBalanceSheet && to.type.isBalanceSheet) return "TRANSFER";
-    return "ADJUSTMENT";
+  private static build(
+    from: Account,
+    to: Account,
+    context: Parameters<typeof Transfer.record>[0],
+    movement: { amount: Money; categoryId: string | null },
+    deductibility: RecordTransactionInput["chargeDeductibility"],
+  ): Result<Transaction, AppError> {
+    if (from.type === AccountType.INCOME) return Ok(Income.record(context, movement));
+
+    if (to.type === AccountType.EXPENSE) {
+      return Ok(
+        deductibility
+          ? Charge.record(context, { ...movement, deductibility })
+          : Expense.record(context, movement),
+      );
+    }
+
+    if (from.type === AccountType.EQUITY || to.type === AccountType.EQUITY) {
+      const account = from.type === AccountType.EQUITY ? to : from;
+      return Ok(
+        OpeningBalance.record(context, { amount: movement.amount, account: accountRef(account) }),
+      );
+    }
+
+    if (from.type.isBalanceSheet && to.type.isBalanceSheet) {
+      if (movement.categoryId) {
+        // L12 stated where the user can act on it. The aggregate would also reject
+        // this, but as a `DomainError` — which is a bug report, not a form error.
+        return Err(
+          new ValidationError(
+            `A transfer to ${to.displayName} is not spending, so it takes no category: ` +
+              `the expense it eventually pays for is where the category belongs.`,
+            { categoryId: ["Not allowed on a transfer"] },
+          ),
+        );
+      }
+      return Ok(Transfer.record(context, movement));
+    }
+
+    return Err(
+      new ValidationError(
+        `Money cannot move from ${from.displayName} (${from.type.label.toLowerCase()}) to ` +
+          `${to.displayName} (${to.type.label.toLowerCase()}). One side must be an account you own.`,
+      ),
+    );
   }
 }
 
@@ -372,21 +433,21 @@ export class RecordTransaction
 
 export interface ReverseTransactionInput {
   userId: UserId;
-  entryId: JournalEntryId;
-  /** Defaults to the original entry's date, so the fix lands in the right period. */
+  transactionId: TransactionId;
+  /** Defaults to the original transaction's date, so the fix lands in the right period. */
   reversedOn?: CalendarDate;
   narration?: string;
 }
 
 export interface ReverseTransactionOutput {
-  reversalEntryId: JournalEntryId;
+  reversalTransactionId: TransactionId;
 }
 
 /**
  * Undoes a transaction by posting its mirror image.
  *
  * This is the *only* way to correct the ledger, and there is deliberately no
- * `EditTransaction` or `DeleteTransaction` beside it. Editing a posted entry would
+ * `EditTransaction` or `DeleteTransaction` beside it. Editing a posted transaction would
  * silently change every report that had already been produced from it; reversing
  * leaves both the mistake and the correction visible, and the pair nets to zero
  * everywhere. It is also how real accounting systems behave, which matters when
@@ -398,24 +459,24 @@ export class ReverseTransaction
   implements UseCase<ReverseTransactionInput, ReverseTransactionOutput>
 {
   constructor(
-    private readonly journal: JournalRepository,
+    private readonly journal: TransactionRepository,
     private readonly clock: Clock,
   ) {}
 
   async execute(input: ReverseTransactionInput): Promise<Result<ReverseTransactionOutput, AppError>> {
-    const original = await this.journal.findById(input.userId, input.entryId);
-    if (!original) return Err(new NotFoundError("Transaction", input.entryId.value));
+    const original = await this.journal.findById(input.userId, input.transactionId);
+    if (!original) return Err(new NotFoundError("Transaction", input.transactionId.value));
 
     // Reversing a reversal would leave the user unable to tell what the current
     // state is; they should reverse the original instead.
     if (original.isReversal) {
-      return Err(new EntryAlreadyReversedError());
+      return Err(new TransactionAlreadyReversedError());
     }
     if (await this.journal.hasReversal(input.userId, original.id)) {
-      return Err(new EntryAlreadyReversedError());
+      return Err(new TransactionAlreadyReversedError());
     }
 
-    const reversedOn = input.reversedOn ?? original.postedOn;
+    const reversedOn = input.reversedOn ?? original.txnDate;
     // A reversal dated in the future would sit outside every report until that
     // date arrives, leaving the original apparently un-corrected.
     const today = CalendarDate.parse(this.clock.today());
@@ -423,11 +484,11 @@ export class ReverseTransaction
 
     const reversal = original.reverse({
       reversedOn: effectiveDate,
-      narration: input.narration,
+      description: input.narration,
     });
 
     await this.journal.save(reversal);
 
-    return Ok({ reversalEntryId: reversal.id });
+    return Ok({ reversalTransactionId: reversal.id });
   }
 }

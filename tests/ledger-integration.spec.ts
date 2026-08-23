@@ -2,22 +2,23 @@ import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import * as schema from "@/infra/db/schema";
-import { users } from "@/infra/db/schema";
+import { instruments, users } from "@/infra/db/schema";
 import type { Database } from "@/infra/db/client";
 import { UserId, FixedClock } from "@/core/kernel";
 import { Money } from "@/core/money";
 import { CalendarDate, DateRange } from "@/core/time";
 import { AccountCode } from "@/domain/accounts";
-import { AccountType } from "@/domain/accounts";
+import { Quantity } from "@/core/numeric";
+import { Buy, accountRef } from "@/domain/transactions";
 import { BalanceCalculator } from "@/domain/transactions";
 import { DrizzleAccountRepository } from "@/infra/repositories";
-import { DrizzleJournalRepository } from "@/infra/repositories";
+import { DrizzleTransactionRepository } from "@/infra/repositories";
 import { DrizzleBalanceQuery } from "@/infra/repositories";
 import { SeedChartOfAccounts } from "@/app/ledger.usecases";
 import { OpenAccount } from "@/app/ledger.usecases";
 import { RecordTransaction } from "@/app/ledger.usecases";
 import { ReverseTransaction } from "@/app/ledger.usecases";
-import { check, throws, done } from "./harness";
+import { check, done } from "./harness";
 
 
 const DB_FILE = "./tmp/integration.db";
@@ -50,13 +51,13 @@ async function main() {
 
   const clock = new FixedClock(now);
   const accountRepo = new DrizzleAccountRepository(db);
-  const journalRepo = new DrizzleJournalRepository(db);
+  const txnRepo = new DrizzleTransactionRepository(db);
   const balances = new DrizzleBalanceQuery(db);
 
   const seed = new SeedChartOfAccounts(accountRepo);
-  const openAccount = new OpenAccount(accountRepo, journalRepo, clock);
-  const record = new RecordTransaction(accountRepo, journalRepo);
-  const reverse = new ReverseTransaction(journalRepo, clock);
+  const openAccount = new OpenAccount(accountRepo, txnRepo, clock);
+  const record = new RecordTransaction(accountRepo, txnRepo);
+  const reverse = new ReverseTransaction(txnRepo, clock);
 
   console.log("-- seeding is idempotent --");
   const first = await seed.execute({ userId });
@@ -99,12 +100,12 @@ async function main() {
     return r.value;
   };
 
-  const salaryEntry = await tx(salaryAcct.id, hdfcId, "150000", "2026-08-01", "August salary");
-  check("salary derived as INCOME", salaryEntry.kind, "INCOME");
-  const groceryEntry = await tx(cardId, groceries.id, "1240", "2026-08-03", "Big Bazaar");
-  check("card spend derived as EXPENSE", groceryEntry.kind, "EXPENSE");
+  const salaryTxn = await tx(salaryAcct.id, hdfcId, "150000", "2026-08-01", "August salary");
+  check("salary becomes an Income (DEPOSIT)", salaryTxn.kind, "DEPOSIT");
+  const groceryTxn = await tx(cardId, groceries.id, "1240", "2026-08-03", "Big Bazaar");
+  check("card spend becomes an Expense (WITHDRAWAL)", groceryTxn.kind, "WITHDRAWAL");
   const payment = await tx(hdfcId, cardId, "16240", "2026-08-04", "Card payment");
-  check("card payment derived as TRANSFER", payment.kind, "TRANSFER");
+  check("card payment becomes a Transfer", payment.kind, "TRANSFER");
   await tx(hdfcId, rent.id, "35000", "2026-08-05", "August rent");
   await tx(hdfcId, groceries.id, "2100", "2026-07-20", "July groceries");
 
@@ -137,9 +138,9 @@ async function main() {
   console.log("\n== SQL BalanceQuery vs pure BalanceCalculator ==");
   const asOf = CalendarDate.parse("2026-08-31");
   const allAccounts = await accountRepo.list(userId, { includeClosed: true });
-  const page = await journalRepo.find(userId, { limit: 10_000 });
+  const page = await txnRepo.find(userId, { limit: 10_000 });
   const calc = new BalanceCalculator();
-  const pure = calc.balancesAsOf(allAccounts, page.entries, asOf);
+  const pure = calc.balancesAsOf(allAccounts, page.transactions, asOf);
   const sqlSheet = await balances.balanceSheet(userId, asOf, { includeClosed: true });
 
   let mismatches = 0;
@@ -159,14 +160,14 @@ async function main() {
   check("credit card balance", byCode.get("Liabilities:ICICI Amazon Pay"), "0.00");
 
   const sqlTotals = await balances.totals(userId, asOf);
-  const pureNw = calc.netWorthAsOf(allAccounts, page.entries, asOf);
+  const pureNw = calc.netWorthAsOf(allAccounts, page.transactions, asOf);
   check("assets agree", sqlTotals.assets.toDecimalString(), pureNw.assets.toDecimalString());
   check("liabilities agree", sqlTotals.liabilities.toDecimalString(), pureNw.liabilities.toDecimalString());
   check("net worth agrees", sqlTotals.netWorth.toDecimalString(), pureNw.netWorth.toDecimalString());
   check("net worth value", sqlTotals.netWorth.toDecimalString(), "296160.00");
 
   console.log("\n-- ledger integrity over the whole store --");
-  const integrity = calc.verifyIntegrity(page.entries);
+  const integrity = calc.verifyIntegrity(page.transactions);
   check("debits == credits in the database", integrity.ok, true);
 
   console.log("\n-- monthly flows --");
@@ -189,22 +190,104 @@ async function main() {
   check("root Expenses rolls up everything", catByCode.get("Expenses"), "36740.00");
 
   console.log("\n-- reversal, end to end --");
-  const rev = await reverse.execute({ userId, entryId: groceryEntry.entryId });
+  const rev = await reverse.execute({ userId, transactionId: groceryTxn.transactionId });
   check("reversal saved", rev.ok, true);
   const afterReversal = await balances.totals(userId, asOf);
   // The spend was already paid off in full, so un-spending it leaves the card
   // overpaid by exactly the reversed amount — a credit balance of -1240.
   check("reversal moves the card by exactly -1240",
     afterReversal.liabilities.toDecimalString(), "-1240.00");
-  const twice = await reverse.execute({ userId, entryId: groceryEntry.entryId });
+  const twice = await reverse.execute({ userId, transactionId: groceryTxn.transactionId });
   check("cannot reverse the same entry twice", !twice.ok, true);
-  const reReversed = await journalRepo.find(userId, { limit: 10_000 });
-  check("history preserved (nothing deleted)", reReversed.entries.length, page.entries.length + 1);
-  check("still balanced after reversal", calc.verifyIntegrity(reReversed.entries).ok, true);
+  const reReversed = await txnRepo.find(userId, { limit: 10_000 });
+  check("history preserved (nothing deleted)", reReversed.transactions.length, page.transactions.length + 1);
+  check("still balanced after reversal", calc.verifyIntegrity(reReversed.transactions).ok, true);
 
   console.log("\n-- balance series --");
   const series = await balances.balanceSeries(userId, hdfcId, DateRange.monthOf(CalendarDate.parse("2026-08-15")));
   check("series ends at the current balance", series[series.length - 1].balance.toDecimalString(), "296160.00");
+
+  console.log("\n-- a trade round-trips through the commodity columns --");
+  // The mapper is the only thing that writes `quantity_scaled`, `unit_cost_minor`
+  // and `status`, so a Buy is saved and read back here rather than only
+  // constructed in memory: a posting whose units survive the round trip is what
+  // makes a cost basis reconstructable at all.
+  const broker = await openAccount.execute({
+    userId, name: "Zerodha", type: "ASSET", subtype: "BROKERAGE",
+    openingBalance: Money.fromRupees("50000"), openingBalanceOn: CalendarDate.parse("2026-07-01"),
+  });
+  if (!broker.ok) throw new Error("broker setup failed");
+  const brokerAccount = (await accountRepo.findById(userId, broker.value.accountId))!;
+
+  // A posting that names an instrument has to name a real one — `postings.
+  // instrument_id` is a foreign key, which is what stops a trade referring to a
+  // symbol nobody defined.
+  await db.insert(instruments).values({
+    id: "INFY", userId: userId.value, symbol: "INFY", name: "Infosys",
+    kind: "EQUITY", taxAssetClass: "LISTED_EQUITY", exchange: "XNSE",
+    assetAccountId: brokerAccount.id.value,
+  });
+
+  // 10 INFY at ₹1,520 with ₹3.20 capitalised: basis ₹15,203.20, unit cost ₹1,520.32.
+  const buy = Buy.record(
+    {
+      userId,
+      txnDate: CalendarDate.parse("2026-08-22"),
+      description: "Buy 10 INFY @ 1520",
+      source: accountRef(brokerAccount),
+      destination: accountRef(brokerAccount),
+      externalId: "zerodha-trade-1",
+    },
+    {
+      instrumentId: "INFY",
+      quantity: Quantity.fromString("10"),
+      consideration: Money.fromRupees("15200"),
+      charges: Money.fromRupees("3.20"),
+      holding: accountRef(brokerAccount),
+    },
+  );
+  await txnRepo.save(buy);
+
+  const readBack = (await txnRepo.findById(userId, buy.id))!;
+  check("the trade is found again", readBack.kind, "BUY");
+  check("the basis survives", readBack.amount.toDecimalString(), "15203.20");
+  const commodityLeg = readBack.postings().find((p) => p.instrumentId !== null)!;
+  check("the instrument survives", commodityLeg.instrumentId, "INFY");
+  check("the quantity survives, exactly", commodityLeg.quantity?.toDecimalString(), "10");
+  check("the unit cost survives, to the paisa", commodityLeg.unitCost?.toDecimalString(), "1520.32");
+  check("a read-back trade still balances", calc.verifyIntegrity([readBack]).ok, true);
+  check("...and its lot effects are not invented on read", readBack.lotEffects().length, 0);
+
+  // L09: the provider's own id is unique per user among live rows. Enforced by the
+  // partial index, so the proof is that a second save is rejected by the database
+  // rather than by a check the domain could forget to run.
+  const duplicate = Buy.record(
+    {
+      userId,
+      txnDate: CalendarDate.parse("2026-08-22"),
+      description: "The same trade, imported twice",
+      source: accountRef(brokerAccount),
+      destination: accountRef(brokerAccount),
+      externalId: "zerodha-trade-1",
+    },
+    {
+      instrumentId: "INFY",
+      quantity: Quantity.fromString("10"),
+      consideration: Money.fromRupees("15200"),
+      charges: Money.fromRupees("3.20"),
+      holding: accountRef(brokerAccount),
+    },
+  );
+  // The driver reports a constraint violation on the wrapping error's `cause`, so
+  // both are read: asserting only the outer message would pass for any failure at
+  // all, including one that had nothing to do with the index.
+  let l09 = "no rejection";
+  try {
+    await txnRepo.save(duplicate);
+  } catch (error) {
+    l09 = String((error as Error).message) + " | cause: " + String((error as { cause?: Error }).cause?.message);
+  }
+  check("L09: a duplicate external id is rejected by the index", /uq|UNIQUE|constraint/i.test(l09), true);
 
   console.log("\n-- user scoping --");
   const otherUser = UserId.from("user_integration_2");

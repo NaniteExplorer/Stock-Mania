@@ -115,6 +115,41 @@ export class Quantity extends ValueObject {
     return pricePerUnit.timesRatio(this.scaled, QUANTITY_FACTOR, mode);
   }
 
+  /**
+   * The inverse of {@link valueAt}: the per-unit price implied by spreading
+   * `amount` over this quantity.
+   *
+   * Here rather than at the call site for the same reason `valueAt` is: dividing a
+   * cost basis by a unit count needs the scale factor, and a caller that reaches
+   * for the scale factor eventually reaches for it with the wrong number of zeros.
+   */
+  perUnit(amount: Money, mode: RoundingMode = "HALF_UP"): Money {
+    if (this.isZero) {
+      throw new RangeError("Cannot spread an amount over zero units");
+    }
+    return amount.timesRatio(QUANTITY_FACTOR, this.scaled, mode);
+  }
+
+  /**
+   * An exact ratio as a quantity — how many of `this` there are per one of
+   * `other`.
+   *
+   * The rescaling factor of a share split (5-for-1 is `5`) and the implied rate of
+   * an FX conversion are both this, and both must stay exact: a float here is how
+   * a split turns 100 units into 499.99999.
+   */
+  ratioTo(other: Quantity): Quantity {
+    return Quantity.fromRatio(this.scaled, other.scaled);
+  }
+
+  /** A ratio of two integers, held to `Quantity`'s scale. */
+  static fromRatio(numerator: bigint, denominator: bigint): Quantity {
+    if (denominator === 0n) {
+      throw new RangeError("Cannot form a ratio with a zero denominator");
+    }
+    return new Quantity((numerator * QUANTITY_FACTOR) / denominator);
+  }
+
   /** This quantity's share of `amount`, given a total quantity. */
   shareOf(amount: Money, total: Quantity, mode: RoundingMode = "HALF_UP"): Money {
     if (total.isZero) return Money.zero(amount.currency);

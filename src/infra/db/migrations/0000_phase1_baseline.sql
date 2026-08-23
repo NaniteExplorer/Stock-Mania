@@ -230,12 +230,12 @@ CREATE TABLE `instrument_incomes` (
 	`amount_minor` integer NOT NULL,
 	`tax_deducted_minor` integer DEFAULT 0 NOT NULL,
 	`currency` text(3) DEFAULT 'INR' NOT NULL,
-	`journal_entry_id` text,
+	`transaction_id` text,
 	`deleted_at` integer,
 	`created_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`instrument_id`) REFERENCES `instruments`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`journal_entry_id`) REFERENCES `journal_entries`(`id`) ON UPDATE no action ON DELETE restrict
+	FOREIGN KEY (`transaction_id`) REFERENCES `transactions`(`id`) ON UPDATE no action ON DELETE restrict
 );
 --> statement-breakpoint
 CREATE INDEX `instrument_incomes_idx` ON `instrument_incomes` (`instrument_id`,`received_on`);--> statement-breakpoint
@@ -262,26 +262,6 @@ CREATE TABLE `instruments` (
 --> statement-breakpoint
 CREATE UNIQUE INDEX `instruments_user_symbol_uq` ON `instruments` (`user_id`,`symbol`);--> statement-breakpoint
 CREATE INDEX `instruments_user_kind_idx` ON `instruments` (`user_id`,`kind`);--> statement-breakpoint
-CREATE TABLE `journal_entries` (
-	`id` text PRIMARY KEY NOT NULL,
-	`user_id` text NOT NULL,
-	`posted_on` text NOT NULL,
-	`narration` text NOT NULL,
-	`kind` text NOT NULL,
-	`source` text DEFAULT 'MANUAL' NOT NULL,
-	`reference` text,
-	`import_batch_id` text,
-	`reverses_entry_id` text,
-	`fingerprint` text,
-	`deleted_at` integer,
-	`created_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
-	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`reverses_entry_id`) REFERENCES `journal_entries`(`id`) ON UPDATE no action ON DELETE restrict
-);
---> statement-breakpoint
-CREATE INDEX `journal_entries_user_date_idx` ON `journal_entries` (`user_id`,`posted_on`);--> statement-breakpoint
-CREATE INDEX `journal_entries_batch_idx` ON `journal_entries` (`import_batch_id`);--> statement-breakpoint
-CREATE UNIQUE INDEX `journal_entries_fingerprint_uq` ON `journal_entries` (`user_id`,`fingerprint`);--> statement-breakpoint
 CREATE TABLE `ledger_accounts` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
@@ -394,7 +374,7 @@ CREATE TABLE `net_worth_snapshots` (
 CREATE UNIQUE INDEX `net_worth_snapshots_user_month_uq` ON `net_worth_snapshots` (`user_id`,`month`);--> statement-breakpoint
 CREATE TABLE `postings` (
 	`id` text PRIMARY KEY NOT NULL,
-	`entry_id` text NOT NULL,
+	`transaction_id` text NOT NULL,
 	`account_id` text NOT NULL,
 	`direction` text NOT NULL,
 	`amount_minor` integer NOT NULL,
@@ -407,17 +387,18 @@ CREATE TABLE `postings` (
 	`category_id` text,
 	`status` text DEFAULT 'CLEARED' NOT NULL,
 	`deleted_at` integer,
-	FOREIGN KEY (`entry_id`) REFERENCES `journal_entries`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`transaction_id`) REFERENCES `transactions`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`account_id`) REFERENCES `ledger_accounts`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`instrument_id`) REFERENCES `instruments`(`id`) ON UPDATE no action ON DELETE restrict,
-	CONSTRAINT "postings_amount_positive" CHECK("postings"."amount_minor" > 0),
+	CONSTRAINT "postings_amount_not_negative" CHECK("postings"."amount_minor" >= 0),
+	CONSTRAINT "postings_moves_something" CHECK("postings"."amount_minor" <> 0 OR ("postings"."quantity_scaled" IS NOT NULL AND "postings"."quantity_scaled" <> 0)),
 	CONSTRAINT "postings_commodity_coherent" CHECK(("postings"."instrument_id" IS NULL AND "postings"."quantity_scaled" IS NULL AND "postings"."unit_cost_minor" IS NULL)
           OR ("postings"."instrument_id" IS NOT NULL AND "postings"."quantity_scaled" IS NOT NULL)),
 	CONSTRAINT "postings_no_category_on_commodity" CHECK(NOT ("postings"."category_id" IS NOT NULL AND "postings"."instrument_id" IS NOT NULL))
 );
 --> statement-breakpoint
 CREATE INDEX `postings_account_idx` ON `postings` (`account_id`);--> statement-breakpoint
-CREATE INDEX `postings_entry_idx` ON `postings` (`entry_id`);--> statement-breakpoint
+CREATE INDEX `postings_transaction_idx` ON `postings` (`transaction_id`);--> statement-breakpoint
 CREATE INDEX `postings_instrument_idx` ON `postings` (`instrument_id`);--> statement-breakpoint
 CREATE TABLE `price_divergences` (
 	`id` text PRIMARY KEY NOT NULL,
@@ -546,14 +527,14 @@ CREATE TABLE `trades` (
 	`gst_minor` integer DEFAULT 0 NOT NULL,
 	`dp_charges_minor` integer DEFAULT 0 NOT NULL,
 	`other_charges_minor` integer DEFAULT 0 NOT NULL,
-	`journal_entry_id` text,
+	`transaction_id` text,
 	`settlement_account_id` text,
 	`notes` text,
 	`deleted_at` integer,
 	`created_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
 	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade,
 	FOREIGN KEY (`instrument_id`) REFERENCES `instruments`(`id`) ON UPDATE no action ON DELETE cascade,
-	FOREIGN KEY (`journal_entry_id`) REFERENCES `journal_entries`(`id`) ON UPDATE no action ON DELETE restrict,
+	FOREIGN KEY (`transaction_id`) REFERENCES `transactions`(`id`) ON UPDATE no action ON DELETE restrict,
 	FOREIGN KEY (`settlement_account_id`) REFERENCES `ledger_accounts`(`id`) ON UPDATE no action ON DELETE restrict,
 	CONSTRAINT "trades_quantity_positive" CHECK("trades"."quantity" > 0),
 	CONSTRAINT "trades_price_non_negative" CHECK("trades"."price_per_unit_minor" >= 0)
@@ -561,6 +542,32 @@ CREATE TABLE `trades` (
 --> statement-breakpoint
 CREATE INDEX `trades_user_instrument_idx` ON `trades` (`user_id`,`instrument_id`,`traded_on`);--> statement-breakpoint
 CREATE INDEX `trades_user_date_idx` ON `trades` (`user_id`,`traded_on`);--> statement-breakpoint
+CREATE TABLE `transactions` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
+	`txn_type` text NOT NULL,
+	`txn_date` text NOT NULL,
+	`settlement_date` text,
+	`description` text NOT NULL,
+	`source` text DEFAULT 'MANUAL' NOT NULL,
+	`reference` text,
+	`external_id` text,
+	`counterparty_id` text,
+	`import_batch_id` text,
+	`reverses_transaction_id` text,
+	`is_forecast` integer DEFAULT false NOT NULL,
+	`version` integer DEFAULT 1 NOT NULL,
+	`fingerprint` text,
+	`deleted_at` integer,
+	`created_at` integer DEFAULT (unixepoch() * 1000) NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `user`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`reverses_transaction_id`) REFERENCES `transactions`(`id`) ON UPDATE no action ON DELETE restrict
+);
+--> statement-breakpoint
+CREATE INDEX `transactions_user_date_idx` ON `transactions` (`user_id`,`txn_date`);--> statement-breakpoint
+CREATE INDEX `transactions_batch_idx` ON `transactions` (`import_batch_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `transactions_fingerprint_uq` ON `transactions` (`user_id`,`fingerprint`);--> statement-breakpoint
+CREATE UNIQUE INDEX `transactions_external_id_uq` ON `transactions` (`user_id`,`external_id`) WHERE "transactions"."external_id" IS NOT NULL AND "transactions"."deleted_at" IS NULL;--> statement-breakpoint
 CREATE TABLE `txn_type_legality` (
 	`txn_type` text NOT NULL,
 	`source_role` text NOT NULL,
