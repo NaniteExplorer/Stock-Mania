@@ -43,12 +43,27 @@ const NUMERIC_NAME = new RegExp(
  */
 const AUTH_TABLES = new Set(["user", "session", "account", "verification"]);
 
-/** Columns that match the name pattern but are genuinely not numeric. */
+/**
+ * Columns that match the name pattern but are genuinely not numeric.
+ *
+ * Each is a name collision, not an exception to the rule: a `*_type` enum, a
+ * memo, a matched keyword. Kept as an explicit list rather than loosening the
+ * pattern, because a looser pattern stops catching the columns that matter.
+ */
 const NAME_EXEMPT = new Set([
-  "postings.memo",          // free text
+  "postings.memo",           // free text
   "instruments.name",
   "ledger_accounts.name",
-  "category_rules.value",   // the keyword being matched, not an amount
+  "category_rules.value",    // the keyword being matched, not an amount
+  "charge_rates.charge_type", // an enum name; the amounts beside it are *_minor
+  "charge_rates.basis",       // what the rate applies to, as a word
+  "charge_rates.rounding",    // a RoundingMode
+  "charge_rates.rounding_unit",
+  "corporate_actions.action_type",
+  "price_quotes.quote_type",
+  "price_divergences.quote_type",
+  "provider_fetch_log.quote_type",
+  "fx_rates.quote",          // the quote *currency* of the pair
 ]);
 
 interface Column {
@@ -187,16 +202,112 @@ async function main() {
   checkDeep("a REAL column is detected", probeFloats, ["amount_minor"]);
   await client.execute("drop table _guard_probe");
 
+  section("A03 — every user-facing table can be soft-deleted");
+
   /*
-   * Phase 1f switches these on. Written now, and commented rather than absent,
-   * so the assertion arrives with the migration instead of being remembered:
-   *
-   *   - every user-facing table has `deleted_at` (invariant A03), excluding the
-   *     append-only logs where a tombstone is a contradiction
-   *   - price_quotes is bitemporal: (instrument, as_of, quote_type, provider_id,
-   *     ingested_at) is unique, and ingested_at is NOT NULL
-   *   - audit_events and ledger_events have no UPDATE or DELETE path
+   * The append-only logs are excluded on purpose, not overlooked. A tombstone on
+   * an immutable log is a contradiction: an audit event that can be deleted is
+   * not an audit trail, and a corrected quote is a new bitemporal row rather than
+   * a deletion. `net_worth_snapshots` is a rebuildable cache superseded by
+   * `projection_cache`.
    */
+  const APPEND_ONLY = new Set([
+    "audit_events",
+    "ledger_events",
+    // Bitemporal: a correction is a new row pointing back at the one it
+    // supersedes, so "what did we believe on the day" stays answerable.
+    "price_quotes",
+    "fx_rates",
+    "price_divergences",
+    "provider_fetch_log",
+  ]);
+  /**
+   * Caches. Every row is derivable from the journal, so dropping one loses
+   * nothing — and a tombstoned cache row would have to be excluded from every
+   * lookup for no benefit.
+   */
+  const REBUILDABLE = new Set(["projection_cache", "net_worth_snapshots"]);
+  /** Seeded reference data, keyed by natural key — there is no row to tombstone. */
+  const REFERENCE_DATA = new Set([
+    "txn_type_legality",
+    "tax_rules",
+    "cost_inflation_index",
+    "charge_rates",
+    "market_holidays",
+  ]);
+
+  const missingTombstone = tables
+    .filter(
+      (t) =>
+        !AUTH_TABLES.has(t) &&
+        !APPEND_ONLY.has(t) &&
+        !REFERENCE_DATA.has(t) &&
+        !REBUILDABLE.has(t),
+    )
+    .filter((t) => !columns.some((c) => c.table === t && c.name === "deleted_at"));
+  checkDeep("every user-facing table has deleted_at", missingTombstone, []);
+
+  section("the audit trail and event log exist and are ordered");
+
+  for (const table of ["audit_events", "ledger_events"]) {
+    check(`${table} exists`, tables.includes(table), true);
+  }
+  // seq is an autoincrement integer because replay follows insertion order, and a
+  // uuid would give no ordering at all.
+  const seq = columns.find((c) => c.table === "ledger_events" && c.name === "seq");
+  check("ledger_events.seq is an INTEGER primary key", seq?.type.toUpperCase(), "INTEGER");
+
+  section("Q02 — quotes are bitemporal");
+
+  const quoteColumns = columns.filter((c) => c.table === "price_quotes").map((c) => c.name);
+  for (const column of ["as_of", "ingested_at", "quote_type", "provider_id", "superseded_by"]) {
+    check(`price_quotes.${column} exists`, quoteColumns.includes(column), true);
+  }
+  const quoteIndexes = (
+    await client.execute("select name, sql from sqlite_master where type='index' and tbl_name='price_quotes'")
+  ).rows.map((r) => String(r.sql ?? ""));
+  // ingested_at must be IN the key: without it a vendor correction overwrites the
+  // original, which defeats the whole point of the second time axis.
+  check(
+    "the unique key includes ingested_at",
+    quoteIndexes.some((sqlText) => sqlText.includes("ingested_at") && sqlText.includes("UNIQUE")),
+    true,
+  );
+
+  section("the legality matrix and seeded reference tables exist");
+
+  for (const table of [
+    "txn_type_legality",
+    "tax_rules",
+    "cost_inflation_index",
+    "charge_rates",
+    "market_holidays",
+    "corporate_actions",
+    "import_rows",
+    "documents",
+    "institutions",
+    "counterparties",
+    "fx_rates",
+    "projection_cache",
+  ]) {
+    check(`${table} exists`, tables.includes(table), true);
+  }
+
+  section("the projection cache can tell its two scopes apart");
+
+  // PERIOD and CUMULATIVE projections invalidate by different rules; without the
+  // column the cache would have to invalidate everything or be wrong.
+  const cacheColumns = columns.filter((c) => c.table === "projection_cache").map((c) => c.name);
+  for (const column of ["scope", "revision_vector_hash", "period_start", "period_end", "as_of"]) {
+    check(`projection_cache.${column} exists`, cacheColumns.includes(column), true);
+  }
+  const accountColumns = columns.filter((c) => c.table === "ledger_accounts").map((c) => c.name);
+  check("ledger_accounts.revision exists", accountColumns.includes("revision"), true);
+  check(
+    "ledger_accounts.min_affected_date exists",
+    accountColumns.includes("min_affected_date"),
+    true,
+  );
 
   client.close();
   done();

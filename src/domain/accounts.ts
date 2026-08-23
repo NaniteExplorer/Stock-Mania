@@ -288,17 +288,110 @@ export class AccountCycleError extends DomainError {
  */
 export type AccountSubtype =
   | "BANK"
+  | "SAVINGS"
   | "CASH"
   | "WALLET"
+  | "DEPOSIT"
   | "CREDIT_CARD"
   | "LOAN"
+  | "MORTGAGE"
   | "BROKERAGE"
   | "RETIREMENT"
   | "REAL_ESTATE"
   | "VEHICLE"
   | "PRECIOUS_METAL"
   | "RECEIVABLE"
+  | "OPENING"
+  | "ADJUSTMENT"
   | "OTHER";
+
+/**
+ * The 16 values `txn_type_legality` keys on — `20-DOMAIN-MODEL.md` §2.1.
+ *
+ * Derived rather than stored. The document models this as a single 16-value
+ * `account_type` column; we keep the five-value {@link AccountType} (which owns
+ * the debit/credit algebra) and {@link AccountSubtype} (which owns presentation)
+ * and compute the role from the pair. One column cannot then disagree with the
+ * other, and the sign of a posting still depends on `type` alone.
+ */
+export type LegalityRole =
+  | "ASSET_CASH"
+  | "ASSET_BANK"
+  | "ASSET_SAVINGS"
+  | "ASSET_BROKERAGE"
+  | "ASSET_RETIREMENT"
+  | "ASSET_DEPOSIT"
+  | "ASSET_PROPERTY"
+  | "ASSET_OTHER"
+  | "LIABILITY_CREDIT_CARD"
+  | "LIABILITY_LOAN"
+  | "LIABILITY_MORTGAGE"
+  | "LIABILITY_OTHER"
+  | "INCOME"
+  | "EXPENSE"
+  | "EQUITY_OPENING"
+  | "EQUITY_ADJUSTMENT";
+
+export const LEGALITY_ROLES: readonly LegalityRole[] = [
+  "ASSET_CASH",
+  "ASSET_BANK",
+  "ASSET_SAVINGS",
+  "ASSET_BROKERAGE",
+  "ASSET_RETIREMENT",
+  "ASSET_DEPOSIT",
+  "ASSET_PROPERTY",
+  "ASSET_OTHER",
+  "LIABILITY_CREDIT_CARD",
+  "LIABILITY_LOAN",
+  "LIABILITY_MORTGAGE",
+  "LIABILITY_OTHER",
+  "INCOME",
+  "EXPENSE",
+  "EQUITY_OPENING",
+  "EQUITY_ADJUSTMENT",
+];
+
+const ASSET_ROLE: Partial<Record<AccountSubtype, LegalityRole>> = {
+  CASH: "ASSET_CASH",
+  WALLET: "ASSET_CASH",
+  BANK: "ASSET_BANK",
+  SAVINGS: "ASSET_SAVINGS",
+  BROKERAGE: "ASSET_BROKERAGE",
+  RETIREMENT: "ASSET_RETIREMENT",
+  DEPOSIT: "ASSET_DEPOSIT",
+  REAL_ESTATE: "ASSET_PROPERTY",
+};
+
+const LIABILITY_ROLE: Partial<Record<AccountSubtype, LegalityRole>> = {
+  CREDIT_CARD: "LIABILITY_CREDIT_CARD",
+  LOAN: "LIABILITY_LOAN",
+  MORTGAGE: "LIABILITY_MORTGAGE",
+};
+
+/**
+ * The legality role for an account.
+ *
+ * Falls back to the `_OTHER` member of its side rather than throwing: a new
+ * subtype should not make an account unpostable, it should just not gain a
+ * special legality rule until one is seeded for it.
+ */
+export function legalityRoleOf(
+  type: AccountTypeName,
+  subtype: AccountSubtype | null,
+): LegalityRole {
+  switch (type) {
+    case "ASSET":
+      return (subtype && ASSET_ROLE[subtype]) ?? "ASSET_OTHER";
+    case "LIABILITY":
+      return (subtype && LIABILITY_ROLE[subtype]) ?? "LIABILITY_OTHER";
+    case "INCOME":
+      return "INCOME";
+    case "EXPENSE":
+      return "EXPENSE";
+    case "EQUITY":
+      return subtype === "ADJUSTMENT" ? "EQUITY_ADJUSTMENT" : "EQUITY_OPENING";
+  }
+}
 
 /**
  * An account in the chart of accounts.

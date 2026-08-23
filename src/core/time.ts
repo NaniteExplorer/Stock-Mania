@@ -432,6 +432,17 @@ export class MarketCalendar {
     return date.isOnOrAfter(this.coverageFrom) && date.isOnOrBefore(this.coverageThrough);
   }
 
+  /**
+   * Every holiday date, sorted.
+   *
+   * Exposed so `infra/db/seeds.ts` can mirror the list into `market_holidays`
+   * for SQL reporting. The mirror is a copy; this class stays the source, so
+   * there is only ever one transcription of the exchange circulars.
+   */
+  holidayDates(): readonly string[] {
+    return [...this.holidays].sort();
+  }
+
   private assertCovered(date: CalendarDate): void {
     if (!this.isWithinCoverage(date)) {
       throw new CalendarCoverageError(date, this.coverageThrough);
