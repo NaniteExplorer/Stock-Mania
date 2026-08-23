@@ -343,6 +343,7 @@ export const PROJECTION_SCOPES = ["PERIOD", "CUMULATIVE"] as const;
 
 /** What an audited action did. Append-only; see `auditEvents`. */
 export const AUDIT_ACTIONS = ["CREATE", "UPDATE", "SOFT_DELETE", "REVERSE", "RESTORE"] as const;
+export type AuditActionName = (typeof AUDIT_ACTIONS)[number];
 
 
 /**

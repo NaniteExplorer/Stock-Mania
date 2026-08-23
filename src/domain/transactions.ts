@@ -657,17 +657,24 @@ export interface JournalRepository {
   /** True when this entry has already been reversed, so it is not reversed twice. */
   hasReversal(userId: UserId, id: JournalEntryId): Promise<boolean>;
 
-  /** Undo an import. Returns how many entries were removed. */
-  deleteByImportBatch(userId: UserId, importBatchId: string): Promise<number>;
+  /**
+   * Undo an import. Returns how many entries were tombstoned.
+   *
+   * Previously a hard delete that relied on `ON DELETE CASCADE` to take the
+   * postings with it — which destroyed the evidence of what the import had done,
+   * so "undo it and tell me what changed" was unanswerable.
+   */
+  softDeleteByImportBatch(userId: UserId, importBatchId: string, at: Date): Promise<number>;
 
   /**
-   * Hard-deletes an entry and its postings.
+   * Stamps `deletedAt` on an entry — invariant A03.
    *
-   * Reserved for entries with no downstream references — an import being undone,
-   * or a trade being deleted along with the entry it wrote. User-facing
-   * corrections use `reverse()` so history survives.
+   * Not how a *mistake* is corrected: an entry that posted the wrong amount is
+   * fixed with a reversing entry, so both the error and the correction stay
+   * visible. This is for an entry that should never have existed, such as a
+   * duplicate from a re-import.
    */
-  delete(userId: UserId, id: JournalEntryId): Promise<void>;
+  softDelete(userId: UserId, id: JournalEntryId, at: Date): Promise<void>;
 
   /** The earliest posted date, used to size the net-worth timeline. */
   earliestPostedOn(userId: UserId): Promise<CalendarDate | null>;

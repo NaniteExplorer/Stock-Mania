@@ -18,7 +18,7 @@ import { Account, AccountCode, AccountId, AccountRepository, AccountSubtype, Acc
 import { AccountBalance, AccountFlow, BalanceQuery, EntryKind, EntrySource, JournalEntry, JournalEntryId, JournalPage, JournalQuery, JournalRepository, MonthlyFlow, Posting, PostingId, TypeTotals } from "@/domain/transactions";
 import { journalEntries, ledgerAccounts, postings } from "@/infra/db/schema";
 import { Database } from "@/infra/db/client";
-import { and, asc, count, desc, eq, gte, inArray, like, lte, min, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, min, or, sql } from "drizzle-orm";
 /* ═══ AccountMapper ═══════════════════════════════════════════════════ */
 
 type AccountRow = typeof ledgerAccounts.$inferSelect;
@@ -185,7 +185,7 @@ export class DrizzleAccountRepository implements AccountRepository {
     const [row] = await this.db
       .select()
       .from(ledgerAccounts)
-      .where(and(eq(ledgerAccounts.userId, userId.value), eq(ledgerAccounts.id, id.value)))
+      .where(and(eq(ledgerAccounts.userId, userId.value), isNull(ledgerAccounts.deletedAt), eq(ledgerAccounts.id, id.value)))
       .limit(1);
     return row ? AccountMapper.toDomain(row) : null;
   }
@@ -194,7 +194,7 @@ export class DrizzleAccountRepository implements AccountRepository {
     const [row] = await this.db
       .select()
       .from(ledgerAccounts)
-      .where(and(eq(ledgerAccounts.userId, userId.value), eq(ledgerAccounts.code, code.toString())))
+      .where(and(eq(ledgerAccounts.userId, userId.value), isNull(ledgerAccounts.deletedAt), eq(ledgerAccounts.code, code.toString())))
       .limit(1);
     return row ? AccountMapper.toDomain(row) : null;
   }
@@ -206,7 +206,7 @@ export class DrizzleAccountRepository implements AccountRepository {
       .from(ledgerAccounts)
       .where(
         and(
-          eq(ledgerAccounts.userId, userId.value),
+          eq(ledgerAccounts.userId, userId.value), isNull(ledgerAccounts.deletedAt),
           inArray(
             ledgerAccounts.code,
             codes.map((code) => code.toString()),
@@ -222,7 +222,7 @@ export class DrizzleAccountRepository implements AccountRepository {
       .from(ledgerAccounts)
       .where(
         and(
-          eq(ledgerAccounts.userId, userId.value),
+          eq(ledgerAccounts.userId, userId.value), isNull(ledgerAccounts.deletedAt),
           options?.includeClosed ? undefined : eq(ledgerAccounts.isClosed, false),
         ),
       )
@@ -240,7 +240,7 @@ export class DrizzleAccountRepository implements AccountRepository {
       .from(ledgerAccounts)
       .where(
         and(
-          eq(ledgerAccounts.userId, userId.value),
+          eq(ledgerAccounts.userId, userId.value), isNull(ledgerAccounts.deletedAt),
           eq(ledgerAccounts.type, type.name),
           options?.includeClosed ? undefined : eq(ledgerAccounts.isClosed, false),
         ),
@@ -276,13 +276,30 @@ export class DrizzleAccountRepository implements AccountRepository {
       .select({ total: count() })
       .from(postings)
       .innerJoin(ledgerAccounts, eq(postings.accountId, ledgerAccounts.id))
-      .where(and(eq(postings.accountId, id.value), eq(ledgerAccounts.userId, userId.value)));
+      .where(and(eq(postings.accountId, id.value), eq(ledgerAccounts.userId, userId.value), isNull(ledgerAccounts.deletedAt)));
     return row?.total ?? 0;
   }
 
-  async delete(userId: UserId, id: AccountId): Promise<void> {
+  /**
+   * Soft delete — invariant A03.
+   *
+   * Was a hard `DELETE`, which the A03 guard caught. Deleting an account with
+   * postings would either cascade away history or fail on the restrict, and
+   * neither is what "remove this from my list" should mean. The row stays,
+   * `deletedAt` is stamped, and every read filters it.
+   */
+  async softDelete(userId: UserId, id: AccountId, at: Date): Promise<void> {
     await this.db
-      .delete(ledgerAccounts)
+      .update(ledgerAccounts)
+      .set({ deletedAt: at })
+      .where(and(eq(ledgerAccounts.userId, userId.value), eq(ledgerAccounts.id, id.value)));
+  }
+
+  /** Undo of the above. Possible precisely because nothing was destroyed. */
+  async restore(userId: UserId, id: AccountId): Promise<void> {
+    await this.db
+      .update(ledgerAccounts)
+      .set({ deletedAt: null })
       .where(and(eq(ledgerAccounts.userId, userId.value), eq(ledgerAccounts.id, id.value)));
   }
 }
@@ -327,7 +344,7 @@ export class DrizzleJournalRepository implements JournalRepository {
     const [entry] = await this.db
       .select()
       .from(journalEntries)
-      .where(and(eq(journalEntries.userId, userId.value), eq(journalEntries.id, id.value)))
+      .where(and(eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt), eq(journalEntries.id, id.value)))
       .limit(1);
     if (!entry) return null;
 
@@ -341,7 +358,7 @@ export class DrizzleJournalRepository implements JournalRepository {
   }
 
   async find(userId: UserId, query: JournalQuery): Promise<JournalPage> {
-    const conditions = [eq(journalEntries.userId, userId.value)];
+    const conditions = [eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt)];
 
     if (query.range) {
       conditions.push(gte(journalEntries.postedOn, query.range.start.toISO()));
@@ -412,7 +429,7 @@ export class DrizzleJournalRepository implements JournalRepository {
       .select({ id: journalEntries.id })
       .from(journalEntries)
       .where(
-        and(eq(journalEntries.userId, userId.value), eq(journalEntries.fingerprint, fingerprint)),
+        and(eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt), eq(journalEntries.fingerprint, fingerprint)),
       )
       .limit(1);
     return row !== undefined;
@@ -429,7 +446,7 @@ export class DrizzleJournalRepository implements JournalRepository {
         .select({ fingerprint: journalEntries.fingerprint })
         .from(journalEntries)
         .where(
-          and(eq(journalEntries.userId, userId.value), inArray(journalEntries.fingerprint, chunk)),
+          and(eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt), inArray(journalEntries.fingerprint, chunk)),
         );
       for (const row of rows) {
         if (row.fingerprint) found.add(row.fingerprint);
@@ -443,29 +460,52 @@ export class DrizzleJournalRepository implements JournalRepository {
       .select({ id: journalEntries.id })
       .from(journalEntries)
       .where(
-        and(eq(journalEntries.userId, userId.value), eq(journalEntries.reversesEntryId, id.value)),
+        and(eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt), eq(journalEntries.reversesEntryId, id.value)),
       )
       .limit(1);
     return row !== undefined;
   }
 
-  async deleteByImportBatch(userId: UserId, importBatchId: string): Promise<number> {
-    // Postings go with the entry via ON DELETE CASCADE.
-    const deleted = await this.db
-      .delete(journalEntries)
+  /**
+   * Undoes an import — invariant A03, and the reason it matters here.
+   *
+   * This was a hard `DELETE` relying on `ON DELETE CASCADE` to take the postings
+   * with it. That destroyed the evidence of what was imported, so "undo the
+   * import and tell me what it had done" was unanswerable. Stamping `deletedAt`
+   * keeps the rows; the postings are excluded by the same filter through their
+   * entry.
+   */
+  async softDeleteByImportBatch(
+    userId: UserId,
+    importBatchId: string,
+    at: Date,
+  ): Promise<number> {
+    const updated = await this.db
+      .update(journalEntries)
+      .set({ deletedAt: at })
       .where(
         and(
           eq(journalEntries.userId, userId.value),
           eq(journalEntries.importBatchId, importBatchId),
+          isNull(journalEntries.deletedAt),
         ),
       )
       .returning({ id: journalEntries.id });
-    return deleted.length;
+    return updated.length;
   }
 
-  async delete(userId: UserId, id: JournalEntryId): Promise<void> {
+  /**
+   * Soft delete — invariant A03.
+   *
+   * Note this is not how a *mistake* is corrected. An entry that posted the wrong
+   * amount is fixed with a reversing entry, so both the error and the correction
+   * are visible. This is for an entry that should never have existed at all, such
+   * as a duplicate from a re-import.
+   */
+  async softDelete(userId: UserId, id: JournalEntryId, at: Date): Promise<void> {
     await this.db
-      .delete(journalEntries)
+      .update(journalEntries)
+      .set({ deletedAt: at })
       .where(and(eq(journalEntries.userId, userId.value), eq(journalEntries.id, id.value)));
   }
 
@@ -473,7 +513,8 @@ export class DrizzleJournalRepository implements JournalRepository {
     const [row] = await this.db
       .select({ earliest: min(journalEntries.postedOn) })
       .from(journalEntries)
-      .where(eq(journalEntries.userId, userId.value));
+      // A tombstoned entry must not set the start of the net-worth timeline.
+      .where(and(eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt)));
     return row?.earliest ? CalendarDate.parse(row.earliest) : null;
   }
 }
@@ -550,7 +591,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
       )
       .where(
         and(
-          eq(ledgerAccounts.userId, userId.value),
+          eq(ledgerAccounts.userId, userId.value), isNull(ledgerAccounts.deletedAt),
           sql`${ledgerAccounts.type} IN ('ASSET', 'LIABILITY', 'EQUITY')`,
           options?.includeClosed ? undefined : eq(ledgerAccounts.isClosed, false),
         ),
@@ -581,7 +622,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
       .innerJoin(journalEntries, eq(postings.entryId, journalEntries.id))
       .where(
         and(
-          eq(journalEntries.userId, userId.value),
+          eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt),
           eq(postings.accountId, accountId.value),
           sql`${journalEntries.postedOn} <= ${asOf.toISO()}`,
         ),
@@ -599,7 +640,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
       .innerJoin(ledgerAccounts, eq(postings.accountId, ledgerAccounts.id))
       .innerJoin(journalEntries, eq(postings.entryId, journalEntries.id))
       .where(
-        and(eq(journalEntries.userId, userId.value), sql`${journalEntries.postedOn} <= ${asOf.toISO()}`),
+        and(eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt), sql`${journalEntries.postedOn} <= ${asOf.toISO()}`),
       )
       .groupBy(ledgerAccounts.type);
 
@@ -631,7 +672,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
       .innerJoin(journalEntries, eq(postings.entryId, journalEntries.id))
       .where(
         and(
-          eq(journalEntries.userId, userId.value),
+          eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt),
           sql`${journalEntries.postedOn} >= ${range.start.toISO()}`,
           sql`${journalEntries.postedOn} <= ${range.end.toISO()}`,
           sql`${ledgerAccounts.type} IN ('INCOME', 'EXPENSE')`,
@@ -692,7 +733,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
           )`,
         ),
       )
-      .where(and(eq(ledgerAccounts.userId, userId.value), typeFilter))
+      .where(and(eq(ledgerAccounts.userId, userId.value), isNull(ledgerAccounts.deletedAt), typeFilter))
       .groupBy(ledgerAccounts.id);
 
     const flows: AccountFlow[] = rows.map((row) => ({
@@ -755,7 +796,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
       .innerJoin(journalEntries, eq(postings.entryId, journalEntries.id))
       .where(
         and(
-          eq(journalEntries.userId, userId.value),
+          eq(journalEntries.userId, userId.value), isNull(journalEntries.deletedAt),
           eq(postings.accountId, accountId.value),
           sql`${journalEntries.postedOn} >= ${range.start.toISO()}`,
           sql`${journalEntries.postedOn} <= ${range.end.toISO()}`,

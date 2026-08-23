@@ -806,6 +806,4 @@ export interface AccountRepository {
   /** How many postings reference this account — decides close-vs-delete. */
   countPostings(userId: UserId, id: AccountId): Promise<number>;
 
-  /** Only valid for an account with no postings; enforced by the use case. */
-  delete(userId: UserId, id: AccountId): Promise<void>;
 }
