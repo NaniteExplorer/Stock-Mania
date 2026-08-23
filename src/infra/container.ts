@@ -1,0 +1,115 @@
+import "server-only";
+
+import { cache } from "react";
+import { SystemClock, UserId } from "@/core/kernel";
+import { db } from "@/infra/db/client";
+import {
+  DrizzleAccountRepository,
+  DrizzleBalanceQuery,
+  DrizzleBudgetRepository,
+  DrizzleCategoryRuleRepository,
+  DrizzleImportRepository,
+  DrizzleSelfPayeeQuery,
+  DrizzleTransactionRepository,
+} from "@/infra/repositories";
+import { OpenAccount, RecordTransaction, ReverseTransaction, SeedChartOfAccounts } from "@/app/ledger.usecases";
+import {
+  ConfirmUnmatchedRows,
+  ListCashPositions,
+  OpenCashAccount,
+  PlanBudgets,
+  PostImportBatch,
+  ReconcileAccount,
+  RecordAccountTransfer,
+  RecordReceipt,
+  RecordSpend,
+  ReviewImportRow,
+  SeedCategoryRules,
+  StageStatementImport,
+  UndoImport,
+} from "@/app/banking.usecases";
+import { getCurrentSession } from "@/infra/auth/session";
+
+/**
+ * The composition root.
+ *
+ * Somebody has to know both the repositories and the use cases, and it cannot be
+ * `src/app/`: a use case may not import infra, which `tests/layout.spec.ts`
+ * enforces. So the wiring lives here, on the infra side of that arrow, and a
+ * route imports this instead of constructing eight repositories itself.
+ *
+ * Built per request and memoised with React's `cache`, so a page and the server
+ * actions it renders share one set of objects. There is no state to share — the
+ * repositories hold only the `db` handle — but constructing them once keeps the
+ * request cheap and makes it obvious where they come from.
+ */
+export const services = cache(() => {
+  const clock = new SystemClock();
+
+  const accounts = new DrizzleAccountRepository(db);
+  const journal = new DrizzleTransactionRepository(db);
+  const balances = new DrizzleBalanceQuery(db);
+  const imports = new DrizzleImportRepository(db);
+  const rules = new DrizzleCategoryRuleRepository(db);
+  const selfPayees = new DrizzleSelfPayeeQuery(db);
+  const budgets = new DrizzleBudgetRepository(db);
+
+  const record = new RecordTransaction(accounts, journal);
+  const openAccount = new OpenAccount(accounts, journal, clock);
+
+  return {
+    clock,
+    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets },
+    ledger: {
+      seedChart: new SeedChartOfAccounts(accounts),
+      openAccount,
+      record,
+      reverse: new ReverseTransaction(journal, clock),
+    },
+    banking: {
+      openCashAccount: new OpenCashAccount(accounts, openAccount),
+      listCashPositions: new ListCashPositions(accounts, balances),
+      recordSpend: new RecordSpend(accounts, record),
+      recordReceipt: new RecordReceipt(accounts, record),
+      recordTransfer: new RecordAccountTransfer(accounts, record),
+      stageImport: new StageStatementImport(accounts, journal, imports, rules, selfPayees),
+      confirmUnmatched: new ConfirmUnmatchedRows(imports),
+      reviewRow: new ReviewImportRow(imports, accounts),
+      postBatch: new PostImportBatch(imports, accounts, record, clock),
+      undoImport: new UndoImport(imports, journal, clock),
+      reconcile: new ReconcileAccount(accounts, balances, imports),
+      planBudgets: new PlanBudgets(budgets, balances),
+      seedRules: new SeedCategoryRules(accounts, rules),
+    },
+  };
+});
+
+/**
+ * The signed-in user, as a `UserId`.
+ *
+ * Every route and action needs this and none of them should reach for the raw
+ * session shape: a repository takes `UserId`, so converting once here is what
+ * keeps a bare string out of every query. Throws rather than returning null —
+ * the `(root)` layout has already redirected an unauthenticated visitor, so a
+ * missing session here is a bug, not a state to render.
+ */
+export async function currentUserId(): Promise<UserId> {
+  const session = await getCurrentSession();
+  const id = session?.user?.id;
+  if (!id) throw new Error("No signed-in user; the route should have redirected.");
+  return UserId.from(id);
+}
+
+/**
+ * Makes sure a signed-in user has a chart of accounts and keyword rules.
+ *
+ * Both seeders are idempotent, so this is safe to call from any page that needs
+ * the chart to exist. It runs here rather than at sign-up because a user created
+ * before this code shipped would otherwise never get one, and "the accounts
+ * screen is empty and every import fails" is not a state worth supporting.
+ */
+export async function ensureSeeded(userId: UserId): Promise<void> {
+  const { ledger, banking } = services();
+  await ledger.seedChart.execute({ userId });
+  await banking.seedRules.execute({ userId });
+}

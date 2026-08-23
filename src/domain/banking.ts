@@ -1066,6 +1066,9 @@ export interface ImportRepository {
 
   findBatch(userId: UserId, batchId: string): Promise<ImportBatchRecord | null>;
 
+  /** Recent batches, newest first — the import screen's history. */
+  listBatches(userId: UserId, limit?: number): Promise<readonly ImportBatchRecord[]>;
+
   listRows(
     userId: UserId,
     batchId: string,

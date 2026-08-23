@@ -1168,6 +1168,16 @@ export class DrizzleImportRepository implements ImportRepository {
     return row ? ImportMapper.toBatch(row) : null;
   }
 
+  async listBatches(userId: UserId, limit = 20): Promise<readonly ImportBatchRecord[]> {
+    const rows = await this.db
+      .select()
+      .from(importBatches)
+      .where(and(eq(importBatches.userId, userId.value), isNull(importBatches.deletedAt)))
+      .orderBy(desc(importBatches.createdAt))
+      .limit(limit);
+    return rows.map(ImportMapper.toBatch);
+  }
+
   async listRows(
     userId: UserId,
     batchId: string,

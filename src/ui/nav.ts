@@ -14,6 +14,8 @@ import {
   Settings,
   Landmark,
   LineChart,
+  PiggyBank,
+  Upload,
   Gem,
   CreditCard,
 } from "lucide-react";
@@ -35,6 +37,8 @@ export const NAV_GROUPS = [
     items: [
       { href: "/accounts", label: "Accounts", icon: Landmark },
       { href: "/transactions", label: "Transactions", icon: History },
+      { href: "/budgets", label: "Budgets", icon: PiggyBank },
+      { href: "/imports", label: "Import", icon: Upload },
       { href: "/investments", label: "Investments", icon: LineChart },
       { href: "/assets", label: "Assets", icon: Gem },
       { href: "/liabilities", label: "Liabilities", icon: CreditCard },
