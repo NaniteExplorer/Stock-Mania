@@ -18,7 +18,8 @@ import { Account, AccountCode, AccountId, AccountRepository, AccountSubtype, Acc
 import { Quantity, UnitPrice } from "@/core/numeric";
 import { FxQuote, FxRateRepository, PriceDivergence, PriceSourceType, Quote, QuoteRepository, QuoteType, StoredFxRate } from "@/domain/pricing";
 import { AccountBalance, AccountFlow, BalanceQuery, MonthlyFlow, Posting, PostingId, PostingStatus, StoredTransaction, Transaction, TransactionId, TransactionKind, TransactionPage, TransactionQuery, TransactionRepository, TransactionSource, TypeTotals } from "@/domain/transactions";
-import { fxRates, ledgerAccounts, postings, priceDivergences, priceQuotes, transactions } from "@/infra/db/schema";
+import { BudgetRepository, CategoryRuleRepository, ImportBatchRecord, ImportBatchStatus, ImportRepository, ImportRowStatus, KeywordRule, MovementIntent, RowDirection, SelfPayeeQuery, StagedRow, StoredBudget } from "@/domain/banking";
+import { budgets, categoryRules, counterparties, fxRates, importBatches, importRows, ledgerAccounts, postings, priceDivergences, priceQuotes, transactions } from "@/infra/db/schema";
 import { Database } from "@/infra/db/client";
 import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, max, min, or, sql } from "drizzle-orm";
 /* ═══ AccountMapper ═══════════════════════════════════════════════════ */
@@ -1078,5 +1079,425 @@ export class DrizzleFxRateRepository implements FxRateRepository {
       derivation: null,
       ingestedAt: rate.ingestedAt,
     });
+  }
+}
+
+/* ═══ DrizzleImportRepository ═════════════════════════════════════════ */
+
+/**
+ * libSQL implementation of {@link ImportRepository}.
+ *
+ * `raw_json` holds what the file said and `parsed_json` holds what we made of it,
+ * as two separate columns. That separation is what makes a mis-parse fixable: the
+ * proposal can be recomputed from the raw row without asking the user to upload
+ * the file again, and the raw row is the evidence when the two disagree.
+ */
+export class DrizzleImportRepository implements ImportRepository {
+  constructor(private readonly db: Database) {}
+
+  async findBatchByFileHash(userId: UserId, fileHash: string): Promise<ImportBatchRecord | null> {
+    const [row] = await this.db
+      .select()
+      .from(importBatches)
+      .where(
+        and(
+          eq(importBatches.userId, userId.value),
+          isNull(importBatches.deletedAt),
+          eq(importBatches.fileHash, fileHash),
+          // An undone import frees its hash: re-importing a corrected file is
+          // exactly what a user does next, and I02 must not block that.
+          sql`${importBatches.status} <> 'UNDONE'`,
+        ),
+      )
+      .limit(1);
+    return row ? ImportMapper.toBatch(row) : null;
+  }
+
+  async createBatch(
+    userId: UserId,
+    batch: ImportBatchRecord,
+    rows: readonly StagedRow[],
+  ): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx.insert(importBatches).values({
+        id: batch.id,
+        userId: userId.value,
+        kind: batch.kind,
+        accountId: batch.accountId?.value ?? null,
+        fileName: batch.fileName,
+        fileHash: batch.fileHash,
+        rowsRead: batch.rowsRead,
+        rowsImported: batch.rowsImported,
+        rowsDuplicate: batch.rowsDuplicate,
+        rowsFailed: batch.rowsFailed,
+        status: batch.status,
+      });
+
+      for (let index = 0; index < rows.length; index += PARAM_CHUNK) {
+        const chunk = rows.slice(index, index + PARAM_CHUNK);
+        await tx.insert(importRows).values(
+          chunk.map((row) => ({
+            id: row.id,
+            batchId: batch.id,
+            userId: userId.value,
+            rowIndex: row.rowIndex,
+            rawJson: row.raw,
+            parsedJson: ImportMapper.toParsedJson(row),
+            status: row.status,
+            matchedTransactionId: row.matchedTransactionId,
+            matchPass: row.matchPass,
+            rejectedReason: row.rejectedReason,
+          })),
+        );
+      }
+    });
+  }
+
+  async findBatch(userId: UserId, batchId: string): Promise<ImportBatchRecord | null> {
+    const [row] = await this.db
+      .select()
+      .from(importBatches)
+      .where(
+        and(
+          eq(importBatches.userId, userId.value),
+          isNull(importBatches.deletedAt),
+          eq(importBatches.id, batchId),
+        ),
+      )
+      .limit(1);
+    return row ? ImportMapper.toBatch(row) : null;
+  }
+
+  async listRows(
+    userId: UserId,
+    batchId: string,
+    options?: { statuses?: readonly ImportRowStatus[] },
+  ): Promise<readonly StagedRow[]> {
+    const rows = await this.db
+      .select()
+      .from(importRows)
+      .where(
+        and(
+          eq(importRows.userId, userId.value),
+          isNull(importRows.deletedAt),
+          eq(importRows.batchId, batchId),
+          options?.statuses?.length ? inArray(importRows.status, [...options.statuses]) : undefined,
+        ),
+      )
+      .orderBy(asc(importRows.rowIndex));
+    return rows.map(ImportMapper.toStagedRow);
+  }
+
+  async setRowStatus(
+    userId: UserId,
+    rowId: string,
+    patch: {
+      status: ImportRowStatus;
+      proposedAccountId?: AccountId | null;
+      matchedTransactionId?: string | null;
+      matchPass?: number | null;
+      rejectedReason?: string | null;
+    },
+  ): Promise<void> {
+    const [existing] = await this.db
+      .select()
+      .from(importRows)
+      .where(and(eq(importRows.userId, userId.value), eq(importRows.id, rowId)))
+      .limit(1);
+    if (!existing) return;
+
+    const current = ImportMapper.toStagedRow(existing);
+    const next: StagedRow = {
+      ...current,
+      status: patch.status,
+      proposedAccountId:
+        patch.proposedAccountId === undefined ? current.proposedAccountId : patch.proposedAccountId,
+    };
+
+    await this.db
+      .update(importRows)
+      .set({
+        status: patch.status,
+        parsedJson: ImportMapper.toParsedJson(next),
+        matchedTransactionId:
+          patch.matchedTransactionId === undefined
+            ? existing.matchedTransactionId
+            : patch.matchedTransactionId,
+        matchPass: patch.matchPass === undefined ? existing.matchPass : patch.matchPass,
+        rejectedReason:
+          patch.rejectedReason === undefined ? existing.rejectedReason : patch.rejectedReason,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(importRows.userId, userId.value), eq(importRows.id, rowId)));
+  }
+
+  async setBatchOutcome(
+    userId: UserId,
+    batchId: string,
+    outcome: {
+      status: ImportBatchStatus;
+      rowsImported?: number;
+      rowsDuplicate?: number;
+      rowsFailed?: number;
+      completedAt?: Date;
+    },
+  ): Promise<void> {
+    await this.db
+      .update(importBatches)
+      .set({
+        status: outcome.status,
+        ...(outcome.rowsImported === undefined ? {} : { rowsImported: outcome.rowsImported }),
+        ...(outcome.rowsDuplicate === undefined ? {} : { rowsDuplicate: outcome.rowsDuplicate }),
+        ...(outcome.rowsFailed === undefined ? {} : { rowsFailed: outcome.rowsFailed }),
+        ...(outcome.completedAt === undefined ? {} : { completedAt: outcome.completedAt }),
+      })
+      .where(and(eq(importBatches.userId, userId.value), eq(importBatches.id, batchId)));
+  }
+}
+
+type ImportBatchRow = typeof importBatches.$inferSelect;
+type ImportRowRow = typeof importRows.$inferSelect;
+
+/** The JSON shape of a staged row's parse. Money as minor units, never a float. */
+interface ParsedRowJson {
+  date: string;
+  description: string;
+  reference: string | null;
+  amountMinor: string;
+  currency: string;
+  direction: RowDirection;
+  occurrence: number;
+  proposedAccountId: string | null;
+  intent: MovementIntent;
+  because: string;
+}
+
+export const ImportMapper = {
+  toBatch(row: ImportBatchRow): ImportBatchRecord {
+    return {
+      id: row.id,
+      kind: row.kind,
+      accountId: row.accountId ? AccountId.from(row.accountId) : null,
+      fileName: row.fileName,
+      fileHash: row.fileHash,
+      rowsRead: row.rowsRead,
+      rowsImported: row.rowsImported,
+      rowsDuplicate: row.rowsDuplicate,
+      rowsFailed: row.rowsFailed,
+      status: row.status,
+    };
+  },
+
+  toParsedJson(row: StagedRow): string {
+    const payload: ParsedRowJson = {
+      date: row.date.toISO(),
+      description: row.description,
+      reference: row.reference,
+      // A string, so the exact integer survives JSON. A number would lose paise
+      // above 2^53 and, worse, would look fine right up until it did.
+      amountMinor: row.amount.minor.toString(),
+      currency: row.amount.currency.code,
+      direction: row.direction,
+      occurrence: row.occurrence,
+      proposedAccountId: row.proposedAccountId?.value ?? null,
+      intent: row.intent,
+      because: row.because,
+    };
+    return JSON.stringify(payload);
+  },
+
+  toStagedRow(row: ImportRowRow): StagedRow {
+    const parsed = JSON.parse(row.parsedJson ?? "{}") as Partial<ParsedRowJson>;
+    return {
+      id: row.id,
+      batchId: row.batchId,
+      rowIndex: row.rowIndex,
+      status: row.status,
+      date: CalendarDate.parse(parsed.date ?? "1970-01-01"),
+      description: parsed.description ?? "",
+      reference: parsed.reference ?? null,
+      amount: Money.fromMinor(
+        BigInt(parsed.amountMinor ?? "0"),
+        Currency.of(parsed.currency ?? Currency.reporting.code),
+      ),
+      direction: parsed.direction ?? "DEBIT",
+      occurrence: parsed.occurrence ?? 0,
+      raw: row.rawJson,
+      proposedAccountId: parsed.proposedAccountId ? AccountId.from(parsed.proposedAccountId) : null,
+      intent: parsed.intent ?? "SPEND",
+      because: parsed.because ?? "",
+      matchedTransactionId: row.matchedTransactionId,
+      matchPass: row.matchPass,
+      rejectedReason: row.rejectedReason,
+    };
+  },
+};
+
+/* ═══ DrizzleCategoryRuleRepository ═══════════════════════════════════ */
+
+/**
+ * libSQL implementation of {@link CategoryRuleRepository}.
+ *
+ * Ordering is deliberately *not* done here. The categoriser sorts what it is
+ * given, because the tie-break rules are policy and a re-import must not depend
+ * on the order a query happened to return.
+ */
+export class DrizzleCategoryRuleRepository implements CategoryRuleRepository {
+  constructor(private readonly db: Database) {}
+
+  async list(userId: UserId): Promise<readonly KeywordRule[]> {
+    const rows = await this.db
+      .select()
+      .from(categoryRules)
+      .where(and(eq(categoryRules.userId, userId.value), isNull(categoryRules.deletedAt)));
+    return rows.map((row) => ({
+      id: row.id,
+      pattern: row.pattern,
+      matchType: row.matchType,
+      accountId: AccountId.from(row.accountId),
+      appliesTo: row.appliesTo,
+      priority: row.priority,
+      isEnabled: row.isEnabled,
+    }));
+  }
+
+  /**
+   * Inserts the rules it does not already have, and returns how many landed.
+   *
+   * The count is a before/after difference rather than the driver's
+   * `rowsAffected`, which reports 0 for an `ON CONFLICT DO NOTHING` insert over
+   * libSQL — so the seeder wrote 282 rules and reported "created 0". A count that
+   * disagrees with what happened is worse than no count, because the screen
+   * repeats it.
+   */
+  async saveMany(userId: UserId, rules: readonly Omit<KeywordRule, "id">[]): Promise<number> {
+    if (rules.length === 0) return 0;
+    const before = await this.count(userId);
+    for (let index = 0; index < rules.length; index += PARAM_CHUNK) {
+      const chunk = rules.slice(index, index + PARAM_CHUNK);
+      await this.db
+        .insert(categoryRules)
+        .values(
+          chunk.map((rule) => ({
+            id: newUuid(),
+            userId: userId.value,
+            pattern: rule.pattern,
+            matchType: rule.matchType,
+            accountId: rule.accountId.value,
+            appliesTo: rule.appliesTo,
+            priority: rule.priority,
+            isEnabled: rule.isEnabled,
+          })),
+        )
+        // Seeding is idempotent: the unique index on (user, pattern, appliesTo)
+        // means re-running the seeder tops up rather than failing. It also
+        // collapses a keyword that two built-in groups both claim.
+        .onConflictDoNothing();
+    }
+    return (await this.count(userId)) - before;
+  }
+
+  private async count(userId: UserId): Promise<number> {
+    const [row] = await this.db
+      .select({ total: count() })
+      .from(categoryRules)
+      .where(and(eq(categoryRules.userId, userId.value), isNull(categoryRules.deletedAt)));
+    return row?.total ?? 0;
+  }
+
+  async bumpMatchCounts(userId: UserId, ruleIds: readonly string[]): Promise<void> {
+    if (ruleIds.length === 0) return;
+    await this.db
+      .update(categoryRules)
+      .set({ matchCount: sql`${categoryRules.matchCount} + 1` })
+      .where(and(eq(categoryRules.userId, userId.value), inArray(categoryRules.id, [...ruleIds])));
+  }
+}
+
+/* ═══ DrizzleSelfPayeeQuery ═══════════════════════════════════════════ */
+
+/** The user's own names and handles, from `counterparties.is_self`. */
+export class DrizzleSelfPayeeQuery implements SelfPayeeQuery {
+  constructor(private readonly db: Database) {}
+
+  async list(userId: UserId): Promise<readonly string[]> {
+    const rows = await this.db
+      .select({ name: counterparties.name, normalised: counterparties.normalisedName })
+      .from(counterparties)
+      .where(
+        and(
+          eq(counterparties.userId, userId.value),
+          isNull(counterparties.deletedAt),
+          eq(counterparties.isSelf, true),
+        ),
+      );
+    // Both spellings: the categoriser normalises again anyway, and the raw name
+    // may contain an account number that normalising dropped.
+    return rows.flatMap((row) => [row.name, row.normalised]);
+  }
+}
+
+/* ═══ DrizzleBudgetRepository ═════════════════════════════════════════ */
+
+export class DrizzleBudgetRepository implements BudgetRepository {
+  constructor(private readonly db: Database) {}
+
+  async listFor(userId: UserId, months: readonly string[]): Promise<readonly StoredBudget[]> {
+    const rows = await this.db
+      .select()
+      .from(budgets)
+      .where(
+        and(
+          eq(budgets.userId, userId.value),
+          isNull(budgets.deletedAt),
+          months.length > 0
+            ? or(isNull(budgets.month), inArray(budgets.month, [...months]))
+            : isNull(budgets.month),
+        ),
+      );
+    return rows.map((row) => ({
+      id: row.id,
+      accountId: AccountId.from(row.accountId),
+      month: row.month,
+      limit: Money.fromMinor(row.limitMinor),
+      warnAtPercent: row.warnAtPercent,
+      carryover: row.carryover,
+    }));
+  }
+
+  async upsert(userId: UserId, budget: Omit<StoredBudget, "id">): Promise<string> {
+    const row = {
+      id: newUuid(),
+      userId: userId.value,
+      accountId: budget.accountId.value,
+      month: budget.month,
+      limitMinor: budget.limit.toMinorNumber(),
+      warnAtPercent: budget.warnAtPercent,
+      carryover: budget.carryover,
+      updatedAt: new Date(),
+    };
+    const [written] = await this.db
+      .insert(budgets)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [budgets.userId, budgets.accountId, budgets.month],
+        set: {
+          limitMinor: row.limitMinor,
+          warnAtPercent: row.warnAtPercent,
+          carryover: row.carryover,
+          deletedAt: null,
+          updatedAt: row.updatedAt,
+        },
+      })
+      .returning({ id: budgets.id });
+    return written?.id ?? row.id;
+  }
+
+  /** Soft delete — A03. A removed budget must not erase last month's report. */
+  async remove(userId: UserId, budgetId: string, at: Date): Promise<void> {
+    await this.db
+      .update(budgets)
+      .set({ deletedAt: at })
+      .where(and(eq(budgets.userId, userId.value), eq(budgets.id, budgetId)));
   }
 }

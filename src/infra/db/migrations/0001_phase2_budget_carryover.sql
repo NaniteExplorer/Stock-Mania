@@ -1,0 +1,1 @@
+ALTER TABLE `budgets` ADD `carryover` integer DEFAULT false NOT NULL;

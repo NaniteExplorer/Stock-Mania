@@ -17,6 +17,7 @@
  * part with the opinions, kept testable without a database.
  */
 
+import { UserId } from "@/core/kernel";
 import { Money } from "@/core/money";
 import { CalendarDate } from "@/core/time";
 import { AccountCode, AccountId } from "@/domain/accounts";
@@ -522,6 +523,34 @@ export function builtInAccountCodes(): readonly AccountCode[] {
   return builtInCodes().map((code) => AccountCode.parse(code));
 }
 
+/* ═══ Statement input (port shape) ════════════════════════════════════ */
+
+/**
+ * One movement as a statement reports it, from the account holder's side.
+ *
+ * Declared here rather than imported from `infra/statements.ts` because a use
+ * case may not know about infra — `tests/layout.spec.ts` enforces that arrow, and
+ * it is the right arrow: the *shape* of a bank movement is domain vocabulary,
+ * while which delimiter a bank exported it with is not. `ParsedStatement`
+ * satisfies this structurally, so nothing needs adapting at the boundary.
+ */
+export interface StatementMovement {
+  readonly rowIndex: number;
+  readonly date: CalendarDate;
+  readonly description: string;
+  readonly reference: string | null;
+  readonly amount: Money;
+  readonly direction: RowDirection;
+  readonly balanceAfter: Money | null;
+  readonly occurrence: number;
+  readonly raw: string;
+}
+
+export interface StatementInput {
+  readonly rows: readonly StatementMovement[];
+  readonly problems: readonly { readonly rowIndex: number; readonly reason: string; readonly raw: string }[];
+}
+
 /* ═══ Duplicate matching ══════════════════════════════════════════════ */
 
 /** An incoming row, reduced to what matching needs. */
@@ -965,4 +994,168 @@ export class BudgetLedger {
 
 function maxZero(amount: Money): Money {
   return amount.isNegative ? Money.zero(amount.currency) : amount;
+}
+
+/* ═══ Ports ═══════════════════════════════════════════════════════════ */
+
+/**
+ * The staged-import state machine — invariant I01.
+ *
+ * `DRAFT → PARSED → MATCHED → CONFIRMED | REJECTED`, and **only `CONFIRMED` rows
+ * may reach the ledger**. The states are worth having as data rather than as a
+ * boolean because the review screen is built from them: "12 look like duplicates,
+ * 3 could not be read, 198 are ready" is the screen, and it is a `GROUP BY`.
+ */
+export type ImportRowStatus = "DRAFT" | "PARSED" | "MATCHED" | "CONFIRMED" | "REJECTED";
+
+export type ImportBatchStatus = "COMPLETED" | "PARTIAL" | "FAILED" | "UNDONE";
+
+/** What a staged row holds, once parsed. Serialisable: it round-trips as JSON. */
+export interface StagedRow {
+  readonly id: string;
+  readonly batchId: string;
+  readonly rowIndex: number;
+  readonly status: ImportRowStatus;
+  readonly date: CalendarDate;
+  readonly description: string;
+  readonly reference: string | null;
+  readonly amount: Money;
+  readonly direction: RowDirection;
+  readonly occurrence: number;
+  /** The source line, verbatim, so a re-parse never needs the original file. */
+  readonly raw: string;
+  /** The category the categoriser proposed, which the user may override. */
+  readonly proposedAccountId: AccountId | null;
+  readonly intent: MovementIntent;
+  readonly because: string;
+  /** Set once the matcher claims this row duplicates an existing transaction. */
+  readonly matchedTransactionId: string | null;
+  readonly matchPass: number | null;
+  readonly rejectedReason: string | null;
+}
+
+export interface ImportBatchRecord {
+  readonly id: string;
+  readonly kind: "BANK_STATEMENT" | "TRADE_BOOK" | "HOLDINGS";
+  readonly accountId: AccountId | null;
+  readonly fileName: string;
+  readonly fileHash: string;
+  readonly rowsRead: number;
+  readonly rowsImported: number;
+  readonly rowsDuplicate: number;
+  readonly rowsFailed: number;
+  readonly status: ImportBatchStatus;
+}
+
+/**
+ * Persistence for staged imports.
+ *
+ * `findBatchByFileHash` is invariant I02 (re-importing the same bytes is a no-op)
+ * and belongs here rather than in a use case: the hash is the only thing that can
+ * answer it, and asking the question anywhere else means one caller will forget.
+ */
+export interface ImportRepository {
+  findBatchByFileHash(userId: UserId, fileHash: string): Promise<ImportBatchRecord | null>;
+
+  /** Writes the batch and its rows together — a half-staged import is not a state. */
+  createBatch(
+    userId: UserId,
+    batch: ImportBatchRecord,
+    rows: readonly StagedRow[],
+  ): Promise<void>;
+
+  findBatch(userId: UserId, batchId: string): Promise<ImportBatchRecord | null>;
+
+  listRows(
+    userId: UserId,
+    batchId: string,
+    options?: { statuses?: readonly ImportRowStatus[] },
+  ): Promise<readonly StagedRow[]>;
+
+  setRowStatus(
+    userId: UserId,
+    rowId: string,
+    patch: {
+      status: ImportRowStatus;
+      proposedAccountId?: AccountId | null;
+      matchedTransactionId?: string | null;
+      matchPass?: number | null;
+      rejectedReason?: string | null;
+    },
+  ): Promise<void>;
+
+  /** Records the outcome counts once a batch has been posted or undone. */
+  setBatchOutcome(
+    userId: UserId,
+    batchId: string,
+    outcome: {
+      status: ImportBatchStatus;
+      rowsImported?: number;
+      rowsDuplicate?: number;
+      rowsFailed?: number;
+      completedAt?: Date;
+    },
+  ): Promise<void>;
+}
+
+export interface CategoryRuleRepository {
+  list(userId: UserId): Promise<readonly KeywordRule[]>;
+  saveMany(userId: UserId, rules: readonly Omit<KeywordRule, "id">[]): Promise<number>;
+  /** Surfaces dead rules for cleanup, and proves which rule categorised a row. */
+  bumpMatchCounts(userId: UserId, ruleIds: readonly string[]): Promise<void>;
+}
+
+/** The user's own accounts and family, for self-transfer detection. */
+export interface SelfPayeeQuery {
+  list(userId: UserId): Promise<readonly string[]>;
+}
+
+export interface StoredBudget {
+  readonly id: string;
+  readonly accountId: AccountId;
+  /** `YYYY-MM`, or null for the recurring default. */
+  readonly month: string | null;
+  readonly limit: Money;
+  readonly warnAtPercent: number;
+  readonly carryover: boolean;
+}
+
+export interface BudgetRepository {
+  /**
+   * Every budget row that could apply to these months: the month-specific rows
+   * and the recurring defaults, in one round trip. Resolution — a specific month
+   * overriding its default — is {@link resolveBudgets}, which is policy and does
+   * not belong in SQL.
+   */
+  listFor(userId: UserId, months: readonly string[]): Promise<readonly StoredBudget[]>;
+
+  upsert(userId: UserId, budget: Omit<StoredBudget, "id">): Promise<string>;
+
+  remove(userId: UserId, budgetId: string, at: Date): Promise<void>;
+}
+
+/**
+ * Which budget applies to a category in a month: the month's own row if there is
+ * one, otherwise the recurring default.
+ *
+ * Kept out of the repository deliberately. "A specific month overrides the
+ * default" is a rule someone will want to see and change, and expressed as a
+ * `COALESCE` in a query it would be invisible — and duplicated in the second
+ * query that needed it.
+ */
+export function resolveBudgets(
+  budgets: readonly StoredBudget[],
+  month: string,
+): readonly StoredBudget[] {
+  const specific = new Map<string, StoredBudget>();
+  const recurring = new Map<string, StoredBudget>();
+  for (const budget of budgets) {
+    if (budget.month === month) specific.set(budget.accountId.value, budget);
+    else if (budget.month === null) recurring.set(budget.accountId.value, budget);
+  }
+  const out = [...specific.values()];
+  for (const [accountId, budget] of recurring) {
+    if (!specific.has(accountId)) out.push({ ...budget, month });
+  }
+  return out.sort((a, b) => (a.accountId.value < b.accountId.value ? -1 : 1));
 }

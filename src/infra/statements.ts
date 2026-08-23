@@ -64,6 +64,14 @@ export interface StatementRow {
    * second would be discarded as a duplicate of the first.
    */
   readonly occurrence: number;
+  /**
+   * The source line, joined.
+   *
+   * Kept so `import_rows.raw_json` can hold what the file actually said: a
+   * re-parse, or a "why did it read it that way?" question, must not need the
+   * original upload back.
+   */
+  readonly raw: string;
 }
 
 /** A row that could not be read, kept rather than dropped. */
@@ -364,6 +372,7 @@ function buildFromAliases(
       amount: chosen.amount,
       direction: chosen.direction,
       balanceAfter: signedBalance(balance),
+      raw: joinRow(row),
       occurrence: occurrences.next([
         date.toISO(),
         chosen.amount.toDecimalString(),
@@ -610,6 +619,7 @@ function inferByContent(rows: readonly RawRow[], currency: Currency): ParsedStat
       amount,
       direction,
       balanceAfter: balance,
+      raw: joinRow(row),
       occurrence: occurrences.next([
         date.toISO(),
         amount.toDecimalString(),
@@ -726,6 +736,7 @@ export function parseOfx(content: string, currency: Currency = Currency.reportin
       amount: cell.amount,
       direction: cell.negative ? "DEBIT" : "CREDIT",
       balanceAfter: null,
+      raw: block.trim(),
       occurrence: occurrences.next([
         date.toISO(),
         cell.amount.toDecimalString(),

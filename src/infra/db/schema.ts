@@ -973,6 +973,17 @@ export const budgets = sqliteTable(
     limitMinor: moneyMinor("limit_minor").notNull(),
     /** Warn at this fraction of the limit, in percent. */
     warnAtPercent: integer("warn_at_percent").notNull().default(80),
+    /**
+     * Whether this category's leftover — or its overspend — rolls into next month.
+     *
+     * The flag that makes envelope budgeting expressible (`30-CALCULATIONS.md` §7).
+     * With it off, an overspend is charged to next month's `to_budget` and the
+     * category starts clean; with it on, the category carries its own debt, which
+     * is the entire point of an envelope. One boolean, because the two behaviours
+     * are the two branches of the same formula and a second column could disagree
+     * with it.
+     */
+    carryover: integer("carryover", { mode: "boolean" }).notNull().default(false),
     deletedAt: deletedAt(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
