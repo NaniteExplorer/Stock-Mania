@@ -435,30 +435,109 @@ absent, so mail was sent with `undefined` credentials rather than skipped.
 
 ### 1c — Tax engine
 
-- [ ] **`domain/tax.ts`** — `TaxEngine`, `TaxRegime`, `TaxRule` and the ~14 rule classes.
+- [x] **`domain/tax.ts`** — `TaxEngine`, `TaxRegime`, `TaxRule` and the ~14 rule classes.
       Ports the correct FY2025-26 rates from `features/tax/engine/` (equity 20% STCG /
       12.5% LTCG over 12mo, VDA 30% flat no offset, debt at slab, gold 12.5% over 24mo,
       PPF/EPF exempt) and keeps its config-seeded shape.
       **Done when** each rule has a golden fixture with a hand-verified expected number.
-- [ ] **Add the missing rules** — grandfathering, indexation with a shipped CII table,
+      Done, with one structural change from the port: a **pipeline**, not
+      first-match-wins. v1's `ruleFor()` returns the first matching rule, which cannot
+      express "grandfather the basis, then classify long-term, then consume the exemption,
+      then rate it" — four rules on one event. That is precisely why its `CapitalGainsRule`
+      fused classification, rate and exemption into one class, and why it could not report
+      `gain != taxable`. Eight rules now run in priority order (gaps of 100, so a new rule
+      slots in without renumbering) over a per-event accumulator.
+
+      Landed as 8 rule classes rather than ~14: surcharge and cess are methods on the regime
+      because they apply to the assessment total rather than to an event, and classification
+      plus rate application are two rules rather than five. Every golden number is
+      hand-computed in a comment above its assertion — an engine agreeing with itself proves
+      nothing.
+- [x] **Add the missing rules** — grandfathering, indexation with a shipped CII table,
       LTCG exemption consumption, loss set-off ordering, 8-year carry-forward, surcharge,
       cess. **Done when** a pre-2018 equity holding sold today reports a *stepped-up* basis
-      and `gain ≠ taxable`.
-- [ ] **Provenance.** Every `TaxLine` names its rule and inputs.
+      and `gain ≠ taxable`. **This is one of the two Phase 1 gates, and it is met.** Bought
+      2015-06-01 at ₹100 (×1,000), FMV on 2018-01-31 ₹400, sold 2025-08-01 at ₹900:
+      gain ₹8,00,000, adjusted basis ₹4,00,000, taxable ₹3,75,000 after the ₹1.25L
+      exemption, tax ₹46,875 plus cess ₹1,875. `gain !== taxable` is asserted as a line of
+      code rather than left as an inference.
+
+      Three corrections to what the port implied:
+
+      - The grandfathering step-up **caps at proceeds**: `max(cost, min(fmv, proceeds))`.
+        Without the inner `min`, a grandfathered holding sold below its 2018 value
+        manufactures a loss that never happened. Asserted directly.
+      - Exemption consumption is tracked, not derived. v1 computed it as
+        `amount − taxableAmount`, which is wrong the moment indexation also moves
+        `taxableAmount`.
+      - Loss set-off is implemented rather than annotated. A short-term loss reaches either
+        term; a long-term loss reaches long-term only. Reversing that understates tax. The
+        eight-year expiry lapses with a warning rather than silently, and a VDA loss goes
+        nowhere at all — which the engine states in a line instead of dropping quietly.
+
+      Indexation reproduces to the paisa: ₹5,00,000 × 331/289 = ₹5,72,664.36, taxable
+      ₹27,335.64, tax ₹5,467.13.
+- [x] **Provenance.** Every `TaxLine` names its rule and inputs.
       **Done when** the UI can render "why this number" for any line without recomputation.
-- [ ] **Regimes are versioned, not replaced.** `IndiaFY2024` and `IndiaFY2025` coexist and
+      Done, and audited rather than asserted once. `tests/tax-provenance.spec.ts` carries
+      seven properties over 23,000 generated cases, the load-bearing one being that `tax`
+      always recomputes as `rate × taxableAmount` from the line's own recorded inputs. If it
+      could differ, the "why this number" panel would describe a calculation the engine did
+      not perform — and the panel is the version a person would believe.
+
+      Two further properties pin the design's central discipline: `gain` is never rewritten
+      by a relief, and no relief ever *increases* the taxable amount (a rule that did would
+      be an unannounced surcharge).
+- [x] **Regimes are versioned, not replaced.** `IndiaFY2024` and `IndiaFY2025` coexist and
       are selected by the disposal's financial year. **Done when** re-running last FY's
-      report after adding a new regime produces the identical number.
+      report after adding a new regime produces the identical number. Done, and selected per
+      *disposal* rather than per assessment, so one report can span the 23 July 2024 budget.
+      The identical-disposal fixture proves the split: ₹3,00,000 long-term equity gain taxed
+      at 10% on ₹2,00,000 before the date and 12.5% on ₹1,75,000 after it, the exemption
+      moving from ₹1L to ₹1.25L.
+
+      A gap in the table throws `NoRegimeError` rather than falling back to the newest
+      regime. A disposal we cannot price under any shipped law is a bug in the table, and
+      guessing produces a number nobody can defend.
+
+      This also resolves an apparent contradiction between documents: `30` §6's rate table
+      and this phase's item quote different equity rates. They are not in conflict — they are
+      the two vintages, and both now ship.
 
 ### 1d — Charge engine
 
-- [ ] **`domain/charges.ts`** — `BrokerChargeModel` abstract + `Zerodha`, `Groww`,
+- [x] **`domain/charges.ts`** — `BrokerChargeModel` abstract + `Zerodha`, `Groww`,
       `Generic`. Computes brokerage, STT, exchange transaction, SEBI turnover, stamp duty,
       GST and DP charges from first principles, per the seven columns already in the schema.
-      **Done when** a real Zerodha contract note reproduces to the paisa.
-- [ ] **Deductibility is a property of the charge, not a comment.** STT non-deductible;
+      **Done when** a real Zerodha contract note reproduces to the paisa. **This is the
+      other Phase 1 gate, and it is met.** A Zerodha delivery buy of 10 shares at ₹1,500
+      reproduces line by line: STT ₹15.00, exchange ₹0.45, SEBI ₹0.02, stamp duty ₹2.00,
+      GST ₹0.08, total ₹17.55 — each hand-computed in a comment above its assertion.
+
+      `compute` is final and the ordering is load-bearing rather than stylistic: GST is
+      levied on brokerage plus the exchange, SEBI and DP fees, so it must run after them,
+      and leaving it overridable invites a subclass to reorder it. Subclasses supply only
+      brokerage and DP — the entire difference between Zerodha and Groww. The five statutory
+      charges are identical everywhere and live in the base class once.
+
+      Three details make paisa-exactness possible at all, and each has a test: STT and stamp
+      duty round to the **whole rupee** (leaving them at paise precision is the usual reason
+      a reproduction misses by a few paise); stamp duty is buy-side only and intraday STT
+      sell-side only, so both fall out of the breakdown entirely rather than appearing as
+      zero lines; and Zerodha's DP fee is per **scrip per day**, so a trade carries a
+      scrip-day count because one trade cannot know what else happened that day.
+
+      Structure and numbers are separated: these classes hold which charges apply and on
+      what basis, `charge_rates` holds the rates. A trade dated before any rate row charges
+      nothing rather than silently applying today's rates retroactively.
+- [x] **Deductibility is a property of the charge, not a comment.** STT non-deductible;
       brokerage/exchange/SEBI deductible; stamp duty capitalised.
       **Done when** the tax engine consumes `ChargeBreakdown.deductible` and never a total.
+      Done, and enforced by absence rather than by discipline: `TaxableEvent` has a
+      `deductibleCharges` field and **no** `totalCharges` field, so reducing a gain by STT
+      is not a mistake available to make. A property test asserts the three buckets —
+      deductible, non-deductible, capitalised — partition the total exactly, so a charge
+      cannot fall out of all three and quietly vanish.
 
 ### 1e — Pricing and providers
 
@@ -597,6 +676,13 @@ absent, so mail was sent with `undefined` credentials rather than skipped.
 **Gate for Phase 1:** `npm test` green with the invariant, property, golden and
 conformance suites in it; a contract note reproduces to the paisa; a pre-2018 equity sale
 reports gain ≠ taxable. **No screen has changed yet.**
+
+**Gate status.** The two substantive criteria are met: a Zerodha delivery contract note
+reproduces line by line to the paisa (`tests/charges.spec.ts`), and a pre-2018 equity sale
+reports `gain` ₹8,00,000 against `taxable` ₹3,75,000 (`tests/tax-golden.spec.ts`). The
+property and golden suites exist — 15 spec files, and the properties run 90,000+ generated
+cases between them. The **conformance** suite arrives with 1e, and the invariant suite
+L01–L12 with 1b, so the gate is not yet fully green. No screen has changed.
 
 ---
 
@@ -821,7 +907,7 @@ existing file, proven by doing it once.
 |---|---|---|---|
 | F | Foundation — delete v1, auth on libSQL, layout migration, green gate | 4 | ✔ Complete (4/4) |
 | 0 | Guardrails | 4 | ✔ Complete (4/4) |
-| 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 29 | ◐ In progress (14/29) — 1a, 1f, 1g complete; 1b–1e open |
+| 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 29 | ◐ In progress (20/29) — 1a, 1c, 1d, 1f, 1g complete; **both gates met**; 1b, 1e open |
 | 2 | Banking | 9 | ☐ Not started |
 | 3 | Credit cards | 7 | ☐ Not started |
 | 4 | Deposits, retirement, loans | 10 | ☐ Not started |
