@@ -418,20 +418,97 @@ absent, so mail was sent with `undefined` credentials rather than skipped.
 
 ### 1b — Transaction hierarchy
 
-- [ ] **`domain/transactions.ts`** — the abstract base with the four hooks, `Posting`,
+- [x] **`domain/transactions.ts`** — the abstract base with the four hooks, `Posting`,
       `TransactionContext`, and all 13 subclasses. Reuses `JournalEntry.assertBalances`
       logic verbatim (it is correct) as the base-class constructor check.
       **Done when** every subclass has a test proving (a) it books the postings claimed,
       (b) an unbalanced construction throws, and (c) `reverse()` returns balances to prior.
-- [ ] **Legality matrix as data.** `txn_type_legality` seeded from `20-DOMAIN-MODEL.md` §3.6
+      Done: `OpeningBalance`, `Expense`, `Income`, `Transfer`, `Charge`, `Buy`, `Sell`,
+      `Dividend`, `Interest`, `CorporateActionTxn`, `FxConversion`, `ValuationAdjustment`,
+      `Reversal`, plus `StoredTransaction` as the rehydration vehicle. (c) is asserted by
+      *folding balances*, not by comparing posting shapes — a reversal that flipped the legs
+      but changed an amount would pass a shape check and still leave the ledger wrong.
+
+      `assertBalances` is carried over with one generalisation: **balance is per currency**,
+      which is what makes `FxConversion` expressible and why `MixedCurrencyEntryError` is
+      gone rather than renamed.
+
+      Four deviations from the sketch, each for a reason:
+
+      - **`validate()` runs before `buildPostings()`**, not after. Six subclass
+        preconditions — a zero revaluation, a sale with no lots, a charge with nowhere to
+        book it — all produce an unbuildable posting, so building first made every one of
+        them surface as "a posting must move money or units (L03)": true, and useless.
+      - **Subclass payloads live on the base as `details`**, and `kind` is a getter rather
+        than a field. Forced by the language: a subclass field initialiser runs *after*
+        `super()`, so a `validate()` called from the base constructor would see `undefined`
+        for everything it is meant to check — the invariant would read as enforced at
+        construction without being so.
+      - **`lotEffects()`, `taxableEvents()` and `cashflows()` are concrete and empty in the
+        base** rather than abstract. Nine subclasses have no lots and no taxable event, and
+        27 empty methods written only to satisfy the compiler are where a real `return []`
+        hides.
+      - **`StoredTransaction` answers those three hooks with nothing**, deliberately. A
+        `Sell` needs the lots it consumed, which live in `lots` rather than in the
+        transaction row; reconstructing one from two postings would invent a cost basis, and
+        an invented basis is a wrong tax number. The engines consume freshly constructed
+        transactions, or (from Phase 2) rebuild them from the lot rows.
+- [x] **Legality matrix as data.** `txn_type_legality` seeded from `20-DOMAIN-MODEL.md` §3.6
       and checked in `Transaction.validate()`. **Done when** posting an expense *from* an
-      expense account is rejected, and invariants L06/L07 have tests.
-- [ ] **Multi-currency, properly.** `FxConversion` books two currency legs that each sum to
+      expense account is rejected, and invariants L06/L07 have tests. Done, with the check in
+      the **base** rather than in each subclass's `validate()` — a per-subclass check is one
+      a new subclass can forget, and 13 chances to forget is 13 too many.
+
+      The matrix itself **moved out of `infra/db/seeds.ts` into the domain**. It was two
+      statements of one fact — the rows SQL reporting joins against, and the rows a
+      constructor checks — and the copy that would have been wrong is the one nobody diffed.
+      `seeds.ts` now imports `legalityRows()`, so the table is a projection of the domain
+      fact rather than a second assertion of it. 559 rows, asserted equal to the matrix the
+      constructor uses.
+- [x] **Multi-currency, properly.** `FxConversion` books two currency legs that each sum to
       zero, with the implied rate recorded and reconciled against `FxBook`.
       **Done when** the worked example — buy AAPL in USD funded from an INR account —
-      records, balances per currency, and reports correctly in INR.
-- [ ] **Invariants L01–L12 as tests.** Each gets a violating-state test and a
-      generated-dataset test. **Done when** all twelve are red-then-green.
+      records, balances per currency, and reports correctly in INR. Done for the recording
+      half: §5.4's four postings balance in each currency separately, and reporting in INR
+      shows only the rupee leg — the dollar legs do not leak into a rupee balance, which is
+      asserted rather than assumed. `impliedRate()` is **derived** from the two amounts in
+      exact integer arithmetic rather than stored beside them, so it cannot disagree with the
+      money that moved. **Reconciliation against `FxBook` waits for 1e**, which is where
+      `fx_rates` and the resolution ladder land; the rate is computable today, there is just
+      nothing yet to compare it against.
+- [x] **Invariants L01–L12 as tests.** Each gets a violating-state test and a
+      generated-dataset test. **Done when** all twelve are red-then-green. Done —
+      `tests/ledger-invariants.spec.ts`, ~16,000 generated cases across the twelve.
+
+      Two of them are honest about *where* they are enforced rather than claiming the domain
+      covers them. **L09** (external id unique per user among live rows) is a partial unique
+      index: uniqueness is a claim about every other row, which an aggregate cannot see, so
+      the domain test asserts only that the id is carried and that a reversal does not
+      inherit it — inheriting it would make every correction collide with what it corrects —
+      and the integration spec proves the index rejects the duplicate. **L10** (reconciled
+      postings are immutable) is enforced by *absence*: `Posting` has no setter and
+      `TransactionRepository` has no update or posting-level path, so the test asserts the
+      absence. A test that mutated and re-read would be exercising a path that must not exist.
+
+      One correction fell out of writing them: **L12 has to reject the input, not inspect the
+      built postings.** `Transfer` drops a category by construction, so the posting-level
+      check passed while silently ignoring what the user asked for — and a silently dropped
+      budget category is a budget report that is wrong for a reason nobody can see.
+- [x] **Not in the original plan: the schema rename, and a second squash.**
+      `journal_entries` → `transactions`, gaining §3.4's `settlement_date` (a 31 March trade
+      settling 1 April falls in one financial year for tax and the other for the statement,
+      and one column cannot answer both), `external_id`, `is_forecast` and `version`;
+      `postings.entry_id` → `transaction_id` with `ON DELETE RESTRICT`, and `amount_minor > 0`
+      relaxed to `>= 0` plus an L03 check — the old constraint would have rejected a bonus
+      issue, which moves units and no money.
+
+      The baseline migration is **regenerated rather than amended**, which breaks the
+      "additive from here" commitment made in 1f. The justification is technical rather than
+      convenient: SQLite cannot alter a `CHECK` constraint, so this change is a 12-step table
+      rebuild however it is written, and with zero user rows a rebuild *is* a fresh baseline.
+      Checked before deleting anything — the local database held 982 rows, all of them seeded
+      reference data. This is the last squash: the next change to these tables has real rows
+      under it.
 
 ### 1c — Tax engine
 
@@ -907,7 +984,7 @@ existing file, proven by doing it once.
 |---|---|---|---|
 | F | Foundation — delete v1, auth on libSQL, layout migration, green gate | 4 | ✔ Complete (4/4) |
 | 0 | Guardrails | 4 | ✔ Complete (4/4) |
-| 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 29 | ◐ In progress (20/29) — 1a, 1c, 1d, 1f, 1g complete; **both gates met**; 1b, 1e open |
+| 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 29 | ◐ In progress (25/29) — 1a, 1b, 1c, 1d, 1f, 1g complete; **both gates met**; 1e open |
 | 2 | Banking | 9 | ☐ Not started |
 | 3 | Credit cards | 7 | ☐ Not started |
 | 4 | Deposits, retirement, loans | 10 | ☐ Not started |
