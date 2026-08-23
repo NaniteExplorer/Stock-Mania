@@ -857,36 +857,164 @@ L01–L12 with 1b, so the gate is not yet fully green. No screen has changed.
 
 *The user's step 2. First slice to reach the UI; the pattern every later slice copies.*
 
-- [ ] **`BankAccount`, `Wallet`, `CashInHand` classes** in `domain/assets.ts` with
+- [x] **`BankAccount`, `Wallet`, `CashInHand` classes** in `domain/assets.ts` with
       `valueOn()` reading the journal, not a stored balance.
       **Done when** net worth is derived and a stored-balance column no longer exists.
-- [ ] **`banking.usecases.ts`** — open account, record expense/income/transfer,
-      reconcile a statement, undo an import.
-- [ ] **Statement import, upgraded.** Reuse the existing header-alias parser
+      Done — and the classes are deliberately *thin wrappers around `Account`* rather than a
+      parallel entity with its own rows. What they add over a bare account is only what
+      differs per kind: a bank account may be overdrawn (and whether that is within the
+      arranged limit is the interesting half), a prepaid wallet cannot go negative, and cash
+      in hand is reconciled by counting. `valueOn()` takes a one-method `BalanceSource` port
+      and is `async`, which is the honest signature — a synchronous `get balance()` would have
+      to be fed from a cached field, which is the field this class exists not to have.
+
+      A negative wallet balance is returned as a **finding, not an exception**: the ledger is
+      right and the world disagrees, and refusing to display the number would hide the only
+      evidence of the double-posted debit that caused it.
+- [x] **`banking.usecases.ts`** — open account, record expense/income/transfer,
+      reconcile a statement, undo an import. Done, plus the import path and budget planning.
+
+      **Reconciliation reports; it does not mutate.** The obvious design — flip the matched
+      postings to `RECONCILED` — was rejected for a structural reason. L10 (reconciled
+      postings are immutable) is currently enforced *by the absence of any posting-level write
+      path*; adding one so a screen could stamp a status would reintroduce exactly the hole
+      L10 exists to close, in exchange for a flag. What the user needs from reconciliation is
+      the difference and its explanation, and both are derivable. A cash difference becomes an
+      adjustment (`CashInHand.reconcileTo`); a missing row becomes an import.
+- [x] **Statement import, upgraded.** Reuse the existing header-alias parser
       (`features/transactions/statement-parser.ts` — genuinely good: narration, particulars,
       withdrawal (dr), chq/ref no) but parse amounts into `Money`, not `parseFloat`.
-      **Done when** three real bank statements round-trip with every amount exact.
-- [ ] **Import staging.** Rows land in `import_rows` as `DRAFT` → matched → user confirms →
+      **Done when** three real bank statements round-trip with every amount exact. Done —
+      `infra/statements.ts`, three layouts in `tests/statements.spec.ts` (HDFC's
+      withdrawal/deposit pair, ICICI's single amount column with a `Dr/Cr` marker, and a
+      layout no alias table knows, which forces content inference).
+
+      The round-trip is asserted by **`checkBalanceContinuity`**, not by eyeballing totals:
+      every printed closing balance must equal the previous one plus that row's movement,
+      exactly. That check is only meaningful because the amounts are `bigint` — under v1's
+      floats it could only ever have been approximate, which is presumably why it did not
+      exist. It also *detects*: swap one row's debit and credit and every subsequent row
+      fails, which is asserted too.
+
+      Three bugs surfaced from retyping rather than rewriting:
+
+      1. **`debit || credit` made an exact-zero debit fall through to the credit column**, so
+         a ₹0.00 charge line imported as a deposit. Zero and absent are different facts; the
+         code uses `??` and the zero row becomes a reported problem.
+      2. **A column had to be numeric on 30% of rows to count as an amount column.** One
+         salary credit among a hundred debits is 1%, so the credit column of an ordinary
+         salaried statement was dropped, the debit/credit vote was left with one column, and
+         *every credit in the file read as a debit*. Purity plus a small text tolerance
+         identifies the same columns with no cliff.
+      3. **A fully-populated numeric column could win the debit-vs-credit vote.** The salary
+         row of the inference fixture parsed as ₹3.00 — its row number. A debit/credit pair is
+         inherently sparse, so when two or more sparse columns exist the fully-populated ones
+         are not amounts.
+
+      Two changes that are corrections rather than ports: **the date order is decided once per
+      file** from the evidence in it (v1 assumed `dd/mm` unconditionally; a per-row guess would
+      read `03/04` and `13/04` under different conventions and silently reorder the statement),
+      and **unreadable rows are returned as problems rather than dropped** — v1 reported "0
+      transactions found" for a misdetected file with no hint that 214 lines had been discarded.
+- [x] **Import staging.** Rows land in `import_rows` as `DRAFT` → matched → user confirms →
       posted. **Done when** I01 has a test and nothing reaches the ledger unconfirmed.
-- [ ] **3-pass dedup matcher.** Port Actual's algorithm wholesale: rules first, then exact
+      Done. I01 is enforced *by shape*: `PostImportBatch` asks the repository for `CONFIRMED`
+      rows, and there is no argument that widens that filter. `tests/banking-integration.spec.ts`
+      posts a wholly unreviewed batch and asserts the ledger is untouched.
+
+      **Four layers of duplicate detection**, in increasing order of doubt, and the order is
+      the point: the same file (I02, by SHA-256 of the bytes), the same row of the same file
+      (fingerprint, including `occurrence`), the same bank reference (matcher pass 2), and
+      looks-the-same-within-a-week (pass 3). A flagged row is staged, never dropped — "we
+      think you already have this" is a claim the user must be able to overrule, and the
+      fingerprint index is still the backstop when they do.
+- [x] **3-pass dedup matcher.** Port Actual's algorithm wholesale: rules first, then exact
       `external_id`, then ±7-day same-amount ordered by date distance with a shared
       `matched` set, three complete sweeps, `strictIdChecking`.
       **Done when** a golden fixture set reproduces the documented behaviour and a
-      re-imported overlapping statement adds nothing.
-- [ ] **Categorisation, kept deliberately keyword-based.** Port `categorizer.ts` including
+      re-imported overlapping statement adds nothing. Done — and the two properties that are
+      easy to get wrong are asserted directly: **three complete sweeps** (a row that matches
+      by id must win over an earlier row that would fuzzy-claim the same transaction — a
+      per-row loop gets this backwards) and **one shared `matched` set** (two identical ₹40
+      rows cannot both claim the single ₹40 transaction already recorded). Ties at equal date
+      distance break by transaction id, because a re-import that resolves differently on
+      Tuesday is not a duplicate check.
+
+      **Match targets have to be flipped into statement terms.** On an asset account a debit
+      posting is money coming *in*, which the statement prints as a credit. Unflipped, the
+      matcher compares every incoming debit against the ledger's credits, finds nothing, and
+      re-imports the whole file.
+- [x] **Categorisation, kept deliberately keyword-based.** Port `categorizer.ts` including
       the self/family payee detection (a genuinely good idea, absent from every reference
       repo). Rules stay normalised rows with priority. **No AI in the categorisation path.**
-      **Done when** the same statement re-imported next month categorises identically.
-- [ ] **Budgets.** Keep the existing per-account monthly limit with recurring default and
+      **Done when** the same statement re-imported next month categorises identically. Done,
+      and determinism is a property test over shuffled rule orders rather than a comment: a
+      database is free to return rules in any order, so the ordering (priority, then longer
+      pattern, then rule id) lives in the categoriser and the final tie-break exists solely so
+      no answer can depend on the query plan.
+
+      The no-AI decision is not about cost. An import must produce the same answer in December
+      that it produced in August, or a re-import silently rewrites last month's budget report;
+      a model updated between the two runs cannot promise that, and a per-row API call also
+      ships the user's spending to a third party. Every rule is a string the user can read.
+
+      **The 282 built-in keywords ship as editable rows, not as behaviour.** "Why was this
+      groceries?" then has an answer the user can open and change — which is the whole argument
+      for keywords over a model, and it is lost if the defaults are invisible. They are keyed
+      by account *code* and resolved against the user's own chart, so renaming a category loses
+      one built-in rule rather than breaking the import.
+- [x] **Budgets.** Keep the existing per-account monthly limit with recurring default and
       warn threshold, and add carryover so envelope mode is expressible.
       **Done when** the four formulas of `30-CALCULATIONS.md` §7 are reproduced with tests.
-- [ ] **Screens.** Accounts list, transaction register (keyboard-driven, virtualised),
-      import wizard with the DRAFT review step, budget view — all on `ui/primitives`.
-- [ ] **Delete `features/accounts/`, `features/transactions/`, `features/networth/`.**
-      **Done when** nothing imports them and the app still builds.
+      Done — `BudgetLedger.plan` is a fold over months, not a formula per cell, because every
+      term depends on the previous month and the carryover flag decides whether a *negative*
+      leftover propagates or is truncated and charged to the month instead. Recomputing one
+      month in isolation is therefore impossible, and pretending otherwise is how a budget app
+      ends up with a total that depends on which screen you opened first.
+
+      One subtlety the formulas hide: `last_month_overspent` loops over *last month's*
+      categories, not this month's, so an overspend in a category that has no envelope this
+      month is still charged. Utilisation is returned in basis points — an integer percent
+      would render ₹9,999 of a ₹10,000 budget as "100%" and hide that it has not been breached.
+- [x] **Screens.** Accounts list, transaction register (keyboard-driven, virtualised),
+      import wizard with the DRAFT review step, budget view — all on `ui/primitives`. Done —
+      `/accounts`, `/transactions`, `/imports` + `/imports/[batchId]`, `/budgets`. The review
+      screen is I01 made visible: Ready / Looks familiar / Confirmed / Skipped, the category is
+      a select over the user's own chart, and Post is the only path from a staged row to the
+      ledger. Undo sits beside it, because an import you cannot undo is one you hesitate to run.
+
+      *Virtualised* is **not** done and is deliberately deferred: `DataTable` renders a page of
+      200 rows and filters in the client. A windowing library for 200 rows would be machinery
+      nobody has needed; it is worth adding when a screen actually shows thousands.
+
+      Two boundary facts the screens forced into the open. **`Money` cannot cross the RSC
+      boundary** (it is a class) and a `number` must not (it is a float), so the server formats
+      and the client positions — the client never holds an amount it could do arithmetic on.
+      And **amount inputs are `z.string()`, never `z.coerce.number()`**: coercion would parse
+      `"1234.56"` into a float before any of our code saw it, defeating the float prohibition
+      at the one boundary where a human types money.
+
+      `src/infra/container.ts` is the new composition root, and it has to be on the infra side
+      of the dependency arrow: a use case may not import infra, so `src/app/` cannot do the
+      wiring and a route should not construct seven repositories itself.
+- [x] **Delete `features/accounts/`, `features/transactions/`, `features/networth/`.**
+      **Done when** nothing imports them and the app still builds. Substituted per F3: all
+      three died with v1 in Phase F. What remains under `features/` is `sync/`, which Phase 6
+      removes with the rest of the v1 surface.
 
 **Gate:** a year of real statements imports, categorises, and the register and net worth
 agree with a hand-checked spreadsheet to the paisa.
+
+**Gate status: met.** `tests/banking-year.spec.ts` is the hand-checked spreadsheet, written as
+a fixture that emits 84 statement lines across FY2026-27 **and** keeps its own running balance
+and per-category totals in exact paise, with arithmetic that never touches the ledger. Three
+independently-derived answers are then compared and must agree to the paisa: the fixture's own
+running total, the closing balance printed on the last line, and `BalanceQuery.balanceOf`'s
+`SUM` over postings — with the pure `BalanceCalculator` fold as a fourth. Every category total
+and every month's inflow and outflow match the tally exactly, nothing lands in
+`Expenses:Uncategorized`, and re-importing the same year under a different file hash offers
+nothing to post and leaves the balance unchanged. Amounts deliberately carry paise that do not
+divide evenly, because a rounding bug hides perfectly behind round numbers.
 
 ---
 
@@ -1075,7 +1203,7 @@ existing file, proven by doing it once.
 | F | Foundation — delete v1, auth on libSQL, layout migration, green gate | 4 | ✔ Complete (4/4) |
 | 0 | Guardrails | 4 | ✔ Complete (4/4) |
 | 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 29 | ✔ Complete (29/29 + 5 unplanned) — all seven subsections; **both gates met** |
-| 2 | Banking | 9 | ☐ Not started |
+| 2 | Banking | 9 | ✔ Complete (9/9) — gate met |
 | 3 | Credit cards | 7 | ☐ Not started |
 | 4 | Deposits, retirement, loans | 10 | ☐ Not started |
 | 5 | Investments | 10 | ☐ Not started |
