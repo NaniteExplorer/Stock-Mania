@@ -327,3 +327,210 @@ export class FinancialYear extends ValueObject {
     return this.label;
   }
 }
+
+/* ═══ MarketCalendar ═════════════════════════════════════════════════════ */
+
+export type ExchangeMic = "XNSE" | "XBOM";
+
+/**
+ * NSE trading holidays, transcribed from the exchange's published annual
+ * circulars (nseindia.com/resources/exchange-communication-holidays).
+ *
+ * Shipped as data rather than fetched, for the same reason the Cost Inflation
+ * Index table is: it changes once a year by published notice, and a network
+ * dependency would mean a day-change calculation can fail because a website is
+ * down.
+ *
+ * BSE's *trading* holidays are identical to NSE's — only clearing holidays
+ * differ, and settlement calendars are not modelled — so one table serves both.
+ * Muhurat sessions are deliberately excluded: they are ceremonial sessions held
+ * on days that are otherwise holidays, and treating one as a normal trading day
+ * would make it a valid previous-trading-day for a day-change comparison.
+ */
+const NSE_TRADING_HOLIDAYS: Readonly<Record<number, readonly string[]>> = {
+  2015: ["01-26", "02-17", "03-06", "04-02", "04-03", "04-14", "05-01", "09-17", "09-25", "10-02", "10-22", "11-25", "12-25"],
+  2016: ["01-26", "03-07", "03-24", "03-25", "04-14", "04-15", "04-19", "07-06", "08-15", "09-05", "09-13", "10-11", "10-12", "10-31", "11-14"],
+  2017: ["01-26", "02-24", "03-13", "04-04", "04-14", "05-01", "06-26", "08-15", "08-25", "10-02", "10-19", "10-20", "12-25"],
+  2018: ["01-26", "02-13", "03-02", "03-29", "03-30", "05-01", "08-15", "08-22", "09-13", "09-20", "10-02", "10-18", "11-07", "11-08", "11-23", "12-25"],
+  2019: ["03-04", "03-21", "04-17", "04-19", "04-29", "05-01", "06-05", "08-12", "08-15", "09-02", "09-10", "10-02", "10-08", "10-28", "11-12", "12-25"],
+  2020: ["02-21", "03-10", "04-02", "04-06", "04-10", "04-14", "05-01", "05-25", "10-02", "11-16", "11-30", "12-25"],
+  2021: ["01-26", "03-11", "03-29", "04-02", "04-14", "04-21", "05-13", "07-21", "08-19", "09-10", "10-15", "11-04", "11-05", "11-19"],
+  2022: ["01-26", "03-01", "03-18", "04-14", "04-15", "05-03", "08-09", "08-15", "08-31", "10-05", "10-24", "10-26", "11-08"],
+  2023: ["01-26", "03-07", "03-30", "04-04", "04-07", "04-14", "05-01", "06-28", "08-15", "09-19", "10-02", "10-24", "11-14", "11-27", "12-25"],
+  2024: ["01-22", "01-26", "03-08", "03-25", "03-29", "04-11", "04-17", "05-01", "05-20", "06-17", "07-17", "08-15", "10-02", "11-01", "11-15", "12-25"],
+  2025: ["02-26", "03-14", "03-31", "04-10", "04-14", "04-18", "05-01", "08-15", "08-27", "10-02", "10-21", "10-22", "11-05", "12-25"],
+  2026: ["01-26", "02-15", "03-04", "03-21", "03-31", "04-01", "04-03", "04-14", "05-01", "08-15", "08-26", "09-14", "10-02", "10-20", "11-09", "12-25"],
+  2027: ["01-26", "03-08", "03-24", "04-02", "04-14", "05-01", "08-15", "09-03", "10-02", "10-29", "11-19", "12-25"],
+};
+
+const COVERAGE_FROM = "2015-01-01";
+const COVERAGE_THROUGH = "2027-12-31";
+
+/**
+ * Raised rather than guessed.
+ *
+ * Past the transcribed years the only honest answers are "throw" or "flag the
+ * guess". Silently falling back to weekend-skipping would return a plausible
+ * wrong date — a Monday day-change comparing against a public holiday — and
+ * nothing downstream could detect it.
+ */
+export class CalendarCoverageError extends Error {
+  constructor(date: CalendarDate, through: CalendarDate) {
+    super(
+      `No market-calendar data for ${date.toISO()} — coverage ends ${through.toISO()}. ` +
+        "Add the exchange's published holiday list for that year to core/time.ts.",
+    );
+    this.name = "CalendarCoverageError";
+  }
+}
+
+/**
+ * Trading days for an Indian exchange.
+ *
+ * Why this exists rather than "skip weekends": a day-change figure on a Monday
+ * must compare against Friday, and volatility annualises over trading days, not
+ * calendar days. Both are wrong without a holiday table, and wrong by an amount
+ * small enough to look right.
+ */
+export class MarketCalendar {
+  private static readonly cache = new Map<ExchangeMic, MarketCalendar>();
+
+  private constructor(
+    readonly mic: ExchangeMic,
+    private readonly holidays: ReadonlySet<string>,
+    readonly coverageFrom: CalendarDate,
+    readonly coverageThrough: CalendarDate,
+  ) {}
+
+  static of(mic: ExchangeMic): MarketCalendar {
+    const cached = MarketCalendar.cache.get(mic);
+    if (cached) return cached;
+
+    const dates = new Set<string>();
+    for (const [year, days] of Object.entries(NSE_TRADING_HOLIDAYS)) {
+      for (const monthDay of days) dates.add(`${year}-${monthDay}`);
+    }
+    const calendar = new MarketCalendar(
+      mic,
+      dates,
+      CalendarDate.parse(COVERAGE_FROM),
+      CalendarDate.parse(COVERAGE_THROUGH),
+    );
+    MarketCalendar.cache.set(mic, calendar);
+    return calendar;
+  }
+
+  static nse(): MarketCalendar {
+    return MarketCalendar.of("XNSE");
+  }
+
+  static bse(): MarketCalendar {
+    return MarketCalendar.of("XBOM");
+  }
+
+  isWithinCoverage(date: CalendarDate): boolean {
+    return date.isOnOrAfter(this.coverageFrom) && date.isOnOrBefore(this.coverageThrough);
+  }
+
+  private assertCovered(date: CalendarDate): void {
+    if (!this.isWithinCoverage(date)) {
+      throw new CalendarCoverageError(date, this.coverageThrough);
+    }
+  }
+
+  private isTradingDayUnchecked(date: CalendarDate): boolean {
+    const weekday = date.toUtcInstant().getUTCDay();
+    if (weekday === 0 || weekday === 6) return false;
+    return !this.holidays.has(date.toISO());
+  }
+
+  /** Weekends and published holidays are not trading days. */
+  isTradingDay(date: CalendarDate): boolean {
+    this.assertCovered(date);
+    return this.isTradingDayUnchecked(date);
+  }
+
+  /** The most recent trading day strictly before `date`. */
+  previousTradingDay(date: CalendarDate): CalendarDate {
+    this.assertCovered(date);
+    let cursor = date.plusDays(-1);
+    // A holiday run plus a weekend spans a few days at most; the bound stops a
+    // mistranscribed table turning into an infinite loop.
+    for (let step = 0; step < 30; step++) {
+      if (!this.isWithinCoverage(cursor)) {
+        throw new CalendarCoverageError(cursor, this.coverageThrough);
+      }
+      if (this.isTradingDayUnchecked(cursor)) return cursor;
+      cursor = cursor.plusDays(-1);
+    }
+    throw new Error(
+      `No trading day within 30 days before ${date.toISO()} — the holiday table is wrong.`,
+    );
+  }
+
+  /** The next trading day strictly after `date`. */
+  nextTradingDay(date: CalendarDate): CalendarDate {
+    this.assertCovered(date);
+    let cursor = date.plusDays(1);
+    for (let step = 0; step < 30; step++) {
+      if (!this.isWithinCoverage(cursor)) {
+        throw new CalendarCoverageError(cursor, this.coverageThrough);
+      }
+      if (this.isTradingDayUnchecked(cursor)) return cursor;
+      cursor = cursor.plusDays(1);
+    }
+    throw new Error(
+      `No trading day within 30 days after ${date.toISO()} — the holiday table is wrong.`,
+    );
+  }
+
+  /**
+   * A previous trading day that never throws, flagged when the answer is
+   * weekend-only because the date falls outside coverage.
+   *
+   * UI paths use this: a staleness badge must still render for a date whose
+   * holiday list we do not have, and it must not claim more precision than it has.
+   */
+  previousTradingDayApprox(date: CalendarDate): { date: CalendarDate; approximate: boolean } {
+    if (this.isWithinCoverage(date) && this.isWithinCoverage(date.plusDays(-10))) {
+      return { date: this.previousTradingDay(date), approximate: false };
+    }
+    let cursor = date.plusDays(-1);
+    for (;;) {
+      const weekday = cursor.toUtcInstant().getUTCDay();
+      if (weekday !== 0 && weekday !== 6) return { date: cursor, approximate: true };
+      cursor = cursor.plusDays(-1);
+    }
+  }
+
+  /**
+   * Trading days in the half-open range `(from, to]` — the count a volatility
+   * annualisation needs. Half-open because a return series has one observation
+   * per *transition*, not per date.
+   */
+  tradingDaysBetween(from: CalendarDate, to: CalendarDate): number {
+    this.assertCovered(from);
+    this.assertCovered(to);
+    if (from.isOnOrAfter(to)) return 0;
+    let count = 0;
+    let cursor = from.plusDays(1);
+    while (cursor.isOnOrBefore(to)) {
+      if (this.isTradingDayUnchecked(cursor)) count++;
+      cursor = cursor.plusDays(1);
+    }
+    return count;
+  }
+
+  /** Every trading day in an inclusive range. */
+  tradingDays(range: DateRange): readonly CalendarDate[] {
+    this.assertCovered(range.start);
+    this.assertCovered(range.end);
+    const days: CalendarDate[] = [];
+    let cursor = range.start;
+    while (cursor.isOnOrBefore(range.end)) {
+      if (this.isTradingDayUnchecked(cursor)) days.push(cursor);
+      cursor = cursor.plusDays(1);
+    }
+    return days;
+  }
+}

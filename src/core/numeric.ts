@@ -257,3 +257,188 @@ export class Percentage extends ValueObject {
     return `${this.toFixed()}%`;
   }
 }
+
+/* ═══ Rate ═══════════════════════════════════════════════════════════════ */
+
+/**
+ * How a year is measured when turning an annual rate into a period accrual.
+ *
+ * Naming it is the point. `30-CALCULATIONS.md` §4.1 requires ACT/365F for retail
+ * return reporting, and a formula that silently picks its own year length is the
+ * difference between a correct XIRR and a plausible one. Indian lending quotes
+ * both conventions, so both exist here and neither is a default.
+ */
+export type DayCount =
+  /** Actual days elapsed over a fixed 365-day year. The retail convention. */
+  | "ACT_365F"
+  /** Actual days over 360. Money-market convention. */
+  | "ACT_360"
+  /** 30-day months over a 360-day year. Some loan schedules. */
+  | "THIRTY_360";
+
+const RATE_SCALE = 10;
+const RATE_FACTOR = pow10(RATE_SCALE);
+/** A percentage is per hundred, so a rate as a fraction divides by 100 more. */
+const RATE_PERCENT_DENOMINATOR = 100n * RATE_FACTOR;
+
+const RATE_PATTERN = /^-?(\d+)(?:\.(\d+))?$/;
+
+/**
+ * An annualised rate, exact to ten decimal places, carrying its day count.
+ *
+ * Separate from `Percentage` because the two answer different questions. A
+ * percentage is a ratio — 18% GST applies to an amount and is done. A rate is a
+ * ratio *per unit of time*, so it cannot be applied to money without also saying
+ * over what period and against what year length. Conflating them is how an
+ * interest figure ends up 5/365ths wrong and nobody notices.
+ *
+ * `accrualFactor` returns an exact bigint ratio rather than a number, so it feeds
+ * `Money.timesRatio` without ever passing through a float.
+ */
+export class Rate extends ValueObject {
+  private constructor(
+    readonly scaled: bigint,
+    readonly dayCount: DayCount,
+  ) {
+    super();
+  }
+
+  static readonly SCALE = RATE_SCALE;
+
+  /** From a percent-per-annum figure: `Rate.annual("7.1")` is 7.1% p.a. */
+  static annual(percent: string | number, dayCount: DayCount = "ACT_365F"): Rate {
+    return new Rate(Rate.parseScaled(String(percent)), dayCount);
+  }
+
+  /** From a decimal fraction: `Rate.fromFraction("0.071")` is also 7.1% p.a. */
+  static fromFraction(fraction: string | number, dayCount: DayCount = "ACT_365F"): Rate {
+    const asPercent = Rate.parseScaled(String(fraction)) * 100n;
+    return new Rate(asPercent, dayCount);
+  }
+
+  static fromBasisPoints(basisPoints: number, dayCount: DayCount = "ACT_365F"): Rate {
+    if (!Number.isInteger(basisPoints)) {
+      throw new TypeError(`Basis points must be a whole number, got ${basisPoints}`);
+    }
+    // 1bp = 0.01%
+    return new Rate((BigInt(basisPoints) * RATE_FACTOR) / 100n, dayCount);
+  }
+
+  static zero(dayCount: DayCount = "ACT_365F"): Rate {
+    return new Rate(0n, dayCount);
+  }
+
+  private static parseScaled(value: string): bigint {
+    const trimmed = value.trim();
+    const negative = trimmed.startsWith("-");
+    const match = RATE_PATTERN.exec(trimmed);
+    if (!match) {
+      throw new TypeError(`Expected a decimal rate, got ${JSON.stringify(value)}`);
+    }
+    const [, whole, fraction = ""] = match;
+    const padded = fraction.padEnd(RATE_SCALE, "0").slice(0, RATE_SCALE);
+    const magnitude = BigInt(whole) * RATE_FACTOR + BigInt(padded || "0");
+    return negative ? -magnitude : magnitude;
+  }
+
+  protected components(): readonly unknown[] {
+    return [this.scaled, this.dayCount];
+  }
+
+  get isZero(): boolean {
+    return this.scaled === 0n;
+  }
+
+  get isNegative(): boolean {
+    return this.scaled < 0n;
+  }
+
+  /** The same rate as a percentage, for display. Truncated to Percentage's scale. */
+  get percent(): Percentage {
+    return Percentage.fromScaled(this.scaled / pow10(RATE_SCALE - 6));
+  }
+
+  daysInYear(): 360 | 365 {
+    return this.dayCount === "ACT_365F" ? 365 : 360;
+  }
+
+  private assertSameDayCount(other: Rate): void {
+    if (this.dayCount !== other.dayCount) {
+      throw new TypeError(
+        `Cannot combine a ${this.dayCount} rate with a ${other.dayCount} one — ` +
+          "convert one explicitly, because the year lengths differ.",
+      );
+    }
+  }
+
+  plus(other: Rate): Rate {
+    this.assertSameDayCount(other);
+    return new Rate(this.scaled + other.scaled, this.dayCount);
+  }
+
+  minus(other: Rate): Rate {
+    this.assertSameDayCount(other);
+    return new Rate(this.scaled - other.scaled, this.dayCount);
+  }
+
+  times(factor: number): Rate {
+    if (!Number.isInteger(factor)) {
+      throw new TypeError(`Rate.times takes a whole factor; got ${factor}.`);
+    }
+    return new Rate(this.scaled * BigInt(factor), this.dayCount);
+  }
+
+  /** The per-period rate for `n` compounding periods a year — the `r` in an EMI. */
+  perPeriod(periodsPerYear: number): Rate {
+    if (!Number.isInteger(periodsPerYear) || periodsPerYear <= 0) {
+      throw new RangeError(`periodsPerYear must be a positive whole number, got ${periodsPerYear}`);
+    }
+    return new Rate(this.scaled / BigInt(periodsPerYear), this.dayCount);
+  }
+
+  /**
+   * The exact accrual ratio for a period, as `{ numerator, denominator }`.
+   *
+   * Returned as a bigint pair rather than a number so it can be handed straight
+   * to `Money.timesRatio` — no float appears anywhere on the path from an annual
+   * rate to an accrued amount.
+   */
+  accrualFactor(days: number): { numerator: bigint; denominator: bigint } {
+    if (!Number.isInteger(days) || days < 0) {
+      throw new RangeError(`Accrual days must be a non-negative whole number, got ${days}`);
+    }
+    return {
+      numerator: this.scaled * BigInt(days),
+      denominator: RATE_PERCENT_DENOMINATOR * BigInt(this.daysInYear()),
+    };
+  }
+
+  /**
+   * Days between two dates *under this rate's convention*.
+   *
+   * ACT/365F and ACT/360 both count actual elapsed days and differ only in the
+   * denominator, which `accrualFactor` already handles. 30/360 differs in the
+   * numerator too — every month counts as 30 days — so the count has to live with
+   * the convention rather than being left to the caller to remember.
+   */
+  daysBetween(from: { year: number; month: number; day: number }, to: { year: number; month: number; day: number }): number {
+    if (this.dayCount !== "THIRTY_360") {
+      const asUtc = (d: { year: number; month: number; day: number }) =>
+        Date.UTC(d.year, d.month - 1, d.day);
+      return Math.round((asUtc(to) - asUtc(from)) / 86_400_000);
+    }
+    // US 30/360: both day-of-month values are capped at 30.
+    const d1 = Math.min(from.day, 30);
+    const d2 = from.day >= 30 ? Math.min(to.day, 30) : to.day;
+    return 360 * (to.year - from.year) + 30 * (to.month - from.month) + (d2 - d1);
+  }
+
+  toString(): string {
+    const label = this.dayCount === "ACT_365F" ? "ACT/365F" : this.dayCount === "ACT_360" ? "ACT/360" : "30/360";
+    return `${this.percent.toFixed(4)}% p.a. ${label}`;
+  }
+
+  toJSON(): { scaled: string; dayCount: DayCount } {
+    return { scaled: this.scaled.toString(), dayCount: this.dayCount };
+  }
+}

@@ -34,6 +34,36 @@ export type RoundingMode =
   | "HALF_EVEN";
 
 /**
+ * The rounding rule for each place money gets rounded, named once.
+ *
+ * The required `mode` argument already makes rounding explicit at every call
+ * site. This goes a step further: a caller names the *reason* rather than the
+ * mode, so the decision lives in one place and the same context cannot round two
+ * different ways in two different files.
+ *
+ * `30-CALCULATIONS.md` §1.2 proposes HALF_EVEN as the house standard with HALF_UP
+ * where a tax authority mandates it. For Indian practice that inverts for most of
+ * these — statutory charges and tax computation are HALF_UP — so the split is
+ * recorded per context rather than as a default plus a list of exceptions.
+ */
+export const ROUNDING = {
+  /** Tax computation. HALF_UP, per Indian practice. */
+  tax: "HALF_UP",
+  /** Brokerage, STT, exchange fees, stamp duty. HALF_UP. */
+  charge: "HALF_UP",
+  /** Splitting a total across lots or categories — see `Money.allocate`. */
+  allocation: "HALF_UP",
+  /** Interest accrual, where HALF_EVEN avoids a systematic upward drift. */
+  interest: "HALF_EVEN",
+  /** Marking a position to market, for the same reason. */
+  valuation: "HALF_EVEN",
+  /** Converting between currencies at a recorded rate. */
+  fx: "HALF_EVEN",
+} as const satisfies Record<string, RoundingMode>;
+
+export type RoundingContext = keyof typeof ROUNDING;
+
+/**
  * Divides `numerator` by `denominator`, returning an integer rounded per `mode`.
  * Sign is handled symmetrically: the magnitude is rounded, then the sign
  * reapplied, so `-5/2` and `5/2` round to the same magnitude.
@@ -391,6 +421,15 @@ export class Money extends ValueObject {
 
   isGreaterThanOrEqual(other: Money): boolean {
     return this.compareTo(other) >= 0;
+  }
+
+  /**
+   * Present because its absence forces `!a.isGreaterThan(b)` at call sites, and
+   * inverted comparisons on a boundary are where off-by-one lot-consumption bugs
+   * live — "consume while remaining <= available" is the shape the lot book wants.
+   */
+  isLessThanOrEqual(other: Money): boolean {
+    return this.compareTo(other) <= 0;
   }
 
   // ── Conversion ──────────────────────────────────────────────────────────────
