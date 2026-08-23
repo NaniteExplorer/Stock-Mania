@@ -377,13 +377,44 @@ absent, so mail was sent with `undefined` credentials rather than skipped.
       Verified as a pure move: 36 exported names before, 36 after, none added or missing;
       tests pass with no assertion edited. Two module-private `SCALE` constants collided
       when `Quantity` and `Percentage` merged and are now prefixed.*
-- [ ] **Add `Money.allocate` property test** — `sum(allocate(m, w)) === m` for generated
-      inputs. **Done when** 10k generated cases pass.
-- [ ] **Add `MarketCalendar` to `core/time.ts`** — NSE/BSE holiday table as seed data,
+- [x] **Add `Money.allocate` property test** — `sum(allocate(m, w)) === m` for generated
+      inputs. **Done when** 10k generated cases pass. Done: 10,000 runs in
+      `tests/money-properties.spec.ts`, plus three properties the box did not ask for and
+      that the generator made cheap — every part carries the sign of the total (a negative
+      total splitting into a positive part would turn a refund into a charge downstream),
+      largest-remainder monotonicity, and a lossless round-trip through `toDecimalString`,
+      which the formatting layer reads and which would make every figure on screen suspect
+      if it were lossy.
+- [x] **Add `MarketCalendar` to `core/time.ts`** — NSE/BSE holiday table as seed data,
       `previousTradingDay()`, `tradingDaysBetween()`. **Done when** day-change on a Monday
-      compares against Friday, not Sunday.
-- [ ] **Add `Rate` to `core/numeric.ts`** — annualised rates with an explicit day-count
-      (`ACT/365F`), so no formula silently picks its own year length.
+      compares against Friday, not Sunday. Done: holidays 2015-2027 transcribed from the
+      exchange circulars, one table for both venues since only clearing holidays differ.
+      Muhurat sessions are excluded deliberately — they fall on days that are otherwise
+      holidays, so counting one as a trading day would make it a valid previous-trading-day.
+
+      One decision worth recording: past the transcribed years it **throws**
+      `CalendarCoverageError` rather than degrading to weekend-skipping, because the degraded
+      answer is plausible and undetectable downstream. UI paths that must render anyway use
+      `previousTradingDayApprox`, which returns an `approximate` flag instead of pretending.
+      `calendar.spec.ts` asserts coverage extends twelve months past today, so the alarm
+      sounds before the data goes stale rather than after a wrong number ships.
+- [x] **Add `Rate` to `core/numeric.ts`** — annualised rates with an explicit day-count
+      (`ACT/365F`), so no formula silently picks its own year length. Done: kept separate
+      from `Percentage` because they answer different questions — a percentage applies to an
+      amount and is done, a rate applies per unit of time and is meaningless without a year
+      length. `accrualFactor` returns an exact bigint ratio for `Money.timesRatio`, so no
+      float appears between an annual percentage and an accrued amount, and mixing day
+      counts throws. `daysBetween` lives on `Rate` rather than the caller because 30/360
+      differs in the numerator too, and leaving that to be remembered is how an interest
+      figure ends up 5/365ths wrong.
+- [x] **Not in the original plan: a named rounding registry.**
+      `ROUNDING.{tax,charge,allocation,interest,valuation,fx}` in `core/money.ts`. The
+      required `mode` argument already makes rounding explicit; naming the *reason* rather
+      than the mode means one context cannot round two ways in two files. It also records
+      where Indian practice inverts `30` §1.2's proposed default — statutory charges and tax
+      are HALF_UP, accrual and valuation HALF_EVEN. `Money.isLessThanOrEqual` came with it:
+      its absence forces `!isGreaterThan` inversions, and inverted boundary comparisons are
+      where off-by-one lot bugs live.
 
 ### 1b — Transaction hierarchy
 
@@ -448,20 +479,73 @@ absent, so mail was sent with `undefined` credentials rather than skipped.
 
 ### 1f — Ledger infrastructure
 
-- [ ] **Consolidate schema** to `infra/db/schema.ts`, adding: `deleted_at` on every
+- [x] **Consolidate schema** to `infra/db/schema.ts`, adding: `deleted_at` on every
       user-facing table, `audit_events` (append-only), `ledger_events` (append-only),
       `account.revision`, `institutions`, `counterparties`, `fx_rates`,
       `corporate_actions`, `import_rows`, `documents`, `tax_rules` seed.
-      **Done when** migrations apply clean and no table lacks `deleted_at`.
-- [ ] **Soft delete everywhere.** All reads go through views/helpers filtering it.
-      **Done when** no code path issues a `DELETE`, and A03 has a test.
-- [ ] **Audit trail.** Every mutation writes one `audit_events` row with actor, before,
+      **Done when** migrations apply clean and no table lacks `deleted_at`. Done: 18 tables
+      became 36, adding also `projection_cache`, `provider_fetch_log`, `price_divergences`,
+      `cost_inflation_index`, `charge_rates` and `market_holidays`. Migrations squashed to
+      one baseline — justified rather than convenient: the local database held zero rows
+      across all 18 tables (checked before deleting anything) and this step renames two
+      tables and widens a unique index. Additive from here.
+
+      Two deliberate deviations. `price_quotes` puts `ingested_at` **in** the unique key,
+      because §3.8's four-column key would force a vendor correction to overwrite the
+      original and so defeat the second time axis the column exists for. And §2.1's
+      16-value `account_type` axis is **derived** rather than stored: `AccountType` keeps the
+      five values that own the debit/credit algebra, `AccountSubtype` owns presentation, and
+      `legalityRoleOf()` computes the role from the pair — so the two cannot drift apart and
+      a posting's sign still depends on `type` alone.
+
+      Tables excluded from `deleted_at` with reasons rather than silently: the append-only
+      logs and the bitemporal price/FX tables (a tombstone on an immutable log is a
+      contradiction), the seeded reference tables (keyed by natural key, so there is no row
+      to tombstone), and the rebuildable caches.
+- [x] **Seed data, as TypeScript.** `txn_type_legality` (559 rows, wildcards expanded so a
+      rejection names the exact missing row), both regimes mirrored into `tax_rules`, 25
+      years of CII, 16 charge rates, 370 holidays mirrored from `MarketCalendar`. Written as
+      TypeScript rather than SQL because every table here holds a fact the domain also reads
+      at runtime, and SQL inserts would mean two copies with the domain trusting the one
+      nobody diffed. **Done when** seeding twice writes nothing the second time and
+      `EXPENSE` appears as a source only for `REFUND`.
+- [x] **Soft delete everywhere.** All reads go through views/helpers filtering it.
+      **Done when** no code path issues a `DELETE`, and A03 has a test. Done, and the guard
+      found three hard deletes in the ported repositories. `deleteByImportBatch` was the
+      worst: it relied on `ON DELETE CASCADE` to take the postings with it, destroying the
+      evidence of what the import had done, so "undo it and tell me what changed" was
+      unanswerable. The ports now omit `delete` entirely rather than deprecating it — a
+      repository that offers a hard delete eventually has one called.
+
+      Implemented as filtered predicates rather than SQL views: 17 read predicates gained an
+      `isNull` guard and `tests/schema-guard.spec.ts` counts them against the known writers.
+      That count immediately caught `earliestPostedOn` reading unfiltered, which meant a
+      tombstoned entry could still set the start of the net-worth timeline — exactly the leak
+      a `deletedAt` column invites.
+- [x] **Audit trail.** Every mutation writes one `audit_events` row with actor, before,
       after, request id. **Done when** A02 has a test and the table has no update path.
-- [ ] **`infra/repositories.ts`** — one repository class per aggregate, all in one file.
-      Ports the three existing Drizzle repositories, which are correct.
-- [ ] **Projection cache keyed by revision.** `(scope, as_of, revision_vector)`; a
+      Done: `UnitOfWork.mutate` writes the row, one audit event, one ledger event and the
+      revision bumps as a single operation. The writers are constructor dependencies rather
+      than optional collaborators, because made optional the first path in a hurry omits
+      them, and an audit trail with a hole in it looks exactly like one without.
+      `audit.spec.ts` covers one event per mutation, **none on a failed mutation**, and one
+      request id across a multi-aggregate change.
+- [x] **`infra/repositories.ts`** — one repository class per aggregate, all in one file.
+      Ports the three existing Drizzle repositories, which are correct. Ported during the
+      layout migration and extended here with the soft-delete contract. "Which are correct"
+      proved true of their arithmetic and false of their deletes.
+- [x] **Projection cache keyed by revision.** `(scope, as_of, revision_vector)`; a
       backdated write bumps the revision and invalidates exactly the affected projections.
       **Done when** B04 has a test and a backdated 2019 entry does not invalidate 2024.
+      **This done-when is only half right, and the other half is now tested.** A backdated
+      2019 entry must not invalidate a 2024 *period* projection — an FY2024-25 income
+      statement is genuinely unaffected. It **must** invalidate a 2024 *cumulative* one: a
+      2019 opening balance certainly changes a 2024 closing balance. Erring toward "leave it
+      cached" produces a wrong number nothing detects, so `ProjectionScope` is a union and
+      the two families invalidate by different rules. A write with no accounting date
+      invalidates nothing, because it changes no balance. `minAffectedDate` uses `min()`
+      rather than assignment, so a backdated write lowers the boundary and a later one
+      leaves it alone.
 - [ ] **Nightly reproducibility job.** Recompute every projection from `ledger_events` and
       diff against cache. **Done when** an induced cache poisoning is detected.
 
@@ -737,7 +821,7 @@ existing file, proven by doing it once.
 |---|---|---|---|
 | F | Foundation — delete v1, auth on libSQL, layout migration, green gate | 4 | ✔ Complete (4/4) |
 | 0 | Guardrails | 4 | ✔ Complete (4/4) |
-| 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 27 | ◐ In progress (4/27) — 1a partial, 1g complete |
+| 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 29 | ◐ In progress (14/29) — 1a, 1f, 1g complete; 1b–1e open |
 | 2 | Banking | 9 | ☐ Not started |
 | 3 | Credit cards | 7 | ☐ Not started |
 | 4 | Deposits, retirement, loans | 10 | ☐ Not started |
