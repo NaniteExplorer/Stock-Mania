@@ -1022,26 +1022,100 @@ divide evenly, because a rounding bug hides perfectly behind round numbers.
 
 *The user's step 3.*
 
-- [ ] **`CreditCard` class** — a `CreditProduct`, negative to net worth, with statement
+- [x] **`CreditCard` class** — a `CreditProduct`, negative to net worth, with statement
       cycle, due date, limit, and `utilisation()`.
-      **Done when** a card balance reduces net worth without a special case anywhere.
-- [ ] **Billing cycle as a first-class concept.** Statement period, generated statement,
+      **Done when** a card balance reduces net worth without a special case anywhere. Done —
+      and the done-when is literally true: the sign comes from `AccountType.LIABILITY`, and
+      `netWorthContribution` is the only place it is applied. A card's balance is stored and
+      reported as a **positive amount owed**, because the account type already knows a credit
+      increases a liability and a second sign convention on top of that is how a payment ends
+      up increasing a debt.
+- [x] **Billing cycle as a first-class concept.** Statement period, generated statement,
       minimum due, actual due — so "spent this month" and "billed this cycle" are different
       and both correct. **Done when** a mid-cycle purchase appears in spend but not in the
-      current statement.
-- [ ] **Card payment is a `Transfer`, never an expense.** **Done when** paying a card
-      moves money between two accounts and inflates no expense category (invariant L12).
-- [ ] **Interest and charges.** Finance charge on revolving balance, late fee, annual fee,
+      current statement. Done, asserted in both specs.
+
+      `BillingCycleRule` generates cycles rather than storing them, which is what lets a
+      statement for any past month be reconstructed — including months before the app existed.
+      The statement day is **clamped per month**: a card with a 31st statement date has a 28th
+      in February, and a rule that produced 31 February would either throw or roll into March
+      and lose a day of spending out of every statement. A property test walks thirteen
+      consecutive cycles for generated statement days and asserts they are contiguous — no day
+      of spending may fall between two bills, and none may fall in both.
+- [x] **Card payment is a `Transfer`, never an expense.** **Done when** paying a card
+      moves money between two accounts and inflates no expense category (invariant L12). Done
+      — and it falls out of `RecordAccountTransfer` rather than being enforced in `PayCard`:
+      both sides are balance-sheet accounts, so `RecordTransaction` builds a `Transfer`, which
+      carries no category by construction. The integration spec asserts the month's expense
+      total excludes an ₹18,240 payment. The payment form has no category field to offer.
+- [x] **Interest and charges.** Finance charge on revolving balance, late fee, annual fee,
       and the reducing-balance versus flat distinction — via `Rate` with an explicit
       day-count. **Done when** a revolved balance accrues the same interest the issuer bills.
-- [ ] **Reward points as a non-money quantity.** Tracked in `Quantity`, valued only on
-      redemption. **Done when** points never enter a money column.
-- [ ] **Screens.** Card detail with cycle timeline, utilisation gauge, due-date reminder,
-      statement list.
-- [ ] **Delete card handling from `features/liabilities/`.**
+
+      **This is where my first implementation was wrong, and the test caught it.** Accruing
+      42%/365 of the balance and rounding to the paisa on each of 30 days bills ₹345.30 where
+      an issuer bills ₹345.21 — and wrong in the same direction every time, because each day's
+      rounding is up to half a paisa high. Balance-days are now summed exactly and the rate
+      applied once, which reproduces the issuer's own `principal × rate × days / 365`.
+
+      Interest is charged **per day from the previous due date**, not on an average balance:
+      ₹50,000 spent on day 2 of a revolved cycle carries ₹1,610.96 and the same spend on day 28
+      carries ₹115.07, and an average-balance model would report one number for both. Fees post
+      as two movements — the fee and its GST — because the tax is separately reportable and a
+      single ₹590 line cannot be split back without re-deriving it.
+- [x] **Reward points as a non-money quantity.** Tracked in `Quantity`, valued only on
+      redemption. **Done when** points never enter a money column. Done — `RewardPointBalance`
+      holds a `Quantity`, and the only way to get money out of it is
+      `valueIfRedeemedAt(UnitPrice)`, which takes the rate as an argument every time. Points
+      are not money until an issuer agrees to exchange them, the rate is theirs to change, and
+      it differs by route (₹0.25 against a statement, ₹0.50 against a flight) — so a points
+      balance in a money column would put an unrealised, issuer-controlled number into net
+      worth.
+
+      Points are **computed from the spends the ledger holds**, not tracked as a balance: a
+      stored points balance would be a second number nothing reconciles.
+- [x] **Screens.** Card detail with cycle timeline, utilisation gauge, due-date reminder,
+      statement list. Done — `/cards` and `/cards/[accountId]`. The statement list shows every
+      term of the identity (opening, spends, charges, payments, refunds, closing) so it visibly
+      adds up; the timeline draws the two segments that matter, spending up to the statement
+      date and interest-free time after it. "Amount due" is taken from the cycle that has most
+      recently **closed**, not from the running balance — the issuer has not billed what was
+      spent yesterday, and quoting today's debt as the amount due tells the user to pay money
+      nobody has asked for.
+- [x] **Delete card handling from `features/liabilities/`.** Substituted per F3: it died with
+      v1 in Phase F.
 
 **Gate:** a real card statement reconciles — opening balance + spends − payments + charges
 = closing balance, exactly.
+
+**Gate status: met, twice.** `tests/cards.spec.ts` asserts the identity on a worked
+HDFC-shaped statement (opening ₹18,240, four purchases, interest and its GST, an annual fee
+and its GST, a payment and a refund → ₹35,469.97) and refuses a printed figure one paisa out.
+`tests/cards-integration.spec.ts` asserts it for statements **rebuilt from postings**, where
+each movement's kind is inferred from the account on the other leg — and additionally checks
+each statement's closing balance against `BalanceQuery.balanceOf` on the statement date, so
+the two derivations must agree.
+
+Three findings worth carrying forward:
+
+  - **`REFUND` was in `TRANSACTION_KINDS` and in the legality matrix, and no class could
+    construct one.** A returned ₹1,299 purchase had nowhere to go. `Refund` is now the
+    fourteenth `Transaction` subclass, with its category on the **source**, because a refund
+    of groceries must reduce groceries — a budget that ignored it would report the month
+    overspent for a purchase that was returned. It is the one transaction type where an
+    expense account is legitimately a source, which is precisely why L07 is a rule of the
+    legality matrix rather than a blanket check.
+  - **An opening balance is not spending.** Mapped as a spend it earned reward points for
+    debt the card arrived with; it maps to a charge.
+  - **The seeded `Liabilities:Credit Cards` group account carries the card subtype**, so "every
+    account with subtype CREDIT_CARD" listed a card the user never opened — the same shape of
+    problem as the cash group accounts in Phase 2. A card is one that has stored terms or a
+    balance.
+
+The schema guard also earned its place again: it refused the new table for storing amounts
+with no currency column (a USD card's limit read back as rupees) and for a TEXT column whose
+name contained "rate". Both were fixed rather than added to the known-gap list, and migration
+0002 was regenerated before it had ever been applied.
 
 ---
 
@@ -1204,7 +1278,7 @@ existing file, proven by doing it once.
 | 0 | Guardrails | 4 | ✔ Complete (4/4) |
 | 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 29 | ✔ Complete (29/29 + 5 unplanned) — all seven subsections; **both gates met** |
 | 2 | Banking | 9 | ✔ Complete (9/9) — gate met |
-| 3 | Credit cards | 7 | ☐ Not started |
+| 3 | Credit cards | 7 | ✔ Complete (7/7) — gate met |
 | 4 | Deposits, retirement, loans | 10 | ☐ Not started |
 | 5 | Investments | 10 | ☐ Not started |
 | 6 | Reports and extras | 6 | ☐ Not started |
