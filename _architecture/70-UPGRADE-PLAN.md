@@ -618,20 +618,110 @@ absent, so mail was sent with `undefined` credentials rather than skipped.
 
 ### 1e — Pricing and providers
 
-- [ ] **Schema: make quotes bitemporal.** Widen the key to
+- [x] **Schema: make quotes bitemporal.** Widen the key to
       `(instrument, as_of, quote_type, provider)` and add `ingested_at`; corrections insert,
       never overwrite. **Done when** two providers can disagree on one date and both rows survive.
-- [ ] **`infra/providers.ts`** — the abstract provider with retry/jitter, token bucket,
+      Landed with 1f (`ingested_at` is *in* the key, so a correction cannot overwrite the
+      original); proven here. `tests/pricing-integration.spec.ts` stores NSE at ₹1,543.25 and
+      Yahoo at ₹1,600.00 for one date, keeps both, then has NSE restate to ₹1,547.80 two days
+      later — three rows, and "what did we believe on 22 August" is still answerable by
+      filtering on `ingested_at`. That last query is the whole reason the column exists, so
+      it is asserted rather than described.
+
+      One column changed: `price_minor` became **`price_scaled`** (1e8) — see `UnitPrice`
+      below.
+- [x] **`infra/providers.ts`** — the abstract provider with retry/jitter, token bucket,
       circuit breaker and timeout in the **base class**, plus the 8 concrete providers.
       **Done when** the six conformance tests pass for at least two providers per need.
-- [ ] **`domain/pricing.ts`** — `PriceBook` with priority failover, golden-record
+      Done: `ManualProvider`, `NseQuoteProvider`, `MfApiNavProvider`, `AmfiNavProvider`,
+      `IbjaMetalProvider`, `CoinGeckoProvider`, `YahooQuoteProvider`, `EcbFxProvider`. All
+      **keyless** — a key is a secret to store, rotate and leak, and Alpha Vantage's 25
+      requests a day is not a data source.
+
+      The HTTP client is a port and the clock is injected, so **CI never touches the
+      network** and the resilience tests are exact rather than slow: `VirtualRuntime.sleep`
+      advances a counter, which makes "waits 60 seconds, then probes" instant and makes the
+      rate-limit assertion about the code's arithmetic instead of about machine load.
+
+      Three corrections came out of writing the conformance suite, which is the argument for
+      having one:
+
+      - **A provider must refuse a class it does not declare.** Asked for a bond, six of them
+        returned whatever their endpoint gave for that symbol. Requirement 6 is now enforced
+        in the base class rather than declared and trusted — a plausible number for the wrong
+        question is worse than an error.
+      - **AMFI reported an unknown scheme as an empty success.** A scheme present with no NAV
+        published today and a scheme absent from the file entirely are different facts;
+        collapsing them hides a mistyped scheme code forever.
+      - **"Two providers per need" does not hold for `OTHER`,** and asserting it anyway would
+        have made the check meaningless everywhere else. A flat has no second opinion to get.
+        The test asserts one provider there, by name, with the reason.
+- [x] **`domain/pricing.ts`** — `PriceBook` with priority failover, golden-record
       selection, >1% divergence flagging, and the four-rung resolution ladder.
       **Done when** a missing price yields `null` with a staleness reason, and an induced
-      provider outage fails over with no user-visible error.
-- [ ] **`FxBook`** — `fx_rates` table with `provider_rate` and `user_rate`, resolved by the
-      same ladder. **Done when** a user-asserted rate overrides the provider for tax.
-- [ ] **Backfill on add.** Adding an instrument fetches full available history.
-      **Done when** XIRR over a period predating signup is computable.
+      provider outage fails over with no user-visible error. Done, and the ladder is
+      *exact → carried forward with an age → stale past the class threshold → `null` with a
+      reason*. Staleness is per asset class rather than global: four days for anything
+      exchange-traded (a Friday close read on Tuesday after a Monday holiday is the common
+      case), **one for crypto** because a market that never closes has no weekend to blame,
+      thirty for assets valued by assertion.
+
+      `refresh()` asks **every** healthy capable provider, not just the first. Stopping at
+      the first would make the 1% cross-check impossible, and that cross-check is the only
+      thing between a vendor's bad tick and a user's net worth. Divergences are compared
+      *pairwise* rather than each-against-the-winner, because a third provider agreeing with
+      neither of the first two is precisely the case worth seeing.
+
+      Every provider tried appears in the report with what it returned — `OK`,
+      `SKIPPED_UNHEALTHY`, `SKIPPED_UNSUPPORTED` or `FAILED` — so an outage reads as a named
+      absence rather than as prices that quietly stopped updating.
+- [x] **Not in the original plan: `UnitPrice`, because `Money` cannot hold a price.**
+      This was a live bug, not a refinement. AMFI publishes NAV to four decimals;
+      `Money.fromRupees("84.5612")` rounds to ₹84.56 without complaint, and on a 10,000-unit
+      holding that is **₹12 of invented value** introduced at ingestion where nothing can see
+      it. A price is a rate, like `Rate` and unlike `Money`, so `UnitPrice` (scale 1e8,
+      currency-tagged) holds it and rounding happens once, at `price.times(quantity)`,
+      half-even so a portfolio of many holdings does not drift upward.
+
+      Worth recording how it was found: the first version of the golden-price test compared
+      `rupees("84.5612")` against `rupees("84.5612")`, so **both sides rounded identically
+      and the assertion passed while being wrong.** A golden value that is computed the same
+      way as the thing it checks is not a golden value.
+- [x] **`FxBook`** — `fx_rates` table with `provider_rate` and `user_rate`, resolved by the
+      same ladder. **Done when** a user-asserted rate overrides the provider for tax. Done: a
+      user's rate for a date beats every provider whatever its priority, is scoped to that
+      user, and is stored as a **row beside** the vendor's rather than as an update to it —
+      "why is this year's return different from what I filed" needs both numbers.
+
+      ECB publishes EUR-based rates only, so USD/INR is `(EUR/INR) ÷ (EUR/USD)` and the
+      division is **recorded on the row**: invariant Q06 (a rate and its inverse agree within
+      0.1%) is only checkable if the derivation is visible. `convert()` has no
+      assume-parity branch and no zero — an unconvertible amount is a typed failure, because
+      quietly treating $1,100 as ₹1,100 is wrong by a factor of 84 and looks perfectly
+      reasonable.
+
+      This also closes 1b's open half: `FxConversion.impliedRate()` now has something to
+      reconcile against.
+- [x] **Backfill on add.** Adding an instrument fetches full available history.
+      **Done when** XIRR over a period predating signup is computable. Done, and
+      **resumable**: the range asked for comes from `coverage()` — a `MIN`/`MAX` over stored
+      rows — so re-adding an instrument, retrying a failed job, or adding a second holding of
+      something already tracked costs one small request instead of twenty years of them. A
+      provider that rate-limits is one you can only afford to ask once.
+
+      The gate is asserted directly: a fund with NAV history from 2019 is backfilled, and a
+      valuation for 2021-04-01 resolves `EXACT` at ₹42.17 — 1,000 units worth ₹42,170.00,
+      which is the figure XIRR needs for a date years before signup. A backfill where every
+      provider failed is a typed *failure* rather than an empty success, because a caller
+      that cannot tell the difference renders a blank chart as though the history never
+      existed.
+- [x] **Q01–Q06 at the ingestion boundary.** BLOCK invariants (Q01 positive price, Q02
+      `ingested_at ≥ as_of`, Q04 currency match) reject the row; WARN invariants (Q03 a >50%
+      day-over-day move, Q06 inverse consistency) accept it and say so. That difference is
+      the point: **a 60% one-day move is sometimes real**, and a rule that dropped it would
+      silently lose a crash. Q01 is also a database CHECK, and the integration spec proves
+      both layers reject it — a domain test standing in for a constraint is how an invariant
+      ends up enforced nowhere.
 
 ### 1f — Ledger infrastructure
 
@@ -984,7 +1074,7 @@ existing file, proven by doing it once.
 |---|---|---|---|
 | F | Foundation — delete v1, auth on libSQL, layout migration, green gate | 4 | ✔ Complete (4/4) |
 | 0 | Guardrails | 4 | ✔ Complete (4/4) |
-| 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 29 | ◐ In progress (25/29) — 1a, 1b, 1c, 1d, 1f, 1g complete; **both gates met**; 1e open |
+| 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 29 | ✔ Complete (29/29 + 5 unplanned) — all seven subsections; **both gates met** |
 | 2 | Banking | 9 | ☐ Not started |
 | 3 | Credit cards | 7 | ☐ Not started |
 | 4 | Deposits, retirement, loans | 10 | ☐ Not started |
