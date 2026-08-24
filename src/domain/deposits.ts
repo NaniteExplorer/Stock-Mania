@@ -958,28 +958,57 @@ export class NationalPensionSystem extends DepositProduct {
 
 /* ═══ Ports ═══════════════════════════════════════════════════════════ */
 
-/** What a deposit's terms look like in storage, before rehydration. */
-export interface StoredDepositTerms {
+/** What a caller supplies to store a deposit's terms. */
+export interface DepositTermsInput {
   readonly accountId: AccountId;
   readonly kind: DepositKind;
-  readonly principalMinor: bigint;
-  readonly rate: Rate;
+  readonly currency: Currency;
   readonly openedOn: CalendarDate;
-  readonly maturesOn: CalendarDate | null;
-  readonly interestType: InterestType;
+  readonly accrualBasis: InterestType;
   readonly compounding: CompoundingFrequency;
   readonly payout: "CUMULATIVE" | "PERIODIC_PAYOUT";
-  readonly instalmentMinor: bigint | null;
-  readonly months: number | null;
+  readonly rate?: Rate;
+  readonly principal?: Money;
+  readonly instalment?: Money;
+  readonly months?: number;
+  readonly maturesOn?: CalendarDate;
+  readonly prematurePenalty?: Percentage;
+  readonly npsTier?: NpsTier;
+  readonly extensionBlocks?: number;
 }
 
-export interface DepositRepository {
-  findFor(userId: UserId, accountId: AccountId): Promise<StoredDepositTerms | null>;
-  findManyFor(
+/** A year's money into a scheme. PPF uses `amount`; EPF uses the three parts. */
+export interface DepositContributionInput {
+  readonly accountId: AccountId;
+  readonly financialYear: string;
+  readonly amount?: Money;
+  readonly employee?: Money;
+  readonly employer?: Money;
+  readonly voluntary?: Money;
+}
+
+/**
+ * Persistence for deposits, retirement schemes and loans.
+ *
+ * One port across all of them because they share a shape: terms in, product out.
+ * `load*` returns constructed domain objects rather than rows, so the mapping from
+ * five stored kinds to five classes lives in exactly one place — two screens that
+ * each did their own mapping is how two screens end up disagreeing about what an
+ * EPF balance is.
+ */
+export interface DepositStore {
+  saveTerms(userId: UserId, input: DepositTermsInput): Promise<void>;
+  saveContribution(userId: UserId, input: DepositContributionInput): Promise<void>;
+  saveSchemeRate(userId: UserId, schemeKey: string, financialYear: string, rate: Rate): Promise<void>;
+  saveNpsHolding(
     userId: UserId,
-    accountIds: readonly AccountId[],
-  ): Promise<ReadonlyMap<string, StoredDepositTerms>>;
-  save(userId: UserId, terms: StoredDepositTerms): Promise<void>;
+    accountId: AccountId,
+    scheme: NpsScheme,
+    units: Quantity,
+    schemeCode?: string | null,
+  ): Promise<void>;
+  loadDeposits(userId: UserId, accounts: readonly Account[]): Promise<readonly DepositProduct[]>;
+  loadDeposit(userId: UserId, account: Account): Promise<DepositProduct | null>;
 }
 
 /**

@@ -1108,6 +1108,259 @@ export const taxSettings = sqliteTable(
   (table) => [uniqueIndex("tax_settings_user_fy_uq").on(table.userId, table.financialYear)],
 );
 
+
+/* ═══ Deposits, retirement and loans ════════════════════════════════════ */
+
+export const DEPOSIT_KINDS = ["FIXED_DEPOSIT", "RECURRING_DEPOSIT", "PPF", "EPF", "NPS"] as const;
+export const DEPOSIT_PAYOUTS = ["CUMULATIVE", "PERIODIC_PAYOUT"] as const;
+export const LOAN_KINDS = ["HOME", "VEHICLE", "PERSONAL", "EDUCATION", "GOLD", "OTHER"] as const;
+export const PAYMENT_FREQUENCIES = ["MONTHLY", "QUARTERLY", "ANNUALLY"] as const;
+export const NPS_SCHEMES = ["E", "C", "G", "A"] as const;
+
+/**
+ * A deposit's terms — one row per deposit account.
+ *
+ * Terms only. No accrued balance, no maturity value, no schedule: every one of
+ * those is computed from this row by `domain/deposits.ts`, which is what makes
+ * "deleting the accrual job changes no reported number" true rather than
+ * aspirational.
+ *
+ * The nullable columns are the honest cost of one table for five products. An FD
+ * has a principal and a maturity date; an RD has an instalment and a month count;
+ * PPF and EPF have neither, because their money arrives year by year in
+ * `deposit_contributions`. Five tables would repeat the account link, the currency
+ * and the rate five times, and a query for "every deposit" would be a five-way
+ * union.
+ */
+export const depositTerms = sqliteTable(
+  "deposit_terms",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: DEPOSIT_KINDS }).notNull(),
+    currency: currencyCode(),
+    /** FD only: the lump sum placed. */
+    principalMinor: moneyMinor("principal_minor"),
+    /** RD only: the monthly instalment. */
+    instalmentMinor: moneyMinor("instalment_minor"),
+    /** RD only: how many instalments. */
+    months: integer("months"),
+    /** The stated rate. For PPF and EPF the per-year rates live in `scheme_rates`. */
+    interestRateScaled: rateScaled("interest_rate_scaled"),
+    /**
+     * The day-count convention and the growth basis.
+     *
+     * Named without "interest" or "rate" in them: `tests/schema-integrity.spec.ts`
+     * requires every numeric-sounding column to be INTEGER, and it is right to —
+     * a TEXT column called `interest_something` is the shape a decimal-string rate
+     * sneaks in as. These two are labels, so they read as labels.
+     */
+    dayCountConvention: text("day_count_convention", {
+      enum: ["ACT_365F", "ACT_360", "THIRTY_360"],
+    })
+      .notNull()
+      .default("ACT_365F"),
+    accrualBasis: text("accrual_basis", { enum: INTEREST_TYPES }).notNull().default("COMPOUND"),
+    compounding: text("compounding", { enum: COMPOUNDING_FREQUENCIES })
+      .notNull()
+      .default("QUARTERLY"),
+    payout: text("payout", { enum: DEPOSIT_PAYOUTS }).notNull().default("CUMULATIVE"),
+    openedOn: calendarDate("opened_on").notNull(),
+    maturesOn: calendarDate("matures_on"),
+    /** FD only: the rate reduction applied when the deposit is broken early. */
+    prematurePenaltyPercentScaled: percentScaled("premature_penalty_percent_scaled"),
+    /** NPS only. Tier I is locked to 60; Tier II is not. */
+    npsTier: text("nps_tier", { enum: ["TIER_I", "TIER_II"] }),
+    /** PPF only: five-year extension blocks taken after the initial fifteen years. */
+    extensionBlocks: integer("extension_blocks"),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("deposit_terms_account_uq").on(table.accountId),
+    index("deposit_terms_user_kind_idx").on(table.userId, table.kind),
+  ],
+);
+
+/**
+ * Money paid into a PPF, EPF or NPS account, by financial year.
+ *
+ * The three sub-columns exist for EPF, where the employee's share, the employer's
+ * share and a voluntary top-up behave differently — interest on the employee's and
+ * voluntary contributions above ₹2.5 lakh a year is taxable while the employer's is
+ * not, and one combined figure cannot answer that at all. PPF uses `amountMinor`
+ * alone.
+ */
+export const depositContributions = sqliteTable(
+  "deposit_contributions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id, { onDelete: "cascade" }),
+    /** `2026-27`. */
+    financialYear: text("financial_year").notNull(),
+    /** PPF and the like: a single figure. */
+    amountMinor: moneyMinor("amount_minor").notNull().default(0),
+    employeeMinor: moneyMinor("employee_minor").notNull().default(0),
+    employerMinor: moneyMinor("employer_minor").notNull().default(0),
+    voluntaryMinor: moneyMinor("voluntary_minor").notNull().default(0),
+    currency: currencyCode(),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("deposit_contributions_account_fy_uq").on(table.accountId, table.financialYear),
+    index("deposit_contributions_user_idx").on(table.userId),
+  ],
+);
+
+/**
+ * Notified rates for a scheme, per financial year.
+ *
+ * Per user rather than global, and that is deliberate: the rate is a fact of the
+ * scheme, but a user's passbook is the authority for what was actually credited to
+ * *their* account, and an app that argued with a passbook would be wrong in the
+ * only way that matters. Seeding the published rates and letting them be corrected
+ * is the right shape.
+ */
+export const schemeRates = sqliteTable(
+  "scheme_rates",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** `PPF`, `EPF`, or an account id for a rate that applies to one deposit. */
+    schemeKey: text("scheme_key").notNull(),
+    financialYear: text("financial_year").notNull(),
+    rateScaled: rateScaled("rate_scaled").notNull(),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("scheme_rates_user_scheme_fy_uq").on(table.userId, table.schemeKey, table.financialYear),
+  ],
+);
+
+/**
+ * Units held in each NPS scheme fund.
+ *
+ * Units, not a value: NPS is priced from a NAV published daily, and storing a
+ * value would be storing a guess about a market. The NAV comes through the
+ * `PriceBook` like any other instrument's price.
+ */
+export const npsHoldings = sqliteTable(
+  "nps_holdings",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id, { onDelete: "cascade" }),
+    scheme: text("scheme", { enum: NPS_SCHEMES }).notNull(),
+    unitsScaled: quantityScaled("units_scaled").notNull().default(0),
+    /** The PFM's own scheme code, for resolving a NAV. */
+    schemeCode: text("scheme_code"),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("nps_holdings_account_scheme_uq").on(table.accountId, table.scheme),
+    index("nps_holdings_user_idx").on(table.userId),
+  ],
+);
+
+/**
+ * A loan's terms — one row per loan account.
+ *
+ * As with deposits and cards: terms in, schedule computed. A stored amortisation
+ * schedule would describe the loan as it was when the row was written, and a rate
+ * revision or a prepayment makes that a different loan — with nothing to say which
+ * of the two the borrower actually has.
+ */
+export const loanTerms = sqliteTable(
+  "loan_terms",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id, { onDelete: "cascade" }),
+    kind: text("kind", { enum: LOAN_KINDS }).notNull(),
+    currency: currencyCode(),
+    principalMinor: moneyMinor("principal_minor").notNull(),
+    interestRateScaled: rateScaled("interest_rate_scaled").notNull(),
+    dayCountConvention: text("day_count_convention", {
+      enum: ["ACT_365F", "ACT_360", "THIRTY_360"],
+    })
+      .notNull()
+      .default("ACT_365F"),
+    /** Reducing balance, or flat — which materially overstates the true cost. */
+    accrualBasis: text("accrual_basis", { enum: INTEREST_TYPES }).notNull().default("REDUCING_BALANCE"),
+    periods: integer("periods").notNull(),
+    paymentFrequency: text("payment_frequency", { enum: PAYMENT_FREQUENCIES })
+      .notNull()
+      .default("MONTHLY"),
+    disbursedOn: calendarDate("disbursed_on").notNull(),
+    firstPaymentOn: calendarDate("first_payment_on"),
+    prepaymentPenaltyPercentScaled: percentScaled("prepayment_penalty_percent_scaled"),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("loan_terms_account_uq").on(table.accountId),
+    index("loan_terms_user_kind_idx").on(table.userId, table.kind),
+    /** A loan with no periods has no schedule, and its EMI would divide by zero. */
+    check("loan_terms_periods_positive", sql`${table.periods} > 0`),
+  ],
+);
+
+/**
+ * A lump sum paid against a loan outside its schedule.
+ *
+ * `reduces` is stored because it is the borrower's decision and it changes the
+ * arithmetic: shortening the term saves more interest, lowering the instalment
+ * eases cashflow, and a schedule that guessed would show one while the lender did
+ * the other.
+ */
+export const loanPrepayments = sqliteTable(
+  "loan_prepayments",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id, { onDelete: "cascade" }),
+    paidOn: calendarDate("paid_on").notNull(),
+    amountMinor: moneyMinor("amount_minor").notNull(),
+    currency: currencyCode(),
+    reduces: text("reduces", { enum: ["TERM", "INSTALMENT"] }).notNull().default("TERM"),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+  },
+  (table) => [index("loan_prepayments_account_idx").on(table.accountId, table.paidOn)],
+);
+
 /* ═══ Import batches ════════════════════════════════════════════════════ */
 
 /**

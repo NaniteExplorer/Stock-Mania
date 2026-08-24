@@ -16,11 +16,13 @@ import { Currency, Money } from "@/core/money";
 import { CalendarDate, DateRange } from "@/core/time";
 import { Account, AccountCode, AccountId, AccountRepository, AccountSubtype, AccountType, AccountTypeName, PostingDirection } from "@/domain/accounts";
 import { BillingCycleRule, CardTerms, CardTermsRepository } from "@/domain/assets";
+import { DepositContributionInput, DepositProduct, DepositStore, DepositTermsInput, EmployeeProvidentFund, FixedDeposit, NationalPensionSystem, PublicProvidentFund, RecurringDeposit } from "@/domain/deposits";
+import { Loan, LoanStore, LoanTermsInput, StoredLoanTerms, loanFor } from "@/domain/loans";
 import { Percentage, Quantity, Rate, UnitPrice } from "@/core/numeric";
 import { FxQuote, FxRateRepository, PriceDivergence, PriceSourceType, Quote, QuoteRepository, QuoteType, StoredFxRate } from "@/domain/pricing";
 import { AccountBalance, AccountFlow, BalanceQuery, MonthlyFlow, Posting, PostingId, PostingStatus, StoredTransaction, Transaction, TransactionId, TransactionKind, TransactionPage, TransactionQuery, TransactionRepository, TransactionSource, TypeTotals } from "@/domain/transactions";
 import { BudgetRepository, CategoryRuleRepository, ImportBatchRecord, ImportBatchStatus, ImportRepository, ImportRowStatus, KeywordRule, MovementIntent, RowDirection, SelfPayeeQuery, StagedRow, StoredBudget } from "@/domain/banking";
-import { budgets, categoryRules, counterparties, creditCardTerms, fxRates, importBatches, importRows, ledgerAccounts, postings, priceDivergences, priceQuotes, transactions } from "@/infra/db/schema";
+import { budgets, categoryRules, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, ledgerAccounts, loanPrepayments, loanTerms, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, transactions } from "@/infra/db/schema";
 import { Database } from "@/infra/db/client";
 import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, max, min, or, sql } from "drizzle-orm";
 /* ═══ AccountMapper ═══════════════════════════════════════════════════ */
@@ -1607,5 +1609,356 @@ export const CardTermsMapper = {
       gstOnCharges: Percentage.fromScaled(row.gstOnChargesPercentScaled),
       pointsPerHundred: Quantity.fromScaled(row.pointsPerHundredScaled),
     };
+  },
+};
+
+/* ═══ DrizzleDepositRepository ════════════════════════════════════════ */
+
+/**
+ * Deposits, their contributions, their notified rates and their NPS units.
+ *
+ * One repository across four tables because they are one aggregate: a PPF account
+ * without its yearly contributions and rates cannot compute anything, so loading
+ * them separately would only create the opportunity to forget one. `load` returns
+ * the constructed domain object, not rows — the mapping from five products to five
+ * classes is knowledge this layer already needs, and duplicating it in every caller
+ * is how two screens end up disagreeing about what an EPF balance is.
+ */
+export class DrizzleDepositRepository implements DepositStore, LoanStore {
+  constructor(private readonly db: Database) {}
+
+  async saveTerms(userId: UserId, input: DepositTermsInput): Promise<void> {
+    const row = {
+      id: newUuid(),
+      userId: userId.value,
+      accountId: input.accountId.value,
+      kind: input.kind,
+      currency: input.currency.code,
+      principalMinor: input.principal?.toMinorNumber() ?? null,
+      instalmentMinor: input.instalment?.toMinorNumber() ?? null,
+      months: input.months ?? null,
+      interestRateScaled: input.rate?.toScaledNumber() ?? null,
+      dayCountConvention: input.rate?.dayCount ?? ("ACT_365F" as const),
+      accrualBasis: input.accrualBasis,
+      compounding: input.compounding,
+      payout: input.payout,
+      openedOn: input.openedOn.toISO(),
+      maturesOn: input.maturesOn?.toISO() ?? null,
+      prematurePenaltyPercentScaled: input.prematurePenalty?.toScaledNumber() ?? null,
+      npsTier: input.npsTier ?? null,
+      extensionBlocks: input.extensionBlocks ?? null,
+      updatedAt: new Date(),
+    };
+    await this.db
+      .insert(depositTerms)
+      .values(row)
+      .onConflictDoUpdate({
+        target: depositTerms.accountId,
+        set: { ...row, id: undefined, deletedAt: null },
+      });
+  }
+
+  async saveContribution(userId: UserId, input: DepositContributionInput): Promise<void> {
+    const row = {
+      id: newUuid(),
+      userId: userId.value,
+      accountId: input.accountId.value,
+      financialYear: input.financialYear,
+      amountMinor: input.amount?.toMinorNumber() ?? 0,
+      employeeMinor: input.employee?.toMinorNumber() ?? 0,
+      employerMinor: input.employer?.toMinorNumber() ?? 0,
+      voluntaryMinor: input.voluntary?.toMinorNumber() ?? 0,
+      currency: (input.amount ?? input.employee ?? Money.zero()).currency.code,
+      updatedAt: new Date(),
+    };
+    await this.db
+      .insert(depositContributions)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [depositContributions.accountId, depositContributions.financialYear],
+        set: { ...row, id: undefined, deletedAt: null },
+      });
+  }
+
+  async saveSchemeRate(
+    userId: UserId,
+    schemeKey: string,
+    financialYear: string,
+    rate: Rate,
+  ): Promise<void> {
+    const row = {
+      id: newUuid(),
+      userId: userId.value,
+      schemeKey,
+      financialYear,
+      rateScaled: rate.toScaledNumber(),
+      updatedAt: new Date(),
+    };
+    await this.db
+      .insert(schemeRates)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [schemeRates.userId, schemeRates.schemeKey, schemeRates.financialYear],
+        set: { ...row, id: undefined, deletedAt: null },
+      });
+  }
+
+  async saveNpsHolding(
+    userId: UserId,
+    accountId: AccountId,
+    scheme: "E" | "C" | "G" | "A",
+    units: Quantity,
+    schemeCode: string | null = null,
+  ): Promise<void> {
+    const row = {
+      id: newUuid(),
+      userId: userId.value,
+      accountId: accountId.value,
+      scheme,
+      unitsScaled: units.toScaledNumber(),
+      schemeCode,
+      updatedAt: new Date(),
+    };
+    await this.db
+      .insert(npsHoldings)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [npsHoldings.accountId, npsHoldings.scheme],
+        set: { ...row, id: undefined, deletedAt: null },
+      });
+  }
+
+  async savePrepayment(
+    userId: UserId,
+    accountId: AccountId,
+    prepayment: { paidOn: CalendarDate; amount: Money; reduces: "TERM" | "INSTALMENT" },
+  ): Promise<void> {
+    await this.db.insert(loanPrepayments).values({
+      id: newUuid(),
+      userId: userId.value,
+      accountId: accountId.value,
+      paidOn: prepayment.paidOn.toISO(),
+      amountMinor: prepayment.amount.toMinorNumber(),
+      currency: prepayment.amount.currency.code,
+      reduces: prepayment.reduces,
+    });
+  }
+
+  async saveLoanTerms(userId: UserId, input: LoanTermsInput): Promise<void> {
+    const row = {
+      id: newUuid(),
+      userId: userId.value,
+      accountId: input.accountId.value,
+      kind: input.kind,
+      currency: input.principal.currency.code,
+      principalMinor: input.principal.toMinorNumber(),
+      interestRateScaled: input.annualRate.toScaledNumber(),
+      dayCountConvention: input.annualRate.dayCount,
+      accrualBasis: input.accrualBasis,
+      periods: input.periods,
+      paymentFrequency: input.frequency,
+      disbursedOn: input.disbursedOn.toISO(),
+      firstPaymentOn: input.firstPaymentOn?.toISO() ?? null,
+      prepaymentPenaltyPercentScaled: input.prepaymentPenalty?.toScaledNumber() ?? null,
+      updatedAt: new Date(),
+    };
+    await this.db
+      .insert(loanTerms)
+      .values(row)
+      .onConflictDoUpdate({
+        target: loanTerms.accountId,
+        set: { ...row, id: undefined, deletedAt: null },
+      });
+  }
+
+  /** Every deposit the user holds, constructed. */
+  async loadDeposits(userId: UserId, accounts: readonly Account[]): Promise<readonly DepositProduct[]> {
+    const byId = new Map(accounts.map((account) => [account.id.value, account]));
+    const [terms, contributions, rates, holdings] = await Promise.all([
+      this.db
+        .select()
+        .from(depositTerms)
+        .where(and(eq(depositTerms.userId, userId.value), isNull(depositTerms.deletedAt))),
+      this.db
+        .select()
+        .from(depositContributions)
+        .where(and(eq(depositContributions.userId, userId.value), isNull(depositContributions.deletedAt))),
+      this.db
+        .select()
+        .from(schemeRates)
+        .where(and(eq(schemeRates.userId, userId.value), isNull(schemeRates.deletedAt))),
+      this.db
+        .select()
+        .from(npsHoldings)
+        .where(and(eq(npsHoldings.userId, userId.value), isNull(npsHoldings.deletedAt))),
+    ]);
+
+    return terms.flatMap((row) => {
+      const account = byId.get(row.accountId);
+      if (!account) return [];
+      const built = DepositMapper.toDomain(account, row, contributions, rates, holdings);
+      return built ? [built] : [];
+    });
+  }
+
+  async loadDeposit(
+    userId: UserId,
+    account: Account,
+  ): Promise<DepositProduct | null> {
+    const all = await this.loadDeposits(userId, [account]);
+    return all[0] ?? null;
+  }
+
+  /** Every loan the user holds, constructed with its prepayments. */
+  async loadLoans(userId: UserId, accounts: readonly Account[]): Promise<readonly Loan[]> {
+    const byId = new Map(accounts.map((account) => [account.id.value, account]));
+    const [terms, prepayments] = await Promise.all([
+      this.db.select().from(loanTerms).where(and(eq(loanTerms.userId, userId.value), isNull(loanTerms.deletedAt))),
+      this.db
+        .select()
+        .from(loanPrepayments)
+        .where(and(eq(loanPrepayments.userId, userId.value), isNull(loanPrepayments.deletedAt))),
+    ]);
+
+    return terms.flatMap((row) => {
+      const account = byId.get(row.accountId);
+      if (!account) return [];
+      return [LoanMapper.toDomain(account, row, prepayments)];
+    });
+  }
+}
+
+type DepositTermsRow = typeof depositTerms.$inferSelect;
+type DepositContributionRow = typeof depositContributions.$inferSelect;
+type SchemeRateRow = typeof schemeRates.$inferSelect;
+type NpsHoldingRow = typeof npsHoldings.$inferSelect;
+type LoanTermsRow = typeof loanTerms.$inferSelect;
+type LoanPrepaymentRow = typeof loanPrepayments.$inferSelect;
+
+export const DepositMapper = {
+  /**
+   * Builds the right subclass, or `null` when the row cannot support one.
+   *
+   * `null` rather than a throw or a default: a half-entered FD with no maturity
+   * date should be skipped by the list screen and fixed by its owner, not crash
+   * every other deposit's valuation with it.
+   */
+  toDomain(
+    account: Account,
+    row: DepositTermsRow,
+    contributions: readonly DepositContributionRow[],
+    rates: readonly SchemeRateRow[],
+    holdings: readonly NpsHoldingRow[],
+  ): DepositProduct | null {
+    const currency = Currency.of(row.currency);
+    const rate = (): Rate =>
+      Rate.fromScaled(row.interestRateScaled ?? 0, row.dayCountConvention);
+    const mine = contributions.filter((entry) => entry.accountId === row.accountId);
+    const rateMap = (schemeKey: string) =>
+      new Map(
+        rates
+          .filter((entry) => entry.schemeKey === schemeKey || entry.schemeKey === row.accountId)
+          .map((entry) => [entry.financialYear, Rate.fromScaled(entry.rateScaled, "ACT_365F")]),
+      );
+
+    switch (row.kind) {
+      case "FIXED_DEPOSIT": {
+        if (row.principalMinor === null || row.maturesOn === null) return null;
+        return new FixedDeposit(account, {
+          principal: Money.fromMinor(row.principalMinor, currency),
+          rate: rate(),
+          openedOn: CalendarDate.parse(row.openedOn),
+          maturesOn: CalendarDate.parse(row.maturesOn),
+          interestType: row.accrualBasis === "SIMPLE" ? "SIMPLE" : "COMPOUND",
+          compounding: row.compounding,
+          payout: row.payout,
+          prematureWithdrawalPenalty:
+            row.prematurePenaltyPercentScaled === null
+              ? undefined
+              : Percentage.fromScaled(row.prematurePenaltyPercentScaled),
+        });
+      }
+      case "RECURRING_DEPOSIT": {
+        if (row.instalmentMinor === null || row.months === null) return null;
+        return new RecurringDeposit(account, {
+          instalment: Money.fromMinor(row.instalmentMinor, currency),
+          rate: rate(),
+          openedOn: CalendarDate.parse(row.openedOn),
+          months: row.months,
+          compounding: row.compounding,
+        });
+      }
+      case "PPF":
+        return new PublicProvidentFund(account, {
+          openedOn: CalendarDate.parse(row.openedOn),
+          contributions: mine.map((entry) => ({
+            financialYear: entry.financialYear,
+            amount: Money.fromMinor(entry.amountMinor, Currency.of(entry.currency)),
+          })),
+          ratesByFinancialYear: rateMap("PPF"),
+          extensionBlocks: row.extensionBlocks ?? undefined,
+        });
+      case "EPF":
+        return new EmployeeProvidentFund(account, {
+          openedOn: CalendarDate.parse(row.openedOn),
+          contributions: mine.map((entry) => ({
+            financialYear: entry.financialYear,
+            employee: Money.fromMinor(entry.employeeMinor, Currency.of(entry.currency)),
+            employer: Money.fromMinor(entry.employerMinor, Currency.of(entry.currency)),
+            voluntary: Money.fromMinor(entry.voluntaryMinor, Currency.of(entry.currency)),
+          })),
+          ratesByFinancialYear: rateMap("EPF"),
+          // ₹2.5 lakh from FY2021-22; stored per user would be better once a
+          // second threshold exists, and hard-coding it here would hide it.
+          taxableContributionThreshold: Money.fromRupees("250000", currency),
+        });
+      case "NPS":
+        return new NationalPensionSystem(account, {
+          tier: row.npsTier ?? "TIER_I",
+          openedOn: CalendarDate.parse(row.openedOn),
+          holdings: holdings
+            .filter((entry) => entry.accountId === row.accountId)
+            .map((entry) => ({
+              scheme: entry.scheme,
+              units: Quantity.fromScaled(entry.unitsScaled),
+            })),
+        });
+    }
+  },
+};
+
+export const LoanMapper = {
+  toDomain(
+    account: Account,
+    row: LoanTermsRow,
+    prepayments: readonly LoanPrepaymentRow[],
+  ): Loan {
+    const currency = Currency.of(row.currency);
+    const mine = prepayments
+      .filter((entry) => entry.accountId === row.accountId)
+      .map((entry) => ({
+        on: CalendarDate.parse(entry.paidOn),
+        amount: Money.fromMinor(entry.amountMinor, Currency.of(entry.currency)),
+        reduces: entry.reduces,
+      }));
+
+    const stored: StoredLoanTerms = {
+      accountId: AccountId.from(row.accountId),
+      kind: row.kind,
+      principal: Money.fromMinor(row.principalMinor, currency),
+      annualRate: Rate.fromScaled(row.interestRateScaled, row.dayCountConvention),
+      periods: row.periods,
+      frequency: row.paymentFrequency,
+      disbursedOn: CalendarDate.parse(row.disbursedOn),
+      firstPaymentOn: row.firstPaymentOn ? CalendarDate.parse(row.firstPaymentOn) : null,
+      interestType: row.accrualBasis === "FLAT" ? "FLAT" : "REDUCING_BALANCE",
+      prepaymentPenalty:
+        row.prepaymentPenaltyPercentScaled === null
+          ? null
+          : Percentage.fromScaled(row.prepaymentPenaltyPercentScaled),
+      prepayments: mine,
+    };
+
+    return loanFor(account, stored);
   },
 };

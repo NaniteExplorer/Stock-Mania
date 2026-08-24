@@ -637,15 +637,47 @@ export interface StoredLoanTerms {
   readonly firstPaymentOn: CalendarDate | null;
   readonly interestType: "REDUCING_BALANCE" | "FLAT";
   readonly prepaymentPenalty: Percentage | null;
+  /**
+   * Lump sums already paid against the loan.
+   *
+   * Part of the stored terms rather than applied to a built schedule afterwards: a
+   * prepayment changes what interest every later period accrues, so a schedule
+   * built without it and adjusted later would be a different — and wrong — set of
+   * numbers.
+   */
+  readonly prepayments?: readonly Prepayment[];
 }
 
-export interface LoanRepository {
-  findFor(userId: UserId, accountId: AccountId): Promise<StoredLoanTerms | null>;
-  findManyFor(
+/** What a caller supplies to store a loan's terms. */
+export interface LoanTermsInput {
+  readonly accountId: AccountId;
+  readonly kind: LoanKind;
+  readonly principal: Money;
+  readonly annualRate: Rate;
+  readonly periods: number;
+  readonly frequency: PaymentFrequency;
+  readonly disbursedOn: CalendarDate;
+  readonly firstPaymentOn?: CalendarDate;
+  readonly accrualBasis: "REDUCING_BALANCE" | "FLAT";
+  readonly prepaymentPenalty?: Percentage;
+}
+
+/**
+ * Persistence for loans.
+ *
+ * `loadLoans` returns built `Loan` objects with their prepayments already folded
+ * into the terms, because a schedule computed without a prepayment and adjusted
+ * afterwards is a different set of numbers — every period after the lump sum
+ * accrues different interest.
+ */
+export interface LoanStore {
+  saveLoanTerms(userId: UserId, input: LoanTermsInput): Promise<void>;
+  savePrepayment(
     userId: UserId,
-    accountIds: readonly AccountId[],
-  ): Promise<ReadonlyMap<string, StoredLoanTerms>>;
-  save(userId: UserId, terms: StoredLoanTerms): Promise<void>;
+    accountId: AccountId,
+    prepayment: { paidOn: CalendarDate; amount: Money; reduces: "TERM" | "INSTALMENT" },
+  ): Promise<void>;
+  loadLoans(userId: UserId, accounts: readonly Account[]): Promise<readonly Loan[]>;
 }
 
 /** Builds the right subclass for stored terms. */
@@ -659,6 +691,7 @@ export function loanFor(account: Account, terms: StoredLoanTerms): Loan {
     firstPaymentOn: terms.firstPaymentOn ?? undefined,
     interestType: terms.interestType,
     prepaymentPenalty: terms.prepaymentPenalty ?? undefined,
+    prepayments: terms.prepayments,
   };
   switch (terms.kind) {
     case "HOME":

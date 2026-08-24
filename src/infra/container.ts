@@ -9,6 +9,7 @@ import {
   DrizzleBudgetRepository,
   DrizzleCardTermsRepository,
   DrizzleCategoryRuleRepository,
+  DrizzleDepositRepository,
   DrizzleImportRepository,
   DrizzleSelfPayeeQuery,
   DrizzleTransactionRepository,
@@ -35,6 +36,20 @@ import {
   StageStatementImport,
   UndoImport,
 } from "@/app/banking.usecases";
+import {
+  BookAccruedInterest,
+  ComparePayoff,
+  ListDeposits,
+  ListLoans,
+  OpenDeposit,
+  OpenLoan,
+  RecordLoanInstalment,
+  RecordPrepayment,
+  RecordSchemeContribution,
+  SetNpsUnits,
+  SetSchemeRate,
+  ValueNps,
+} from "@/app/lending.usecases";
 import { getCurrentSession } from "@/infra/auth/session";
 
 /**
@@ -61,6 +76,7 @@ export const services = cache(() => {
   const selfPayees = new DrizzleSelfPayeeQuery(db);
   const budgets = new DrizzleBudgetRepository(db);
   const cardTerms = new DrizzleCardTermsRepository(db);
+  const lending = new DrizzleDepositRepository(db);
 
   const record = new RecordTransaction(accounts, journal);
   const openAccount = new OpenAccount(accounts, journal, clock);
@@ -68,7 +84,7 @@ export const services = cache(() => {
 
   return {
     clock,
-    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms },
+    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms, lending },
     ledger: {
       seedChart: new SeedChartOfAccounts(accounts),
       openAccount,
@@ -97,6 +113,20 @@ export const services = cache(() => {
       view: new ViewCard(accounts, journal, balances, cardTerms),
       pay: new PayCard(accounts, transfer),
       accrueCharges: new AccrueCardCharges(accounts, journal, balances, cardTerms, record),
+    },
+    lending: {
+      openDeposit: new OpenDeposit(openAccount, lending, record),
+      listDeposits: new ListDeposits(accounts, lending, balances),
+      valueNps: new ValueNps(accounts, lending),
+      bookAccruedInterest: new BookAccruedInterest(accounts, lending, balances, record),
+      recordContribution: new RecordSchemeContribution(accounts, lending, record),
+      setSchemeRate: new SetSchemeRate(lending),
+      setNpsUnits: new SetNpsUnits(lending),
+      openLoan: new OpenLoan(accounts, openAccount, lending, record),
+      listLoans: new ListLoans(accounts, lending, balances),
+      recordInstalment: new RecordLoanInstalment(accounts, lending, record),
+      recordPrepayment: new RecordPrepayment(accounts, lending, record),
+      comparePayoff: new ComparePayoff(accounts, lending, balances),
     },
   };
 });
