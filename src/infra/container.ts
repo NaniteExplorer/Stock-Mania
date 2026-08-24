@@ -2,6 +2,9 @@ import "server-only";
 
 import { cache } from "react";
 import { SystemClock, UserId } from "@/core/kernel";
+import { Currency } from "@/core/money";
+import { CalendarDate } from "@/core/time";
+import type { IdentifierType, PricedAssetClass, QuoteType } from "@/domain/pricing";
 import { db } from "@/infra/db/client";
 import {
   DrizzleAccountRepository,
@@ -11,6 +14,10 @@ import {
   DrizzleCategoryRuleRepository,
   DrizzleDepositRepository,
   DrizzleImportRepository,
+  DrizzleInstrumentRepository,
+  DrizzleLotRepository,
+  DrizzleCorporateActionRepository,
+  DrizzleQuoteRepository,
   DrizzleSelfPayeeQuery,
   DrizzleTransactionRepository,
 } from "@/infra/repositories";
@@ -50,7 +57,33 @@ import {
   SetSchemeRate,
   ValueNps,
 } from "@/app/lending.usecases";
+import {
+  AddInstrument,
+  ApplyCorporateAction,
+  CompareDisposalMethods,
+  PortfolioReturns,
+  RealisedGains,
+  RecordBuy,
+  RecordSell,
+  ValuePortfolio,
+} from "@/app/investing.usecases";
+import { PriceBook } from "@/domain/pricing";
+import { FetchHttpClient, shippedQuoteProviders, systemRuntime } from "@/infra/providers";
 import { getCurrentSession } from "@/infra/auth/session";
+
+/**
+ * How an instrument's own identifier vocabulary maps to a provider's.
+ *
+ * A `MarketInstrument` says `SYMBOL` and `SLUG`; the price ladder says `TICKER`,
+ * `METAL` and `COIN`. Neither vocabulary is wrong for its side, so the translation
+ * lives at the boundary rather than one side adopting the other's words.
+ */
+const IDENTIFIER_TYPES: Readonly<Record<string, IdentifierType>> = {
+  SYMBOL: "TICKER",
+  ISIN: "ISIN",
+  SCHEME_CODE: "SCHEME_CODE",
+  SLUG: "METAL",
+};
 
 /**
  * The composition root.
@@ -77,6 +110,50 @@ export const services = cache(() => {
   const budgets = new DrizzleBudgetRepository(db);
   const cardTerms = new DrizzleCardTermsRepository(db);
   const lending = new DrizzleDepositRepository(db);
+  const instruments = new DrizzleInstrumentRepository(db);
+  const lots = new DrizzleLotRepository(db);
+  const quotes = new DrizzleQuoteRepository(db);
+
+  /*
+   * The price ladder, adapted to the one method an instrument needs.
+   *
+   * `PriceBook` takes an `InstrumentRef` with a provider-facing identifier type
+   * (`TICKER`, `SCHEME_CODE`, `METAL`, …) while `MarketInstrument.quoteKey()`
+   * speaks in its own terms (`SYMBOL`, `SLUG`). The mapping lives here, at the
+   * boundary, so neither side has to know the other's vocabulary.
+   */
+  const priceBook = new PriceBook(shippedQuoteProviders(systemRuntime(new FetchHttpClient())), quotes);
+  const prices = {
+    async priceOn(
+      ref: {
+        instrumentId: string;
+        symbol: string;
+        assetClass: PricedAssetClass;
+        currency: Currency;
+        identifierType: string;
+      },
+      asOf: CalendarDate,
+      quoteType?: QuoteType,
+    ) {
+      const resolution = await priceBook.priceOn(
+        {
+          instrumentId: ref.instrumentId,
+          symbol: ref.symbol,
+          assetClass: ref.assetClass,
+          currency: ref.currency,
+          identifierType: IDENTIFIER_TYPES[ref.identifierType] ?? "TICKER",
+        },
+        asOf,
+        quoteType,
+      );
+      return {
+        price: resolution.price,
+        pricedOn: resolution.pricedOn,
+        isStale: resolution.isStale,
+        rung: resolution.rung,
+      };
+    },
+  };
 
   const record = new RecordTransaction(accounts, journal);
   const openAccount = new OpenAccount(accounts, journal, clock);
@@ -84,7 +161,7 @@ export const services = cache(() => {
 
   return {
     clock,
-    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms, lending },
+    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms, lending, instruments, lots, quotes },
     ledger: {
       seedChart: new SeedChartOfAccounts(accounts),
       openAccount,
@@ -113,6 +190,29 @@ export const services = cache(() => {
       view: new ViewCard(accounts, journal, balances, cardTerms),
       pay: new PayCard(accounts, transfer),
       accrueCharges: new AccrueCardCharges(accounts, journal, balances, cardTerms, record),
+    },
+    investing: {
+      addInstrument: new AddInstrument(accounts, instruments, openAccount),
+      recordBuy: new RecordBuy(accounts, instruments, journal, lots),
+      recordSell: new RecordSell(accounts, instruments, journal, lots),
+      compareMethods: new CompareDisposalMethods(instruments, lots),
+      valuePortfolio: new ValuePortfolio(instruments, lots, prices),
+      realisedGains: new RealisedGains(lots),
+      applyCorporateAction: (userId: UserId) =>
+        new ApplyCorporateAction(
+          accounts,
+          instruments,
+          lots,
+          new DrizzleCorporateActionRepository(db, userId),
+          clock,
+        ),
+      corporateActions: (userId: UserId) => new DrizzleCorporateActionRepository(db, userId),
+      returns: new PortfolioReturns(
+        accounts,
+        instruments,
+        journal,
+        new ValuePortfolio(instruments, lots, prices),
+      ),
     },
     lending: {
       openDeposit: new OpenDeposit(openAccount, lending, record),

@@ -148,7 +148,14 @@ export interface InstrumentValuation {
  */
 export interface PriceLookup {
   priceOn(
-    ref: { instrumentId: string; assetClass: PricedAssetClass; currency: Currency; identifierType: string },
+    ref: {
+      instrumentId: string;
+      /** The provider-facing name — a ticker, a scheme code, a metal slug. */
+      symbol: string;
+      assetClass: PricedAssetClass;
+      currency: Currency;
+      identifierType: string;
+    },
     asOf: CalendarDate,
     quoteType?: QuoteType,
   ): Promise<{
@@ -261,6 +268,10 @@ export abstract class MarketInstrument {
     const resolved = await prices.priceOn(
       {
         instrumentId: this.id.value,
+        // The source's own code when there is one, the symbol otherwise: an AMFI
+        // scheme code is not an NSE ticker, and asking with the wrong one gets a
+        // confident answer about a different instrument.
+        symbol: key.ref ?? this.symbol,
         assetClass: key.assetClass,
         currency: this.currency,
         identifierType: key.identifierType,
