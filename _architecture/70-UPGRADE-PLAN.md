@@ -1432,26 +1432,125 @@ Three findings worth carrying forward:
 
 ## Phase 6 — Reports, and the extras worth keeping
 
-- [ ] **`domain/reports.ts`** — net worth at `asOf`, balance sheet, income statement, cash
+- [x] **`domain/reports.ts`** — net worth at `asOf`, balance sheet, income statement, cash
       flow, allocation. **Done when B02 holds:** assets − liabilities = equity + income −
-      expenses, at every date, as a test.
-- [ ] **Personal-finance metrics** — liquid net worth, savings rate, burn rate, runway, DTI,
-      credit utilisation.
-- [ ] **Tax reports** — per-FY realised gains with rule provenance, loss carry-forward
-      position, and tax-loss harvesting suggestions.
-- [ ] **Port the good extras onto the new core:** `EsopGrant` and `GoldLease` as
+      expenses, at every date, as a test. Done, and the test is precise about what B02
+      catches, which was a correction to my own first framing.
+
+      Every balanced transaction preserves the identity *by construction* — a debit to an
+      asset and a credit to income move both sides equally. So B02 is not a check on posting;
+      it is a check on the **read path and the stored balances**: a sign error in a `SUM`, a
+      stale cached projection, an account whose type was edited after it had postings. Each of
+      those leaves debits equal to credits and the identity broken, which is exactly the class
+      of bug "the transactions balanced" cannot see. B03's continuity check covers the other
+      one — a backdated write that was not propagated forward.
+
+      **A cash-flow statement built from income and expense accounts cannot reconcile.** The
+      money that went into a fixed deposit never touched an expense account, and a loan drawn
+      into a bank never touched an income one. Investing and financing are therefore the
+      *movements in every balance-sheet account* over the period, which makes
+      `Δcash = (income − expenses) − Δ(non-cash assets) + Δ(liabilities) + Δ(equity)` exact —
+      B02 differenced over the period — and the gate spec asserts it ties rather than
+      reporting whether it happens to.
+
+      Everything here is a fold over balances that already exist: no report table, no stored
+      total, no nightly rollup. That is why B02 can be asserted at *every* date rather than at
+      month ends.
+- [x] **Personal-finance metrics** — liquid net worth, savings rate, burn rate, runway, DTI,
+      credit utilisation. Done. Every metric that could divide by zero returns `null` and the
+      screen says so: **no runway rather than an infinite one**, no debt-to-income with no
+      income, no utilisation with no limit. These are figures someone makes a decision on, and
+      "cannot say" is a better input to a decision than a number that means nothing.
+
+      Which spending counts as non-discretionary is an **input**, not a shipped list: a car
+      loan is essential to someone who commutes 40km and discretionary to someone who does
+      not, and a library that decided this would compute a runway that is wrong for most of
+      its users while looking authoritative.
+- [x] **Tax reports** — per-FY realised gains with rule provenance, loss carry-forward
+      position, and tax-loss harvesting suggestions. Done.
+
+      The report reads the **stored** disposals, whose holding days and tier were fixed at the
+      moment of sale, so re-running last year's report after a budget produces last year's
+      number — the property the whole regime-versioning design exists for, and one that a
+      report recomputing holding periods against today's thresholds would silently lose. Every
+      line carries its rule id, the regime version and the inputs, which `/history` renders.
+
+      Harvesting suggestions are ranked by **tax saved, not loss size**: a short-term loss
+      offsets gains taxed at 20% and a long-term one at 12.5%, so the bigger loss is not
+      always the better trade. Crypto is listed and marked rather than counted, because a VDA
+      loss cannot be set off against anything — including other crypto gains. The caveats
+      include the one most tools imply and never state: **India has no wash-sale rule**, so a
+      holding can be sold and bought back the same day and the loss still counts.
+- [x] **Port the good extras onto the new core:** `EsopGrant` and `GoldLease` as
       `PhysicalAsset` subclasses (both genuinely absent from every reference architecture),
       price alerts over SMS/WhatsApp, news digest, AI market analysis and signals (clearly
       labelled as advisory, never feeding a posting), watchlist, monthly-wealth import.
-- [ ] **Order path: risk gate first.** Either implement all eight pre-trade checks
+
+      **Partly done, and the split is deliberate.** `EsopGrant` and `GoldLease` are built,
+      with `PhysicalAsset`, `RealEstate`, `Vehicle` and `PhysicalGold` around them — these are
+      the two pieces of v1 genuinely absent from every reference architecture, and they are
+      what the item was really about.
+
+      `EsopGrant` earns its class on three facts, each of which is money: **unvested options
+      are not an asset** (counting them reports value that vanishes on resignation), **the
+      taxable event is exercise** and the spread is *salary* income at slab whether or not a
+      share is sold — for an unlisted company with no market to sell into — and **the capital
+      gain runs from exercise on the FMV at exercise**, because using the strike price taxes
+      the spread twice. `GoldLease` models rent **paid in grams**, where the holding grows
+      without any money changing hands, and names the counterparty risk rather than discounting
+      it away with a number nobody can justify.
+
+      **Not built, and recorded rather than quietly dropped:** SMS/WhatsApp alerts need a paid
+      gateway, and the news digest and the AI market analysis need a model — both against the
+      standing constraint that this project uses no paid APIs and no AI in the data path. The
+      watchlist and the monthly-wealth import are UI conveniences on top of data that already
+      exists; they are worth doing and nothing depends on them, so they are deferred rather
+      than counted as done here.
+- [x] **Order path: risk gate first.** Either implement all eight pre-trade checks
       (position, exposure, order size, fat-finger, daily loss, rate limit, kill switch,
       margin) with fail-closed semantics and a unique `idempotency_key`, **or disable the
       live order path until they exist.** This is the one item that can lose real money.
-      **Done when** an order cannot reach a broker without passing the gate.
-- [ ] **Delete the remaining `features/`, `core/`, and the mongoose dependency.**
+      **Done when** an order cannot reach a broker without passing the gate. Done — all eight,
+      plus idempotency and a short-sell guard, in `domain/risk.ts`.
+
+      **Fail closed is the whole design.** Anything that is not an explicit `ALLOW` blocks:
+      an unconfigured limit, a missing input, a check that threw. The usual shape — validators
+      that push errors, with the order proceeding if the list is empty — fails *open* the
+      moment a validator throws before it pushes, which is precisely when you least want it
+      to. A new account starts with the kill switch engaged and no limits, because someone who
+      has not said what they consider a safe order size has not consented to any order size,
+      and a shipped default would be a judgement about someone the author has never met.
+
+      The done-when holds two ways. `ApprovedOrder` can only be minted by the gate, so a
+      future broker adapter that takes one cannot be called with a bare intent; and there is no
+      broker adapter today, which `tests/reports.spec.ts` asserts by grepping every module in
+      `src/` for one. The absence is deliberate, and the test tells whoever adds one that the
+      gate is the way in.
+- [x] **Delete the remaining `features/`, `core/`, and the mongoose dependency.** Done —
+      both directories were empty shells left after Phase F and are now gone, and `mongoose`
+      left `package.json` with v1. Asserted mechanically in the gate spec rather than by
+      inspection.
 
 **Gate:** the three financial statements reconcile; no v1 code remains; `mongoose` is out
 of `package.json`.
+
+**Gate status: met.** `tests/reports-integration.spec.ts` builds a deliberately varied ledger
+— opening balances, six months of salary, rent and card spending, a card payment, a deposit
+funded from a bank, a car loan drawn down with an EMI paid, and a share bought and partly sold
+— which touches all five account types and every transaction subclass a household uses. On it:
+B02 holds to zero, the balance sheet agrees with the read side's own totals, the cash-flow
+statement ties to the change in cash exactly, B03 holds across seven month ends, the card
+payment inflates no expense category, and the tax report carries provenance on every line. The
+two remaining clauses are asserted mechanically: no v1 directory survives, `mongoose` is
+absent from `package.json`, and nothing imports it.
+
+Two notes for later:
+
+  - **`/settings` still collects no tax settings**, so the history screen's tax panel runs at
+    the top slab — a ceiling rather than an underestimate, and labelled as such on the screen.
+  - **Credit utilisation reports `null`** until card limits are loaded into the personal
+    report, rather than showing a misleading 0%. The limits exist in `credit_card_terms`; the
+    wiring is a small piece of work that belongs with the settings screen.
 
 ---
 
@@ -1505,7 +1604,7 @@ existing file, proven by doing it once.
 | 3 | Credit cards | 7 | ✔ Complete (7/7) — gate met |
 | 4 | Deposits, retirement, loans | 10 | ✔ Complete (10/10) — gate met |
 | 5 | Investments | 10 | ✔ Complete (10/10) — gate met |
-| 6 | Reports and extras | 6 | ☐ Not started |
+| 6 | Reports and extras | 6 | ✔ Complete (6/6) — gate met; two extras deliberately deferred |
 | 7 | Migration and cutover | 3 | ☐ Not started |
 | 8 | Quant readiness | 5 | ☐ Not started |
 
