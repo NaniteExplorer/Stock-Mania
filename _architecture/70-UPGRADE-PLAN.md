@@ -792,8 +792,18 @@ absent, so mail was sent with `undefined` credentials rather than skipped.
       invalidates nothing, because it changes no balance. `minAffectedDate` uses `min()`
       rather than assignment, so a backdated write lowers the boundary and a later one
       leaves it alone.
-- [ ] **Nightly reproducibility job.** Recompute every projection from `ledger_events` and
+- [x] **Nightly reproducibility job.** Recompute every projection from `ledger_events` and
       diff against cache. **Done when** an induced cache poisoning is detected.
+      *`npm run verify:reproducibility` (`app/reproducibility.usecases.ts`,
+      `scripts/reproducibility.mjs`). **Amended, and the amendment matters:** nothing on the
+      write path fills `ledger_events` or `projection_cache` — `UnitOfWork` is their only
+      writer and no repository routes through it — so replaying the event log would have
+      diffed two empty tables and reported a pass. The job instead diffs two genuinely
+      independent recomputations over the journal (a SQL `SUM` against a TypeScript fold),
+      checks L01 in the raw rows, recomputes any cached projection that does exist, and
+      reports the empty event log as a **gap** rather than a pass. Differences exit non-zero;
+      gaps are printed and do not. The induced-corruption test is `reproducibility.spec.ts`,
+      which unbalances an entry with raw SQL and makes the two paths disagree.*
 
 ### 1g — Design system and chart kit
 
@@ -1651,28 +1661,60 @@ than a piece of work.
 
 *Not building a trading system — making sure the class design can host one.*
 
-- [ ] **`metadata` on instruments** with a Zod schema per asset class, so `Option` and
+- [x] **`metadata` on instruments** with a Zod schema per asset class, so `Option` and
       `Future` subclasses can be added without migrating live data.
-- [ ] **`Option` and `Future` as `MarketInstrument` subclasses** — strike, expiry,
+      *One `metadata` JSON column (`0005_phase8_quant_readiness`), one Zod schema per kind
+      in `domain/instruments.ts`, parsed in each leaf's own constructor. It fixed a live
+      defect on the way past: `Etf`'s underlying and `Bond`'s terms were constructor
+      arguments `MarketInstrument.of` could not pass, so a **gold ETF read back from the
+      database claimed to be an equity ETF** (12.5% long-term instead of 20% at slab) and a
+      bond's coupon was `null` for ever. Both are asserted in `instruments.spec.ts`.*
+- [x] **`Option` and `Future` as `MarketInstrument` subclasses** — strike, expiry,
       underlying, contract month, and their own `taxProfile()` (F&O is business income).
-- [ ] **Analysis hooks.** `MarketInstrument.analyse(series): InstrumentAnalysis` as the
+      *`FNO_BUSINESS` as a `TaxCategory`, `BUSINESS_NON_SPECULATIVE` as a `TaxBucket`, and a
+      `BusinessIncomeRule` at priority 450. The segregation is the money: an F&O loss may
+      not be set off against a capital gain and a capital loss may not reduce business
+      income — both directions asserted in `derivatives.spec.ts`, because a one-way wall is
+      not a wall.*
+- [x] **Analysis hooks.** `MarketInstrument.analyse(series): InstrumentAnalysis` as the
       extension point for per-instrument deep analysis, with a technical-indicator
       implementation as the first concrete example.
-- [ ] **Bar storage behind a repository interface,** so a granularity change later routes to
+      *`domain/analysis.ts`: SMA, EMA, Wilder RSI, MACD, Bollinger, ATR and realised
+      volatility (reusing `stdDev`/`TRADING_DAYS` from `portfolio.ts` rather than a second
+      copy of the sample-versus-population decision). An indicator whose window exceeds the
+      series returns `null` with a reason — never a silently shortened window, which looks
+      identical on a chart to a correct one. `Option` overrides `analyse` to add moneyness.*
+- [x] **Bar storage behind a repository interface,** so a granularity change later routes to
       a different store without anything above the repository knowing.
-- [ ] **Backtest seam.** `ExecutionVenue` interface with a simulated implementation, so a
+      *`BarRepository` shaped like `QuoteRepository`, with `price_bars` (1e8-scaled OHLC,
+      integer volume, bitemporal, check constraints making an impossible bar unstorable) and
+      an in-memory double. `bars.spec.ts` runs one conformance block against both.*
+- [x] **Backtest seam.** `ExecutionVenue` interface with a simulated implementation, so a
       future live venue is an injection, not a rewrite.
+      *`ExecutionVenue.place` takes an `ApprovedOrder`, which only `RiskGate.approve` can
+      mint, so a bare intent cannot reach a venue — asserted with `@ts-expect-error`, which
+      the typecheck enforces in both directions. `SimulatedVenue` replays a repeated
+      idempotency key rather than filling twice (I05), and refuses an unpriced market order
+      rather than inventing a fill price. `PlaceOrder` wires the two; no broker adapter is
+      in the tree.*
 
 **Gate:** adding a new asset class or a new tax regime is a single new class in a single
-existing file, proven by doing it once.
+existing file, proven by doing it once. **Met, twice.** `Option` and `Future` are two
+classes in `domain/instruments.ts` plus two entries in `MarketInstrument.of` and two in the
+metadata schema map. No engine changed to admit them: the tax engine met a new
+`TaxCategory` and the price book a new `PricedAssetClass`, both of which are data.
+`derivatives.spec.ts` greps `src/domain` and `src/app` to prove no file outside
+`instruments.ts` compares against `OPTION` or `FUTURE`.
 
 ---
 
 ## Progress
 
-**93% of the plan is done — 81 of 87 items.** Phases F and 0 through 6 are complete with
-every gate met; Phase 7 is 2 of 3, its third item blocked on the user's own v1 export; Phase 8
-has not started.
+**99% of the plan is done — 86 of 87 items.** Phases F and 0 through 6 and 8 are complete
+with every gate met. The single open item is Phase 7's third: the cutover itself, which needs
+a real `mongoexport` dump and a person's afternoon. Its runbook is written
+(`71-CUTOVER-RUNBOOK.md`) and its command, reconciliation and six-item checklist are tested
+against synthetic data.
 
 | Phase | Scope | Items | Status |
 |---|---|---|---|
@@ -1684,15 +1726,15 @@ has not started.
 | 4 | Deposits, retirement, loans | 10 | ✔ Complete (10/10) — gate met |
 | 5 | Investments | 10 | ✔ Complete (10/10) — gate met |
 | 6 | Reports and extras | 6 | ✔ Complete (6/6) — gate met; two extras deliberately deferred |
-| 7 | Migration and cutover | 3 | ◑ 2/3 (67%) — gate met on synthetic data; **cutover blocked on the real v1 export** |
-| 8 | Quant readiness | 5 | ☐ Not started (0/5) |
+| 7 | Migration and cutover | 3 | ◑ 2/3 (67%) — gate met on synthetic data; **cutover blocked on the real v1 export**; runbook staged in `71-CUTOVER-RUNBOOK.md` |
+| 8 | Quant readiness | 5 | ✔ Complete (5/5) — gate met twice |
 
 Update the status cell to `◐ In progress` / `✔ Complete (n/n)` as phases land.
 
 ### What is built
 
 Everything a household actually uses is built, on a double-entry ledger in exact integer
-money, with 37 spec files and ~1,900 assertions green.
+money, with 42 spec files and ~2,080 assertions green.
 
   - **The core** — `Money`/`Quantity`/`UnitPrice`/`Percentage`/`Rate`/`CalendarDate`, and a
     three-layer float prohibition (types, three ESLint rules, a schema-integrity spec).
@@ -1707,13 +1749,18 @@ money, with 37 spec files and ~1,900 assertions green.
   - **Deposits, retirement and loans** — FD/RD/PPF/EPF/NPS with their real rules, EMI as one
     exact expression, amortisation with the mandatory final-period adjustment, payoff
     strategies, and the effective rate by bisection.
-  - **Investments** — thirteen instrument leaves, five cost-basis methods, ten corporate
+  - **Investments** — fifteen instrument leaves, five cost-basis methods, ten corporate
     actions, XIRR/TWR/Modified Dietz, risk metrics, and a trade-book import.
   - **Reports** — the three financial statements reconciling exactly, B02 at zero at every
     date, personal metrics that return `null` rather than a meaningless number, tax reports
     and harvesting ranked by tax saved.
   - **The order path** — all eight pre-trade risk checks, fail-closed, with `ApprovedOrder`
-    mintable only by the gate and no broker adapter in the tree.
+    mintable only by the gate, an `ExecutionVenue` seam whose simulated implementation
+    replays a retried key rather than filling twice, and no broker adapter in the tree.
+  - **Quant readiness** — instrument metadata behind a Zod schema per asset class, `Option`
+    and `Future` with F&O taxed as business income and walled off from capital gains,
+    `analyse(series)` with seven indicators that report `null` rather than a shortened
+    window, and bar storage behind a repository proved against two implementations.
   - **The migration** — a v1 export replayed through the use cases, a dry run that writes
     nothing, an idempotent real run, reconciliation against v1's month-end totals, and a
     six-item cutover checklist.
@@ -1723,21 +1770,31 @@ money, with 37 spec files and ~1,900 assertions green.
   - **Phase 7, item 3 — the cutover itself.** Blocked on the user's real `mongoexport` dump.
     The command and the checklist exist; running them against real data is one person's
     afternoon, and no synthetic fixture can stand in for it.
-  - **Phase 8 — quant readiness, all five items.** `metadata` on instruments with a Zod schema
-    per asset class; `Option` and `Future` as `MarketInstrument` subclasses with F&O taxed as
-    business income; `MarketInstrument.analyse(series)` with a technical-indicator
-    implementation; bar storage behind a repository interface; an `ExecutionVenue` seam with a
-    simulated implementation. None of it is load-bearing for the app as it stands — the phase
-    exists to prove the class design can host a trading system, and its gate is to add one new
-    asset class and see it cost a single class in a single file.
   - **Deliberately deferred, recorded rather than dropped:** SMS/WhatsApp price alerts, the
     news digest and AI market analysis (all three need a paid gateway or a model, against the
     standing no-paid-API, no-AI-in-the-data-path constraint); watchlist and monthly-wealth
     import (UI conveniences on data that already exists); table virtualisation;
     reconciliation-as-a-posting-status (it would reopen L10's hole); NPS `PriceBook` wiring.
-  - **Small open wiring:** `/settings` collects no tax settings, so the history screen's tax
-    panel runs at the top slab and says so; credit utilisation reports `null` until card limits
-    reach `PersonalReport`; the Phase 1 nightly reproducibility job is still unchecked.
+  - **Small open wiring — now closed.** `/settings` collects the marginal slab rate, the LTCG
+    exemption and the regime, stored per financial year, and `/history` computes at the stored
+    rate (saying so, and saying when it is assuming the top slab instead). Credit utilisation
+    reaches `PersonalReport` from `CardTermsRepository`, and is still `null` — not 0% — when no
+    terms are loaded. The nightly reproducibility job is `npm run verify:reproducibility`.
+
+    **The job is not what this plan first specified, and the difference is the point.** It
+    asked for a replay of `ledger_events` diffed against `projection_cache`. Nothing on the
+    write path fills either table — `UnitOfWork` is their only writer and no repository routes
+    through it — so that job would have printed green ticks over two empty tables. It instead
+    diffs two independent recomputations over the journal (a SQL-side `SUM` against a
+    TypeScript fold), checks L01 in the raw rows, recomputes any cached projection that
+    exists, and **reports the empty event log as a gap rather than a pass**. Differences fail
+    it; gaps are printed and do not. `reproducibility.spec.ts` proves the two paths are
+    genuinely independent by making them disagree.
+
+  - **One latent defect it found, recorded rather than fixed:** `DrizzleBalanceQuery` does not
+    filter `postings.deleted_at`, while the journal fold does. Nothing soft-deletes a posting
+    today — a reversal is a new entry — so the two agree in practice, and the diff catches it
+    the moment that stops being true.
 
 ---
 
@@ -1754,7 +1811,7 @@ gate is ticked. Every phase adds its invariants to the suite; no phase removes a
 | Golden fixtures | Hand-verified expected values for XIRR (including the 2982.94% case), TWR, all five basis methods, each tax rule, amortisation, and a real Zerodha contract note |
 | Invariant tests | Every id in `30-CALCULATIONS.md` §8 — a violating-state test plus a generated-dataset test |
 | Conformance tests | Six per price provider, so a ninth provider is safe to add |
-| Reproducibility | Nightly recompute from `ledger_events` diffed against the projection cache |
+| Reproducibility | Two independent recomputations over the journal diffed against each other, L01 checked in the raw rows, any cached projection recomputed, and the empty event log reported as a gap rather than a pass |
 | Differential | Balances diffed against `ledger-cli` on an equivalent journal; XIRR diffed against a spreadsheet |
 
 **End-to-end, per slice.** Run the app (`npm run dev`), and for each phase drive the real
