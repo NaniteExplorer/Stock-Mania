@@ -96,7 +96,7 @@ throws(
 section("a split rescales units and leaves the money alone");
 
 const beforeSplit = lot("2024-04-01", "100", "150000");
-const afterSplit = beforeSplit.rescale(units("5"));
+const afterSplit = beforeSplit.rescale({ from: units("1"), to: units("5") });
 check("units multiply", afterSplit.remaining.toDecimalString(), "500");
 check("cost does not", afterSplit.remainingCost.toDecimalString(), "150000.00");
 check("so cost per unit falls by five", afterSplit.costPerUnit.toDecimalString(), "300.00");
@@ -401,7 +401,7 @@ section("average cost survives a split");
 
 const withSplit = book.recompute([
   event("BUY", "2024-04-01", "100", "150000", "t1"),
-  { ...event("RESCALE", "2024-09-01", "0", "0", "t2"), factor: units("5") },
+  { ...event("RESCALE", "2024-09-01", "0", "0", "t2"), ratio: { from: units("1"), to: units("5") } },
   event("SELL", "2025-06-01", "250", "100000", "t3"),
 ]);
 check("100 units became 500, 250 sold, 250 remain", withSplit.quantity.toDecimalString(), "250");

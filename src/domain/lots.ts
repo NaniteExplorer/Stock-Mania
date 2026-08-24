@@ -189,12 +189,21 @@ export class Lot extends ValueObject {
    * only how many things it was paid for. Cost *per unit* therefore falls by five,
    * which is the correct and often-surprising answer.
    */
-  rescale(factor: Quantity): Lot {
-    if (!factor.isPositive) throw new TypeError("A rescale factor must be positive.");
-    // `fromRatio` already multiplies by the scale factor, so dividing by it once
-    // more is what keeps a 1:5 split at exactly 5× rather than 5e8×.
+  rescale(ratio: { from: Quantity; to: Quantity }): Lot {
+    if (!ratio.from.isPositive || !ratio.to.isPositive) {
+      throw new TypeError("A rescale ratio needs positive quantities on both sides.");
+    }
+    /*
+     * The ratio is applied as a ratio, not as a precomputed factor, and that is a
+     * correction rather than a preference.
+     *
+     * A single factor for a 5:1 consolidation is 0.16666667 — `Quantity` holds
+     * eight decimals — so splitting 1:6 and consolidating 6:1 did **not** return
+     * the original quantity, which the round-trip property test caught. Multiplying
+     * by `to` and dividing by `from` in one exact bigint expression is reversible.
+     */
     const scale = (quantity: Quantity) =>
-      Quantity.fromRatio(quantity.scaled * factor.scaled, 10n ** 8n * 10n ** 8n);
+      Quantity.fromScaled((quantity.scaled * ratio.to.scaled) / ratio.from.scaled);
     return new Lot({
       ...this.props,
       originalQuantity: scale(this.props.originalQuantity),
@@ -555,8 +564,8 @@ export interface PositionEvent {
   /** BUY: what was paid. SELL: gross proceeds. RESCALE: unused. */
   readonly amount: Money;
   readonly charges: Money;
-  /** RESCALE only: the factor units are multiplied by. */
-  readonly factor?: Quantity;
+  /** RESCALE only: units are multiplied by `to` and divided by `from`, exactly. */
+  readonly ratio?: { readonly from: Quantity; readonly to: Quantity };
   readonly transactionId: string;
 }
 
@@ -608,9 +617,9 @@ export class AverageCostBook {
       }
 
       if (event.kind === "RESCALE") {
-        // Units change, money does not — the average per unit falls by the factor.
-        const factor = event.factor ?? Quantity.fromString("1");
-        quantity = Quantity.fromRatio(quantity.scaled * factor.scaled, 10n ** 16n);
+        // Units change, money does not — the average per unit falls by the ratio.
+        const ratio = event.ratio ?? { from: Quantity.fromString("1"), to: Quantity.fromString("1") };
+        quantity = Quantity.fromScaled((quantity.scaled * ratio.to.scaled) / ratio.from.scaled);
         continue;
       }
 
