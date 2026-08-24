@@ -1670,6 +1670,10 @@ existing file, proven by doing it once.
 
 ## Progress
 
+**93% of the plan is done — 81 of 87 items.** Phases F and 0 through 6 are complete with
+every gate met; Phase 7 is 2 of 3, its third item blocked on the user's own v1 export; Phase 8
+has not started.
+
 | Phase | Scope | Items | Status |
 |---|---|---|---|
 | F | Foundation — delete v1, auth on libSQL, layout migration, green gate | 4 | ✔ Complete (4/4) |
@@ -1680,10 +1684,60 @@ existing file, proven by doing it once.
 | 4 | Deposits, retirement, loans | 10 | ✔ Complete (10/10) — gate met |
 | 5 | Investments | 10 | ✔ Complete (10/10) — gate met |
 | 6 | Reports and extras | 6 | ✔ Complete (6/6) — gate met; two extras deliberately deferred |
-| 7 | Migration and cutover | 3 | ◑ 2/3 — gate met on synthetic data; cutover blocked on the real v1 export |
-| 8 | Quant readiness | 5 | ☐ Not started |
+| 7 | Migration and cutover | 3 | ◑ 2/3 (67%) — gate met on synthetic data; **cutover blocked on the real v1 export** |
+| 8 | Quant readiness | 5 | ☐ Not started (0/5) |
 
 Update the status cell to `◐ In progress` / `✔ Complete (n/n)` as phases land.
+
+### What is built
+
+Everything a household actually uses is built, on a double-entry ledger in exact integer
+money, with 37 spec files and ~1,900 assertions green.
+
+  - **The core** — `Money`/`Quantity`/`UnitPrice`/`Percentage`/`Rate`/`CalendarDate`, and a
+    three-layer float prohibition (types, three ESLint rules, a schema-integrity spec).
+  - **The ledger** — `Transaction` and its fourteen subclasses, four polymorphic hooks, a
+    legality matrix as data, and the L/P/Q/B/U/N/I/A invariant families as tests.
+  - **Tax** — versioned regimes, priority-ordered rules, provenance on every line, and last
+    year's report still producing last year's number after a budget.
+  - **Banking** — the statement parser in exact money, keyword categorisation, four layers of
+    duplicate detection, reconciliation, budgets with carry-over, and the four screens.
+  - **Credit cards** — billing cycles, statements, finance charges on balance-days, reward
+    points, and the statement identity proven twice.
+  - **Deposits, retirement and loans** — FD/RD/PPF/EPF/NPS with their real rules, EMI as one
+    exact expression, amortisation with the mandatory final-period adjustment, payoff
+    strategies, and the effective rate by bisection.
+  - **Investments** — thirteen instrument leaves, five cost-basis methods, ten corporate
+    actions, XIRR/TWR/Modified Dietz, risk metrics, and a trade-book import.
+  - **Reports** — the three financial statements reconciling exactly, B02 at zero at every
+    date, personal metrics that return `null` rather than a meaningless number, tax reports
+    and harvesting ranked by tax saved.
+  - **The order path** — all eight pre-trade risk checks, fail-closed, with `ApprovedOrder`
+    mintable only by the gate and no broker adapter in the tree.
+  - **The migration** — a v1 export replayed through the use cases, a dry run that writes
+    nothing, an idempotent real run, reconciliation against v1's month-end totals, and a
+    six-item cutover checklist.
+
+### What remains
+
+  - **Phase 7, item 3 — the cutover itself.** Blocked on the user's real `mongoexport` dump.
+    The command and the checklist exist; running them against real data is one person's
+    afternoon, and no synthetic fixture can stand in for it.
+  - **Phase 8 — quant readiness, all five items.** `metadata` on instruments with a Zod schema
+    per asset class; `Option` and `Future` as `MarketInstrument` subclasses with F&O taxed as
+    business income; `MarketInstrument.analyse(series)` with a technical-indicator
+    implementation; bar storage behind a repository interface; an `ExecutionVenue` seam with a
+    simulated implementation. None of it is load-bearing for the app as it stands — the phase
+    exists to prove the class design can host a trading system, and its gate is to add one new
+    asset class and see it cost a single class in a single file.
+  - **Deliberately deferred, recorded rather than dropped:** SMS/WhatsApp price alerts, the
+    news digest and AI market analysis (all three need a paid gateway or a model, against the
+    standing no-paid-API, no-AI-in-the-data-path constraint); watchlist and monthly-wealth
+    import (UI conveniences on data that already exists); table virtualisation;
+    reconciliation-as-a-posting-status (it would reopen L10's hole); NPS `PriceBook` wiring.
+  - **Small open wiring:** `/settings` collects no tax settings, so the history screen's tax
+    panel runs at the top slab and says so; credit utilisation reports `null` until card limits
+    reach `PersonalReport`; the Phase 1 nightly reproducibility job is still unchecked.
 
 ---
 
