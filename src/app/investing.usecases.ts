@@ -50,6 +50,14 @@ import {
   summarise,
   xirr,
 } from "@/domain/portfolio";
+import {
+  Decision,
+  ExecutionVenue,
+  OrderIntent,
+  RiskContext,
+  RiskGate,
+  VenueAck,
+} from "@/domain/risk";
 import { Buy, Sell, Transaction, TransactionRepository, accountRef } from "@/domain/transactions";
 import { OpenAccount } from "@/app/ledger.usecases";
 
@@ -64,6 +72,14 @@ export interface AddInstrumentInput {
   exchange?: string | null;
   quoteRef?: string | null;
   currency?: Currency;
+  /**
+   * The leaf's own facts — an option's strike and expiry, an ETF's underlying.
+   *
+   * Passed straight through to the constructor, which validates it against that
+   * leaf's Zod schema. A bad blob fails here, at registration, rather than on the
+   * first screen that reads a strike.
+   */
+  metadata?: unknown;
 }
 
 /**
@@ -123,9 +139,59 @@ export class AddInstrument
       exchange: input.exchange ?? null,
       quoteRef: input.quoteRef ?? null,
       assetAccountId: opened.value.accountId,
+      metadata: input.metadata,
     });
 
     return Ok({ instrumentId, accountId: opened.value.accountId });
+  }
+}
+
+/* ═══ Placing an order ════════════════════════════════════════════════ */
+
+export interface PlaceOrderInput {
+  userId: UserId;
+  intent: OrderIntent;
+  context: RiskContext;
+}
+
+export interface PlaceOrderOutput {
+  readonly decision: Decision;
+  /** `null` when the gate refused; the ack otherwise. */
+  readonly ack: VenueAck | null;
+}
+
+/**
+ * The order path: the gate, then the venue, and nothing in between.
+ *
+ * The use case cannot skip the gate — not by discipline but by types. `place`
+ * takes an `ApprovedOrder`, and the only way to hold one is the value
+ * `RiskGate.approve` returns. Deleting the gate call here does not compile.
+ *
+ * The venue is injected, which is the whole of the "backtest seam": a simulated
+ * venue in a test and in a backtest, a broker adapter in production, and this
+ * file unchanged between them. No broker adapter exists in the tree yet, and
+ * adding one changes the container, not this class.
+ *
+ * It records nothing in the ledger on purpose. A *fill* is what becomes a `Buy`
+ * or a `Sell`, and a fill is confirmed asynchronously by the venue — writing a
+ * trade at placement time is how a rejected order becomes a phantom holding.
+ */
+export class PlaceOrder implements UseCase<PlaceOrderInput, PlaceOrderOutput> {
+  constructor(
+    private readonly gate: RiskGate,
+    private readonly venue: ExecutionVenue,
+  ) {}
+
+  async execute(input: PlaceOrderInput): Promise<Result<PlaceOrderOutput, AppError>> {
+    const approval = this.gate.approve(input.intent, input.context);
+    if (!approval.ok) {
+      // A refusal is a result, not an error: the user asked a reasonable question
+      // and the answer is "no, because ..." — with every check's reason attached.
+      return Ok({ decision: approval.decision, ack: null });
+    }
+
+    const ack = await this.venue.place(approval.order);
+    return Ok({ decision: approval.order.decision, ack });
   }
 }
 

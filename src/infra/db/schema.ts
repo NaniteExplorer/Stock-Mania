@@ -579,6 +579,8 @@ export const INSTRUMENT_KINDS = [
   "DIGITAL_GOLD",
   "DIGITAL_SILVER",
   "CRYPTO",
+  /** Options and futures share one coarse kind: the price feed treats them alike. */
+  "DERIVATIVE",
   "OTHER",
 ] as const;
 export type InstrumentKindName = (typeof INSTRUMENT_KINDS)[number];
@@ -596,12 +598,18 @@ export const TAX_ASSET_CLASSES = [
   "GOLD",
   "CRYPTO",
   "UNLISTED",
+  /**
+   * F&O. Not a capital-gains class at all — it is the business head, and it is
+   * stored as a tax class so a past derivative trade keeps the treatment it was
+   * filed under even if the statute changes.
+   */
+  "FNO_BUSINESS",
   "OTHER",
 ] as const;
 
 export const QUOTE_SOURCES = ["MANUAL", "AMFI", "NSE", "METALS"] as const;
 
-/** The thirteen leaves of `domain/instruments.ts`, as stored. */
+/** The fifteen leaves of `domain/instruments.ts`, as stored. */
 export const INSTRUMENT_CLASSES = [
   "LISTED_EQUITY",
   "ETF",
@@ -616,6 +624,8 @@ export const INSTRUMENT_CLASSES = [
   "DIGITAL_GOLD",
   "DIGITAL_SILVER",
   "CRYPTO",
+  "OPTION",
+  "FUTURE",
 ] as const;
 
 export const instruments = sqliteTable(
@@ -657,6 +667,15 @@ export const instruments = sqliteTable(
     assetAccountId: text("asset_account_id")
       .notNull()
       .references(() => ledgerAccounts.id, { onDelete: "restrict" }),
+    /**
+     * The facts that belong to this leaf and to no other, as JSON.
+     *
+     * An option's strike and expiry, an ETF's underlying, a bond's coupon terms.
+     * One column rather than fifteen nullable ones, and validated by the leaf's
+     * own Zod schema in its constructor — so a new asset class is a new class,
+     * not a migration. Text, so nothing in here can be a float.
+     */
+    metadata: text("metadata"),
     isClosed: integer("is_closed", { mode: "boolean" }).notNull().default(false),
     deletedAt: deletedAt(),
     createdAt: createdAt(),
@@ -876,6 +895,68 @@ export const priceQuotes = sqliteTable(
     index("price_quotes_current_idx").on(table.instrumentId, table.asOf, table.supersededBy),
     /** Q01: a price is positive. Options and futures are the documented exception, and neither exists yet. */
     check("price_quotes_price_positive", sql`${table.priceScaled} > 0`),
+  ],
+);
+
+/* ═══ Bars — OHLCV series behind a repository ═══════════════════════════ */
+
+export const BAR_GRANULARITIES = ["DAY", "WEEK", "MONTH"] as const;
+
+/**
+ * Open/high/low/close/volume series, for analysis rather than valuation.
+ *
+ * Separate from `price_quotes` deliberately, and not a widening of it: a quote is
+ * *one number the app values a holding at*, resolved through a four-rung ladder
+ * and cross-checked between providers. A bar is a shape — four prices and a
+ * volume for a period — and nothing values a portfolio from one. Merging them
+ * would mean either four nullable columns on the valuation path or a ladder that
+ * has to decide which of four prices it is carrying forward.
+ *
+ * Prices are scaled by 1e8 like `price_quotes.price_scaled`, so a bar and a quote
+ * are directly comparable, and volume is a plain integer count of units. Nothing
+ * here is a float, and the check constraints make an impossible bar
+ * unstorable — `high < low` is not a value to be validated in a caller, it is a
+ * bar that does not exist.
+ */
+export const priceBars = sqliteTable(
+  "price_bars",
+  {
+    id: text("id").primaryKey(),
+    instrumentId: text("instrument_id")
+      .notNull()
+      .references(() => instruments.id, { onDelete: "cascade" }),
+    granularity: text("granularity", { enum: BAR_GRANULARITIES }).notNull().default("DAY"),
+    /** The period's date: the day, or the first day of the week or month. */
+    asOf: calendarDate("as_of").notNull(),
+    openScaled: quantityScaled("open_scaled").notNull(),
+    highScaled: quantityScaled("high_scaled").notNull(),
+    lowScaled: quantityScaled("low_scaled").notNull(),
+    closeScaled: quantityScaled("close_scaled").notNull(),
+    /** Units traded. Null when the source does not publish it — never zero for unknown. */
+    volume: integer("volume"),
+    currency: currencyCode(),
+    providerId: text("provider_id").notNull().default("manual"),
+    /** The second time axis, as on `price_quotes`: when we learned this bar. */
+    ingestedAt: timestamp("ingested_at").notNull(),
+    supersededBy: text("superseded_by"),
+  },
+  (table) => [
+    uniqueIndex("price_bars_bitemporal_uq").on(
+      table.instrumentId,
+      table.granularity,
+      table.asOf,
+      table.providerId,
+      table.ingestedAt,
+    ),
+    index("price_bars_series_idx").on(table.instrumentId, table.granularity, table.asOf),
+    check("price_bars_positive", sql`${table.lowScaled} > 0`),
+    check("price_bars_high_not_below_low", sql`${table.highScaled} >= ${table.lowScaled}`),
+    check(
+      "price_bars_open_close_within_range",
+      sql`${table.openScaled} BETWEEN ${table.lowScaled} AND ${table.highScaled}
+          AND ${table.closeScaled} BETWEEN ${table.lowScaled} AND ${table.highScaled}`,
+    ),
+    check("price_bars_volume_not_negative", sql`${table.volume} IS NULL OR ${table.volume} >= 0`),
   ],
 );
 

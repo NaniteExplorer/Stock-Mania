@@ -177,6 +177,38 @@ const TAX_RULE_ROWS: (typeof taxRules.$inferInsert)[] = [
     exemptionLimitMinor: null,
   },
   {
+    /*
+     * F&O — the business head, mirrored here so a SQL report can join it.
+     *
+     * Every rate column is NULL, which in this table means "at slab". A zero
+     * would say the opposite, and a 30% would confuse it with a VDA. The
+     * category exists in both regimes because F&O has been business income
+     * throughout; there is no budget line to version.
+     */
+    regime: "IN-FY2024",
+    taxCategory: "FNO_BUSINESS",
+    effectiveFrom: "2018-04-01",
+    effectiveTo: "2024-07-22",
+    longTermDays: null,
+    ltcgRateScaled: null,
+    stcgRateScaled: null,
+    indexationAllowed: false,
+    grandfatherDate: null,
+    exemptionLimitMinor: null,
+  },
+  {
+    regime: "IN-FY2025",
+    taxCategory: "FNO_BUSINESS",
+    effectiveFrom: "2024-07-23",
+    effectiveTo: null,
+    longTermDays: null,
+    ltcgRateScaled: null,
+    stcgRateScaled: null,
+    indexationAllowed: false,
+    grandfatherDate: null,
+    exemptionLimitMinor: null,
+  },
+  {
     // PPF, EPF and SGB-at-maturity are exempt outright: a zero rate, not a low one.
     regime: "IN-FY2025",
     taxCategory: "EXEMPT_SCHEME",

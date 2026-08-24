@@ -17,8 +17,10 @@ import {
   DrizzleInstrumentRepository,
   DrizzleLotRepository,
   DrizzleCorporateActionRepository,
+  DrizzleBarRepository,
   DrizzleQuoteRepository,
   DrizzleSelfPayeeQuery,
+  DrizzleTaxSettingsRepository,
   DrizzleTransactionRepository,
 } from "@/infra/repositories";
 import { OpenAccount, RecordTransaction, ReverseTransaction, SeedChartOfAccounts } from "@/app/ledger.usecases";
@@ -120,6 +122,8 @@ export const services = cache(() => {
   const instruments = new DrizzleInstrumentRepository(db);
   const lots = new DrizzleLotRepository(db);
   const quotes = new DrizzleQuoteRepository(db);
+  const bars = new DrizzleBarRepository(db);
+  const taxSettings = new DrizzleTaxSettingsRepository(db);
 
   /*
    * The price ladder, adapted to the one method an instrument needs.
@@ -168,7 +172,7 @@ export const services = cache(() => {
 
   return {
     clock,
-    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms, lending, instruments, lots, quotes },
+    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms, lending, instruments, lots, quotes, bars, taxSettings },
     ledger: {
       seedChart: new SeedChartOfAccounts(accounts),
       openAccount,
@@ -224,7 +228,7 @@ export const services = cache(() => {
     reports: {
       statements: new BuildStatements(balances),
       netWorthSeries: new NetWorthSeries(balances),
-      personal: new PersonalReport(accounts, balances),
+      personal: new PersonalReport(accounts, balances, cardTerms),
       tax: new TaxReport(lots, instruments),
       harvest: new SuggestHarvest(instruments, lots, prices),
     },

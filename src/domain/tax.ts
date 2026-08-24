@@ -1,4 +1,4 @@
-import { DomainError, ValueObject } from "@/core/kernel";
+import { DomainError, UserId, ValueObject } from "@/core/kernel";
 import { Money, ROUNDING } from "@/core/money";
 import { Percentage } from "@/core/numeric";
 import { CalendarDate, FinancialYear } from "@/core/time";
@@ -34,7 +34,18 @@ export type TaxCategory =
   | "UNLISTED_EQUITY"
   | "GOLD"
   | "VDA"
-  | "EXEMPT_SCHEME";
+  | "EXEMPT_SCHEME"
+  /**
+   * Futures and options.
+   *
+   * Not a capital gain at all: F&O is **non-speculative business income** under
+   * §43(5)(d), taxed at the slab rate with no holding-period benefit, and its
+   * losses may be set off only against business income — never against a capital
+   * gain. Treating it as a capital gain is the single most common F&O filing
+   * error, and it goes both ways: it understates tax on a profitable year and
+   * overstates the relief available in a losing one.
+   */
+  | "FNO_BUSINESS";
 
 export type GainTerm = "SHORT_TERM" | "LONG_TERM" | "EXEMPT" | "SLAB";
 
@@ -45,6 +56,8 @@ export type TaxBucket =
   | "LTCG_OTHER"
   | "SLAB"
   | "FLAT_VDA"
+  /** F&O and other non-speculative business income. Segregated from every capital bucket. */
+  | "BUSINESS_NON_SPECULATIVE"
   | "EXEMPT";
 
 export type TaxableEventKind =
@@ -52,6 +65,8 @@ export type TaxableEventKind =
   | "DIVIDEND"
   | "INTEREST"
   | "SLAB_INCOME"
+  /** A closed derivative position. Its own kind so no capital-gain rule claims it. */
+  | "BUSINESS_INCOME"
   | "OTHER";
 
 /**
@@ -219,9 +234,19 @@ export class LossLedger {
    */
   private eligible(bucket: TaxBucket): typeof this.available {
     if (bucket === "FLAT_VDA") return [];
+    /*
+     * Business income and capital gains do not meet.
+     *
+     * An F&O loss set off against an equity gain is the error this branch
+     * exists to make impossible, and it is a two-way wall: a capital loss
+     * cannot reduce business income either. Both directions are §72's, not a
+     * preference.
+     */
+    const business = bucket === "BUSINESS_NON_SPECULATIVE";
+    if (business) return this.available.filter((l) => l.bucket === "BUSINESS_NON_SPECULATIVE");
     const longTerm = bucket === "LTCG_EQUITY" || bucket === "LTCG_OTHER";
     return this.available
-      .filter((l) => l.bucket !== "FLAT_VDA")
+      .filter((l) => l.bucket !== "FLAT_VDA" && l.bucket !== "BUSINESS_NON_SPECULATIVE")
       .filter((l) => {
         const lossIsLongTerm = l.bucket === "LTCG_EQUITY" || l.bucket === "LTCG_OTHER";
         return lossIsLongTerm ? longTerm : true;
@@ -450,7 +475,12 @@ export class CapitalGainClassificationRule extends TaxRule {
   readonly priority = 400;
 
   appliesTo(event: TaxableEvent, ctx: AssessmentContext): boolean {
-    return !ctx.accumulator.exempt && event.kind === "CAPITAL_GAIN";
+    // F&O never reaches here: a contract has no holding period to classify.
+    return (
+      !ctx.accumulator.exempt &&
+      event.kind === "CAPITAL_GAIN" &&
+      event.taxCategory !== "FNO_BUSINESS"
+    );
   }
 
   compute(event: TaxableEvent, ctx: AssessmentContext): void {
@@ -527,6 +557,44 @@ export class SlabIncomeRule extends TaxRule {
 }
 
 /**
+ * Priority 450. F&O is business income, not a capital gain.
+ *
+ * It sits between classification (400) and set-off (600) deliberately: it must
+ * run after nothing — no grandfathering or indexation can apply to a contract
+ * that never had a holding period — and before the loss ledger, which needs the
+ * bucket to know that this loss may not touch a capital gain.
+ *
+ * The rate is the user's slab rate, so a screen that has no tax settings gets a
+ * number computed at whatever slab it was told, with `slabPercent` in the
+ * provenance saying which. There is no default marginal rate here, because
+ * inventing one would be inventing the user's income.
+ */
+export class BusinessIncomeRule extends TaxRule {
+  readonly name = "IN.FNO_BUSINESS_INCOME";
+  readonly priority = 450;
+
+  appliesTo(event: TaxableEvent, ctx: AssessmentContext): boolean {
+    return (
+      !ctx.accumulator.exempt &&
+      (event.kind === "BUSINESS_INCOME" || event.taxCategory === "FNO_BUSINESS")
+    );
+  }
+
+  compute(event: TaxableEvent, ctx: AssessmentContext): void {
+    const acc = ctx.accumulator;
+    acc.term = "SLAB";
+    acc.bucket = "BUSINESS_NON_SPECULATIVE";
+    acc.rate = ctx.settings.slabRate;
+    acc.inputs.slabPercent = ctx.settings.slabRate.toFixed(2);
+    acc.inputs.head = "Business income (non-speculative), §43(5)(d)";
+    acc.inputs.holdingPeriodRelevant = "no";
+    this.emit(event, ctx, {
+      label: "Futures and options — non-speculative business income",
+    });
+  }
+}
+
+/**
  * Priority 600. Loss set-off, in statutory order.
  *
  * A negative gain becomes a carry-forward; a positive one draws on the ledger.
@@ -536,7 +604,10 @@ export class LossOffsetRule extends TaxRule {
   readonly priority = 600;
 
   appliesTo(event: TaxableEvent, ctx: AssessmentContext): boolean {
-    return !ctx.accumulator.exempt && event.kind === "CAPITAL_GAIN";
+    return (
+      !ctx.accumulator.exempt &&
+      (event.kind === "CAPITAL_GAIN" || event.kind === "BUSINESS_INCOME")
+    );
   }
 
   compute(event: TaxableEvent, ctx: AssessmentContext): void {
@@ -742,6 +813,7 @@ export abstract class TaxRegime {
       new GrandfatheringRule(),
       new IndexationRule(),
       new CapitalGainClassificationRule(),
+      new BusinessIncomeRule(),
       new SlabIncomeRule(),
       new LossOffsetRule(),
       new LtcgExemptionRule(),
@@ -826,6 +898,22 @@ export class IndiaFY2024 extends TaxRegime {
       grandfatherDate: null,
       exemptionLimit: null,
       flatRate: PERCENT("30"),
+    }],
+    /*
+     * F&O: at slab, with no long-term line and nothing to index.
+     *
+     * Every field is null or false on purpose. A `longTermDays` here would
+     * invent a holding-period benefit the statute does not give, and a
+     * `flatRate` would make it a VDA — which is the other thing F&O is not.
+     */
+    ["FNO_BUSINESS", {
+      longTermDays: null,
+      ltcgRate: null,
+      stcgRate: null,
+      indexationAllowed: false,
+      grandfatherDate: null,
+      exemptionLimit: null,
+      flatRate: null,
     }],
     ["EXEMPT_SCHEME", {
       longTermDays: null,
@@ -917,6 +1005,22 @@ export class IndiaFY2025 extends TaxRegime {
       exemptionLimit: null,
       flatRate: PERCENT("30"),
     }],
+    /*
+     * F&O: at slab, with no long-term line and nothing to index.
+     *
+     * Every field is null or false on purpose. A `longTermDays` here would
+     * invent a holding-period benefit the statute does not give, and a
+     * `flatRate` would make it a VDA — which is the other thing F&O is not.
+     */
+    ["FNO_BUSINESS", {
+      longTermDays: null,
+      ltcgRate: null,
+      stcgRate: null,
+      indexationAllowed: false,
+      grandfatherDate: null,
+      exemptionLimit: null,
+      flatRate: null,
+    }],
     ["EXEMPT_SCHEME", {
       longTermDays: null,
       ltcgRate: PERCENT("0"),
@@ -950,6 +1054,32 @@ export class RegimeRegistry {
     if (!found) throw new NoRegimeError(date);
     return found;
   }
+}
+
+/* ═══ Stored settings ═════════════════════════════════════════════════ */
+
+/**
+ * A year's tax settings, as stored.
+ *
+ * `TaxSettings` is what a rule chain needs; this is what a *year* holds — the
+ * same three circumstances plus the regime key and the year they apply to. They
+ * are separate types on purpose: an assessment is run with one set of
+ * circumstances, and which year's row supplied them is the repository's business.
+ */
+export interface StoredTaxSettings {
+  readonly financialYear: string;
+  readonly regimeKey: string;
+  readonly marginalSlabRate: Percentage;
+  readonly ltcgExemption: Money;
+  readonly usesNewRegime: boolean;
+  readonly totalIncome: Money;
+  readonly residentStatus: "RESIDENT" | "NON_RESIDENT";
+}
+
+export interface TaxSettingsRepository {
+  /** The row for a year, or `null` — never a default: a guessed slab rate is a wrong tax figure. */
+  findFor(userId: UserId, financialYear: FinancialYear): Promise<StoredTaxSettings | null>;
+  save(userId: UserId, settings: StoredTaxSettings): Promise<void>;
 }
 
 /* ═══ The engine ═════════════════════════════════════════════════════════ */

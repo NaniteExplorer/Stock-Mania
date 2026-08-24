@@ -380,6 +380,167 @@ function block(check: CheckId, because: string): CheckResult {
   return { check, verdict: "BLOCK", because };
 }
 
+/* ═══ The execution seam ══════════════════════════════════════════════ */
+
+export type OrderState = "ACCEPTED" | "FILLED" | "PARTIAL" | "REJECTED" | "CANCELLED";
+
+/**
+ * What a venue says back.
+ *
+ * `venueOrderId` is the venue's own handle, kept because a cancel or a status
+ * query needs it and because a reconciliation against a broker's own statement is
+ * impossible without it. `filledQuantity` and `averagePrice` are the only two
+ * numbers that matter afterwards, and the price is `Money` — an execution price
+ * is money, unlike an indicator.
+ */
+export interface VenueAck {
+  readonly venueId: string;
+  readonly venueOrderId: string;
+  readonly idempotencyKey: string;
+  readonly state: OrderState;
+  readonly filledQuantity: Quantity;
+  readonly averagePrice: Money | null;
+  readonly at: CalendarDate;
+  /** Why, in the venue's words. Populated on a rejection and on a partial fill. */
+  readonly because: string;
+  /**
+   * True when this ack is a replay of an earlier one for the same key rather than
+   * a new order. The caller must be able to tell — that is the entire value of an
+   * idempotency key, and an interface that hid it would make a retry look like a
+   * second fill.
+   */
+  readonly wasReplay: boolean;
+}
+
+/**
+ * Where an approved order goes.
+ *
+ * It takes an {@link ApprovedOrder} and nothing else, which is the seam: the type
+ * can only be minted by {@link RiskGate.approve}, so a live broker adapter added
+ * later **cannot** be called with a bare intent even by a caller in a hurry. A
+ * future live venue is an injection at the container, not a rewrite of the order
+ * path — and until one exists, {@link SimulatedVenue} is the only implementation
+ * in the tree.
+ */
+export interface ExecutionVenue {
+  readonly id: string;
+  place(order: ApprovedOrder): Promise<VenueAck>;
+  cancel(venueOrderId: string): Promise<VenueAck>;
+  status(venueOrderId: string): Promise<VenueAck | null>;
+}
+
+/**
+ * A venue that fills everything, in memory.
+ *
+ * Not a mock — it is the backtest venue, and the behaviour it models is the one
+ * that matters most: **idempotency**. A repeated key returns the original ack
+ * with `wasReplay: true` rather than filling twice, which is exactly what a real
+ * venue does with a client order id and exactly what a naive adapter gets wrong
+ * on a timeout retry.
+ *
+ * A market order needs a reference price to fill against, and refuses rather than
+ * inventing one — the same rule as everywhere else in this codebase: a missing
+ * price is not zero.
+ */
+export class SimulatedVenue implements ExecutionVenue {
+  readonly id: string;
+
+  private readonly byKey = new Map<string, VenueAck>();
+  private readonly byOrderId = new Map<string, VenueAck>();
+  private sequence = 0;
+
+  constructor(options: { id?: string; slippage?: Percentage } = {}) {
+    this.id = options.id ?? "simulated";
+    this.slippage = options.slippage ?? null;
+  }
+
+  private readonly slippage: Percentage | null;
+
+  /** Every ack it has issued, oldest first — the fill log a backtest reads. */
+  fills(): readonly VenueAck[] {
+    return [...this.byOrderId.values()];
+  }
+
+  async place(order: ApprovedOrder): Promise<VenueAck> {
+    const key = order.intent.idempotencyKey;
+    const seen = this.byKey.get(key);
+    if (seen) return { ...seen, wasReplay: true };
+
+    const price = this.fillPrice(order);
+    const ack: VenueAck =
+      price === null
+        ? {
+            venueId: this.id,
+            venueOrderId: this.nextOrderId(),
+            idempotencyKey: key,
+            state: "REJECTED",
+            filledQuantity: Quantity.ZERO,
+            averagePrice: null,
+            at: order.intent.requestedOn,
+            because:
+              "A market order with no reference price cannot be filled: there is no price to fill " +
+              "it at, and inventing one would make a backtest report a profit that never existed.",
+            wasReplay: false,
+          }
+        : {
+            venueId: this.id,
+            venueOrderId: this.nextOrderId(),
+            idempotencyKey: key,
+            state: "FILLED",
+            filledQuantity: order.intent.quantity,
+            averagePrice: price,
+            at: order.intent.requestedOn,
+            because: `Filled in full at ${price.toString()}.`,
+            wasReplay: false,
+          };
+
+    this.byKey.set(key, ack);
+    this.byOrderId.set(ack.venueOrderId, ack);
+    return ack;
+  }
+
+  async cancel(venueOrderId: string): Promise<VenueAck> {
+    const existing = this.byOrderId.get(venueOrderId);
+    if (!existing) {
+      throw new RangeError(`${this.id} has no order ${venueOrderId} to cancel.`);
+    }
+    if (existing.state === "FILLED") {
+      // Reported, not thrown: "too late" is a normal race, not a programming error.
+      return { ...existing, because: "Already filled; a cancellation arrived too late." };
+    }
+    const cancelled: VenueAck = { ...existing, state: "CANCELLED", because: "Cancelled on request." };
+    this.byOrderId.set(venueOrderId, cancelled);
+    this.byKey.set(existing.idempotencyKey, cancelled);
+    return cancelled;
+  }
+
+  async status(venueOrderId: string): Promise<VenueAck | null> {
+    return this.byOrderId.get(venueOrderId) ?? null;
+  }
+
+  /**
+   * A limit order fills at its limit; a market order at the reference price,
+   * moved against the trader by the configured slippage.
+   *
+   * Slippage is configured rather than assumed, and defaults to none: a
+   * shipped-in default would be a claim about a market nobody measured.
+   */
+  private fillPrice(order: ApprovedOrder): Money | null {
+    const { intent } = order;
+    if (intent.orderType === "LIMIT" && intent.limitPrice) return intent.limitPrice;
+    const reference = intent.referencePrice;
+    if (!reference) return null;
+    if (!this.slippage) return reference;
+    const drift = this.slippage.applyTo(reference);
+    return intent.side === "BUY" ? reference.plus(drift) : reference.minus(drift);
+  }
+
+  private nextOrderId(): string {
+    this.sequence += 1;
+    return `${this.id}-${String(this.sequence).padStart(6, "0")}`;
+  }
+}
+
 /**
  * Limits with nothing configured — every order blocked.
  *

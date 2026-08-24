@@ -25,11 +25,13 @@
  *     set off against anything.
  */
 
+import { z } from "zod";
 import { UserId, ValueObject } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { Percentage, Quantity, UnitPrice } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
 import { AccountId } from "@/domain/accounts";
+import { analyseSeries, type Bar, type InstrumentAnalysis } from "@/domain/analysis";
 import type { PricedAssetClass, QuoteType } from "@/domain/pricing";
 import type { TaxCategory } from "@/domain/tax";
 
@@ -54,7 +56,7 @@ export class InstrumentId extends ValueObject {
   }
 }
 
-/** The thirteen leaves, as the discriminator a stored row carries. */
+/** The fifteen leaves, as the discriminator a stored row carries. */
 export type InstrumentKind =
   | "LISTED_EQUITY"
   | "ETF"
@@ -68,10 +70,12 @@ export type InstrumentKind =
   | "SOVEREIGN_GOLD_BOND"
   | "DIGITAL_GOLD"
   | "DIGITAL_SILVER"
-  | "CRYPTO";
+  | "CRYPTO"
+  | "OPTION"
+  | "FUTURE";
 
 /** What a unit of the instrument is. Not decoration — it changes the label and the maths. */
-export type UnitOfMeasure = "SHARE" | "UNIT" | "GRAM" | "COIN" | "BOND";
+export type UnitOfMeasure = "SHARE" | "UNIT" | "GRAM" | "COIN" | "BOND" | "CONTRACT";
 
 /* ═══ What the engines consume ════════════════════════════════════════ */
 
@@ -182,6 +186,123 @@ export interface InstrumentProps {
   /** The asset account this holding's value lives in. */
   readonly assetAccountId: AccountId;
   readonly isClosed?: boolean;
+  /**
+   * The facts that belong to *this kind* of instrument and to no other.
+   *
+   * Stored as one JSON column and parsed by the leaf's own Zod schema in the
+   * leaf's own constructor, which is the whole point: a strike price is
+   * meaningless on an index fund, and fifteen nullable columns — one per leaf
+   * fact — would be a schema that documents the union of every instrument type
+   * rather than any one of them. It also means adding `Option` needs no
+   * migration, which is the plan's Phase 8 done-when.
+   *
+   * `unknown`, not a union: the base class must not know the shape of any leaf's
+   * metadata, or every new leaf would edit the base type. Money is carried as a
+   * decimal *string* and a date as an ISO string, so the JSON never holds a
+   * float and a round-trip through the database is lossless.
+   */
+  readonly metadata?: unknown;
+}
+
+/* ═══ Metadata, one Zod schema per asset class ════════════════════════ */
+
+/**
+ * Money and dates inside metadata are strings.
+ *
+ * `z.number()` would be the obvious choice and it is the wrong one: a strike of
+ * ₹22,500.55 is exactly representable as a string and not as a double, and the
+ * float prohibition exists precisely so that this decision is not made casually
+ * at the edge of the system. `moneyString` refuses anything a `Money` cannot be
+ * built from, at parse time, in the constructor.
+ */
+const moneyString = z
+  .string()
+  .regex(/^-?\d+(\.\d+)?$/, "A money amount in metadata is a decimal string, e.g. \"22500.55\".");
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "A date in metadata is an ISO calendar date.");
+
+/** What an ETF holds. Gold ETFs changed tax class in the 2023 budget. */
+export const ETF_METADATA = z.object({
+  underlying: z.enum(["EQUITY", "DEBT", "GOLD"]).default("EQUITY"),
+});
+
+/** Whether these are pre-April-2023 debt-fund units, which keep indexation. */
+export const DEBT_FUND_METADATA = z.object({
+  legacyUnits: z.boolean().default(false),
+});
+
+export const BOND_METADATA = z.object({
+  faceValue: moneyString,
+  couponRatePercent: z.string(),
+  maturesOn: isoDate,
+});
+
+export const SGB_METADATA = z.object({
+  issuedOn: isoDate,
+  maturesOn: isoDate,
+});
+
+export const OPTION_METADATA = z.object({
+  underlyingSymbol: z.string().min(1),
+  right: z.enum(["CALL", "PUT"]),
+  strike: moneyString,
+  expiry: isoDate,
+  /** Contracts trade in lots; a "quantity" of 1 is one lot, not one share. */
+  lotSize: z.number().int().positive(),
+  /** Index options settle in cash; stock options are deliverable. */
+  settlement: z.enum(["CASH", "PHYSICAL"]).default("CASH"),
+});
+
+export const FUTURE_METADATA = z.object({
+  underlyingSymbol: z.string().min(1),
+  expiry: isoDate,
+  /** `2026-09` — which monthly series this is, for rolling. */
+  contractMonth: z.string().regex(/^\d{4}-\d{2}$/),
+  lotSize: z.number().int().positive(),
+  settlement: z.enum(["CASH", "PHYSICAL"]).default("CASH"),
+});
+
+/** Leaves with no facts of their own accept metadata and ignore it. */
+const NO_METADATA = z.object({}).loose();
+
+const METADATA_SCHEMAS: Readonly<Record<InstrumentKind, z.ZodType>> = {
+  LISTED_EQUITY: NO_METADATA,
+  ETF: ETF_METADATA,
+  INDEX_FUND: NO_METADATA,
+  MUTUAL_FUND: NO_METADATA,
+  LIQUID_FUND: NO_METADATA,
+  DEBT_FUND: DEBT_FUND_METADATA,
+  ELSS_FUND: NO_METADATA,
+  BOND: BOND_METADATA,
+  GOVT_SECURITY: NO_METADATA,
+  SOVEREIGN_GOLD_BOND: SGB_METADATA,
+  DIGITAL_GOLD: NO_METADATA,
+  DIGITAL_SILVER: NO_METADATA,
+  CRYPTO: NO_METADATA,
+  OPTION: OPTION_METADATA,
+  FUTURE: FUTURE_METADATA,
+};
+
+/**
+ * Parses metadata, or throws.
+ *
+ * A leaf whose metadata is required and absent is *not* silently degraded to a
+ * default: an `Option` with no strike is not an option, and constructing one
+ * would push the failure to whatever screen first divided by it. Invariant: an
+ * instrument that exists is fully specified.
+ */
+function parseMetadata<T extends z.ZodType>(schema: T, kind: InstrumentKind, metadata: unknown): z.output<T> {
+  const result = schema.safeParse(metadata ?? {});
+  if (!result.success) {
+    const detail = result.error.issues
+      .map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`)
+      .join("; ");
+    throw new TypeError(
+      `A ${kind} instrument's metadata is not usable (${detail}). It is refused here rather ` +
+        `than defaulted, because a half-specified derivative is not a derivative.`,
+    );
+  }
+  return result.data as z.output<T>;
 }
 
 /**
@@ -234,7 +355,14 @@ export abstract class MarketInstrument {
 
   /** `1,250.4321 units` / `12.5000 g` — the unit is part of the number's meaning. */
   formatQuantity(quantity: Quantity): string {
-    const suffix = { SHARE: "shares", UNIT: "units", GRAM: "g", COIN: "coins", BOND: "bonds" }[this.unit];
+    const suffix = {
+      SHARE: "shares",
+      UNIT: "units",
+      GRAM: "g",
+      COIN: "coins",
+      BOND: "bonds",
+      CONTRACT: "lots",
+    }[this.unit];
     return `${quantity.toDecimalString()} ${suffix}`;
   }
 
@@ -327,11 +455,44 @@ export abstract class MarketInstrument {
     );
   }
 
+  /**
+   * Per-instrument analysis over a bar series — the extension point.
+   *
+   * On the base class it is the standard technical set, so thirteen of the
+   * fifteen leaves need nothing. A leaf overrides it to *add* what only it can
+   * say: an option's days to expiry and moneyness, a bond's yield to maturity
+   * when that arrives. It returns no `Money`, which is what keeps indicators
+   * (floats, correctly) on one side of the line and valuation (exact) on the
+   * other.
+   */
+  analyse(series: readonly Bar[]): InstrumentAnalysis {
+    return analyseSeries(this.id.value, series);
+  }
+
+  /**
+   * Whether the instrument can be traded at all on this date.
+   *
+   * A different question from `disposalBlockedOn`, which is about a *lock* on
+   * units already held. This one is about the contract: an expired option is not
+   * locked, it has ceased to exist. Everything with no expiry answers `null`.
+   */
+  tradableOn(_date: CalendarDate): string | null {
+    return null;
+  }
+
   toString(): string {
     return `${this.kind} ${this.symbol}`;
   }
 
   /* ─── Construction ───────────────────────────────────────────────── */
+
+  /**
+   * The metadata schema for a kind, so a form can be generated from it rather
+   * than hand-written per instrument type and drifting from the parser.
+   */
+  static metadataSchemaFor(kind: InstrumentKind): z.ZodType {
+    return METADATA_SCHEMAS[kind];
+  }
 
   /**
    * Builds the right leaf for a stored kind.
@@ -368,6 +529,10 @@ export abstract class MarketInstrument {
         return new DigitalSilver(props);
       case "CRYPTO":
         return new Crypto(props);
+      case "OPTION":
+        return new Option(props);
+      case "FUTURE":
+        return new Future(props);
     }
   }
 
@@ -387,6 +552,8 @@ export abstract class MarketInstrument {
       "DIGITAL_GOLD",
       "DIGITAL_SILVER",
       "CRYPTO",
+      "OPTION",
+      "FUTURE",
     ];
   }
 }
@@ -437,12 +604,23 @@ export class Etf extends MarketInstrument {
   readonly kind = "ETF" as const;
   readonly unit = "UNIT" as const;
 
+  private readonly underlying: "EQUITY" | "DEBT" | "GOLD";
+
   constructor(
     props: InstrumentProps,
-    /** What the fund holds. Gold ETFs changed class in the 2023 budget. */
-    private readonly underlying: "EQUITY" | "DEBT" | "GOLD" = "EQUITY",
+    /**
+     * What the fund holds. Gold ETFs changed class in the 2023 budget.
+     *
+     * Optional, and the metadata is the fallback rather than the other way
+     * round: a caller that knows says so, and a row read back from the database
+     * carries the answer in its metadata. Before Phase 8 the argument was the
+     * *only* source, so a gold ETF loaded from storage silently claimed to be an
+     * equity ETF and was taxed 12.5% on a gain the statute charges at 20%.
+     */
+    underlying?: "EQUITY" | "DEBT" | "GOLD",
   ) {
     super(props);
+    this.underlying = underlying ?? parseMetadata(ETF_METADATA, "ETF", props.metadata).underlying;
   }
 
   taxProfile(): InstrumentTaxProfile {
@@ -559,6 +737,8 @@ export class DebtFund extends MarketInstrument {
   readonly kind = "DEBT_FUND" as const;
   readonly unit = "UNIT" as const;
 
+  private readonly legacyUnits: boolean;
+
   constructor(
     props: InstrumentProps,
     /**
@@ -569,9 +749,11 @@ export class DebtFund extends MarketInstrument {
      * the lot's acquisition date is what decides. `DEBT_LEGACY` is the category the
      * regime prices differently.
      */
-    private readonly legacyUnits = false,
+    legacyUnits?: boolean,
   ) {
     super(props);
+    this.legacyUnits =
+      legacyUnits ?? parseMetadata(DEBT_FUND_METADATA, "DEBT_FUND", props.metadata).legacyUnits;
   }
 
   taxProfile(): InstrumentTaxProfile {
@@ -645,15 +827,44 @@ export class Bond extends MarketInstrument {
   readonly kind = "BOND" as const;
   readonly unit = "BOND" as const;
 
+  readonly terms: {
+    readonly faceValue: Money;
+    readonly couponRate: Percentage;
+    readonly maturesOn: CalendarDate;
+  } | null;
+
   constructor(
     props: InstrumentProps,
-    readonly terms: {
+    terms: {
       readonly faceValue: Money;
       readonly couponRate: Percentage;
       readonly maturesOn: CalendarDate;
     } | null = null,
   ) {
     super(props);
+    this.terms = terms ?? Bond.termsFromMetadata(props);
+  }
+
+  /**
+   * Terms out of the stored JSON, or `null` when there are none.
+   *
+   * `null` is a real answer here rather than a failure — a bond entered with no
+   * terms is a priced holding whose coupon nobody has told us about, and
+   * `couponFor` already answers `null` for it. What is *not* allowed is partial
+   * terms, which the schema refuses.
+   */
+  private static termsFromMetadata(props: InstrumentProps): {
+    faceValue: Money;
+    couponRate: Percentage;
+    maturesOn: CalendarDate;
+  } | null {
+    if (props.metadata === undefined || props.metadata === null) return null;
+    const parsed = parseMetadata(BOND_METADATA, "BOND", props.metadata);
+    return {
+      faceValue: Money.fromRupees(parsed.faceValue, props.currency),
+      couponRate: Percentage.of(parsed.couponRatePercent),
+      maturesOn: CalendarDate.parse(parsed.maturesOn),
+    };
   }
 
   taxProfile(): InstrumentTaxProfile {
@@ -736,11 +947,24 @@ export class SovereignGoldBond extends MarketInstrument {
   readonly kind = "SOVEREIGN_GOLD_BOND" as const;
   readonly unit = "GRAM" as const;
 
+  readonly terms: { readonly issuedOn: CalendarDate; readonly maturesOn: CalendarDate } | null;
+
   constructor(
     props: InstrumentProps,
-    readonly terms: { readonly issuedOn: CalendarDate; readonly maturesOn: CalendarDate } | null = null,
+    terms: { readonly issuedOn: CalendarDate; readonly maturesOn: CalendarDate } | null = null,
   ) {
     super(props);
+    if (terms) {
+      this.terms = terms;
+    } else if (props.metadata === undefined || props.metadata === null) {
+      this.terms = null;
+    } else {
+      const parsed = parseMetadata(SGB_METADATA, "SOVEREIGN_GOLD_BOND", props.metadata);
+      this.terms = {
+        issuedOn: CalendarDate.parse(parsed.issuedOn),
+        maturesOn: CalendarDate.parse(parsed.maturesOn),
+      };
+    }
   }
 
   taxProfile(): InstrumentTaxProfile {
@@ -877,6 +1101,239 @@ export class Crypto extends MarketInstrument {
       ref: this.props.quoteRef ?? this.symbol.toLowerCase(),
       identifierType: "SLUG",
     };
+  }
+}
+
+/* ═══ Derivatives ═════════════════════════════════════════════════════ */
+
+/**
+ * Everything a contract shares: an underlying, an expiry and a lot size.
+ *
+ * The tax answer is the same for both leaves and is the reason they are classes
+ * rather than a `DERIVATIVE` flag on `ListedEquity`: F&O is **business income**,
+ * so nothing about a holding period, an exemption or indexation applies to
+ * either of them, and a screen that grouped them with equity would offer reliefs
+ * that do not exist.
+ */
+const FNO_PROFILE: InstrumentTaxProfile = {
+  category: "FNO_BUSINESS",
+  /*
+   * True in the sense the flag means — there is no long-term treatment at any
+   * holding period. The rate is the slab rate rather than a capital-gains rate,
+   * which the regime's `FNO_BUSINESS` rule states as three nulls.
+   */
+  slabTaxedAlways: true,
+  exemptOnMaturity: false,
+  /* No lock-in: an expiry is not a lock, and `tradableOn` answers that question. */
+  lockInMonths: null,
+  /* STT applies to F&O, at its own rates, and is a business expense here rather
+   * than a non-deductible charge — which is the one place F&O is *better* off
+   * than equity. */
+  securitiesTransactionTax: true,
+  /*
+   * Set-off is allowed — against business income only. The wall between business
+   * and capital buckets lives in `LossLedger`, because it is a property of the
+   * two heads meeting, not of the instrument.
+   */
+  lossesSetOffAllowed: true,
+};
+
+/** One unit, for a per-unit figure that has to come back as `Money`. */
+const ONE_UNIT = Quantity.fromString("1");
+
+abstract class DerivativeContract extends MarketInstrument {
+  readonly unit = "CONTRACT" as const;
+
+  taxProfile(): InstrumentTaxProfile {
+    return FNO_PROFILE;
+  }
+
+  quoteKey(): QuoteKey {
+    return {
+      assetClass: "DERIVATIVE",
+      quoteType: "CLOSE",
+      ref: this.props.quoteRef ?? this.symbol,
+      identifierType: "SYMBOL",
+    };
+  }
+
+  abstract readonly expiry: CalendarDate;
+  abstract readonly underlyingSymbol: string;
+  abstract readonly lotSize: number;
+
+  /** Whole units of the underlying behind a position. Lots times lot size. */
+  underlyingUnits(lots: Quantity): Quantity {
+    // Exact integer scaling on the raw scaled value: 25 lots of a 50-lot contract
+    // is 1,250 units, not 1,249.99999.
+    return Quantity.fromScaled(lots.scaled * BigInt(this.lotSize));
+  }
+
+  /**
+   * Why this contract cannot be traded on a date, or `null`.
+   *
+   * Expiry is checked here rather than in the constructor: a contract that
+   * expired last month is a perfectly valid thing to *hold in history* — its
+   * trades are in the ledger and its business income is in last year's return.
+   * Refusing to construct it would make the past unreadable.
+   */
+  tradableOn(date: CalendarDate): string | null {
+    if (date.isOnOrBefore(this.expiry)) return null;
+    return (
+      `${this.symbol} expired on ${this.expiry.toISO()}. An expired contract cannot be traded ` +
+      `and has no price — a position in it was settled at expiry, not carried forward.`
+    );
+  }
+
+  daysToExpiry(asOf: CalendarDate): number {
+    return asOf.daysUntil(this.expiry);
+  }
+
+  /**
+   * The standard indicators, plus what only a contract has.
+   *
+   * `extras` rather than new fields on `InstrumentAnalysis`, so adding a leaf
+   * never edits the shared return type — the same reason metadata is one JSON
+   * column rather than fifteen nullable ones.
+   */
+  analyse(series: readonly Bar[]): InstrumentAnalysis {
+    const base = analyseSeries(this.id.value, series);
+    const days = this.daysToExpiry(base.asOf);
+    return {
+      ...base,
+      warnings:
+        days < 0
+          ? [
+              ...base.warnings,
+              `${this.symbol} expired on ${this.expiry.toISO()}, ${-days} day(s) before the last ` +
+                `bar. Indicators past an expiry describe a contract that no longer trades.`,
+            ]
+          : base.warnings,
+      extras: {
+        ...base.extras,
+        underlying: this.underlyingSymbol,
+        expiry: this.expiry.toISO(),
+        daysToExpiry: String(days),
+        lotSize: String(this.lotSize),
+      },
+    };
+  }
+}
+
+/**
+ * An exchange-traded option.
+ *
+ * The fourteenth leaf, and the proof of the Phase 8 gate: it is one class in this
+ * one file, plus one line in {@link MarketInstrument.of} and one entry in the
+ * metadata schema map. No engine changed to admit it — the tax engine met a new
+ * `TaxCategory`, and the price book met a new `PricedAssetClass`, both of which
+ * are data.
+ */
+export class Option extends DerivativeContract {
+  readonly kind = "OPTION" as const;
+
+  readonly underlyingSymbol: string;
+  readonly right: "CALL" | "PUT";
+  readonly strike: Money;
+  readonly expiry: CalendarDate;
+  readonly lotSize: number;
+  readonly settlement: "CASH" | "PHYSICAL";
+
+  constructor(props: InstrumentProps) {
+    super(props);
+    const meta = parseMetadata(OPTION_METADATA, "OPTION", props.metadata);
+    this.underlyingSymbol = meta.underlyingSymbol;
+    this.right = meta.right;
+    this.strike = Money.fromRupees(meta.strike, props.currency);
+    this.expiry = CalendarDate.parse(meta.expiry);
+    this.lotSize = meta.lotSize;
+    this.settlement = meta.settlement;
+    if (!this.strike.isPositive) {
+      throw new TypeError(`${props.symbol}: an option strike is a positive amount.`);
+    }
+  }
+
+  /**
+   * Whether the option is worth exercising at this spot, and by how much.
+   *
+   * Intrinsic value only — no premium, no time value, no model. A Black-Scholes
+   * price needs a volatility input this app does not have and would be a
+   * *guess presented as a valuation*, which is exactly what the pricing rules
+   * forbid. The market price comes from the market, through `PriceBook`.
+   */
+  intrinsicValue(spot: Money): Money {
+    const difference = this.right === "CALL" ? spot.minus(this.strike) : this.strike.minus(spot);
+    return difference.isPositive ? difference : Money.zero(this.currency);
+  }
+
+  /**
+   * The contract analysis, plus strike, right and moneyness at the last close.
+   *
+   * Moneyness is measured against the *underlying's* series, so the caller
+   * passes the underlying's bars — an option's own premium series says nothing
+   * about whether it is in the money.
+   */
+  analyse(series: readonly Bar[]): InstrumentAnalysis {
+    const base = super.analyse(series);
+    const lastClose = series.filter((bar) => !bar.supersededBy).at(-1)?.close ?? null;
+    return {
+      ...base,
+      extras: {
+        ...base.extras,
+        right: this.right,
+        strike: this.strike.toDecimalString(),
+        ...(lastClose
+          ? {
+              underlyingClose: lastClose.toDecimalString(),
+              moneyness: this.moneyness(lastClose.toMoney()),
+              intrinsicValue: this.intrinsicValue(lastClose.toMoney()).toDecimalString(),
+            }
+          : { moneyness: "unknown — no underlying close in the series" }),
+      },
+    };
+  }
+
+  /** `ITM` / `ATM` / `OTM` at a spot price. */
+  moneyness(spot: Money): "ITM" | "ATM" | "OTM" {
+    if (spot.equals(this.strike)) return "ATM";
+    const inTheMoney = this.right === "CALL" ? spot.isGreaterThan(this.strike) : spot.isLessThan(this.strike);
+    return inTheMoney ? "ITM" : "OTM";
+  }
+}
+
+/** An exchange-traded futures contract. The fifteenth leaf. */
+export class Future extends DerivativeContract {
+  readonly kind = "FUTURE" as const;
+
+  readonly underlyingSymbol: string;
+  readonly expiry: CalendarDate;
+  /** `2026-09` — the monthly series, for rolling a position forward. */
+  readonly contractMonth: string;
+  readonly lotSize: number;
+  readonly settlement: "CASH" | "PHYSICAL";
+
+  constructor(props: InstrumentProps) {
+    super(props);
+    const meta = parseMetadata(FUTURE_METADATA, "FUTURE", props.metadata);
+    this.underlyingSymbol = meta.underlyingSymbol;
+    this.expiry = CalendarDate.parse(meta.expiry);
+    this.contractMonth = meta.contractMonth;
+    this.lotSize = meta.lotSize;
+    this.settlement = meta.settlement;
+  }
+
+  /**
+   * Mark-to-market on a position, which is where a future differs from
+   * everything else in this file: the gain is realised daily by the exchange,
+   * not on disposal, so it is a *movement* and can be negative.
+   */
+  markToMarket(lots: Quantity, entryPrice: UnitPrice, settlementPrice: UnitPrice): Money {
+    const units = this.underlyingUnits(lots);
+    return settlementPrice.times(units).minus(entryPrice.times(units));
+  }
+
+  /** The basis per unit: futures over spot. Positive is a premium, negative a discount. */
+  basis(futuresPrice: UnitPrice, spot: UnitPrice): Money {
+    return futuresPrice.times(ONE_UNIT).minus(spot.times(ONE_UNIT));
   }
 }
 

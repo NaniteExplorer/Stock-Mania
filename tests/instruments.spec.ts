@@ -2,7 +2,8 @@
  * The instrument hierarchy, and the claim that makes it worth having.
  *
  * The plan's done-when is that **adding a fourteenth instrument type touches
- * exactly one file**. That cannot be tested directly, so it is tested by its two
+ * exactly one file** — a claim Phase 8 cashed in twice, by adding `Option` and
+ * `Future` with no change to any engine. That cannot be tested directly, so it is tested by its two
  * preconditions:
  *
  *   - **Every leaf answers all three questions**, so nothing downstream needs a
@@ -57,23 +58,53 @@ const props = (symbol: string, name = symbol): InstrumentProps => ({
   assetAccountId,
 });
 
+/**
+ * Metadata a leaf cannot do without.
+ *
+ * Only the derivatives are here: an option with no strike is refused at
+ * construction, deliberately, so the loop below has to supply one. Every other
+ * leaf either has no facts of its own or treats them as optional.
+ */
+const metadataFor = (kind: string): unknown => {
+  if (kind === "OPTION") {
+    return {
+      underlyingSymbol: "NIFTY",
+      right: "CALL",
+      strike: "24000",
+      expiry: "2026-09-24",
+      lotSize: 75,
+    };
+  }
+  if (kind === "FUTURE") {
+    return { underlyingSymbol: "NIFTY", expiry: "2026-09-24", contractMonth: "2026-09", lotSize: 75 };
+  }
+  return undefined;
+};
+
+const propsFor = (kind: string): InstrumentProps => ({
+  ...props(kind),
+  metadata: metadataFor(kind),
+});
+
 /* ═══ Every leaf answers every question ═══════════════════════════════ */
 
-section("every one of the thirteen leaves answers all three questions");
+section("every one of the fifteen leaves answers all three questions");
 
-check("thirteen kinds", MarketInstrument.kinds().length, 13);
+check("fifteen kinds", MarketInstrument.kinds().length, 15);
 
 let missing = 0;
 for (const kind of MarketInstrument.kinds()) {
-  const instrument = MarketInstrument.of(kind, props(kind));
+  const instrument = MarketInstrument.of(kind, propsFor(kind));
   const profile = instrument.taxProfile();
   const key = instrument.quoteKey();
   if (!profile.category || !key.assetClass || !key.quoteType || !instrument.unit) missing += 1;
 }
 check("none is missing a tax profile, a quote key or a unit", missing, 0);
 
-const kinds = new Set(MarketInstrument.kinds().map((kind) => MarketInstrument.of(kind, props(kind)).kind));
-check("and each builds the leaf that matches its own kind", kinds.size, 13);
+const kinds = new Set(
+  MarketInstrument.kinds().map((kind) => MarketInstrument.of(kind, propsFor(kind)).kind),
+);
+check("and each builds the leaf that matches its own kind", kinds.size, 15);
 
 /* ═══ No engine switches on the kind ══════════════════════════════════ */
 
@@ -278,6 +309,64 @@ const navValued = await fund.valueOn(units("1250.4321"), on("2026-08-24"), price
 // 1250.4321 × 84.5612 = 105,738.0429… — rounded once, at the multiplication.
 check("value", navValued.value?.toDecimalString(), "105738.04");
 check("the NAV itself is unrounded", navValued.price?.toDecimalString(), "84.5612");
+
+section("metadata survives a round-trip through storage");
+
+/*
+ * The bug this section exists for.
+ *
+ * Before Phase 8, `Etf`'s underlying and `Bond`'s terms were constructor
+ * arguments and nothing else — `MarketInstrument.of(kind, props)` could not pass
+ * them, so an instrument *read back from the database* lost them silently. A gold
+ * ETF became an equity ETF (12.5% long-term instead of 20% at slab) and a bond's
+ * coupon became `null` forever. Both are money, and neither threw.
+ */
+const goldEtfStored = MarketInstrument.of("ETF", {
+  ...props("GOLDBEES"),
+  metadata: { underlying: "GOLD" },
+});
+check("a gold ETF read back is still gold", goldEtfStored.taxProfile().category, "GOLD");
+
+const equityEtfStored = MarketInstrument.of("ETF", props("NIFTYBEES"));
+check(
+  "an ETF with no metadata defaults to equity, as before",
+  equityEtfStored.taxProfile().category,
+  "EQUITY_MUTUAL_FUND",
+);
+
+const legacyDebtStored = MarketInstrument.of("DEBT_FUND", {
+  ...props("HDFC-DEBT"),
+  metadata: { legacyUnits: true },
+});
+check(
+  "pre-April-2023 debt units keep indexation across a round-trip",
+  legacyDebtStored.taxProfile().category,
+  "DEBT_LEGACY",
+);
+
+const bondStored = MarketInstrument.of("BOND", {
+  ...props("NCD-2029"),
+  metadata: { faceValue: "1000", couponRatePercent: "9.5", maturesOn: "2029-03-31" },
+}) as Bond;
+// 9.5% of ₹1,000 is ₹95 a year, ₹47.50 half-yearly, times 50 bonds.
+check(
+  "a bond's coupon survives storage",
+  bondStored.couponFor(units("50"))?.toDecimalString(),
+  "2375.00",
+);
+check("and its maturity date", bondStored.terms?.maturesOn.toISO(), "2029-03-31");
+
+throws(
+  "a half-specified bond is refused rather than defaulted",
+  () => MarketInstrument.of("BOND", { ...props("NCD-Y"), metadata: { faceValue: "1000" } }),
+  "not usable",
+);
+
+check(
+  "a schema is published per kind, so a form can be generated from it",
+  MarketInstrument.metadataSchemaFor("OPTION").safeParse({}).success,
+  false,
+);
 
 section("bad construction is refused");
 

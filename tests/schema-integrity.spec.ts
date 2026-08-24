@@ -217,6 +217,10 @@ async function main() {
     // Bitemporal: a correction is a new row pointing back at the one it
     // supersedes, so "what did we believe on the day" stays answerable.
     "price_quotes",
+    // Bars are bitemporal for the same reason quotes are: a vendor's corrected
+    // bar is a new row pointing at the old one, so a backtest can still ask what
+    // was believed on the day rather than what is believed now.
+    "price_bars",
     "fx_rates",
     "price_divergences",
     "provider_fetch_log",

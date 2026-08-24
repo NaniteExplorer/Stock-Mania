@@ -68,6 +68,12 @@ export type PricedAssetClass =
   | "COMMODITY"
   | "CRYPTO"
   | "FX"
+  /**
+   * Options and futures. Its own class because it goes stale in a day and
+   * because an expired contract has no price at all — carrying one forward
+   * would value a position that has ceased to exist.
+   */
+  | "DERIVATIVE"
   | "OTHER";
 
 export type IdentifierType = "ISIN" | "FIGI" | "TICKER" | "SCHEME_CODE" | "MIC_TICKER" | "METAL" | "COIN";
@@ -127,6 +133,7 @@ export const STALENESS_DAYS: Readonly<Record<PricedAssetClass, number>> = {
   COMMODITY: 4,
   CRYPTO: 1,
   FX: 4,
+  DERIVATIVE: 1,
   OTHER: 30,
 };
 

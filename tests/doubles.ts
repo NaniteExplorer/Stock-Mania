@@ -31,6 +31,8 @@ import type {
   QuoteType,
   StoredFxRate,
 } from "@/domain/pricing";
+import type { Bar, BarGranularity, BarRepository } from "@/domain/analysis";
+import { makeBar } from "@/domain/analysis";
 import { mulberry32 } from "./harness";
 
 /* ═══ Virtual runtime ═════════════════════════════════════════════════ */
@@ -278,6 +280,61 @@ export class InMemoryQuoteRepository implements QuoteRepository {
 
   async recordDivergence(divergence: PriceDivergence): Promise<void> {
     this.divergences.push(divergence);
+  }
+}
+
+/**
+ * Bars in memory, with the same contract as the Drizzle one.
+ *
+ * `bars.spec.ts` runs one assertion block against this and against the real
+ * store, which is the point of the double existing at all: a conformance suite
+ * that only ever runs against SQL cannot tell an interface from an
+ * implementation, and one that only runs in memory proves nothing about the
+ * database.
+ */
+export class InMemoryBarRepository implements BarRepository {
+  readonly rows: (Bar & { id: string })[] = [];
+  private nextId = 1;
+
+  async append(bars: readonly Bar[]): Promise<void> {
+    for (const bar of bars) {
+      // Validated here too: the double must refuse exactly what the store refuses.
+      this.rows.push({ ...makeBar(bar), id: `b${this.nextId++}` });
+    }
+  }
+
+  async findRange(
+    instrumentId: string,
+    granularity: BarGranularity,
+    dateRange: DateRange,
+  ): Promise<readonly Bar[]> {
+    return this.rows
+      .filter(
+        (row) =>
+          row.instrumentId === instrumentId &&
+          row.granularity === granularity &&
+          !row.supersededBy &&
+          dateRange.contains(row.asOf),
+      )
+      .sort((a, b) => a.asOf.compareTo(b.asOf));
+  }
+
+  async coverage(
+    instrumentId: string,
+    granularity: BarGranularity,
+  ): Promise<{ from: CalendarDate; through: CalendarDate; count: number } | null> {
+    const mine = this.rows.filter(
+      (row) =>
+        row.instrumentId === instrumentId && row.granularity === granularity && !row.supersededBy,
+    );
+    if (mine.length === 0) return null;
+    const dates = mine.map((row) => row.asOf).sort((a, b) => a.compareTo(b));
+    return { from: dates[0], through: dates[dates.length - 1], count: mine.length };
+  }
+
+  async supersede(supersededBarId: string, bySupersedingBarId: string): Promise<void> {
+    const index = this.rows.findIndex((row) => row.id === supersededBarId);
+    if (index >= 0) this.rows[index] = { ...this.rows[index], supersededBy: bySupersedingBarId };
   }
 }
 

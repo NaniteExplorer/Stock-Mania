@@ -36,6 +36,13 @@
       "when": 1787586406351,
       "tag": "0004_phase5_instrument_class",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1787592875276,
+      "tag": "0005_phase8_quant_readiness",
+      "breakpoints": true
     }
   ]
 }

@@ -21,11 +21,19 @@ import { Loan, LoanStore, LoanTermsInput, StoredLoanTerms, loanFor } from "@/dom
 import { InstrumentId, InstrumentKind, InstrumentProps, InstrumentRepository, MarketInstrument } from "@/domain/instruments";
 import { Disposal, Lot, LotId, LotRepository, TradeRecord } from "@/domain/lots";
 import { CorporateActionRepository, StoredCorporateAction } from "@/domain/corporate";
+import { StoredTaxSettings, TaxSettingsRepository } from "@/domain/tax";
+import type {
+  CachedProjection,
+  JournalReplaySource,
+  JournalSum,
+  UnbalancedEntry,
+} from "@/app/reproducibility.usecases";
+import { Bar, BarGranularity, BarRepository, makeBar } from "@/domain/analysis";
 import { Percentage, Quantity, Rate, UnitPrice } from "@/core/numeric";
 import { FxQuote, FxRateRepository, PriceDivergence, PriceSourceType, Quote, QuoteRepository, QuoteType, StoredFxRate } from "@/domain/pricing";
 import { AccountBalance, AccountFlow, BalanceQuery, MonthlyFlow, Posting, PostingId, PostingStatus, StoredTransaction, Transaction, TransactionId, TransactionKind, TransactionPage, TransactionQuery, TransactionRepository, TransactionSource, TypeTotals } from "@/domain/transactions";
 import { BudgetRepository, CategoryRuleRepository, ImportBatchRecord, ImportBatchStatus, ImportRepository, ImportRowStatus, KeywordRule, MovementIntent, RowDirection, SelfPayeeQuery, StagedRow, StoredBudget } from "@/domain/banking";
-import { budgets, categoryRules, corporateActions, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, instruments, ledgerAccounts, loanPrepayments, loanTerms, lotMatches, lots, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, trades, transactions } from "@/infra/db/schema";
+import { users as usersTable, ledgerEvents, projectionCache, taxSettings, priceBars, budgets, categoryRules, corporateActions, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, instruments, ledgerAccounts, loanPrepayments, loanTerms, lotMatches, lots, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, trades, transactions } from "@/infra/db/schema";
 import { Database } from "@/infra/db/client";
 import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, max, min, or, sql } from "drizzle-orm";
 /* ═══ AccountMapper ═══════════════════════════════════════════════════ */
@@ -992,6 +1000,319 @@ const QuoteMapper = {
       price: UnitPrice.fromScaled(row.priceScaled, Currency.of(row.currency)),
       providerId: row.providerId,
       sourceType: row.sourceType as PriceSourceType,
+      ingestedAt: row.ingestedAt,
+      supersededBy: row.supersededBy,
+    };
+  },
+};
+
+/* ═══ DrizzleJournalReplaySource ══════════════════════════════════════ */
+
+/**
+ * The raw journal, for the reproducibility job.
+ *
+ * Every method here is deliberately *not* the path the reports use. Balances are
+ * folded in TypeScript through the domain's own reference calculator rather than
+ * summed in SQL, because the whole value of the nightly diff is that two
+ * independent computations over one journal agree — a second SQL `SUM` with the
+ * same `CASE` expression would agree with the first by construction and prove
+ * nothing.
+ */
+export class DrizzleJournalReplaySource implements JournalReplaySource {
+  constructor(private readonly db: Database) {}
+
+  async users(): Promise<readonly UserId[]> {
+    const rows = await this.db.select({ id: usersTable.id }).from(usersTable);
+    return rows.map((row) => UserId.from(row.id));
+  }
+
+  async unbalancedEntries(userId: UserId): Promise<readonly UnbalancedEntry[]> {
+    /*
+     * L01, in SQL and per currency.
+     *
+     * Per currency because a two-currency entry balances in each leg's own
+     * currency and never across them — summing the two together would report a
+     * perfectly good FX entry as broken.
+     */
+    const rows = await this.db.all<{ transaction_id: string; currency: string; diff: number }>(
+      sql`SELECT p.transaction_id AS transaction_id, p.currency AS currency,
+                 SUM(CASE WHEN p.direction = 'DEBIT' THEN p.amount_minor ELSE -p.amount_minor END) AS diff
+            FROM postings p
+            JOIN transactions t ON t.id = p.transaction_id
+           WHERE t.user_id = ${userId.value}
+             AND p.deleted_at IS NULL
+             AND t.deleted_at IS NULL
+           GROUP BY p.transaction_id, p.currency
+          HAVING diff <> 0`,
+    );
+    return rows.map((row) => ({
+      transactionId: row.transaction_id,
+      currency: row.currency,
+      differenceMinor: BigInt(row.diff),
+    }));
+  }
+
+  async accountBalancesFromPostings(
+    userId: UserId,
+    asOf: CalendarDate,
+  ): Promise<readonly JournalSum[]> {
+    const rows = await this.db.all<{
+      account_id: string;
+      code: string;
+      type: string;
+      currency: string;
+      direction: string;
+      amount_minor: number;
+    }>(
+      sql`SELECT a.id AS account_id, a.code AS code, a.type AS type,
+                 p.currency AS currency, p.direction AS direction, p.amount_minor AS amount_minor
+            FROM postings p
+            JOIN transactions t ON t.id = p.transaction_id
+            JOIN ledger_accounts a ON a.id = p.account_id
+           WHERE t.user_id = ${userId.value}
+             AND t.txn_date <= ${asOf.toISO()}
+             AND p.deleted_at IS NULL
+             AND t.deleted_at IS NULL
+             AND a.deleted_at IS NULL
+             AND a.type IN ('ASSET', 'LIABILITY', 'EQUITY')`,
+    );
+
+    // Folded here, one posting at a time, with the sign taken from the account's
+    // normal balance — the same rule `BalanceCalculator` applies, arrived at
+    // independently of the query layer's `CASE` expression.
+    const totals = new Map<string, JournalSum>();
+    for (const row of rows) {
+      const debitPositive = row.type === "ASSET" || row.type === "EXPENSE";
+      const signed =
+        (row.direction === "DEBIT") === debitPositive
+          ? BigInt(row.amount_minor)
+          : -BigInt(row.amount_minor);
+      const existing = totals.get(row.account_id);
+      totals.set(row.account_id, {
+        accountId: row.account_id,
+        code: row.code,
+        currency: row.currency,
+        balanceMinor: (existing?.balanceMinor ?? 0n) + signed,
+      });
+    }
+    return [...totals.values()];
+  }
+
+  async cachedProjections(userId: UserId): Promise<readonly CachedProjection[]> {
+    const rows = await this.db
+      .select()
+      .from(projectionCache)
+      .where(eq(projectionCache.userId, userId.value));
+    return rows.map((row) => ({
+      projection: row.projection,
+      scope: row.scope,
+      asOf: row.asOf ?? null,
+      payloadJson: row.payloadJson,
+    }));
+  }
+
+  async counts(
+    userId: UserId,
+  ): Promise<{ transactions: number; postings: number; ledgerEvents: number }> {
+    const [txn] = await this.db
+      .select({ n: count() })
+      .from(transactions)
+      .where(and(eq(transactions.userId, userId.value), isNull(transactions.deletedAt)));
+    const [post] = await this.db.all<{ n: number }>(
+      sql`SELECT COUNT(*) AS n FROM postings p JOIN transactions t ON t.id = p.transaction_id
+           WHERE t.user_id = ${userId.value} AND p.deleted_at IS NULL`,
+    );
+    const [events] = await this.db
+      .select({ n: count() })
+      .from(ledgerEvents)
+      .where(eq(ledgerEvents.userId, userId.value));
+    return {
+      transactions: Number(txn?.n ?? 0),
+      postings: Number(post?.n ?? 0),
+      ledgerEvents: Number(events?.n ?? 0),
+    };
+  }
+}
+
+/* ═══ DrizzleTaxSettingsRepository ════════════════════════════════════ */
+
+/**
+ * libSQL implementation of {@link TaxSettingsRepository}.
+ *
+ * One row per user per financial year, and no fallback to the previous year's
+ * row: a slab rate carried forward silently would apply last year's income to
+ * this year's tax. `findFor` returns `null` and the caller says so on screen.
+ *
+ * `totalIncome` and the resident status are not columns — the table predates
+ * them, and they are per-assessment inputs rather than settings. They come back
+ * as zero and RESIDENT, which the tax report shows as an assumption.
+ */
+export class DrizzleTaxSettingsRepository implements TaxSettingsRepository {
+  constructor(private readonly db: Database) {}
+
+  async findFor(userId: UserId, financialYear: FinancialYear): Promise<StoredTaxSettings | null> {
+    const [row] = await this.db
+      .select()
+      .from(taxSettings)
+      .where(
+        and(
+          eq(taxSettings.userId, userId.value),
+          eq(taxSettings.financialYear, financialYear.label),
+          isNull(taxSettings.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!row) return null;
+    return {
+      financialYear: row.financialYear,
+      regimeKey: row.regimeKey,
+      marginalSlabRate: Percentage.fromScaled(row.marginalSlabPercent),
+      ltcgExemption: Money.fromMinor(BigInt(row.ltcgExemptionMinor), Currency.reporting),
+      usesNewRegime: row.usesNewRegime,
+      totalIncome: Money.zero(Currency.reporting),
+      residentStatus: "RESIDENT",
+    };
+  }
+
+  async save(userId: UserId, settings: StoredTaxSettings): Promise<void> {
+    const row = {
+      id: newUuid(),
+      userId: userId.value,
+      financialYear: settings.financialYear,
+      regimeKey: settings.regimeKey,
+      marginalSlabPercent: settings.marginalSlabRate.toScaledNumber(),
+      ltcgExemptionMinor: settings.ltcgExemption.toMinorNumber(),
+      usesNewRegime: settings.usesNewRegime,
+      updatedAt: new Date(),
+    };
+    await this.db
+      .insert(taxSettings)
+      .values(row)
+      // Keyed on (user, year), so editing this year's slab rate is an update and
+      // last year's row is untouched — which is what keeps a reprinted return
+      // from changing.
+      .onConflictDoUpdate({
+        target: [taxSettings.userId, taxSettings.financialYear],
+        set: { ...row, id: undefined, userId: undefined, financialYear: undefined },
+      });
+  }
+}
+
+/* ═══ DrizzleBarRepository ════════════════════════════════════════════ */
+
+/**
+ * libSQL implementation of {@link BarRepository}.
+ *
+ * Append-only like the quote store, and for the same reason: a vendor's
+ * corrected bar is a new row pointing at the old one, so "what did we believe on
+ * the day" stays answerable after the fact. That is not fastidiousness — it is
+ * the difference between a backtest and a story.
+ *
+ * The impossible-bar checks live in the database as constraints *and* in
+ * `makeBar` in the domain. Two enforcements of one rule is deliberate here:
+ * the domain one gives a readable message, the database one is the guarantee.
+ */
+export class DrizzleBarRepository implements BarRepository {
+  constructor(private readonly db: Database) {}
+
+  async append(bars: readonly Bar[]): Promise<void> {
+    if (bars.length === 0) return;
+    const rows = bars.map((bar) => {
+      // Validated on the way in, not on the way out: a bar the store would
+      // refuse should fail where the caller can see which bar it was.
+      const checked = makeBar(bar);
+      return {
+        id: newUuid(),
+        instrumentId: checked.instrumentId,
+        granularity: checked.granularity,
+        asOf: checked.asOf.toISO(),
+        openScaled: checked.open.toScaledNumber(),
+        highScaled: checked.high.toScaledNumber(),
+        lowScaled: checked.low.toScaledNumber(),
+        closeScaled: checked.close.toScaledNumber(),
+        volume: checked.volume === null ? null : Number(checked.volume),
+        currency: checked.currency.code,
+        providerId: checked.providerId,
+        ingestedAt: checked.ingestedAt,
+      };
+    });
+
+    await this.db.transaction(async (tx) => {
+      for (let i = 0; i < rows.length; i += 200) {
+        // The same provider's same bar at the same instant is a repeated fetch,
+        // not a correction.
+        await tx.insert(priceBars).values(rows.slice(i, i + 200)).onConflictDoNothing();
+      }
+    });
+  }
+
+  async findRange(
+    instrumentId: string,
+    granularity: BarGranularity,
+    dateRange: DateRange,
+  ): Promise<readonly Bar[]> {
+    const rows = await this.db
+      .select()
+      .from(priceBars)
+      .where(
+        and(
+          eq(priceBars.instrumentId, instrumentId),
+          eq(priceBars.granularity, granularity),
+          gte(priceBars.asOf, dateRange.start.toISO()),
+          lte(priceBars.asOf, dateRange.end.toISO()),
+          isNull(priceBars.supersededBy),
+        ),
+      )
+      .orderBy(asc(priceBars.asOf), desc(priceBars.ingestedAt));
+
+    return rows.map(BarMapper.toDomain);
+  }
+
+  async coverage(
+    instrumentId: string,
+    granularity: BarGranularity,
+  ): Promise<{ from: CalendarDate; through: CalendarDate; count: number } | null> {
+    const [row] = await this.db
+      .select({ from: min(priceBars.asOf), through: max(priceBars.asOf), rows: count() })
+      .from(priceBars)
+      .where(
+        and(
+          eq(priceBars.instrumentId, instrumentId),
+          eq(priceBars.granularity, granularity),
+          isNull(priceBars.supersededBy),
+        ),
+      );
+
+    if (!row?.from || !row.through) return null;
+    return {
+      from: CalendarDate.parse(row.from),
+      through: CalendarDate.parse(row.through),
+      count: Number(row.rows),
+    };
+  }
+
+  async supersede(supersededBarId: string, bySupersedingBarId: string): Promise<void> {
+    await this.db
+      .update(priceBars)
+      .set({ supersededBy: bySupersedingBarId })
+      .where(eq(priceBars.id, supersededBarId));
+  }
+}
+
+const BarMapper = {
+  toDomain(row: typeof priceBars.$inferSelect): Bar {
+    const currency = Currency.of(row.currency);
+    return {
+      instrumentId: row.instrumentId,
+      asOf: CalendarDate.parse(row.asOf),
+      granularity: row.granularity as BarGranularity,
+      open: UnitPrice.fromScaled(row.openScaled, currency),
+      high: UnitPrice.fromScaled(row.highScaled, currency),
+      low: UnitPrice.fromScaled(row.lowScaled, currency),
+      close: UnitPrice.fromScaled(row.closeScaled, currency),
+      volume: row.volume === null ? null : BigInt(row.volume),
+      currency,
+      providerId: row.providerId,
       ingestedAt: row.ingestedAt,
       supersededBy: row.supersededBy,
     };
@@ -2042,6 +2363,7 @@ export class DrizzleInstrumentRepository implements InstrumentRepository {
       quoteSource: InstrumentMapper.toQuoteSource(kind),
       quoteSourceRef: props.quoteRef ?? null,
       assetAccountId: props.assetAccountId.value,
+      metadata: props.metadata === undefined ? null : JSON.stringify(props.metadata),
       isClosed: props.isClosed ?? false,
       updatedAt: new Date(),
     };
@@ -2066,12 +2388,18 @@ export const InstrumentMapper = {
       exchange: row.exchange,
       quoteRef: row.quoteSourceRef,
       assetAccountId: AccountId.from(row.assetAccountId),
+      /*
+       * Parsed here and validated in the leaf's constructor, which is why a
+       * malformed blob throws on read rather than surfacing as a missing strike
+       * three screens later.
+       */
+      metadata: row.metadata === null ? undefined : (JSON.parse(row.metadata) as unknown),
       isClosed: row.isClosed,
     });
   },
 
   /** The coarse `kind` the pre-existing schema column carries. */
-  toStoredKind(kind: InstrumentKind): "EQUITY" | "ETF" | "MUTUAL_FUND" | "BOND" | "GOVT_SECURITY" | "DIGITAL_GOLD" | "DIGITAL_SILVER" | "CRYPTO" | "OTHER" {
+  toStoredKind(kind: InstrumentKind): "EQUITY" | "ETF" | "MUTUAL_FUND" | "BOND" | "GOVT_SECURITY" | "DIGITAL_GOLD" | "DIGITAL_SILVER" | "CRYPTO" | "DERIVATIVE" | "OTHER" {
     switch (kind) {
       case "LISTED_EQUITY":
         return "EQUITY";
@@ -2094,6 +2422,9 @@ export const InstrumentMapper = {
         return "DIGITAL_SILVER";
       case "CRYPTO":
         return "CRYPTO";
+      case "OPTION":
+      case "FUTURE":
+        return "DERIVATIVE";
     }
   },
 
@@ -2104,7 +2435,7 @@ export const InstrumentMapper = {
    * that both claim to say how something is taxed will eventually disagree — and
    * the leaf is the one with the reasoning attached.
    */
-  toTaxAssetClass(kind: InstrumentKind): "LISTED_EQUITY" | "EQUITY_MUTUAL_FUND" | "DEBT" | "GOLD" | "CRYPTO" | "UNLISTED" | "OTHER" {
+  toTaxAssetClass(kind: InstrumentKind): "LISTED_EQUITY" | "EQUITY_MUTUAL_FUND" | "DEBT" | "GOLD" | "CRYPTO" | "UNLISTED" | "FNO_BUSINESS" | "OTHER" {
     switch (kind) {
       case "LISTED_EQUITY":
         return "LISTED_EQUITY";
@@ -2124,6 +2455,9 @@ export const InstrumentMapper = {
         return "GOLD";
       case "CRYPTO":
         return "CRYPTO";
+      case "OPTION":
+      case "FUTURE":
+        return "FNO_BUSINESS";
     }
   },
 
