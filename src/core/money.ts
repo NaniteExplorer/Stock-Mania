@@ -353,7 +353,7 @@ export class Money extends ValueObject {
    * Money.fromRupees("1.00").allocate([1, 1, 1])
    * // ₹0.34, ₹0.33, ₹0.33
    */
-  allocate(weights: readonly number[]): Money[] {
+  allocate(weights: readonly (number | bigint)[]): Money[] {
     if (weights.length === 0) {
       throw new RangeError("allocate needs at least one weight");
     }
@@ -361,7 +361,19 @@ export class Money extends ValueObject {
       throw new RangeError("allocate weights must not be negative");
     }
 
-    const asBigInt = weights.map((weight) => BigInt(Math.round(weight * 1e6)));
+    /*
+     * `bigint` weights pass through untouched; numbers are scaled by 1e6 to keep
+     * six decimal places of a fractional weight.
+     *
+     * Accepting bigint was added in Phase 5: a lot allocation weights by scaled
+     * unit counts, and `Number(quantity.scaled)` on a large holding is exactly the
+     * silent precision loss the float rules exist to prevent. A weight only has to
+     * be proportionally right, so an exact integer is strictly better than a
+     * rounded double.
+     */
+    const asBigInt = weights.map((weight) =>
+      typeof weight === "bigint" ? weight : BigInt(Math.round(weight * 1e6)),
+    );
     const totalWeight = asBigInt.reduce((sum, weight) => sum + weight, 0n);
     if (totalWeight === 0n) {
       throw new RangeError("allocate weights must not all be zero");

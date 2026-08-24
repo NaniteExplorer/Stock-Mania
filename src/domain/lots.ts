@@ -478,9 +478,10 @@ export class LotBook {
     }
 
     const matched = Quantity.sum(takes.map((take) => take.quantity));
-    // Weights are the units taken, so the allocation is proportional to what each
-    // lot actually gave up.
-    const weights = takes.map((take) => Number(take.quantity.scaled));
+    // Weights are the units taken, as exact scaled integers: a large holding's
+    // scaled quantity exceeds a double's safe range, and a weight that lost
+    // precision would allocate proceeds slightly wrongly with nothing to notice.
+    const weights = takes.map((take) => take.quantity.scaled);
     const proceedsParts = takes.length > 0 ? sale.proceeds.allocate(weights) : [];
     const sellChargeParts =
       takes.length > 0
