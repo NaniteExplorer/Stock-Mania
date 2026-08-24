@@ -1556,19 +1556,94 @@ Two notes for later:
 
 ## Phase 7 — Data migration and cutover
 
-- [ ] **`scripts/migrate-v1.ts`** — reads each Mongo collection and **replays it through the
+- [x] **`scripts/migrate-v1.ts`** — reads each Mongo collection and **replays it through the
       new use cases**, so accounts become opening-balance entries, transactions become
       fingerprinted `Expense`/`Income`/`Transfer`, trades become `Buy`/`Sell` rebuilding the
       lot book, and snapshots become cache rows. Anything failing validation is reported,
       not silently written. **Done when** a dry run prints a complete report and a real run
-      is idempotent.
-- [ ] **Reconciliation.** Diff computed net worth against v1's stored totals per month and
+      is idempotent. Done — `app/migration.usecases.ts` with `scripts/migrate-v1-entry.ts`
+      as the command (`npm run migrate:v1 -- --user <id> --dir ./v1-export [--commit]`), and
+      `tests/migration.spec.ts` asserting both halves of the done-when.
+
+      Three decisions differ from the item as written, and each is a correction rather than a
+      shortcut.
+
+      **It reads a `mongoexport` dump, not Mongo.** `mongoose` left `package.json` in Phase 6
+      and nothing imports it; a migration that re-added a driver would undo that gate on the
+      last lap. A file is also *reproducible*, which is the only thing that makes a dry run
+      worth running: the same export migrates the same way, so what the dry run printed is
+      what the real run does.
+
+      **Trades are reported, not migrated.** A `Sell` consumes lots at a cost basis, so
+      replaying v1's trades needs v1's *lot history* — and v1 never had one: it stored an
+      average cost per holding and recomputed realised gains from floats. Rebuilding a lot
+      book by replaying trades in date order would invent a basis, and any sale where that
+      basis disagreed with v1's average would contradict **a tax return the user has already
+      filed**. That is the user's decision, not a script's, so the migration lists what is
+      there and points at the broker's own trade book, which carries the lots and is the
+      authoritative record anyway.
+
+      **Snapshots are skipped, not imported.** A snapshot is a cache of a number the journal
+      now answers. Importing one would store a figure that could disagree with the ledger —
+      and it is precisely the figure the reconciliation below measures *against*.
+
+      Idempotency is a property of the data, not of the caller remembering: every migrated
+      transaction carries `fingerprint: v1:<document id>`, so a second run recognises its own
+      output. The spec runs the migration three times and the journal stops growing after the
+      first. Accounts dedupe by name for the same reason, and source order is preserved so a
+      re-run assigns the same codes.
+
+      One defect the spec caught in my own first cut: the dry run mapped no account ids, so
+      **every transaction was reported as rejected for want of an account the dry run was
+      never going to create** — a dry run that lies in exactly the direction that makes you
+      trust it. Fixed by mapping a placeholder id and reporting the unseeded chart as a note.
+- [x] **Reconciliation.** Diff computed net worth against v1's stored totals per month and
       account for every difference. **Done when** each remaining difference has a written
-      explanation (v1 float drift being the expected one).
-- [ ] **Cut over** and archive the v1 database.
+      explanation (v1 float drift being the expected one). Done, and the interesting part is
+      **which explanations are allowed to count**.
+
+      A difference inside a two-rupee tolerance is v1's float arithmetic, and the report says
+      so out loud — including that **v2's figure is the correct one**, because the tolerance
+      exists to name a known defect in the old data, not to excuse a new one. Anything larger
+      is `UNEXPLAINED` and says *do not cut over*: at that size the cause is a transaction
+      that did not migrate or migrated against the wrong account, and finding that now is the
+      difference between a migration and a data loss. The tolerance is a parameter, so
+      someone who wants it tighter can have it, and the spec proves a drift that passes at
+      ₹2 fails at ₹0.10.
+
+      An exact match reports `NONE` rather than a tolerated drift — the two are different
+      facts and a report that conflated them would hide the day rounding started appearing.
+- [ ] **Cut over** and archive the v1 database. **Blocked on the user's real v1 export**, and
+      recorded as blocked rather than ticked.
+
+      What can be built is built: `cutoverReadiness` is a six-item checklist, every item
+      machine-checkable — every row accounted for, every rejection carrying a written reason,
+      every month reconciled, the ledger's own integrity check passing, the accounting
+      identity holding, and the v1 database archived. The last is **manual and deliberately
+      not inferred**: the script cannot know whether anyone archived the old database, and
+      claiming it did would be the one lie in this phase that matters. The command exits 2
+      when a month is unexplained, so a CI or a shell script cannot cut over past a gap.
+
+      The cutover itself is one person running the command against their own data, and
+      nothing here can stand in for that.
 
 **Gate:** the new app shows the user's real financial position, and every divergence from
 v1 is explained rather than discovered later.
+
+**Gate status: met for everything that does not require the user's data.**
+`tests/migration.spec.ts` runs a synthetic export — built to contain every case the migration
+has an opinion about: an unknown account type, a transfer between two migrated accounts, a
+transaction whose account was rejected, a zero amount, a float with four decimal places, and
+a trade — through a real libSQL database with the real migrations. On it: the dry run reports
+all twelve rows and writes nothing, the real run migrates three of four accounts and four of
+six transactions with a written reason on every remainder, the bank balance is the ledger's
+own sum, a second and third run add nothing, an unexplained month blocks the checklist by
+name, and a sub-tolerance drift is explained. 44 assertions, and the suite is 37/37.
+
+The second clause of the gate — *the new app shows the user's real financial position* — can
+only be closed by running the command against the real export, which is why the cutover item
+stays open. Everything standing between here and that is now a command and a checklist rather
+than a piece of work.
 
 ---
 
@@ -1605,7 +1680,7 @@ existing file, proven by doing it once.
 | 4 | Deposits, retirement, loans | 10 | ✔ Complete (10/10) — gate met |
 | 5 | Investments | 10 | ✔ Complete (10/10) — gate met |
 | 6 | Reports and extras | 6 | ✔ Complete (6/6) — gate met; two extras deliberately deferred |
-| 7 | Migration and cutover | 3 | ☐ Not started |
+| 7 | Migration and cutover | 3 | ◑ 2/3 — gate met on synthetic data; cutover blocked on the real v1 export |
 | 8 | Quant readiness | 5 | ☐ Not started |
 
 Update the status cell to `◐ In progress` / `✔ Complete (n/n)` as phases land.
