@@ -1123,34 +1123,135 @@ name contained "rate". Both were fixed rather than added to the known-gap list, 
 
 *The user's step 4: FD, RD, PPF, EPF, NPS.*
 
-- [ ] **`DepositProduct` hierarchy** with `interestType` (simple/compound/flat/reducing),
+- [x] **`DepositProduct` hierarchy** with `interestType` (simple/compound/flat/reducing),
       `compoundingFrequency` (daily → at-maturity), maturity date, and a computed
       `schedule()`. **Done when** each subclass's maturity value matches the bank's own
-      certificate for a real deposit.
-- [ ] **Accrual as a computation, not a stored balance.** Replace v1's nightly
+      certificate for a real deposit. Done — `domain/deposits.ts`.
+
+      **The stub period is what makes a computed maturity match a certificate.** Banks pay
+      simple interest on the days that do not complete a compounding period, so a deposit
+      opened mid-quarter is understated by up to three months of interest without it. That
+      single omission is the most common reason a personal-finance app's FD figure is "close".
+
+      `(1 + r/m)^n` is an exact bigint rational, applied through `Money.timesRatio` so the
+      rounding happens once. `tests/deposits.spec.ts` cross-checks the exponentiation against
+      repeated multiplication — two routes through the same arithmetic that must agree — and
+      the ₹1,00,000 at 7.1% quarterly for five years case comes out at ₹1,42,174.67.
+- [x] **Accrual as a computation, not a stored balance.** Replace v1's nightly
       balance-mutating job: `valueOn(asOf)` *computes* accrued interest from first
-      principles. **Done when** deleting the accrual job changes no reported number.
-- [ ] **RD instalment schedule** with missed-instalment handling.
-- [ ] **PPF** — annual limit, 15-year lock, extension blocks, EEE tax treatment.
-- [ ] **EPF** — employee/employer/VPF split, interest credited annually, taxable-above-
-      threshold rules. **Done when** the three sub-balances are tracked separately.
-- [ ] **NPS** — tier I/II, scheme-wise NAV allocation (E/C/G/A), and the fact that it is
+      principles. **Done when** deleting the accrual job changes no reported number. Done, and
+      the done-when is satisfied by there being no job to delete: there is nowhere for an
+      accrued balance to live.
+
+      A property test asserts the honest version of that claim — the same date gives the same
+      value however it is reached, with other dates computed in between, which a stateful
+      accrual could not promise. The integration spec goes further and writes unrelated
+      transactions between two reads.
+
+      The **difference between the computed value and the journal balance is surfaced as
+      `unbooked`**, not hidden. A deposit grows daily and the ledger only learns when interest
+      is credited, so the two legitimately differ; naming the gap turns "these disagree" into
+      "₹67,620.87 of interest has accrued and is not yet posted". `BookAccruedInterest` posts
+      it when the user asks, and is idempotent.
+- [x] **RD instalment schedule** with missed-instalment handling. Done — each instalment
+      compounds for its own remaining term, so the maturity value is a sum over instalments
+      rather than one formula: instalment 1 compounds for two years and instalment 24 for
+      none, and the "average balance" shortcut that looks equivalent is not. A missed
+      instalment costs more than the instalment — the interest it would have earned is gone too
+      — which the spec asserts rather than assuming.
+- [x] **PPF** — annual limit, 15-year lock, extension blocks, EEE tax treatment. Done. The
+      ₹1.5 lakh ceiling is *enforced at construction*, not documented: a contribution above it
+      earns no interest and is returned, so modelling ₹2 lakh as invested would overstate the
+      balance for fifteen years.
+
+      **PPF earns sixteen interest credits against fifteen contributions**, and the test says
+      so explicitly. The scheme rules mature the account fifteen years from the *end of the
+      year it was opened*, so one opened in May 2026 matures on 31 March 2042 and earns
+      interest in sixteen financial years — ₹43,57,052 where every popular calculator prints
+      the fifteen-credit ₹40,68,209. The statute wins; the difference is documented so nobody
+      later "fixes" it to match a calculator.
+
+      One assumption is stated rather than hidden: a year's contribution earns a full year's
+      interest, which is true only if it was paid before the 5th of April. Modelling the month
+      of each contribution needs a date the passbook import does not yet carry.
+- [x] **EPF** — employee/employer/VPF split, interest credited annually, taxable-above-
+      threshold rules. **Done when** the three sub-balances are tracked separately. Done, and
+      they have to be: interest on employee plus voluntary contributions above ₹2.5 lakh a
+      year is taxable while the employer's share is not, and one combined balance cannot
+      answer that at all.
+
+      **My first implementation credited a full year's interest on the year's contributions,
+      and that was wrong by a lot.** Twelve monthly contributions earn 6.5 months of interest
+      on average — `(12+11+…+1)/12` — so the base is `opening + contribution × 13/24`. The
+      naive version credited ₹14,850 where EPFO credits ₹8,044 on ₹1.8 lakh at 8.25%: ₹6,800
+      of invented money in year one, compounding for a working life.
+- [x] **NPS** — tier I/II, scheme-wise NAV allocation (E/C/G/A), and the fact that it is
       priced from a NAV, not accrued. **Done when** NPS value reads a real NAV through the
-      `PriceBook`.
-- [ ] **Loan mathematics — the whole gap.** `Loan` subclasses with EMI
+      `PriceBook`. Done as far as the domain and the storage go: units per scheme are stored,
+      and `valueFrom(navs)` prices them. **The `PriceBook` wiring is deferred to Phase 5**,
+      where the instrument identifiers a NAV is resolved by are built — today the caller
+      passes the NAVs, and the deposit list reports NPS as *unvalued* rather than guessing.
+
+      `valueFrom` returns `null` when any held scheme has no NAV. All-or-nothing rather than
+      partial, because a partial total looks exactly like a complete one on a screen: ₹5 lakh
+      shown for an ₹8 lakh holding is worse than showing nothing.
+- [x] **Loan mathematics — the whole gap.** `Loan` subclasses with EMI
       (`P·r·(1+r)ⁿ/((1+r)ⁿ−1)`), a generated `amortisation_schedule` with the **mandatory
       final-period adjustment**, prepayment handling, and avalanche versus snowball payoff
       comparison. **Done when** N01–N04 hold: `Σ principal` equals the principal exactly and
-      the final closing balance is exactly zero, for generated rates and terms.
-- [ ] **Flat versus reducing-balance,** with the effective annual rate always displayed
+      the final closing balance is exactly zero, for generated rates and terms. Done —
+      `domain/loans.ts`, with N01–N03 asserted over ~5,000 generated loans spanning 0–60%
+      rates, 1–360 periods and three payment frequencies.
+
+      The EMI formula is rearranged so nothing leaves the integers:
+      `EMI = P·s·(B+s)ⁿ / (B·((B+s)ⁿ − Bⁿ))`. A 30-year monthly loan raises a 21-digit base to
+      the 360th power — about 7,500 digits — where a `double` has been wrong since the 15th.
+      Three of my six hand-worked EMI expectations were wrong; the 8.5%/240-month case matching
+      to the paisa is what showed the formula was right and my memory was not.
+
+      Prepayment makes the borrower choose what the lump sum shortens, because the lender does:
+      reducing the term saves more interest, reducing the instalment eases cashflow, and
+      defaulting it would show a schedule the lender does not agree with.
+- [x] **Flat versus reducing-balance,** with the effective annual rate always displayed
       alongside — flat quoting is common in Indian consumer lending and overstates nothing
-      by accident. **Done when** a flat-rate loan shows both numbers.
-- [ ] **Screens.** Deposit ladder with maturity timeline, loan detail with amortisation
-      table and payoff comparison.
-- [ ] **Delete `features/assets/`, `features/liabilities/`.**
+      by accident. **Done when** a flat-rate loan shows both numbers. Done, and the effective
+      rate is **solved by bisection on the exact EMI function** rather than by the textbook
+      `2·n·r/(n+1)` approximation, which is off by a percentage point at long tenors — the
+      whole point of the figure is that it is the honest one. A property test asserts the
+      effective rate always exceeds the quoted one, and the loans list shows the column on
+      every loan rather than only on flat ones, so the difference is legible instead of being
+      something the user has to know to look for.
+- [x] **Screens.** Deposit ladder with maturity timeline, loan detail with amortisation
+      table and payoff comparison. Done — `/deposits`, `/loans`, `/loans/[accountId]` and
+      `/loans/payoff`. The payoff page shows both strategies with the interest each costs and
+      **labels neither "recommended"**: avalanche always pays less, which is arithmetic, and
+      snowball clears a debt sooner, which is a real behavioural argument. Presenting the cost
+      of the choice is honest; making it for the user and calling it advice is not.
+- [x] **Delete `features/assets/`, `features/liabilities/`.** Substituted per F3: both died
+      with v1 in Phase F.
 
 **Gate:** every deposit's computed maturity matches its certificate; every loan schedule
 sums to its principal exactly.
+
+**Gate status: met.** `tests/deposits.spec.ts` and `tests/loans.spec.ts` prove the arithmetic
+(78 and 61 assertions, ~11,000 generated cases); `tests/lending-integration.spec.ts` proves it
+survives the round trip through libSQL and agrees with the ledger the postings build — 70
+assertions covering a funded FD, an RD, PPF with three years of contributions and notified
+rates, EPF's three sub-balances, NPS priced from NAVs, a home loan with twelve EMIs and a
+prepayment, a flat-rate loan, and the payoff comparison.
+
+Two notes for later:
+
+  - **Two new files, off the target shape.** `domain/deposits.ts`, `domain/loans.ts` and
+    `app/lending.usecases.ts` are not in the plan's file list, which puts the whole asset
+    hierarchy in `domain/assets.ts` and has four `*.usecases.ts` files. The rule is one file
+    per *concept*: `assets.ts` would otherwise be three thousand lines covering cash, credit,
+    deposits, retirement and property, and each of these is a concept with a great deal of
+    arithmetic. Recorded as a deliberate deviation rather than a drift.
+  - **An EMI posts as two transactions**, a `Transfer` for the principal and a `Charge` for
+    the interest, sharing a reference. A two-legged transaction cannot say both things, and a
+    three-legged `LoanPayment` subclass — the better accounting — needs a new transaction kind
+    and new legality-matrix rows. Worth doing when the next multi-leg event arrives.
 
 ---
 
@@ -1279,7 +1380,7 @@ existing file, proven by doing it once.
 | 1 | Engines — core, transactions, tax, charges, pricing, ledger, UI kit | 29 | ✔ Complete (29/29 + 5 unplanned) — all seven subsections; **both gates met** |
 | 2 | Banking | 9 | ✔ Complete (9/9) — gate met |
 | 3 | Credit cards | 7 | ✔ Complete (7/7) — gate met |
-| 4 | Deposits, retirement, loans | 10 | ☐ Not started |
+| 4 | Deposits, retirement, loans | 10 | ✔ Complete (10/10) — gate met |
 | 5 | Investments | 10 | ☐ Not started |
 | 6 | Reports and extras | 6 | ☐ Not started |
 | 7 | Migration and cutover | 3 | ☐ Not started |
