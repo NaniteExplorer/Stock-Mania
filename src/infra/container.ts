@@ -67,6 +67,13 @@ import {
   RecordSell,
   ValuePortfolio,
 } from "@/app/investing.usecases";
+import {
+  BuildStatements,
+  NetWorthSeries,
+  PersonalReport,
+  SuggestHarvest,
+  TaxReport,
+} from "@/app/reports.usecases";
 import { PriceBook } from "@/domain/pricing";
 import { FetchHttpClient, shippedQuoteProviders, systemRuntime } from "@/infra/providers";
 import { getCurrentSession } from "@/infra/auth/session";
@@ -213,6 +220,13 @@ export const services = cache(() => {
         journal,
         new ValuePortfolio(instruments, lots, prices),
       ),
+    },
+    reports: {
+      statements: new BuildStatements(balances),
+      netWorthSeries: new NetWorthSeries(balances),
+      personal: new PersonalReport(accounts, balances),
+      tax: new TaxReport(lots, instruments),
+      harvest: new SuggestHarvest(instruments, lots, prices),
     },
     lending: {
       openDeposit: new OpenDeposit(openAccount, lending, record),
