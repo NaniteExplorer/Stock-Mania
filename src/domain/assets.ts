@@ -933,3 +933,415 @@ export interface CardTermsRepository {
 
   save(userId: UserId, accountId: AccountId, terms: CardTerms): Promise<void>;
 }
+
+/* ═══ PhysicalAsset ═══════════════════════════════════════════════════ */
+
+/**
+ * Something valued by **assertion** rather than by a quote.
+ *
+ * The fifth hierarchy, and the distinction that defines it: a flat, a car and a
+ * bangle have no market price a feed can fetch, so their value is whatever
+ * somebody credible last said it was. That makes provenance part of the value —
+ * "₹92 lakh, from a bank valuation in March 2026" is a different claim from
+ * "₹92 lakh, because I typed it" — so a valuation carries its source and its date,
+ * and a stale one says so instead of looking current.
+ */
+export type PhysicalAssetKind =
+  | "REAL_ESTATE"
+  | "VEHICLE"
+  | "PHYSICAL_GOLD"
+  | "ESOP_GRANT"
+  | "GOLD_LEASE";
+
+export type ValuationSource =
+  /** A bank or registered valuer's report. The strongest. */
+  | "PROFESSIONAL_VALUATION"
+  /** A comparable sale or a listing. */
+  | "MARKET_COMPARABLE"
+  /** The price paid, carried forward. Honest, and increasingly wrong. */
+  | "PURCHASE_PRICE"
+  /** The owner's own estimate. */
+  | "SELF_ASSESSED";
+
+export interface AssertedValuation {
+  readonly on: CalendarDate;
+  readonly value: Money;
+  readonly source: ValuationSource;
+  readonly note?: string;
+}
+
+/** How long a valuation from each source stays credible. */
+const VALUATION_SHELF_LIFE_DAYS: Readonly<Record<ValuationSource, number>> = {
+  PROFESSIONAL_VALUATION: 365,
+  MARKET_COMPARABLE: 180,
+  PURCHASE_PRICE: 365,
+  SELF_ASSESSED: 90,
+};
+
+export abstract class PhysicalAsset {
+  protected constructor(
+    readonly account: Account,
+    readonly valuations: readonly AssertedValuation[],
+  ) {
+    if (account.type !== AccountType.ASSET) {
+      throw new TypeError(
+        `${account.displayName} is ${account.type.label.toLowerCase()}, not an asset.`,
+      );
+    }
+  }
+
+  abstract readonly kind: PhysicalAssetKind;
+
+  get id(): AccountId {
+    return this.account.id;
+  }
+
+  get displayName(): string {
+    return this.account.displayName;
+  }
+
+  get currency(): Currency {
+    return this.account.currency;
+  }
+
+  /**
+   * The most recent valuation on or before a date, with its age.
+   *
+   * `null` when nothing has been asserted — never a zero, and never the purchase
+   * price silently substituted. An asset nobody has valued is an asset whose value
+   * is unknown, and that is a different statement from "it is worth nothing".
+   */
+  valuationOn(asOf: CalendarDate): { valuation: AssertedValuation; ageDays: number; isStale: boolean } | null {
+    const eligible = this.valuations
+      .filter((valuation) => valuation.on.isOnOrBefore(asOf))
+      .sort((a, b) => b.on.compareTo(a.on));
+    const latest = eligible[0];
+    if (!latest) return null;
+
+    const ageDays = latest.on.daysUntil(asOf);
+    return {
+      valuation: latest,
+      ageDays,
+      isStale: ageDays > VALUATION_SHELF_LIFE_DAYS[latest.source],
+    };
+  }
+
+  /** The value on a date, or `null` when nobody has said. */
+  valueOn(asOf: CalendarDate): Money | null {
+    return this.valuationOn(asOf)?.valuation.value ?? null;
+  }
+}
+
+/** A flat, a plot, a house. */
+export class RealEstate extends PhysicalAsset {
+  readonly kind = "REAL_ESTATE" as const;
+
+  constructor(account: Account, valuations: readonly AssertedValuation[]) {
+    super(account, valuations);
+  }
+}
+
+/** A car or a two-wheeler — the one asset most people know depreciates. */
+export class Vehicle extends PhysicalAsset {
+  readonly kind = "VEHICLE" as const;
+
+  constructor(
+    account: Account,
+    valuations: readonly AssertedValuation[],
+    readonly purchase?: { readonly on: CalendarDate; readonly price: Money },
+  ) {
+    super(account, valuations);
+  }
+
+  /**
+   * Straight-line depreciation from the purchase price, as a *fallback* when
+   * nothing has been asserted.
+   *
+   * Offered explicitly rather than folded into `valueOn`, because it is a model
+   * and not an observation: 15% a year is the Indian insurance convention and is
+   * not what any particular car sold for. A caller that wants it asks for it, and
+   * the screen can say which it is showing.
+   */
+  depreciatedValueOn(asOf: CalendarDate, annualRate = Percentage.of("15")): Money | null {
+    if (!this.purchase) return null;
+    const years = Math.max(0, this.purchase.on.daysUntil(asOf)) / 365;
+    const wholeYears = Math.floor(years);
+    let value = this.purchase.price;
+    for (let year = 0; year < wholeYears; year += 1) {
+      value = value.minus(annualRate.applyTo(value));
+    }
+    return value;
+  }
+}
+
+/** Coins, bars and jewellery, in grams. Priced from a metal rate when one is known. */
+export class PhysicalGold extends PhysicalAsset {
+  readonly kind = "PHYSICAL_GOLD" as const;
+
+  constructor(
+    account: Account,
+    valuations: readonly AssertedValuation[],
+    readonly grams: Quantity = Quantity.ZERO,
+    /** Jewellery is rarely 24 carat, and making charges are not recoverable. */
+    readonly purity: "24K" | "22K" | "18K" = "22K",
+  ) {
+    super(account, valuations);
+  }
+
+  /**
+   * Value from a per-gram rate, adjusted for purity.
+   *
+   * The purity adjustment is why this is not just `grams × rate`: a 22-carat
+   * bangle is 91.6% gold, and valuing it at the 24-carat rate overstates it by 9%.
+   * Making charges are deliberately *not* added back — they are a cost of
+   * acquisition that no buyer pays again.
+   */
+  valueFromRate(ratePerGram: UnitPrice): Money {
+    const purityFactor = { "24K": 1000n, "22K": 916n, "18K": 750n }[this.purity];
+    const gross = ratePerGram.times(this.grams);
+    return gross.timesRatio(purityFactor, 1000n, "HALF_UP");
+  }
+}
+
+/* ═══ ESOP grants ═════════════════════════════════════════════════════ */
+
+export interface VestingTranche {
+  readonly on: CalendarDate;
+  readonly options: Quantity;
+}
+
+export interface EsopTerms {
+  readonly grantedOn: CalendarDate;
+  readonly totalOptions: Quantity;
+  /** What the holder pays to exercise, per option. */
+  readonly strikePrice: Money;
+  /** The company's fair market value per share, as last assessed. */
+  readonly fairMarketValue: Money | null;
+  readonly vesting: readonly VestingTranche[];
+  /** Options already exercised, so they are not counted twice. */
+  readonly exercised?: Quantity;
+  /** Whether the company is listed — it decides how the gain is taxed. */
+  readonly listed: boolean;
+}
+
+/**
+ * An employee stock option grant.
+ *
+ * Absent from every reference architecture, and one of the two genuinely original
+ * pieces of v1 worth keeping. It is a `PhysicalAsset` because it is valued by
+ * assertion — an unlisted company's fair market value comes from a valuation
+ * report, not a feed — and because it is not a `MarketInstrument`: there are no
+ * lots and nothing to price per unit until it is exercised.
+ *
+ * Three facts make it its own class rather than a number in a spreadsheet:
+ *
+ *   - **Unvested options are not an asset.** They are a promise conditional on
+ *     employment, and counting them in net worth reports money that will vanish if
+ *     the holder resigns. `vestedOn` is what net worth may use.
+ *   - **The taxable event is exercise, not sale.** The spread between the fair
+ *     market value and the strike price is *salary income* at exercise, taxed at
+ *     slab, whether or not a single share is sold — which is the fact that
+ *     surprises people into a tax bill they cannot fund.
+ *   - **The capital gain runs from exercise**, on the FMV at exercise as its cost
+ *     basis. Two events, two bases, and conflating them double-counts or loses the
+ *     spread.
+ */
+export class EsopGrant extends PhysicalAsset {
+  readonly kind = "ESOP_GRANT" as const;
+
+  constructor(
+    account: Account,
+    readonly terms: EsopTerms,
+    valuations: readonly AssertedValuation[] = [],
+  ) {
+    super(account, valuations);
+    const scheduled = Quantity.sum(terms.vesting.map((tranche) => tranche.options));
+    if (scheduled.isGreaterThan(terms.totalOptions)) {
+      throw new TypeError(
+        `The vesting schedule grants ${scheduled.toDecimalString()} options against a total of ` +
+          `${terms.totalOptions.toDecimalString()}.`,
+      );
+    }
+  }
+
+  /** Options vested on or before a date. */
+  vestedOn(asOf: CalendarDate): Quantity {
+    return Quantity.sum(
+      this.terms.vesting
+        .filter((tranche) => tranche.on.isOnOrBefore(asOf))
+        .map((tranche) => tranche.options),
+    );
+  }
+
+  /** Vested but not yet exercised — what could be turned into shares today. */
+  exercisableOn(asOf: CalendarDate): Quantity {
+    const vested = this.vestedOn(asOf);
+    const exercised = this.terms.exercised ?? Quantity.ZERO;
+    return exercised.isGreaterThan(vested) ? Quantity.ZERO : vested.minus(exercised);
+  }
+
+  /** Options that have not vested. Not an asset, and reported separately. */
+  unvestedOn(asOf: CalendarDate): Quantity {
+    const vested = this.vestedOn(asOf);
+    return vested.isGreaterThan(this.terms.totalOptions)
+      ? Quantity.ZERO
+      : this.terms.totalOptions.minus(vested);
+  }
+
+  /**
+   * The value of what is vested: `(FMV − strike) × exercisable`, floored at zero.
+   *
+   * Floored because an underwater option is worth nothing, not a negative amount —
+   * the holder simply does not exercise. Reporting the negative would understate
+   * net worth by an amount nobody owes.
+   */
+  intrinsicValueOn(asOf: CalendarDate): Money | null {
+    const fmv = this.terms.fairMarketValue;
+    if (!fmv) return null;
+    const spread = fmv.minus(this.terms.strikePrice);
+    if (!spread.isPositive) return Money.zero(this.currency);
+    return this.exercisableOn(asOf).valueAt(spread, "HALF_UP");
+  }
+
+  override valueOn(asOf: CalendarDate): Money | null {
+    // An asserted valuation wins when there is one — a valuation report is better
+    // evidence than a computed spread.
+    return super.valueOn(asOf) ?? this.intrinsicValueOn(asOf);
+  }
+
+  /**
+   * The tax at exercise: the spread is **salary income**, taxed at slab.
+   *
+   * Not a capital gain, and this is the distinction that costs people money: the
+   * bill arrives in the year of exercise regardless of whether anything was sold,
+   * and for an unlisted company there is no market to sell into to fund it.
+   */
+  exerciseTaxableIncome(options: Quantity, fairMarketValueAtExercise: Money): Money {
+    const spread = fairMarketValueAtExercise.minus(this.terms.strikePrice);
+    if (!spread.isPositive) return Money.zero(this.currency);
+    return options.valueAt(spread, "HALF_UP");
+  }
+
+  /**
+   * The cost basis of the shares after exercise: the FMV at exercise, not the
+   * strike.
+   *
+   * Because the spread has already been taxed as salary. Using the strike price
+   * would tax it twice — once as income and again as a capital gain — which is the
+   * single most common ESOP mistake.
+   */
+  costBasisAfterExercise(options: Quantity, fairMarketValueAtExercise: Money): Money {
+    return options.valueAt(fairMarketValueAtExercise, "HALF_UP");
+  }
+
+  /** Holding period for the capital gain runs from **exercise**, never from grant. */
+  gainTermFrom(exercisedOn: CalendarDate, soldOn: CalendarDate): { days: number; longTerm: boolean } {
+    const days = exercisedOn.daysUntil(soldOn);
+    // Listed: 12 months. Unlisted: 24 months.
+    const threshold = this.terms.listed ? 365 : 730;
+    return { days, longTerm: days >= threshold };
+  }
+}
+
+/* ═══ Gold lease ══════════════════════════════════════════════════════ */
+
+export interface GoldLeaseTerms {
+  readonly grams: Quantity;
+  readonly leasedOn: CalendarDate;
+  readonly returnsOn: CalendarDate;
+  /** Annual lease rate, paid in grams or in money. */
+  readonly annualRate: Rate;
+  readonly paidIn: "GRAMS" | "MONEY";
+  /** Who holds the metal, since the lessee's default is the whole risk. */
+  readonly counterparty: string;
+}
+
+/**
+ * Gold lent out for a rental income — the other original piece of v1.
+ *
+ * The asset is still the gold; the lease is an income stream on top of it, and
+ * that distinction is the model. Treating the leased metal as disposed of would
+ * report a capital gain that has not happened; treating the rental as capital
+ * would understate taxable income. Both are wrong in ways that only surface at a
+ * tax return.
+ *
+ * The rent may be paid **in grams**, which is the part no generic asset model can
+ * express: the holding grows without any money changing hands, and the new grams
+ * have their own acquisition date for holding-period purposes.
+ */
+export class GoldLease extends PhysicalAsset {
+  readonly kind = "GOLD_LEASE" as const;
+
+  constructor(
+    account: Account,
+    readonly terms: GoldLeaseTerms,
+    valuations: readonly AssertedValuation[] = [],
+  ) {
+    super(account, valuations);
+    if (!terms.grams.isPositive) throw new TypeError("A gold lease needs a positive weight.");
+    if (!terms.returnsOn.isAfter(terms.leasedOn)) {
+      throw new TypeError("A lease must return after it starts.");
+    }
+  }
+
+  /** Days the metal has been out, capped at the lease term. */
+  daysElapsed(asOf: CalendarDate): number {
+    const end = CalendarDate.min(asOf, this.terms.returnsOn);
+    return Math.max(0, this.terms.leasedOn.daysUntil(end));
+  }
+
+  /**
+   * Rent earned to date, in grams.
+   *
+   * `Quantity` rather than `Money`, because grams are what was promised — and a
+   * gram of gold earned in a lease that pays in metal is not a rupee amount until
+   * somebody sells it.
+   */
+  rentInGramsTo(asOf: CalendarDate): Quantity {
+    if (this.terms.paidIn !== "GRAMS") return Quantity.ZERO;
+    const factor = this.terms.annualRate.accrualFactor(this.daysElapsed(asOf));
+    // `fromScaled`, not `fromRatio`: the grams are already scaled, and `fromRatio`
+    // would apply the scale factor a second time — 3 grams of rent as 300,000,000.
+    return Quantity.fromScaled((this.terms.grams.scaled * factor.numerator) / factor.denominator);
+  }
+
+  /** Rent earned to date in money, for a lease that pays cash. */
+  rentInMoneyTo(asOf: CalendarDate, ratePerGram: UnitPrice): Money {
+    if (this.terms.paidIn !== "MONEY") return Money.zero(this.currency);
+    const value = ratePerGram.times(this.terms.grams);
+    const factor = this.terms.annualRate.accrualFactor(this.daysElapsed(asOf));
+    return value.timesRatio(factor.numerator, factor.denominator, "HALF_UP");
+  }
+
+  /** Grams held including rent accrued in metal. */
+  totalGramsOn(asOf: CalendarDate): Quantity {
+    return this.terms.grams.plus(this.rentInGramsTo(asOf));
+  }
+
+  /**
+   * The value of the position: the metal, at a rate, plus rent accrued in metal.
+   *
+   * Deliberately takes the rate as an argument: a lease is still gold, and gold has
+   * a published price, so there is no reason to fall back to an assertion when a
+   * rate is available.
+   */
+  valueFromRate(ratePerGram: UnitPrice, asOf: CalendarDate): Money {
+    return ratePerGram.times(this.totalGramsOn(asOf));
+  }
+
+  /**
+   * Counterparty risk, named rather than assumed away.
+   *
+   * A lease is only worth the metal if it comes back. There is no number for this
+   * — which is the point of returning the counterparty and the date instead of a
+   * discount nobody can justify.
+   */
+  riskNote(asOf: CalendarDate): string {
+    const daysToReturn = asOf.daysUntil(this.terms.returnsOn);
+    return daysToReturn >= 0
+      ? `${this.terms.grams.toDecimalString()}g is with ${this.terms.counterparty} for another ` +
+          `${daysToReturn} day(s). The value assumes it is returned.`
+      : `${this.terms.grams.toDecimalString()}g was due back from ${this.terms.counterparty} ` +
+          `${Math.abs(daysToReturn)} day(s) ago.`;
+  }
+}
