@@ -367,8 +367,33 @@ async function main() {
   checkTrue("a burn rate is computable", personal.value.burnRate !== null);
   checkTrue("and a runway follows from it", personal.value.runwayMonths !== null);
   checkTrue(
-    "credit utilisation is null until limits are loaded, rather than a misleading 0%",
+    "credit utilisation is null with no card terms loaded, rather than a misleading 0%",
     personal.value.creditUtilisation === null,
+  );
+
+  /*
+   * With the terms injected it becomes a number, and the number is checked
+   * against the fixture rather than against itself: the card owes ₹18,000 on a
+   * ₹2,00,000 limit, which is 9%.
+   *
+   * The distinction the two assertions draw is the whole reason the repository is
+   * optional. "We do not know the limit" and "nothing is owed" are opposite
+   * claims, and 0% would be indistinguishable from the second.
+   */
+  const withLimits = await new PersonalReport(accountRepo, balances, cardTerms).execute({
+    userId,
+    asOf,
+  });
+  if (!withLimits.ok) throw new Error(withLimits.error.message);
+  checkTrue(
+    "with card terms loaded it is a number",
+    withLimits.value.creditUtilisation !== null,
+  );
+  const cardOwed = sheet.liabilities.rows.find((row) => row.subtype === "CREDIT_CARD")?.balance;
+  check(
+    "and it is the balance over the limit",
+    withLimits.value.creditUtilisation?.toFixed(2),
+    Percentage.ratio(cardOwed ?? rupees("0"), rupees("200000")).toFixed(2),
   );
 
   /* ── The tax report ───────────────────────────────────────────────── */

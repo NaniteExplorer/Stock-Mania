@@ -33,6 +33,24 @@ export default async function Page() {
   const financialYear = FinancialYear.containing(today);
   const { reports, repositories } = services();
 
+  /*
+   * The user's own circumstances, from `/settings`.
+   *
+   * When nothing is stored the report still runs — at the top slab, so the figure
+   * is a ceiling rather than an underestimate — and the panel says which of the
+   * two it is looking at. A silently-defaulted 30% would be indistinguishable
+   * from a real 30%.
+   */
+  const storedTax = await repositories.taxSettings.findFor(userId, financialYear);
+  const taxSettings = {
+    isAssumed: storedTax === null,
+    settings: {
+      slabRate: storedTax?.marginalSlabRate ?? Percentage.of("30"),
+      totalIncome: storedTax?.totalIncome ?? Money.zero(),
+      residentStatus: storedTax?.residentStatus ?? ("RESIDENT" as const),
+    },
+  };
+
   const [series, flows, tax] = await Promise.all([
     reports.netWorthSeries.execute({ userId, months: MONTHS, asOf: today }),
     repositories.balances.monthlyFlows(
@@ -42,14 +60,7 @@ export default async function Page() {
     reports.tax.execute({
       userId,
       financialYear,
-      settings: {
-        // The slab and the total income are the user's own circumstances; until a
-        // settings screen collects them, the report is run at the top slab so the
-        // figure is a ceiling rather than an underestimate.
-        slabRate: Percentage.of("30"),
-        totalIncome: Money.zero(),
-        residentStatus: "RESIDENT",
-      },
+      settings: taxSettings.settings,
     }),
   ]);
   if (!series.ok) throw new Error(series.error.message);
@@ -127,7 +138,11 @@ export default async function Page() {
       {tax.ok && (
         <Card
           title={`Realised gains — ${financialYear.label}`}
-          subtitle="Every line names the rule that produced it and the regime version that rule came from."
+          subtitle={
+            taxSettings.isAssumed
+              ? "Every line names its rule. No tax settings are stored for this year, so slab income is computed at 30% — a ceiling. Set your marginal rate on Settings."
+              : `Every line names the rule that produced it. Slab income is computed at your stored marginal rate of ${taxSettings.settings.slabRate.toFixed(2)}%.`
+          }
         >
           {tax.value.events.length === 0 ? (
             <p className="text-sm text-gray-500">

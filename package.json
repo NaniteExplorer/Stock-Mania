@@ -13,6 +13,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "node scripts/seed.mjs",
     "migrate:v1": "node scripts/migrate-v1.mjs",
+    "verify:reproducibility": "node scripts/reproducibility.mjs",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"
   },

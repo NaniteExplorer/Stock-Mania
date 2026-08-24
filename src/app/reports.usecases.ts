@@ -18,7 +18,7 @@ import { Currency, Money } from "@/core/money";
 import { Percentage } from "@/core/numeric";
 import { CalendarDate, DateRange, FinancialYear } from "@/core/time";
 import { AccountRepository, AccountTypeName } from "@/domain/accounts";
-import { CashAsset, liquidPositions, totalLiquid } from "@/domain/assets";
+import { CardTermsRepository, CashAsset, liquidPositions, totalLiquid } from "@/domain/assets";
 import { BalanceQuery } from "@/domain/transactions";
 import { InstrumentRepository } from "@/domain/instruments";
 import { LotBook, LotRepository } from "@/domain/lots";
@@ -282,6 +282,15 @@ export class PersonalReport implements UseCase<PersonalReportInput, PersonalRepo
   constructor(
     private readonly accounts: AccountRepository,
     private readonly balances: BalanceQuery,
+    /**
+     * Card terms, for the credit-utilisation figure.
+     *
+     * Optional, and the optionality is the honest part: with no terms repository
+     * the total limit is unknown, and `personalMetrics` reports
+     * `creditUtilisation: null` rather than 0% — which would read as "no credit
+     * used" when it means "we do not know the limit".
+     */
+    private readonly cardTerms?: CardTermsRepository,
   ) {}
 
   async execute(input: PersonalReportInput): Promise<Result<PersonalReportOutput, AppError>> {
@@ -316,6 +325,28 @@ export class PersonalReport implements UseCase<PersonalReportInput, PersonalRepo
     const cards = sheet.filter((row) => row.subtype === "CREDIT_CARD");
     const cardBalances = Money.total(cards.map((row) => row.balance));
 
+    /*
+     * The limits come from the card *terms*, not from the ledger: a credit limit
+     * is a contractual fact with no posting behind it, so there is nothing in the
+     * journal to derive it from. Cards whose terms are missing are excluded from
+     * both sides of the ratio — counting a balance whose limit is unknown would
+     * inflate utilisation towards infinity as terms went missing.
+     */
+    const terms = this.cardTerms
+      ? await this.cardTerms.findManyFor(
+          input.userId,
+          cards.map((row) => row.accountId),
+        )
+      : new Map<string, { creditLimit: Money }>();
+    const withTerms = cards.filter((row) => terms.has(row.accountId.value));
+    const cardLimits = Money.total(
+      withTerms.map((row) => terms.get(row.accountId.value)!.creditLimit),
+      Currency.reporting,
+    );
+    const measuredBalances = this.cardTerms
+      ? Money.total(withTerms.map((row) => row.balance), Currency.reporting)
+      : cardBalances;
+
     const metrics = personalMetrics({
       netWorth: totals.netWorth,
       liquidNetWorth: liquid,
@@ -327,8 +358,8 @@ export class PersonalReport implements UseCase<PersonalReportInput, PersonalRepo
       // returns null rather than a misleading 0%.
       monthlyDebtPayments: Money.zero(Currency.reporting),
       monthlyGrossIncome: income.dividedBy(BigInt(monthsWithData), "HALF_UP"),
-      cardBalances,
-      cardLimits: Money.zero(Currency.reporting),
+      cardBalances: measuredBalances,
+      cardLimits,
     });
 
     return Ok({

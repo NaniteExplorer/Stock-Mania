@@ -43,11 +43,56 @@ const addSchema = z.object({
     "DIGITAL_GOLD",
     "DIGITAL_SILVER",
     "CRYPTO",
+    "OPTION",
+    "FUTURE",
   ]),
   isin: z.string().trim().length(12).optional().or(z.literal("")),
   exchange: z.string().trim().max(16).optional().or(z.literal("")),
   quoteRef: z.string().trim().max(64).optional().or(z.literal("")),
+  /* ── The leaf's own facts. Only the derivatives need any of these. ── */
+  underlying: z.enum(["EQUITY", "DEBT", "GOLD"]).optional(),
+  legacyUnits: z.string().optional(),
+  underlyingSymbol: z.string().trim().max(40).optional().or(z.literal("")),
+  right: z.enum(["CALL", "PUT"]).optional(),
+  strike: AMOUNT.optional().or(z.literal("")),
+  expiry: z.string().trim().optional().or(z.literal("")),
+  contractMonth: z.string().trim().optional().or(z.literal("")),
+  lotSize: z.string().trim().optional().or(z.literal("")),
 });
+
+/**
+ * The metadata for the chosen leaf, or `undefined`.
+ *
+ * Assembled here rather than in the form, because the form's job is to collect
+ * strings and the shape belongs to the domain — which validates it against that
+ * leaf's own Zod schema in its constructor and refuses a half-specified
+ * derivative outright.
+ */
+function metadataFor(input: z.infer<typeof addSchema>): unknown {
+  switch (input.kind) {
+    case "ETF":
+      return input.underlying ? { underlying: input.underlying } : undefined;
+    case "DEBT_FUND":
+      return input.legacyUnits === "on" ? { legacyUnits: true } : undefined;
+    case "OPTION":
+      return {
+        underlyingSymbol: (input.underlyingSymbol || "").toUpperCase(),
+        right: input.right ?? "CALL",
+        strike: input.strike || "0",
+        expiry: input.expiry || "",
+        lotSize: Number(input.lotSize || "0"),
+      };
+    case "FUTURE":
+      return {
+        underlyingSymbol: (input.underlyingSymbol || "").toUpperCase(),
+        expiry: input.expiry || "",
+        contractMonth: input.contractMonth || (input.expiry || "").slice(0, 7),
+        lotSize: Number(input.lotSize || "0"),
+      };
+    default:
+      return undefined;
+  }
+}
 
 export async function addInstrumentAction(
   _previous: InvestingActionState | null,
@@ -73,6 +118,7 @@ export async function addInstrumentAction(
     isin: parsed.data.isin || null,
     exchange: parsed.data.exchange || null,
     quoteRef: parsed.data.quoteRef || null,
+    metadata: metadataFor(parsed.data),
   });
 
   if (!result.ok) return { ok: false, message: result.error.message };

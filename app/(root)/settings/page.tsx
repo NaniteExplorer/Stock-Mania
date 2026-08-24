@@ -1,19 +1,24 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Coins, ShieldCheck } from "lucide-react";
+import { Coins, Landmark, ShieldCheck } from "lucide-react";
 import { getCurrentSession } from "@/infra/auth/session";
 import { Currency } from "@/core/money";
-import { Card, PageHeader, Pill } from "@/ui/primitives";
+import { CalendarDate, FinancialYear } from "@/core/time";
+import { currentUserId, ensureSeeded, services } from "@/infra/container";
+import { PageHeader, Pill } from "@/ui/primitives";
+import TaxSettingsForm from "./tax-settings-form";
 
 export const metadata: Metadata = { title: "Settings" };
 
 /**
- * Read-only for now, deliberately.
+ * Mostly read-only, and the one editable thing is the one the reports need.
  *
- * v1 let you pick a display currency and stored it in a Mongo user-preferences
- * collection. There is no equivalent table in the v2 schema yet, and inventing
- * one here — ahead of the phase that designs it — would mean a migration to undo
- * later. So this page reports what is true and offers no control it cannot honour.
+ * The reporting currency still reports rather than offers, because changing it
+ * needs a preferences table and an FX rate book. The **tax settings** are
+ * different: they are facts about the person that no ledger can derive, and
+ * without them the history screen's tax panel ran every assessment at the top
+ * slab. That was honest — it said so — and wrong for most people by a wide
+ * margin, which is a poor trade for a form with four fields.
  */
 export default async function SettingsPage() {
   const session = await getCurrentSession();
@@ -21,12 +26,18 @@ export default async function SettingsPage() {
   const { name, email } = session.user;
   const reporting = Currency.reporting;
 
+  const userId = await currentUserId();
+  await ensureSeeded(userId);
+  const today = CalendarDate.parse(new Date().toISOString().slice(0, 10));
+  const financialYear = FinancialYear.containing(today);
+  const stored = await services().repositories.taxSettings.findFor(userId, financialYear);
+
   return (
     <div className="flex max-w-3xl flex-col gap-6">
       <PageHeader
         title="Settings"
         subtitle="A deliberately small, manual-first setup."
-        badge={<Pill tone="brand">Read-only until Phase 2</Pill>}
+        badge={<Pill tone="brand">{financialYear.label}</Pill>}
       />
 
       <section className="panel p-6">
@@ -59,6 +70,29 @@ export default async function SettingsPage() {
           Choosing a different reporting currency needs a preferences table and
           an FX rate book, both of which arrive with the pricing engine.
         </p>
+      </section>
+
+      <section className="panel p-6">
+        <div className="flex items-center gap-3">
+          <span className="icon-chip">
+            <Landmark className="h-5 w-5" />
+          </span>
+          <div>
+            <h2 className="font-semibold text-gray-100">Tax settings</h2>
+            <p className="text-xs text-gray-500">
+              Your circumstances, which no ledger can derive. Stored per financial
+              year so a reprinted return keeps the rate it was filed at.
+            </p>
+          </div>
+        </div>
+        <TaxSettingsForm
+          financialYear={stored?.financialYear ?? financialYear.label}
+          marginalSlabPercent={stored ? stored.marginalSlabRate.toFixed(2) : "30"}
+          ltcgExemption={stored ? stored.ltcgExemption.toDecimalString() : "125000.00"}
+          regimeKey={stored?.regimeKey ?? "india-fy2025"}
+          usesNewRegime={stored?.usesNewRegime ?? true}
+          isAssumed={stored === null}
+        />
       </section>
 
       <section className="panel flex items-start gap-3 p-4 text-sm">
