@@ -678,7 +678,32 @@ export class AverageCostBook {
 
 /* ═══ Repository port ═════════════════════════════════════════════════ */
 
+/**
+ * The broker-level record of a trade, distinct from the ledger transaction it
+ * wrote.
+ *
+ * Both exist because they answer different questions: the transaction is what the
+ * money did, and the trade is what the broker did — each statutory charge in its
+ * own column, because STT is not deductible while brokerage is, and a single
+ * "fees" total cannot answer that later. `transactionId` ties them together and is
+ * the same id, so a trade is always traceable to its postings.
+ */
+export interface TradeRecord {
+  readonly id: string;
+  readonly instrumentId: InstrumentId;
+  readonly side: "BUY" | "SELL";
+  readonly tradedOn: CalendarDate;
+  readonly quantity: Quantity;
+  readonly pricePerUnit: Money;
+  readonly charges: Money;
+  readonly transactionId: string;
+  readonly settlementAccountId: string | null;
+}
+
 export interface LotRepository {
+  /** Writes the broker-level trade row a lot and a disposal both reference. */
+  recordTrade(userId: UserId, trade: TradeRecord): Promise<void>;
+
   /** Open lots for a position, oldest first. */
   openLots(userId: UserId, instrumentId: InstrumentId): Promise<readonly Lot[]>;
   /** Every lot, including exhausted ones — a realised-gain report needs them. */

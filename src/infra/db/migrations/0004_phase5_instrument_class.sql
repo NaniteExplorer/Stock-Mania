@@ -1,0 +1,1 @@
+ALTER TABLE `instruments` ADD `instrument_class` text DEFAULT 'LISTED_EQUITY' NOT NULL;

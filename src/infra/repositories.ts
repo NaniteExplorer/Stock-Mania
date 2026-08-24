@@ -13,16 +13,19 @@
 
 import { UserId, newUuid } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
-import { CalendarDate, DateRange } from "@/core/time";
+import { CalendarDate, DateRange, FinancialYear } from "@/core/time";
 import { Account, AccountCode, AccountId, AccountRepository, AccountSubtype, AccountType, AccountTypeName, PostingDirection } from "@/domain/accounts";
 import { BillingCycleRule, CardTerms, CardTermsRepository } from "@/domain/assets";
 import { DepositContributionInput, DepositProduct, DepositStore, DepositTermsInput, EmployeeProvidentFund, FixedDeposit, NationalPensionSystem, PublicProvidentFund, RecurringDeposit } from "@/domain/deposits";
 import { Loan, LoanStore, LoanTermsInput, StoredLoanTerms, loanFor } from "@/domain/loans";
+import { InstrumentId, InstrumentKind, InstrumentProps, InstrumentRepository, MarketInstrument } from "@/domain/instruments";
+import { Disposal, Lot, LotId, LotRepository, TradeRecord } from "@/domain/lots";
+import { CorporateActionRepository, StoredCorporateAction } from "@/domain/corporate";
 import { Percentage, Quantity, Rate, UnitPrice } from "@/core/numeric";
 import { FxQuote, FxRateRepository, PriceDivergence, PriceSourceType, Quote, QuoteRepository, QuoteType, StoredFxRate } from "@/domain/pricing";
 import { AccountBalance, AccountFlow, BalanceQuery, MonthlyFlow, Posting, PostingId, PostingStatus, StoredTransaction, Transaction, TransactionId, TransactionKind, TransactionPage, TransactionQuery, TransactionRepository, TransactionSource, TypeTotals } from "@/domain/transactions";
 import { BudgetRepository, CategoryRuleRepository, ImportBatchRecord, ImportBatchStatus, ImportRepository, ImportRowStatus, KeywordRule, MovementIntent, RowDirection, SelfPayeeQuery, StagedRow, StoredBudget } from "@/domain/banking";
-import { budgets, categoryRules, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, ledgerAccounts, loanPrepayments, loanTerms, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, transactions } from "@/infra/db/schema";
+import { budgets, categoryRules, corporateActions, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, instruments, ledgerAccounts, loanPrepayments, loanTerms, lotMatches, lots, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, trades, transactions } from "@/infra/db/schema";
 import { Database } from "@/infra/db/client";
 import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, max, min, or, sql } from "drizzle-orm";
 /* ═══ AccountMapper ═══════════════════════════════════════════════════ */
@@ -1962,3 +1965,447 @@ export const LoanMapper = {
     return loanFor(account, stored);
   },
 };
+
+/* ═══ DrizzleInstrumentRepository ═════════════════════════════════════ */
+
+/**
+ * libSQL implementation of {@link InstrumentRepository}.
+ *
+ * The stored `kind` is the discriminator `MarketInstrument.of` switches on — the
+ * one switch in the codebase, by design. This mapper is the only other place that
+ * knows the thirteen kinds exist, and it knows them as data rather than as
+ * behaviour.
+ */
+export class DrizzleInstrumentRepository implements InstrumentRepository {
+  constructor(private readonly db: Database) {}
+
+  async findById(userId: UserId, id: InstrumentId): Promise<MarketInstrument | null> {
+    const [row] = await this.db
+      .select()
+      .from(instruments)
+      .where(
+        and(
+          eq(instruments.userId, userId.value),
+          isNull(instruments.deletedAt),
+          eq(instruments.id, id.value),
+        ),
+      )
+      .limit(1);
+    return row ? InstrumentMapper.toDomain(row) : null;
+  }
+
+  async findBySymbol(userId: UserId, symbol: string): Promise<MarketInstrument | null> {
+    const [row] = await this.db
+      .select()
+      .from(instruments)
+      .where(
+        and(
+          eq(instruments.userId, userId.value),
+          isNull(instruments.deletedAt),
+          eq(instruments.symbol, symbol),
+        ),
+      )
+      .limit(1);
+    return row ? InstrumentMapper.toDomain(row) : null;
+  }
+
+  async list(
+    userId: UserId,
+    options?: { includeClosed?: boolean },
+  ): Promise<readonly MarketInstrument[]> {
+    const rows = await this.db
+      .select()
+      .from(instruments)
+      .where(
+        and(
+          eq(instruments.userId, userId.value),
+          isNull(instruments.deletedAt),
+          options?.includeClosed ? undefined : eq(instruments.isClosed, false),
+        ),
+      )
+      .orderBy(asc(instruments.symbol));
+    return rows.map(InstrumentMapper.toDomain);
+  }
+
+  async save(userId: UserId, kind: InstrumentKind, props: InstrumentProps): Promise<void> {
+    const row = {
+      id: props.id.value,
+      userId: userId.value,
+      symbol: props.symbol,
+      name: props.name,
+      kind: InstrumentMapper.toStoredKind(kind),
+      instrumentClass: kind,
+      taxAssetClass: InstrumentMapper.toTaxAssetClass(kind),
+      isin: props.isin ?? null,
+      exchange: props.exchange ?? null,
+      currency: props.currency.code,
+      quoteSource: InstrumentMapper.toQuoteSource(kind),
+      quoteSourceRef: props.quoteRef ?? null,
+      assetAccountId: props.assetAccountId.value,
+      isClosed: props.isClosed ?? false,
+      updatedAt: new Date(),
+    };
+    await this.db
+      .insert(instruments)
+      .values(row)
+      .onConflictDoUpdate({ target: instruments.id, set: { ...row, id: undefined } });
+  }
+}
+
+type InstrumentRow = typeof instruments.$inferSelect;
+
+export const InstrumentMapper = {
+  toDomain(row: InstrumentRow): MarketInstrument {
+    return MarketInstrument.of(row.instrumentClass as InstrumentKind, {
+      id: InstrumentId.from(row.id),
+      userId: UserId.from(row.userId),
+      symbol: row.symbol,
+      name: row.name,
+      currency: Currency.of(row.currency),
+      isin: row.isin,
+      exchange: row.exchange,
+      quoteRef: row.quoteSourceRef,
+      assetAccountId: AccountId.from(row.assetAccountId),
+      isClosed: row.isClosed,
+    });
+  },
+
+  /** The coarse `kind` the pre-existing schema column carries. */
+  toStoredKind(kind: InstrumentKind): "EQUITY" | "ETF" | "MUTUAL_FUND" | "BOND" | "GOVT_SECURITY" | "DIGITAL_GOLD" | "DIGITAL_SILVER" | "CRYPTO" | "OTHER" {
+    switch (kind) {
+      case "LISTED_EQUITY":
+        return "EQUITY";
+      case "ETF":
+        return "ETF";
+      case "INDEX_FUND":
+      case "MUTUAL_FUND":
+      case "LIQUID_FUND":
+      case "DEBT_FUND":
+      case "ELSS_FUND":
+        return "MUTUAL_FUND";
+      case "BOND":
+        return "BOND";
+      case "GOVT_SECURITY":
+      case "SOVEREIGN_GOLD_BOND":
+        return "GOVT_SECURITY";
+      case "DIGITAL_GOLD":
+        return "DIGITAL_GOLD";
+      case "DIGITAL_SILVER":
+        return "DIGITAL_SILVER";
+      case "CRYPTO":
+        return "CRYPTO";
+    }
+  },
+
+  /**
+   * The tax class the reporting tables key on.
+   *
+   * Derived from the leaf rather than stored independently, because two columns
+   * that both claim to say how something is taxed will eventually disagree — and
+   * the leaf is the one with the reasoning attached.
+   */
+  toTaxAssetClass(kind: InstrumentKind): "LISTED_EQUITY" | "EQUITY_MUTUAL_FUND" | "DEBT" | "GOLD" | "CRYPTO" | "UNLISTED" | "OTHER" {
+    switch (kind) {
+      case "LISTED_EQUITY":
+        return "LISTED_EQUITY";
+      case "ETF":
+      case "INDEX_FUND":
+      case "MUTUAL_FUND":
+      case "ELSS_FUND":
+        return "EQUITY_MUTUAL_FUND";
+      case "LIQUID_FUND":
+      case "DEBT_FUND":
+      case "BOND":
+      case "GOVT_SECURITY":
+        return "DEBT";
+      case "SOVEREIGN_GOLD_BOND":
+      case "DIGITAL_GOLD":
+      case "DIGITAL_SILVER":
+        return "GOLD";
+      case "CRYPTO":
+        return "CRYPTO";
+    }
+  },
+
+  toQuoteSource(kind: InstrumentKind): "MANUAL" | "AMFI" | "NSE" | "METALS" {
+    switch (kind) {
+      case "LISTED_EQUITY":
+      case "ETF":
+        return "NSE";
+      case "INDEX_FUND":
+      case "MUTUAL_FUND":
+      case "LIQUID_FUND":
+      case "DEBT_FUND":
+      case "ELSS_FUND":
+        return "AMFI";
+      case "DIGITAL_GOLD":
+      case "DIGITAL_SILVER":
+      case "SOVEREIGN_GOLD_BOND":
+        return "METALS";
+      default:
+        return "MANUAL";
+    }
+  },
+};
+
+/* ═══ DrizzleLotRepository ════════════════════════════════════════════ */
+
+/**
+ * libSQL implementation of {@link LotRepository}.
+ *
+ * `saveLots` writes the whole set for a position rather than the changed rows,
+ * because a disposal touches several lots at once and a partial write would leave
+ * a position whose lot remainders no longer sum to its quantity — invariant P01,
+ * and the one a half-applied sale breaks.
+ */
+export class DrizzleLotRepository implements LotRepository {
+  constructor(private readonly db: Database) {}
+
+  async recordTrade(userId: UserId, trade: TradeRecord): Promise<void> {
+    const row = {
+      id: trade.id,
+      userId: userId.value,
+      instrumentId: trade.instrumentId.value,
+      side: trade.side,
+      tradedOn: trade.tradedOn.toISO(),
+      quantity: trade.quantity.toScaledNumber(),
+      pricePerUnitMinor: trade.pricePerUnit.toMinorNumber(),
+      // The charge breakdown's own columns stay zero until a contract note is
+      // imported: `otherChargesMinor` is the honest home for a single total, and
+      // pretending it was all brokerage would make it deductible when some of it
+      // (STT) is not.
+      otherChargesMinor: trade.charges.toMinorNumber(),
+      transactionId: trade.transactionId,
+      settlementAccountId: trade.settlementAccountId,
+    };
+    await this.db
+      .insert(trades)
+      .values(row)
+      .onConflictDoUpdate({ target: trades.id, set: { ...row, id: undefined } });
+  }
+
+  async openLots(userId: UserId, instrumentId: InstrumentId): Promise<readonly Lot[]> {
+    const rows = await this.db
+      .select()
+      .from(lots)
+      .where(
+        and(
+          eq(lots.userId, userId.value),
+          isNull(lots.deletedAt),
+          eq(lots.instrumentId, instrumentId.value),
+          sql`${lots.remainingQuantity} > 0`,
+        ),
+      )
+      .orderBy(asc(lots.acquiredOn));
+    return rows.map(LotMapper.toDomain);
+  }
+
+  async allLots(userId: UserId, instrumentId: InstrumentId): Promise<readonly Lot[]> {
+    const rows = await this.db
+      .select()
+      .from(lots)
+      .where(
+        and(
+          eq(lots.userId, userId.value),
+          isNull(lots.deletedAt),
+          eq(lots.instrumentId, instrumentId.value),
+        ),
+      )
+      .orderBy(asc(lots.acquiredOn));
+    return rows.map(LotMapper.toDomain);
+  }
+
+  async saveLots(userId: UserId, toSave: readonly Lot[]): Promise<void> {
+    if (toSave.length === 0) return;
+    await this.db.transaction(async (tx) => {
+      for (const lot of toSave) {
+        const row = LotMapper.toRow(userId, lot);
+        await tx
+          .insert(lots)
+          .values(row)
+          .onConflictDoUpdate({ target: lots.id, set: { ...row, id: undefined } });
+      }
+    });
+  }
+
+  async saveDisposals(
+    userId: UserId,
+    sellTransactionId: string,
+    disposals: readonly Disposal[],
+  ): Promise<void> {
+    /*
+     * Disposals with no lot are skipped, and that is deliberate rather than a gap:
+     * under average cost no particular lot was consumed, so there is no row for
+     * `lot_matches.lot_id` to reference. Writing the sale's own id there would
+     * satisfy the foreign key and mean nothing.
+     */
+    const withLots = disposals.filter((disposal) => disposal.lotId !== null);
+    if (withLots.length === 0) return;
+    await this.db.insert(lotMatches).values(
+      withLots.map((disposal) => ({
+        id: newUuid(),
+        userId: userId.value,
+        sellTradeId: sellTransactionId,
+        lotId: disposal.lotId!.value,
+        quantity: disposal.quantity.toScaledNumber(),
+        proceedsMinor: disposal.proceeds.toMinorNumber(),
+        costBasisMinor: disposal.costBasis.toMinorNumber(),
+        buyChargesMinor: disposal.buyCharges.toMinorNumber(),
+        sellChargesMinor: disposal.sellCharges.toMinorNumber(),
+        realizedGainMinor: disposal.gain.toMinorNumber(),
+        holdingDays: disposal.holdingDays,
+        // The tier is fixed at the moment of sale, per the schema's own note: a
+        // later change to the long-term threshold must not rewrite last year's tax.
+        taxTier: disposal.holdingDays >= 365 ? ("LTCG" as const) : ("STCG" as const),
+        financialYear: FinancialYear.containing(disposal.disposedOn).label,
+        currency: disposal.proceeds.currency.code,
+      })),
+    );
+  }
+
+  async disposalsWithin(
+    userId: UserId,
+    from: CalendarDate,
+    to: CalendarDate,
+  ): Promise<readonly Disposal[]> {
+    const rows = await this.db
+      .select({ match: lotMatches, trade: trades })
+      .from(lotMatches)
+      .innerJoin(trades, eq(lotMatches.sellTradeId, trades.id))
+      .where(
+        and(
+          eq(lotMatches.userId, userId.value),
+          isNull(lotMatches.deletedAt),
+          gte(trades.tradedOn, from.toISO()),
+          lte(trades.tradedOn, to.toISO()),
+        ),
+      );
+
+    return rows.map(({ match, trade }) => ({
+      lotId: LotId.from(match.lotId),
+      instrumentId: InstrumentId.from(trade.instrumentId),
+      quantity: Quantity.fromScaled(match.quantity),
+      acquiredOn: CalendarDate.parse(trade.tradedOn).plusDays(-match.holdingDays),
+      disposedOn: CalendarDate.parse(trade.tradedOn),
+      proceeds: Money.fromMinor(match.proceedsMinor, Currency.of(match.currency)),
+      costBasis: Money.fromMinor(match.costBasisMinor, Currency.of(match.currency)),
+      buyCharges: Money.fromMinor(match.buyChargesMinor, Currency.of(match.currency)),
+      sellCharges: Money.fromMinor(match.sellChargesMinor, Currency.of(match.currency)),
+      gain: Money.fromMinor(match.realizedGainMinor, Currency.of(match.currency)),
+      holdingDays: match.holdingDays,
+    }));
+  }
+}
+
+type LotRow = typeof lots.$inferSelect;
+
+export const LotMapper = {
+  toDomain(row: LotRow): Lot {
+    const currency = Currency.of(row.currency);
+    const originalQuantity = Quantity.fromScaled(row.originalQuantity);
+    return Lot.rehydrate({
+      id: LotId.from(row.id),
+      instrumentId: InstrumentId.from(row.instrumentId),
+      acquiredOn: CalendarDate.parse(row.acquiredOn),
+      originalQuantity,
+      remainingQuantity: Quantity.fromScaled(row.remainingQuantity),
+      // Stored per unit, so the total is reconstructed rather than stored twice —
+      // two columns for one fact is how a lot ends up disagreeing with itself.
+      cost: originalQuantity.valueAt(Money.fromMinor(row.costPerUnitMinor, currency), "HALF_EVEN"),
+      buyCharges: Money.fromMinor(row.buyChargesMinor, currency),
+      openedByTransactionId: row.buyTradeId,
+    });
+  },
+
+  toRow(userId: UserId, lot: Lot) {
+    return {
+      id: lot.id.value,
+      userId: userId.value,
+      instrumentId: lot.props.instrumentId.value,
+      buyTradeId: lot.props.openedByTransactionId,
+      acquiredOn: lot.acquiredOn.toISO(),
+      originalQuantity: lot.props.originalQuantity.toScaledNumber(),
+      remainingQuantity: lot.props.remainingQuantity.toScaledNumber(),
+      costPerUnitMinor: lot.costPerUnit.toMinorNumber(),
+      buyChargesMinor: lot.props.buyCharges.toMinorNumber(),
+      currency: lot.currency.code,
+    };
+  },
+};
+
+/* ═══ DrizzleCorporateActionRepository ════════════════════════════════ */
+
+export class DrizzleCorporateActionRepository implements CorporateActionRepository {
+  constructor(
+    private readonly db: Database,
+    private readonly userId: UserId,
+  ) {}
+
+  async listFor(
+    instrumentId: InstrumentId,
+    options?: { appliedOnly?: boolean },
+  ): Promise<readonly StoredCorporateAction[]> {
+    const rows = await this.db
+      .select()
+      .from(corporateActions)
+      .where(
+        and(
+          eq(corporateActions.userId, this.userId.value),
+          isNull(corporateActions.deletedAt),
+          eq(corporateActions.instrumentId, instrumentId.value),
+          options?.appliedOnly ? eq(corporateActions.status, "APPLIED") : undefined,
+        ),
+      )
+      .orderBy(asc(corporateActions.exDate));
+
+    return rows.map((row) => ({
+      id: row.id,
+      kind: row.actionType,
+      instrumentId: InstrumentId.from(row.instrumentId),
+      exDate: CalendarDate.parse(row.exDate),
+      recordDate: row.recordDate ? CalendarDate.parse(row.recordDate) : null,
+      terms: {
+        ratioFrom: row.ratioFromScaled === null ? "" : Quantity.fromScaled(row.ratioFromScaled).toDecimalString(),
+        ratioTo: row.ratioToScaled === null ? "" : Quantity.fromScaled(row.ratioToScaled).toDecimalString(),
+        cash: row.cashAmountMinor === null ? "" : Money.fromMinor(row.cashAmountMinor, Currency.of(row.currency)).toDecimalString(),
+        targetInstrumentId: row.targetInstrumentId ?? "",
+        source: row.source,
+      },
+      transactionId: row.appliedTransactionId,
+      appliedAt: row.appliedAt,
+    }));
+  }
+
+  async save(action: StoredCorporateAction): Promise<void> {
+    const row = {
+      id: action.id,
+      userId: this.userId.value,
+      instrumentId: action.instrumentId.value,
+      actionType: action.kind,
+      exDate: action.exDate.toISO(),
+      recordDate: action.recordDate?.toISO() ?? null,
+      ratioFromScaled: action.terms.ratioFrom ? Quantity.fromString(action.terms.ratioFrom).toScaledNumber() : null,
+      ratioToScaled: action.terms.ratioTo ? Quantity.fromString(action.terms.ratioTo).toScaledNumber() : null,
+      cashAmountMinor: action.terms.cash ? Money.fromRupees(action.terms.cash).toMinorNumber() : null,
+      targetInstrumentId: action.terms.targetInstrumentId || null,
+      source: action.terms.source ?? "MANUAL",
+      status: action.transactionId ? ("APPLIED" as const) : ("PENDING" as const),
+      appliedTransactionId: action.transactionId,
+      appliedAt: action.appliedAt,
+    };
+    await this.db
+      .insert(corporateActions)
+      .values(row)
+      .onConflictDoUpdate({
+        target: [corporateActions.instrumentId, corporateActions.actionType, corporateActions.exDate],
+        set: { ...row, id: undefined },
+      });
+  }
+
+  async markApplied(id: string, transactionId: string, at: Date): Promise<void> {
+    await this.db
+      .update(corporateActions)
+      .set({ status: "APPLIED", appliedTransactionId: transactionId, appliedAt: at })
+      .where(and(eq(corporateActions.userId, this.userId.value), eq(corporateActions.id, id)));
+  }
+}

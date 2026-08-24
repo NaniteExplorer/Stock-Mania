@@ -601,6 +601,23 @@ export const TAX_ASSET_CLASSES = [
 
 export const QUOTE_SOURCES = ["MANUAL", "AMFI", "NSE", "METALS"] as const;
 
+/** The thirteen leaves of `domain/instruments.ts`, as stored. */
+export const INSTRUMENT_CLASSES = [
+  "LISTED_EQUITY",
+  "ETF",
+  "INDEX_FUND",
+  "MUTUAL_FUND",
+  "LIQUID_FUND",
+  "DEBT_FUND",
+  "ELSS_FUND",
+  "BOND",
+  "GOVT_SECURITY",
+  "SOVEREIGN_GOLD_BOND",
+  "DIGITAL_GOLD",
+  "DIGITAL_SILVER",
+  "CRYPTO",
+] as const;
+
 export const instruments = sqliteTable(
   "instruments",
   {
@@ -612,6 +629,17 @@ export const instruments = sqliteTable(
     symbol: text("symbol").notNull(),
     name: text("name").notNull(),
     kind: text("kind", { enum: INSTRUMENT_KINDS }).notNull(),
+    /**
+     * Which of the thirteen `MarketInstrument` leaves this is.
+     *
+     * Finer than `kind`, which groups every fund together: a liquid fund, an ELSS
+     * and an index fund are all `MUTUAL_FUND` to a price feed and three different
+     * things to the tax engine and the redemption rules. Added in Phase 5, when
+     * the leaves arrived; `kind` stays because the price providers key on it.
+     */
+    instrumentClass: text("instrument_class", { enum: INSTRUMENT_CLASSES })
+      .notNull()
+      .default("LISTED_EQUITY"),
     taxAssetClass: text("tax_asset_class", { enum: TAX_ASSET_CLASSES }).notNull(),
     isin: text("isin", { length: 12 }),
     exchange: text("exchange"),
