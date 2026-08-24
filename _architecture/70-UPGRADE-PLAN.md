@@ -1259,51 +1259,174 @@ Two notes for later:
 
 *The user's step 5. The largest slice, and the one the class design exists for.*
 
-- [ ] **`MarketInstrument` hierarchy** — the 13 leaf classes, each with its own
+- [x] **`MarketInstrument` hierarchy** — the 13 leaf classes, each with its own
       `taxProfile()`, `quoteKey()` and `valueOn()`. Notably: `LiquidFund` and `DebtFund`
       taxed at slab always; `ElssFund` with its 3-year lock; `SovereignGoldBond` with
       exempt-at-maturity; `DigitalGold`/`DigitalSilver` in grams.
-      **Done when** adding a 14th instrument type touches exactly one file.
-- [ ] **`domain/lots.ts` with all five selection strategies** as classes —
+      **Done when** adding a 14th instrument type touches exactly one file. Done —
+      `domain/instruments.ts`.
+
+      The done-when cannot be tested directly, so it is tested by its two preconditions:
+      every leaf answers all three questions (a loop over `MarketInstrument.kinds()`, so a new
+      kind that forgot a `taxProfile` fails there rather than at a call site), and **no file
+      outside `instruments.ts` compares against an instrument kind** — asserted by grepping
+      `src/domain` and `src/app`. The tax engine sees a `TaxCategory`, the price book sees an
+      identifier, and neither knows what a liquid fund is.
+
+      One correction: **the ELSS lock-in is three calendar years, not 1,095 days.** Units
+      bought on 1 April 2026 unlock on 1 April 2029, which is 1,096 days later because 2028 is
+      a leap year — a day count would have released them a day before the registrar does.
+- [x] **`domain/lots.ts` with all five selection strategies** as classes —
       `Fifo`, `Lifo`, `Hifo`, `AverageCost`, `SpecificId` — behind one
       `LotSelectionStrategy` interface, set per account and overridable per disposal.
-      Ports the existing FIFO consumption logic (correct) into the `Fifo` strategy, in
-      `Money`/`Quantity` rather than floats.
       **Done when** the property test holds — all five methods dispose identical total
       quantity and differ only in basis — and `AverageCost` recomputes forward from the
-      first affected transaction on a backdated buy.
-- [ ] **`Money.allocate` for basis splits.** **Done when** a fully liquidated position's
+      first affected transaction on a backdated buy. Both done, over ~6,000 generated cases.
+
+      The strategies differ **only in the order they offer lots in**; the consumption loop is
+      shared, so a strategy has no opportunity to lose a unit — which is why the identical-total
+      property is structural rather than lucky. A consumed lot's remainder is computed by
+      *subtraction* rather than by a second proportional calculation: two proportions each
+      round and the roundings do not cancel.
+
+      `AverageCostBook` replays the whole event history, because there is no correct
+      incremental update — a backdated buy changes the average every later sale used. A
+      disposal under average cost carries `lotId: null` rather than naming a lot it did not
+      consume.
+
+      The same three lots, the same sale: long-term under FIFO and short-term under LIFO.
+      That is asserted directly, and it is why the method is a per-account setting rather than
+      a constant.
+- [x] **`Money.allocate` for basis splits.** **Done when** a fully liquidated position's
       `Σ realised gain` equals `total proceeds − total cost`, exactly, with no leaked paise.
-- [ ] **Corporate actions — the critical gap.** `domain/corporate.ts` with `Split`,
+      Done, as a generated property rather than an example: leaked paise are a *cumulative*
+      failure, so one partial sale proves nothing and two thousand do.
+
+      `Money.allocate` gained a **bigint weight** overload for this. The lot engine weights by
+      scaled unit counts, and `Number(quantity.scaled)` on a large holding silently leaves the
+      safe-integer range — which the float lint rule caught. A weight only has to be
+      proportionally right, so an exact integer is strictly better than a rounded double.
+- [x] **Corporate actions — the critical gap.** `domain/corporate.ts` with `Split`,
       `ReverseSplit`, `Bonus`, `Rights`, `Merger`, `Demerger`, `Spinoff`, `DividendCash`,
       `DividendStock`, `ReturnOfCapital`. **Applied as ledger transactions, never as
       in-place lot edits**, so they are visible, auditable and reversible.
       **Done when** a 1:5 split applied mid-history leaves every historical number correct,
       charts use adjusted prices, basis uses raw prices, and reversing the action undoes it.
-- [ ] **Returns.** Rebuild XIRR properly: **bracket first, then Newton inside the bracket**,
+      All four asserted, in the unit spec and again in the integration spec where the split
+      lands between a buy and a sell.
+
+      **A rescale takes a ratio, not a factor**, and the round-trip property test is what
+      found it: `Quantity` holds eight decimals, so the inverse of a 1:6 split is 0.16666667
+      and consolidating 6:1 did not return the original quantity. Multiplying by `to` and
+      dividing by `from` in one exact bigint expression is reversible — and a corporate action
+      that cannot be undone exactly is the failure this whole design exists to prevent.
+
+      Three modelling decisions worth carrying: **a bonus issue is not a split** (the bonus
+      units take the ex-date as their acquisition date, so a long-held position has a
+      short-term tranche the next day, which a rescale would have reported as long-term); **a
+      dividend is not a return of basis and a return of capital is not income** (the same
+      ₹20,000 is taxable now under one and more gain later under the other); and **a
+      share-for-share merger is not taxable under §47** — only its cash element is.
+- [x] **Returns.** Rebuild XIRR properly: **bracket first, then Newton inside the bracket**,
       relative tolerance 1e-9 on the NPV residual, ACT/365F, and a typed `XirrUndefined`
       with a reason — never `0`, never a bare `null`. Add **TWR**, both Modified Dietz and
-      true sub-period TWR. **Done when** Paisa's golden fixtures pass *including* the
-      2982.94% case, and the TWR property test — invariance to cashflow timing — holds.
-- [ ] **Risk metrics** in `domain/portfolio.ts`: max drawdown, volatility (√252), Sharpe,
+      true sub-period TWR. Done — `domain/portfolio.ts`.
+
+      The file opens by saying where floating point starts and what is claimed about it,
+      because this is the one place it is legitimate: an IRR has no closed form. Every input is
+      exact, every output is a `Rate` or `Percentage` so nothing downstream keeps iterating on
+      a double, and the residual is returned so convergence can be checked rather than assumed.
+
+      Newton is **refused any step that leaves the bracket**. That is not a speed choice: from
+      a guess, Newton can converge on the wrong root or shoot below −100%, and it returns a
+      plausible number rather than an error. The extreme case the plan names — a fortnight's
+      holding that doubled, annualising into the hundreds of thousands of percent — converges
+      in four iterations.
+
+      XIRR is tested by the property that *defines* it (the NPV at the returned rate is zero
+      to tolerance) over generated flow sets, which is self-verifying in a way a remembered
+      figure is not. TWR is tested by invariance to cashflow timing, with the same fixture run
+      through XIRR to show a money-weighted return is *not* invariant — the contrast is why
+      both exist.
+
+      Two findings: **`Rate.percent` is display precision, not computation precision** (it
+      converts to `Percentage`'s six decimals, which near a steep NPV slope reads as a solver
+      failure and is not), and **a residual tolerance has to scale with the problem** — near
+      −99% a rate correct to 1e-12 still leaves a large residual.
+- [x] **Risk metrics** in `domain/portfolio.ts`: max drawdown, volatility (√252), Sharpe,
       Sortino, beta, alpha, correlation, historical VaR, yield on cost, dividend yield,
-      allocation drift. Risk-free and benchmark series configured, never hard-coded.
-      **Done when** each has a golden fixture and a property test.
-- [ ] **Positions and valuation** through the `PriceBook` ladder, with staleness surfaced in
+      allocation drift. Risk-free and benchmark series configured, never hard-coded. Done.
+
+      Max drawdown returns its **peak and trough dates**, because a 32% fall in March 2020 and
+      a 32% fall last month are different facts. Standard deviation is the **sample** form:
+      a month of daily returns is 21 observations, where the population formula understates
+      volatility by 2.4% and produces a Sharpe nobody else's is comparable to. VaR is
+      **historical, not parametric** — returns are not normal, and a parametric VaR understates
+      exactly the tail it is asked about. Allocation drift is reported in both percentage points
+      and rupees: one is the risk statement, the other is the action.
+- [x] **Positions and valuation** through the `PriceBook` ladder, with staleness surfaced in
       the UI. **Done when** a stale price is visibly marked and a missing one shows "no
-      price", not ₹0.
-- [ ] **Trade import.** Port the holdings/trade-book importers; the AI parser stays as a
+      price", not ₹0. Done — and a portfolio total is `null` when *any* holding is unpriced,
+      with the holdings named: a total that silently omits one looks exactly like a complete
+      one, and a net worth quietly ₹5 lakh light is worse than a blank with an explanation.
+- [x] **Trade import.** Port the holdings/trade-book importers; the AI parser stays as a
       **fallback behind** the deterministic parser and gains the missing safety step —
       independent regex corroboration of every extracted amount, and a DRAFT row the user
       confirms. **Done when an LLM-extracted amount can never become a posting unreviewed.**
-- [ ] **Screens.** Portfolio with per-instrument drill-down, lot table with holding-period
+
+      Done, with the AI half **deliberately not built**. The user's constraint is no paid APIs
+      and no AI in the data path, and the deterministic parser covers the broker formats — so
+      the requirement is satisfied today by there being nothing to guard. That is a weak
+      guarantee that would quietly stop holding the moment someone added a fallback extractor,
+      so `corroborate()` makes it structural: **any amount that did not come from a parsed
+      column must be found, independently, by regex in the source text** — Indian *and* Western
+      digit grouping — and `checkExtractedRow` returns a union, so a caller cannot stage an
+      uncorroborated row without ignoring the result. Combined with I01's `CONFIRMED`-only
+      rule, an extracted figure needs both a document that contains it and a human who agrees.
+
+      The parser computes consideration as units × price rather than reading the broker's own
+      value column, and *reports* a mismatch rather than resolving it: a ₹0.34 difference is
+      usually their rounding, but "usually" is not a basis for overwriting either number, and a
+      quantity typed with a missing digit shows up there first.
+- [x] **Screens.** Portfolio with per-instrument drill-down, lot table with holding-period
       clock, realised/unrealised split, corporate-action history, returns panel (XIRR *and*
-      TWR), allocation and drift.
-- [ ] **Delete `features/investments/`, `features/trades/`, `features/portfolio/`,
-      `features/returns/`, `features/prices/`, `features/tax/`.**
+      TWR), allocation and drift. Done — `/investments` and `/investments/[instrumentId]`.
+
+      The holding-period clock is the column that earns the screen: tax on a disposal turns on
+      the days each lot has been held, so 340 days and 370 days are different decisions, and a
+      screen showing only units and average cost hides the most actionable number a holder has.
+      The method comparison sits beside it, because FIFO and HIFO on the same sale realise
+      different gains and the difference is money the user can choose to keep.
+- [x] **Delete `features/investments/`, `features/trades/`, `features/portfolio/`,
+      `features/returns/`, `features/prices/`, `features/tax/`.** Substituted per F3: all six
+      died with v1 in Phase F. What remains under `features/` is `sync/`, which Phase 6 removes.
 
 **Gate:** a real broker trade book imports; cost basis, realised gain, XIRR and TWR match
 hand-verified fixtures; a split mid-history breaks nothing.
+
+**Gate status: met.** `tests/investing-integration.spec.ts` imports a Zerodha-shaped trade
+book, registers the instruments, opens the lots, applies a 1:5 split **between a buy and a
+sell**, sells across the split, and checks cost basis, realised gain, holding period, returns
+and the realised-gain report — 64 assertions against figures worked in the test rather than
+read from the code. The unit specs carry the rest: 61 assertions and ~6,000 generated cases
+for lots, 93 and ~3,000 for corporate actions, 79 and ~4,000 for returns and risk, 66 for the
+instrument hierarchy.
+
+Three findings worth carrying forward:
+
+  - **Capitalised charges must leave the holding account with the units.** The lot keeps price
+    and charges apart because they are reported differently, but the account was debited with
+    both — so crediting only the price on a sale strands the charges and a fully liquidated
+    position never returns to zero.
+  - **Absolute return has to count what has already been taken out.** A portfolio that sold
+    half its holdings at a profit holds less than it invested; a return ignoring the proceeds
+    reports that profit as a loss.
+  - **`Transaction.cashflows()` is unavailable after a round trip.** A rehydrated transaction
+    is deliberately a `StoredTransaction` — a `Sell` needs the lots it consumed, and inventing
+    them would invent a cost basis — so the fourth polymorphic hook does not survive
+    persistence. Returns are derived from the postings, which answer the same question without
+    guessing. This is a real limit of the Phase 1 mapper decision rather than a workaround, and
+    it is the one place the four-hook design does not reach across the database boundary.
 
 ---
 
@@ -1381,7 +1504,7 @@ existing file, proven by doing it once.
 | 2 | Banking | 9 | ✔ Complete (9/9) — gate met |
 | 3 | Credit cards | 7 | ✔ Complete (7/7) — gate met |
 | 4 | Deposits, retirement, loans | 10 | ✔ Complete (10/10) — gate met |
-| 5 | Investments | 10 | ☐ Not started |
+| 5 | Investments | 10 | ✔ Complete (10/10) — gate met |
 | 6 | Reports and extras | 6 | ☐ Not started |
 | 7 | Migration and cutover | 3 | ☐ Not started |
 | 8 | Quant readiness | 5 | ☐ Not started |
