@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Field } from "@/ui/primitives";
+import { ProviderPicker } from "@/ui/provider-picker";
 import { openDepositAction, type DepositActionState } from "./actions";
 
 /**
@@ -39,7 +40,7 @@ export default function AddDepositForm() {
       </Field>
 
       <Field name="institution" label="Bank or scheme" error={errors.institution?.[0]}>
-        {(props) => <input {...props} name="institution" className="form-input" placeholder="HDFC Bank" />}
+        {(props) => <ProviderPicker {...props} name="institution" kinds={["BANK", "SAVINGS", "RETIREMENT"]} placeholder="HDFC Bank or PPF" />}
       </Field>
 
       <Field name="openedOn" label="Opened on" required error={errors.openedOn?.[0]}>

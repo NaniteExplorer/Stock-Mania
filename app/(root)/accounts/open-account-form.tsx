@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Field } from "@/ui/primitives";
+import { ProviderPicker } from "@/ui/provider-picker";
 import { openCashAccountAction, type ActionState } from "./actions";
 
 /**
@@ -38,7 +39,7 @@ export default function OpenAccountForm() {
       </Field>
 
       <Field name="institution" label="Bank or provider" error={errors.institution?.[0]}>
-        {(props) => <input {...props} name="institution" className="form-input" placeholder="HDFC Bank" />}
+        {(props) => <ProviderPicker {...props} name="institution" kinds={["BANK", "WALLET"]} placeholder="HDFC Bank" />}
       </Field>
 
       <Field

@@ -5,7 +5,6 @@ import { z } from "zod";
 import { Money } from "@/core/money";
 import { CalendarDate } from "@/core/time";
 import { AccountId } from "@/domain/accounts";
-import { CashAsset } from "@/domain/assets";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 
 /**
@@ -125,6 +124,3 @@ export async function reconcileAccountAction(
       : report.findings.join(" "),
   };
 }
-
-/** The subtypes the form may offer, straight from the classifier. */
-export const CASH_SUBTYPES = CashAsset.cashSubtypes;

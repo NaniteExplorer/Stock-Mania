@@ -5,6 +5,7 @@ import { connection } from "next/server";
 import { CalendarDate, DateRange } from "@/core/time";
 import { Money } from "@/core/money";
 import { Card, EmptyState, MoneyText, PageHeader, Pill, Stat } from "@/ui/primitives";
+import { InstitutionMark } from "@/ui/provider-picker";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 import OpenAccountForm from "./open-account-form";
 
@@ -100,12 +101,17 @@ export default async function Page() {
               {positions.map((position) => (
                 <tr key={position.asset.id.value} className="border-b border-gray-600/50 last:border-0">
                   <td className="px-4 py-3">
-                    <span className="font-medium text-gray-100">{position.asset.displayName}</span>
-                    {position.asset.account.institution && (
-                      <span className="ml-2 text-xs text-gray-500">
-                        {position.asset.account.institution}
-                      </span>
-                    )}
+                    <div className="flex items-center gap-3">
+                      <InstitutionMark institution={position.asset.account.institution} />
+                      <div>
+                        <span className="font-medium text-gray-100">{position.asset.displayName}</span>
+                        {position.asset.account.institution && (
+                          <span className="ml-2 text-xs text-gray-500">
+                            {position.asset.account.institution}
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-gray-400">{KIND_LABELS[position.asset.kind]}</td>
                   <td className="px-4 py-3 text-gray-400">{position.asset.currency.code}</td>

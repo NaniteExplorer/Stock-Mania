@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Field } from "@/ui/primitives";
+import { ProviderPicker } from "@/ui/provider-picker";
 import { openCardAction, type CardActionState } from "./actions";
 
 /**
@@ -26,7 +27,7 @@ export default function AddCardForm() {
       </Field>
 
       <Field name="institution" label="Issuer" error={errors.institution?.[0]}>
-        {(props) => <input {...props} name="institution" className="form-input" placeholder="HDFC Bank" />}
+        {(props) => <ProviderPicker {...props} name="institution" kinds={["BANK"]} placeholder="HDFC Bank" />}
       </Field>
 
       <Field

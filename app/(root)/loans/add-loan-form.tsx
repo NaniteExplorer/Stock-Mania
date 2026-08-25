@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Field } from "@/ui/primitives";
+import { ProviderPicker } from "@/ui/provider-picker";
 import { openLoanAction, type LoanActionState } from "./actions";
 
 export default function AddLoanForm() {
@@ -31,7 +32,7 @@ export default function AddLoanForm() {
       </Field>
 
       <Field name="institution" label="Lender" error={errors.institution?.[0]}>
-        {(props) => <input {...props} name="institution" className="form-input" placeholder="HDFC Bank" />}
+        {(props) => <ProviderPicker {...props} name="institution" kinds={["BANK"]} placeholder="HDFC Bank" />}
       </Field>
 
       <Field name="principal" label="Amount borrowed" required error={errors.principal?.[0]}>
