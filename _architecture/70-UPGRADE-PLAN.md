@@ -1708,9 +1708,119 @@ metadata schema map. No engine changed to admit them: the tax engine met a new
 
 ---
 
+## Phase 9 — spreadsheet parity
+
+*The plan up to here was written against `_architecture/`. This phase is written against
+the three spreadsheets the app is replacing — the net-worth tracker, the portfolio
+tracker and the digital-gold lease tracker — and it exists because an audit of the built
+app against those sheets found real gaps. A tool that cannot answer a question the
+spreadsheet answered is not a replacement for it, however much better its ledger is.*
+
+**What the audit found.** Most of all three sheets is already served, and in several
+places served better: month-end net worth is recomputed from the journal rather than
+snapshotted, so a backdated entry corrects last October; trades carry each statutory
+charge in its own column because STT is not deductible and brokerage is; and five
+cost-basis methods exist where the sheet had one. The gaps below are what is genuinely
+absent, in the order they are worth building.
+
+### 9a — Gold leasing (the largest gap: nothing models it at all)
+
+The lease sheet tracks gold leased to a platform at an annual yield **paid in grams**,
+withheld at 10% TDS **in grams**, accruing by completed months. Nothing in the app can
+express a yield denominated in the commodity rather than in money.
+
+- [x] **`GoldLease` in a new `domain/leasing.ts`** — quantity in grams, annual rate,
+      start and closing dates, status. Accrual is `qty × rate × monthsCompleted / 12` in
+      exact `Quantity`, TDS is 10% of the gross **grams**, and the net is what the holding
+      gains. **Done when** a lease's accrued grams, TDS grams and net grams match a
+      hand-worked example to eight decimals, and a closing date in the past stops the
+      accrual rather than running it forward.
+      *64 assertions in `leasing.spec.ts`, every expected figure hand-worked. Completed
+      months are **derived**, not stored — the sheet's `months_completed` column is wrong
+      every day until someone edits it — and a part month earns nothing. Both roundings go
+      DOWN and the net is subtraction, so gross/TDS/net always reconcile and the tracker
+      never flatters itself by a fraction of a gram. New in core:
+      `Quantity.timesRatio` and `CalendarDate.monthsUntil`.*
+- [x] **The accrual as a ledger event, not a stored figure.** Booking an accrual credits
+      interest income at the gram value on the accrual date, records the TDS as tax
+      deducted, and opens a lot for the net grams at that value — so the interest gold has
+      a real cost basis and a later sale computes a real gain. **Done when** the holding's
+      quantity, the income total and the lot's cost basis all move together and B02 still
+      holds.
+      *A new transaction subclass, `InKindInterest`: income on the **gross**, only the
+      **net** grams reaching the holding, and a lot opened at the value they were taxed at
+      — booking them at zero cost would tax the same gold twice. TDS is an asset, so the
+      chart gained `Assets:Receivables:TDS` (68 → 69 accounts). Idempotent: the lease
+      records grams already credited, so a second run books nothing and a run a month later
+      books one month. `leasing-integration.spec.ts` asserts all four figures move together,
+      B02 still holds, and an accrual with no price is refused rather than booked at zero.*
+- [ ] **Screens:** leases on `/investments`, with grams outstanding, accrued-to-date, TDS
+      withheld, and value at today's IBJA price. **Done when** the portfolio value shown
+      equals principal plus net accrued interest times the current price.
+
+### 9b — Insurance policies
+
+The sheet's summary carves out life and health cover; the app has only an
+`Expenses:Insurance` category.
+
+- [ ] **`InsurancePolicy`** — insurer, policy number, kind (LIFE/HEALTH/TERM/OTHER), sum
+      assured, premium and its frequency, renewal date, nominee. Cover is *not* an asset
+      and must never enter net worth. **Done when** a policy's next renewal is derived
+      from its frequency and the dashboard can state total life and health cover without
+      either figure touching the balance sheet.
+
+### 9c — Foreign holdings in the reported total
+
+Instruments may be priced in USD and `FxBook` exists, but every report **excludes**
+non-reporting-currency positions from its totals rather than converting them — deliberate
+honesty that now needs finishing, or a US holding sits outside net worth.
+
+- [ ] **Convert through `FxBook` at the reporting layer,** with the rate's date and source
+      shown beside the figure, and `null` rather than a guess when no rate is available.
+      **Done when** a USD holding appears in net worth with its conversion rate visible,
+      and a missing rate excludes it *with a named reason* instead of silently.
+
+### 9d — Sector and market cap
+
+- [ ] **`sector` and `marketCap` on instruments** (metadata, so no migration), sector
+      allocation beside the existing asset-class allocation, and the risk gate's
+      `exposureValue` populated from the sector rather than by the caller. **Done when the
+      exposure limit actually blocks a sector concentration** — today nothing fills the
+      group, so the check passes on an empty number.
+
+### 9e — Benchmark comparison
+
+`beta` and `alpha` exist and take a benchmark series as an argument; nothing stores or
+fetches one.
+
+- [ ] **A benchmark series** (NIFTY 50 to start) stored as bars through `BarRepository`,
+      and a comparison that shows portfolio TWR against index return over the same window
+      — with the caveat printed, not hidden: an index return excludes the charges a real
+      portfolio pays.
+
+### 9f — Smaller parity items
+
+- [ ] **Per-platform investment summary** — invested, charges paid, current value and P&L%
+      grouped by broker. The data exists; the view does not.
+- [ ] **`Reit` as a `MarketInstrument` leaf** — one class in one file, now that Phase 8
+      proved the shape.
+- [ ] **Date of birth and wealth-vs-age** — the sheet correlates net worth with age, and
+      that is a genuinely different question from net worth over time.
+- [ ] **An expense tag** for the sheet's "bottle neck" column, distinct from the category.
+
+**Deliberately not in this phase:** account-aggregator auto-sync (Plaid/Setu/AA). It is the
+sheet's biggest pain point and the one recommendation that collides with the standing
+no-paid-API constraint; statement and trade-book import stay the substitute until that
+constraint changes.
+
+**Gate:** every question the three spreadsheets answer, the app answers — or the plan says
+in writing why it does not.
+
+---
+
 ## Progress
 
-**99% of the plan is done — 86 of 87 items.** Phases F and 0 through 6 and 8 are complete
+**86 of 87 items of the original plan are done, and 2 of Phase 9's 12.** Phases F and 0 through 6 and 8 are complete
 with every gate met. The single open item is Phase 7's third: the cutover itself, which needs
 a real `mongoexport` dump and a person's afternoon. Its runbook is written
 (`71-CUTOVER-RUNBOOK.md`) and its command, reconciliation and six-item checklist are tested
@@ -1728,6 +1838,7 @@ against synthetic data.
 | 6 | Reports and extras | 6 | ✔ Complete (6/6) — gate met; two extras deliberately deferred |
 | 7 | Migration and cutover | 3 | ◑ 2/3 (67%) — gate met on synthetic data; **cutover blocked on the real v1 export**; runbook staged in `71-CUTOVER-RUNBOOK.md` |
 | 8 | Quant readiness | 5 | ✔ Complete (5/5) — gate met twice |
+| 9 | Spreadsheet parity — leasing, insurance, FX, sector, benchmark | 12 | ◐ In progress (2/12) — 9a's domain and ledger done; its screens next |
 
 Update the status cell to `◐ In progress` / `✔ Complete (n/n)` as phases land.
 
@@ -1767,6 +1878,12 @@ money, with 42 spec files and ~2,080 assertions green.
 
 ### What remains
 
+  - **Phase 9 — spreadsheet parity, 12 items.** Written against the three sheets rather than
+    against `_architecture/`, because an audit found the app cannot answer some questions the
+    sheets answer. The largest by far is **gold leasing**: a yield paid in grams, withheld at
+    10% TDS in grams, which nothing in the app can currently express. Then insurance policies,
+    foreign holdings reaching the reported total, sector and market cap (without which the
+    risk gate's exposure check passes on an empty number), and a benchmark comparison.
   - **Phase 7, item 3 — the cutover itself.** Blocked on the user's real `mongoexport` dump.
     The command and the checklist exist; running them against real data is one person's
     afternoon, and no synthetic fixture can stand in for it.
