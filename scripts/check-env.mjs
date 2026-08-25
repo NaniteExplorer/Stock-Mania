@@ -9,6 +9,7 @@
  * v1's version probed Mongo, Redis, Kafka, Zerodha, Alpaca, Finnhub, Gemini and
  * Twilio. All eight are gone; so are the seven required keys they needed.
  */
+import { readdirSync } from "node:fs";
 import { config as loadEnv } from "dotenv";
 import { createClient } from "@libsql/client";
 
@@ -99,6 +100,30 @@ if (!databaseUrl) {
     ok(`connected — ${tables.rows[0].n} tables`);
     if (Number(tables.rows[0].n) === 0) {
       warn("no tables yet — run: npm run db:migrate");
+    } else {
+      /*
+       * A table *count* is not readiness, and reporting it as such was a real
+       * bug: a database with migration 0000 applied and six pending has 36
+       * tables, passed this check, and then crashed inside a server component
+       * with `no such table: credit_card_terms`. Compare the ledger to the files.
+       */
+      const files = readdirSync("./src/infra/db/migrations").filter((f) => f.endsWith(".sql"));
+      let applied = 0;
+      try {
+        const rows = await client.execute("select count(*) as n from __drizzle_migrations");
+        applied = Number(rows.rows[0].n ?? 0);
+      } catch {
+        applied = 0;
+      }
+      if (applied === files.length) {
+        ok(`schema in step — ${applied} of ${files.length} migrations applied`);
+      } else {
+        fail(
+          `${applied} of ${files.length} migrations applied — run: npm run db:migrate ` +
+            `(then npm run db:check)`,
+        );
+        hasErrors = true;
+      }
     }
     client.close();
   } catch (error) {
