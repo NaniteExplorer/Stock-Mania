@@ -61,7 +61,9 @@ async function main() {
 
   console.log("-- seeding is idempotent --");
   const first = await seed.execute({ userId });
-  check("first seed creates the chart", first.ok && first.value.created, 68);
+  // 69 since Phase 9a added `Assets:Receivables:TDS` — tax withheld at source is
+  // an asset the return reclaims, and gold-lease interest withholds it in grams.
+  check("first seed creates the chart", first.ok && first.value.created, 69);
   const second = await seed.execute({ userId });
   check("second seed creates nothing", second.ok && second.value.created, 0);
 

@@ -898,6 +898,84 @@ export const priceQuotes = sqliteTable(
   ],
 );
 
+/* ═══ Gold leasing ══════════════════════════════════════════════════════ */
+
+export const LEASE_STATUSES = ["ACTIVE", "MATURED", "CANCELLED"] as const;
+
+/**
+ * Gold leased to a platform for a yield **paid in grams**.
+ *
+ * Terms only, like every other product table here. The accrued interest, the TDS
+ * and the current value are all computed by `domain/leasing.ts` from these
+ * columns and a price — so there is no stored figure that can disagree with the
+ * arithmetic behind it, and the source spreadsheet's `months_completed` column
+ * (wrong every day until someone edits it) has no equivalent.
+ *
+ * The one figure that *is* stored is `credited_quantity_scaled`, and it is not a
+ * derived number: it records how many grams an accrual posting has actually put
+ * into the ledger, so a second run books the difference rather than the whole
+ * thing again.
+ *
+ * Quantities are 1e8-scaled integers, as everywhere else. A gram is not money and
+ * `moneyMinor` would round 0.0923769g to nothing.
+ */
+export const goldLeases = sqliteTable(
+  "gold_leases",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** The user-facing reference, e.g. `LEASE-0001`. Unique per user. */
+    reference: text("reference").notNull(),
+    instrumentId: text("instrument_id")
+      .notNull()
+      .references(() => instruments.id, { onDelete: "restrict" }),
+    /** The asset account holding the gold, so an accrual knows where to post. */
+    holdingAccountId: text("holding_account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id, { onDelete: "restrict" }),
+    platform: text("platform").notNull(),
+    quantityScaled: quantityScaled("quantity_scaled").notNull(),
+    startOn: calendarDate("start_on").notNull(),
+    closesOn: calendarDate("closes_on").notNull(),
+    annualRateScaled: percentScaled("annual_rate_scaled").notNull(),
+    /** Withholding on the interest. 10% under §194A unless the platform differs. */
+    tdsRateScaled: percentScaled("tds_rate_scaled").notNull().default(10_000_000),
+    status: text("status", { enum: LEASE_STATUSES }).notNull().default("ACTIVE"),
+    /** Set when the lease ended early; the accrual stops here instead. */
+    endedOn: calendarDate("ended_on"),
+    /** The platform's own reference, for reconciliation against its statement. */
+    sourceReference: text("source_reference"),
+    /** Grams an accrual posting has actually credited, net of TDS. */
+    creditedQuantityScaled: quantityScaled("credited_quantity_scaled").notNull().default(0),
+    /** The last accrual posting, so a credit can be traced to its transaction. */
+    lastAccrualTransactionId: text("last_accrual_transaction_id").references(
+      () => transactions.id,
+      { onDelete: "restrict" },
+    ),
+    notes: text("notes"),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("gold_leases_user_reference_uq").on(table.userId, table.reference),
+    index("gold_leases_user_status_idx").on(table.userId, table.status),
+    index("gold_leases_instrument_idx").on(table.instrumentId, table.startOn),
+    /** A lease of no gold is not a lease. */
+    check("gold_leases_quantity_positive", sql`${table.quantityScaled} > 0`),
+    /** A term of nothing earns nothing; it is a data-entry error, not a lease. */
+    check("gold_leases_term_positive", sql`${table.closesOn} > ${table.startOn}`),
+    check("gold_leases_rate_not_negative", sql`${table.annualRateScaled} >= 0`),
+    check(
+      "gold_leases_tds_rate_in_range",
+      sql`${table.tdsRateScaled} >= 0 AND ${table.tdsRateScaled} <= 100000000`,
+    ),
+    check("gold_leases_credited_not_negative", sql`${table.creditedQuantityScaled} >= 0`),
+  ],
+);
+
 /* ═══ Bars — OHLCV series behind a repository ═══════════════════════════ */
 
 export const BAR_GRANULARITIES = ["DAY", "WEEK", "MONTH"] as const;

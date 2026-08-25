@@ -150,6 +150,23 @@ export class Quantity extends ValueObject {
     return new Quantity((numerator * QUANTITY_FACTOR) / denominator);
   }
 
+  /**
+   * This quantity scaled by an exact integer ratio.
+   *
+   * The quantity equivalent of `Money.timesRatio`, and it exists for the same
+   * reason: a yield paid *in the commodity* — gold leased at 4% a year for seven
+   * months — is `qty × rate × months / 12`, and doing that through a float would
+   * put an eight-decimal gram count through a 53-bit mantissa for no reason. The
+   * rounding mode is explicit because the caller is the only one who knows whether
+   * a fraction of a gram should round toward the holder or away.
+   */
+  timesRatio(numerator: bigint, denominator: bigint, mode: RoundingMode = "HALF_UP"): Quantity {
+    if (denominator === 0n) {
+      throw new RangeError("Cannot scale a quantity by a zero denominator");
+    }
+    return new Quantity(divideRounded(this.scaled * numerator, denominator, mode));
+  }
+
   /** This quantity's share of `amount`, given a total quantity. */
   shareOf(amount: Money, total: Quantity, mode: RoundingMode = "HALF_UP"): Money {
     if (total.isZero) return Money.zero(amount.currency);

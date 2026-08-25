@@ -612,6 +612,8 @@ export const SystemAccountCodes = {
   interestIncome: "Income:Investing:Interest",
   /** Parent of the per-holding asset accounts the investments module creates. */
   investments: "Assets:Investments",
+  /** Where tax withheld at source is booked — recoverable, so an asset. */
+  taxDeductedAtSource: "Assets:Receivables:TDS",
 } as const;
 
 export type SystemAccountKey = keyof typeof SystemAccountCodes;
@@ -653,6 +655,19 @@ export const DEFAULT_CHART: readonly SeedAccount[] = [
   { code: "Assets:Vehicles", name: "Vehicles", type: "ASSET", subtype: "VEHICLE" },
   { code: "Assets:Jewellery", name: "Jewellery & Metals", type: "ASSET", subtype: "PRECIOUS_METAL" },
   { code: "Assets:Receivables", name: "Money Owed to Me", type: "ASSET", subtype: "RECEIVABLE" },
+  /*
+   * Tax withheld at source, by a bank on interest or by a gold platform on lease
+   * interest paid in grams. An **asset**, not an expense: it is money already paid
+   * towards the user's own tax bill and reclaimed in the return, so expensing it
+   * would understate net worth by exactly the refund due.
+   */
+  {
+    code: "Assets:Receivables:TDS",
+    name: "Tax Deducted at Source",
+    type: "ASSET",
+    subtype: "RECEIVABLE",
+    isSystem: true,
+  },
 
   // ── Liabilities ───────────────────────────────────────────────────────────
   { code: "Liabilities", name: "Liabilities", type: "LIABILITY" },

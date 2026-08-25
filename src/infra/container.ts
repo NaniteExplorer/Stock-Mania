@@ -18,6 +18,7 @@ import {
   DrizzleLotRepository,
   DrizzleCorporateActionRepository,
   DrizzleBarRepository,
+  DrizzleGoldLeaseRepository,
   DrizzleQuoteRepository,
   DrizzleSelfPayeeQuery,
   DrizzleTaxSettingsRepository,
@@ -76,6 +77,12 @@ import {
   SuggestHarvest,
   TaxReport,
 } from "@/app/reports.usecases";
+import {
+  AccrueLeaseInterest,
+  ListGoldLeases,
+  OpenGoldLease,
+  SettleGoldLease,
+} from "@/app/leasing.usecases";
 import { PriceBook } from "@/domain/pricing";
 import { FetchHttpClient, shippedQuoteProviders, systemRuntime } from "@/infra/providers";
 import { getCurrentSession } from "@/infra/auth/session";
@@ -123,6 +130,7 @@ export const services = cache(() => {
   const lots = new DrizzleLotRepository(db);
   const quotes = new DrizzleQuoteRepository(db);
   const bars = new DrizzleBarRepository(db);
+  const leases = new DrizzleGoldLeaseRepository(db);
   const taxSettings = new DrizzleTaxSettingsRepository(db);
 
   /*
@@ -172,7 +180,7 @@ export const services = cache(() => {
 
   return {
     clock,
-    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms, lending, instruments, lots, quotes, bars, taxSettings },
+    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms, lending, instruments, lots, quotes, bars, taxSettings, leases },
     ledger: {
       seedChart: new SeedChartOfAccounts(accounts),
       openAccount,
@@ -224,6 +232,12 @@ export const services = cache(() => {
         journal,
         new ValuePortfolio(instruments, lots, prices),
       ),
+    },
+    leasing: {
+      open: new OpenGoldLease(instruments, leases, lots),
+      accrue: new AccrueLeaseInterest(accounts, instruments, leases, journal, lots, prices),
+      settle: new SettleGoldLease(leases),
+      list: new ListGoldLeases(instruments, leases, lots, prices),
     },
     reports: {
       statements: new BuildStatements(balances),

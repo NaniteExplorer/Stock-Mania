@@ -524,7 +524,11 @@ export function legalityRows(): LegalityRow[] {
   add("BUY", [...SPENDABLE, "ASSET_BROKERAGE"], ["ASSET_BROKERAGE", "ASSET_RETIREMENT"]);
   add("SELL", ["ASSET_BROKERAGE", "ASSET_RETIREMENT"], [...SPENDABLE, "ASSET_BROKERAGE"]);
   add("DIVIDEND", ["INCOME"], [...SPENDABLE, "ASSET_BROKERAGE"]);
-  add("INTEREST", ["INCOME"], [...SPENDABLE, "ASSET_DEPOSIT", "ASSET_RETIREMENT"]);
+  /*
+   * `ASSET_BROKERAGE` is here for interest paid **in kind**: gold-lease interest
+   * arrives as grams in the holding account, not as money in a bank account.
+   */
+  add("INTEREST", ["INCOME"], [...SPENDABLE, "ASSET_DEPOSIT", "ASSET_RETIREMENT", "ASSET_BROKERAGE"]);
   add("CORPORATE_ACTION", ["ASSET_BROKERAGE"], ["ASSET_BROKERAGE", "EQUITY_ADJUSTMENT"]);
   add("CORPORATE_ACTION", ["EQUITY_ADJUSTMENT"], ["ASSET_BROKERAGE"]);
   add("FX_CONVERSION", [...ASSET_ROLES], [...ASSET_ROLES]);
@@ -1749,6 +1753,16 @@ interface ReceiptDetails {
   readonly tdsAccount?: AccountRef | null;
   readonly instrumentId?: string | null;
   readonly taxCategory: TaxCategory;
+  /**
+   * Units received, when the income arrives **as the commodity** rather than as
+   * money — gold-lease interest paid in grams. `null` for an ordinary cash
+   * receipt.
+   *
+   * Only {@link InKindInterest} sets it, and the field lives here rather than in
+   * that subclass because `Receipt` already owns the gross/TDS/net arithmetic and
+   * duplicating it to add a quantity would be two implementations of one rule.
+   */
+  readonly unitsReceived?: Quantity | null;
 }
 
 /**
@@ -1877,6 +1891,122 @@ export class Interest extends Receipt {
 
   override taxableEvents(): readonly TaxableEvent[] {
     return [this.receiptEvent("INTEREST")];
+  }
+}
+
+/* ═══ InKindInterest ══════════════════════════════════════════════════ */
+
+/**
+ * Interest paid in the commodity rather than in money.
+ *
+ * A digital-gold platform leasing the user's gold pays 4% a year **in grams** and
+ * withholds 10% TDS, also in grams. Three things are true at once and a cash
+ * `Interest` can express none of them:
+ *
+ *   1. **Income is recognised on the gross**, at the value of the gross grams on
+ *      the day. That is what the return declares, and what the platform reports.
+ *   2. **The holding gains only the net grams** — the withheld gold never arrives.
+ *   3. **Those net grams have a cost basis**, equal to the value at which they
+ *      were taken into income. Booking them at zero cost would tax the same gold
+ *      twice: once as interest now, and again as a larger capital gain on sale.
+ *
+ * The TDS leg is money, not grams, and it is an **asset**: the gold withheld has
+ * been paid towards the user's tax bill and is recoverable in the return.
+ *
+ * Postings, which balance because the TDS value is derived by subtraction:
+ *
+ *   DEBIT  holding      value of the net grams   (+ net units)
+ *   DEBIT  TDS asset    value of the gross less the net
+ *   CREDIT income       value of the gross grams
+ */
+export class InKindInterest extends Receipt {
+  get kind(): "INTEREST" {
+    return "INTEREST";
+  }
+
+  constructor(id: TransactionId, context: TransactionContext, details: ReceiptDetails) {
+    super(id, context, details);
+  }
+
+  static record(context: TransactionContext, details: ReceiptDetails): InKindInterest {
+    return new InKindInterest(TransactionId.create(), context, details);
+  }
+
+  private get units(): Quantity {
+    return this.details.unitsReceived!;
+  }
+
+  protected override buildPostings(): readonly Posting[] {
+    const refs = this.refs()!;
+    const { gross, taxDeductedAtSource, tdsAccount, instrumentId } = this.details;
+    const tds = taxDeductedAtSource ?? Money.zero(gross.currency);
+    const netValue = gross.minus(tds);
+
+    const legs: Posting[] = [
+      Posting.create({
+        accountId: refs.destination.id,
+        direction: "DEBIT",
+        amount: netValue,
+        instrumentId: instrumentId ?? null,
+        quantity: this.units,
+        // The units arrive at the value they were taken into income at, so the
+        // basis is stated rather than inferred on the way out.
+        unitCost: this.units.isZero ? null : this.units.perUnit(netValue),
+      }),
+      Posting.credit(refs.source.id, gross),
+    ];
+    if (tds.isPositive) {
+      legs.splice(1, 0, Posting.debit(tdsAccount!.id, tds, "Tax deducted at source, withheld in kind"));
+    }
+    return legs;
+  }
+
+  protected override validate(): void {
+    super.validate();
+    const units = this.details.unitsReceived;
+    if (!units || !units.isPositive) {
+      throw new DomainError(
+        "LEDGER_IN_KIND_UNITS_NOT_POSITIVE",
+        "Interest paid in kind must credit a positive quantity. A receipt of no units is a cash " +
+          "receipt, and `Interest` is the class for that.",
+      );
+    }
+    if (!this.details.instrumentId) {
+      throw new DomainError(
+        "LEDGER_IN_KIND_NO_INSTRUMENT",
+        "Units received in kind belong to an instrument; without one there is nothing for the " +
+          "quantity to be a quantity of.",
+      );
+    }
+  }
+
+  /** The net units, at the value they were taken into income at. */
+  override lotEffects(): readonly LotEffect[] {
+    return [
+      {
+        kind: "OPEN",
+        instrumentId: this.details.instrumentId!,
+        quantity: this.units,
+        costBasis: this.net,
+        acquiredOn: this.txnDate,
+      },
+    ];
+  }
+
+  /** Slab income on the **gross**, which is what the platform reports. */
+  override taxableEvents(): readonly TaxableEvent[] {
+    return [this.receiptEvent("INTEREST")];
+  }
+
+  /**
+   * No cashflow.
+   *
+   * XIRR sees external money movements, and no money moved: gold arrived. Counting
+   * the value as an inflow would report a contribution the user never made and
+   * depress the return.
+   */
+  override cashflows(): readonly Cashflow[] {
+    return [];
   }
 }
 

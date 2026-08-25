@@ -108,6 +108,21 @@ export class CalendarDate extends ValueObject {
     );
   }
 
+  /**
+   * Whole months from this date to `other` — 15 Jan to 14 Feb is **0**, and to
+   * 15 Feb is 1.
+   *
+   * Completed months, not month boundaries crossed, because that is what an
+   * accrual is paid on: a lease that started on the 15th has earned nothing on the
+   * 1st of the next month, however many calendar pages have turned. Negative when
+   * `other` is earlier.
+   */
+  monthsUntil(other: CalendarDate): number {
+    const gross = (other.year - this.year) * 12 + (other.month - this.month);
+    if (gross >= 0) return other.day >= Math.min(this.day, CalendarDate.daysInMonth(other.year, other.month)) ? gross : gross - 1;
+    return other.day <= this.day ? gross : gross + 1;
+  }
+
   /** First day of this date's month. */
   startOfMonth(): CalendarDate {
     return new CalendarDate(this.year, this.month, 1);

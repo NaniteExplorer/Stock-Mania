@@ -29,11 +29,12 @@ import type {
   UnbalancedEntry,
 } from "@/app/reproducibility.usecases";
 import { Bar, BarGranularity, BarRepository, makeBar } from "@/domain/analysis";
+import { GoldLease, GoldLeaseRepository, LeaseId, LeaseStatus } from "@/domain/leasing";
 import { Percentage, Quantity, Rate, UnitPrice } from "@/core/numeric";
 import { FxQuote, FxRateRepository, PriceDivergence, PriceSourceType, Quote, QuoteRepository, QuoteType, StoredFxRate } from "@/domain/pricing";
 import { AccountBalance, AccountFlow, BalanceQuery, MonthlyFlow, Posting, PostingId, PostingStatus, StoredTransaction, Transaction, TransactionId, TransactionKind, TransactionPage, TransactionQuery, TransactionRepository, TransactionSource, TypeTotals } from "@/domain/transactions";
 import { BudgetRepository, CategoryRuleRepository, ImportBatchRecord, ImportBatchStatus, ImportRepository, ImportRowStatus, KeywordRule, MovementIntent, RowDirection, SelfPayeeQuery, StagedRow, StoredBudget } from "@/domain/banking";
-import { users as usersTable, ledgerEvents, projectionCache, taxSettings, priceBars, budgets, categoryRules, corporateActions, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, instruments, ledgerAccounts, loanPrepayments, loanTerms, lotMatches, lots, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, trades, transactions } from "@/infra/db/schema";
+import { goldLeases, users as usersTable, ledgerEvents, projectionCache, taxSettings, priceBars, budgets, categoryRules, corporateActions, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, instruments, ledgerAccounts, loanPrepayments, loanTerms, lotMatches, lots, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, trades, transactions } from "@/infra/db/schema";
 import { Database } from "@/infra/db/client";
 import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, max, min, or, sql } from "drizzle-orm";
 /* ═══ AccountMapper ═══════════════════════════════════════════════════ */
@@ -1002,6 +1003,148 @@ const QuoteMapper = {
       sourceType: row.sourceType as PriceSourceType,
       ingestedAt: row.ingestedAt,
       supersededBy: row.supersededBy,
+    };
+  },
+};
+
+/* ═══ DrizzleGoldLeaseRepository ══════════════════════════════════════ */
+
+/**
+ * libSQL implementation of {@link GoldLeaseRepository}.
+ *
+ * Terms in, terms out: the accrued grams, the TDS and the value are recomputed by
+ * `GoldLease` on every read, so no row here can disagree with the arithmetic
+ * behind it. The single stored *fact* is `creditedQuantityScaled` — how many grams
+ * an accrual posting has actually put into the ledger — which is not derivable
+ * from the terms and is exactly what stops a second accrual run double-booking.
+ */
+export class DrizzleGoldLeaseRepository implements GoldLeaseRepository {
+  constructor(private readonly db: Database) {}
+
+  async findById(userId: UserId, id: LeaseId): Promise<GoldLease | null> {
+    const [row] = await this.db
+      .select()
+      .from(goldLeases)
+      .where(
+        and(
+          eq(goldLeases.userId, userId.value),
+          eq(goldLeases.id, id.value),
+          isNull(goldLeases.deletedAt),
+        ),
+      )
+      .limit(1);
+    return row ? GoldLeaseMapper.toDomain(row) : null;
+  }
+
+  async findByReference(userId: UserId, reference: string): Promise<GoldLease | null> {
+    const [row] = await this.db
+      .select()
+      .from(goldLeases)
+      .where(
+        and(
+          eq(goldLeases.userId, userId.value),
+          eq(goldLeases.reference, reference),
+          isNull(goldLeases.deletedAt),
+        ),
+      )
+      .limit(1);
+    return row ? GoldLeaseMapper.toDomain(row) : null;
+  }
+
+  async list(
+    userId: UserId,
+    options?: { instrumentId?: InstrumentId; status?: LeaseStatus },
+  ): Promise<readonly GoldLease[]> {
+    const rows = await this.db
+      .select()
+      .from(goldLeases)
+      .where(
+        and(
+          eq(goldLeases.userId, userId.value),
+          isNull(goldLeases.deletedAt),
+          options?.instrumentId ? eq(goldLeases.instrumentId, options.instrumentId.value) : undefined,
+          options?.status ? eq(goldLeases.status, options.status) : undefined,
+        ),
+      )
+      .orderBy(asc(goldLeases.startOn), asc(goldLeases.reference));
+    return rows.map(GoldLeaseMapper.toDomain);
+  }
+
+  async save(lease: GoldLease): Promise<void> {
+    const row = GoldLeaseMapper.toRow(lease);
+    await this.db
+      .insert(goldLeases)
+      .values(row)
+      .onConflictDoUpdate({ target: goldLeases.id, set: { ...row, id: undefined } });
+  }
+
+  async recordCredit(
+    userId: UserId,
+    id: LeaseId,
+    creditedTotal: Quantity,
+    transactionId: string,
+  ): Promise<void> {
+    /*
+     * Writes the running total rather than adding to it, and takes the total from
+     * the domain rather than computing it here — so a retried accrual is
+     * idempotent instead of doubling the credit, which an increment would not be.
+     */
+    await this.db
+      .update(goldLeases)
+      .set({
+        creditedQuantityScaled: creditedTotal.toScaledNumber(),
+        lastAccrualTransactionId: transactionId,
+        updatedAt: new Date(),
+      })
+      .where(and(eq(goldLeases.userId, userId.value), eq(goldLeases.id, id.value)));
+  }
+}
+
+const GoldLeaseMapper = {
+  toDomain(row: typeof goldLeases.$inferSelect): GoldLease {
+    return new GoldLease({
+      id: LeaseId.from(row.id),
+      userId: UserId.from(row.userId),
+      reference: row.reference,
+      instrumentId: InstrumentId.from(row.instrumentId),
+      holdingAccountId: AccountId.from(row.holdingAccountId),
+      platform: row.platform,
+      quantity: Quantity.fromScaled(row.quantityScaled),
+      startOn: CalendarDate.parse(row.startOn),
+      closesOn: CalendarDate.parse(row.closesOn),
+      annualRate: Percentage.fromScaled(row.annualRateScaled),
+      tdsRate: Percentage.fromScaled(row.tdsRateScaled),
+      status: row.status as LeaseStatus,
+      endedOn: row.endedOn ? CalendarDate.parse(row.endedOn) : null,
+      sourceReference: row.sourceReference,
+      creditedQuantity: Quantity.fromScaled(row.creditedQuantityScaled),
+      notes: row.notes,
+    });
+  },
+
+  toRow(lease: GoldLease): typeof goldLeases.$inferInsert {
+    const { props } = lease;
+    return {
+      id: props.id.value,
+      userId: props.userId.value,
+      reference: props.reference,
+      instrumentId: props.instrumentId.value,
+      holdingAccountId: props.holdingAccountId.value,
+      platform: props.platform,
+      quantityScaled: props.quantity.toScaledNumber(),
+      startOn: props.startOn.toISO(),
+      closesOn: props.closesOn.toISO(),
+      // `toScaledNumber()`, not `Number(...scaled)`: the float rule rejects the
+      // latter, and rightly — it is the same reach for a raw bigint that turns a
+      // rate into an approximation everywhere else.
+      annualRateScaled: props.annualRate.toScaledNumber(),
+      tdsRateScaled: lease.tdsRate.toScaledNumber(),
+      status: lease.status,
+      endedOn: props.endedOn?.toISO() ?? null,
+      sourceReference: props.sourceReference ?? null,
+      creditedQuantityScaled: lease.credited.toScaledNumber(),
+      notes: props.notes ?? null,
+      updatedAt: new Date(),
     };
   },
 };

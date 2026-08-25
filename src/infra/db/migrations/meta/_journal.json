@@ -43,6 +43,13 @@
       "when": 1787592875276,
       "tag": "0005_phase8_quant_readiness",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1787596264926,
+      "tag": "0006_phase9_gold_leases",
+      "breakpoints": true
     }
   ]
 }
