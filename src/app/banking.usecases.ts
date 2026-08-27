@@ -24,6 +24,7 @@ import {
   BudgetLedger,
   BudgetRepository,
   Categoriser,
+  CategoriserContext,
   CategoryRuleRepository,
   DuplicateMatcher,
   ImportBatchRecord,
@@ -524,18 +525,59 @@ export class StageStatementImport
   }
 
   private async categoriserContext(userId: UserId) {
+    return buildCategoriserContext(userId, this.rules, this.selfPayees, this.accounts);
+  }
+}
+
+/**
+ * The categoriser's context.
+ *
+ * A free function because two use cases need it: staging, and the smart review
+ * that re-categorises rows staged before a rule or a fallback existed. Two copies
+ * would be two answers to "where does a card payment go", and the one to drift
+ * would be the one nobody was reading.
+ */
+export async function buildCategoriserContext(
+  userId: UserId,
+  rulesRepo: CategoryRuleRepository,
+  payeesRepo: SelfPayeeQuery,
+  accountsRepo: AccountRepository,
+): Promise<CategoriserContext> {
+  {
     const [rules, payees, chart] = await Promise.all([
-      this.rules.list(userId),
-      this.selfPayees.list(userId),
-      this.accounts.list(userId, { includeClosed: false }),
+      rulesRepo.list(userId),
+      payeesRepo.list(userId),
+      accountsRepo.list(userId, { includeClosed: false }),
     ]);
     const accountIdByCode = new Map(chart.map((account) => [account.code.toString(), account.id]));
+
+    /*
+     * The one card, if there is one, else the chart's own credit-card group.
+     *
+     * A user with exactly one credit card has exactly one place a card payment can
+     * go, and making them pick it 41 times is not a safety feature. With two cards
+     * the narration genuinely does not say which, so it falls back to the group —
+     * still a real account, still correctable in one click, and the cash side of
+     * the statement is right either way.
+     */
+    const cards = chart.filter(
+      (account) =>
+        account.subtype === "CREDIT_CARD" &&
+        !account.isSystem &&
+        account.code.toString() !== "Liabilities:Credit Cards",
+    );
+
     return {
       rules,
       selfPayees: payees,
       accountIdByCode,
       fallbackExpenseId: accountIdByCode.get(SystemAccountCodes.uncategorizedExpense) ?? null,
       fallbackIncomeId: accountIdByCode.get(SystemAccountCodes.uncategorizedIncome) ?? null,
+      fallbackCardId:
+        cards.length === 1
+          ? cards[0].id
+          : (accountIdByCode.get("Liabilities:Credit Cards") ?? null),
+      fallbackInvestmentId: accountIdByCode.get(SystemAccountCodes.investments) ?? null,
     };
   }
 }
@@ -639,15 +681,38 @@ export class ConfirmUnmatchedRows
 export interface SmartReviewImportOutput {
   confirmed: number;
   inferredTransfers: number;
+  /** Rows a re-run of the categoriser could place that the original staging could not. */
+  recategorised: number;
   needingChoice: number;
 }
 
+/**
+ * Confirms everything a machine can decide, and says what is left.
+ *
+ * Three passes over the unreviewed rows, cheapest first:
+ *
+ *   1. The row already has a proposal — confirm it.
+ *   2. Re-run the categoriser. A row staged last month was categorised by last
+ *      month's rules and last month's chart; a keyword added since, or a credit
+ *      card opened since, changes the answer. Without this, 87 rows correctly
+ *      identified as card payments and platform investments stayed unplaceable
+ *      for ever, because the *only* thing wrong with them was that the fallback
+ *      they needed did not exist on the day they were staged.
+ *   3. Read the counter-account out of the narration ("NEFT to SBI Savings").
+ *
+ * Whatever survives all three is genuinely ambiguous — the narration does not say
+ * which of the user's accounts it went to — and is handed back as needing a
+ * choice rather than guessed at.
+ */
 export class SmartReviewImport
   implements UseCase<{ userId: UserId; batchId: string }, SmartReviewImportOutput>
 {
   constructor(
     private readonly imports: ImportRepository,
     private readonly accounts: AccountRepository,
+    private readonly rules?: CategoryRuleRepository,
+    private readonly selfPayees?: SelfPayeeQuery,
+    private readonly categoriser: Categoriser = new Categoriser(),
   ) {}
 
   async execute(input: { userId: UserId; batchId: string }) {
@@ -668,8 +733,18 @@ export class SmartReviewImport
         !(batch.accountId && account.id.equals(batch.accountId)),
     );
 
+    /*
+     * Built once for the batch, not per row: it is three queries, and a 700-row
+     * statement would otherwise make two thousand.
+     */
+    const context =
+      this.rules && this.selfPayees
+        ? await buildCategoriserContext(input.userId, this.rules, this.selfPayees, this.accounts)
+        : null;
+
     let confirmed = 0;
     let inferredTransfers = 0;
+    let recategorised = 0;
     let needingChoice = 0;
 
     for (const row of rows) {
@@ -680,6 +755,22 @@ export class SmartReviewImport
         });
         confirmed += 1;
         continue;
+      }
+
+      if (context) {
+        const fresh = this.categoriser.categorise(
+          { description: row.description, reference: row.reference, direction: row.direction },
+          context,
+        );
+        if (fresh.accountId) {
+          await this.imports.setRowStatus(input.userId, row.id, {
+            status: "CONFIRMED",
+            proposedAccountId: fresh.accountId,
+          });
+          confirmed += 1;
+          recategorised += 1;
+          continue;
+        }
       }
 
       const inferred = SmartReviewImport.inferCounterAccount(row, transferTargets);
@@ -696,7 +787,7 @@ export class SmartReviewImport
       needingChoice += 1;
     }
 
-    return Ok({ confirmed, inferredTransfers, needingChoice });
+    return Ok({ confirmed, inferredTransfers, recategorised, needingChoice });
   }
 
   private static inferCounterAccount(

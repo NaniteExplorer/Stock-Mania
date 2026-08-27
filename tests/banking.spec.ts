@@ -90,6 +90,8 @@ const EATING_OUT = id("acct-eating-out");
 const SALARY = id("acct-salary");
 const FALLBACK_EXPENSE = id("acct-uncat-expense");
 const FALLBACK_INCOME = id("acct-uncat-income");
+const FALLBACK_CARD = id("acct-credit-cards");
+const FALLBACK_INVESTMENT = id("acct-investments");
 
 const chartIds = new Map<string, AccountId>([
   ["Expenses:Food:Groceries", GROCERIES],
@@ -103,6 +105,8 @@ const baseContext: CategoriserContext = {
   accountIdByCode: chartIds,
   fallbackExpenseId: FALLBACK_EXPENSE,
   fallbackIncomeId: FALLBACK_INCOME,
+  fallbackCardId: FALLBACK_CARD,
+  fallbackInvestmentId: FALLBACK_INVESTMENT,
 };
 
 const categoriser = new Categoriser();
@@ -719,5 +723,45 @@ assertProperty(
 // UserId is imported for parity with the other specs' setup; assert it stays a
 // value object so a string never reaches a query by accident.
 check("UserId is nominal", UserId.from("u1").value, "u1");
+
+
+/* ═══ The two intents that have one obvious destination ═══════════════ */
+
+section("a card payment and a platform investment place themselves");
+
+const cardBillDefault = categoriser.categorise(
+  { description: "NBSM/137650499/ICICI BANK CREDIT CARD(BILL DESK)/", reference: null, direction: "DEBIT" },
+  baseContext,
+);
+check("a card bill is a transfer", cardBillDefault.intent, "TRANSFER");
+checkTrue(
+  "and it lands on the card rather than nowhere",
+  cardBillDefault.accountId?.equals(FALLBACK_CARD) === true,
+);
+
+const platform = categoriser.categorise(
+  { description: "UPI/P2M/1234/GROWW/investment/", reference: null, direction: "DEBIT" },
+  baseContext,
+);
+check("money into a platform is an investment", platform.intent, "INVESTMENT");
+checkTrue(
+  "and it is held under investments, not expensed",
+  platform.accountId?.equals(FALLBACK_INVESTMENT) === true,
+);
+
+/*
+ * The case the first attempt at this got wrong. A self transfer must stay
+ * unplaced: `SmartReviewImport` can often read the real destination out of the
+ * narration ("to SBI Savings"), and defaulting it here pre-empted that with
+ * something worse — the credit card.
+ */
+section("a self transfer stays unplaced, so the counter-account can be inferred");
+
+const namedSelfTransfer = categoriser.categorise(
+  { description: "UPI/P2A/552135160563/DEBASISH RANA/Self transfer/State Bank", reference: null, direction: "DEBIT" },
+  baseContext,
+);
+check("it is a transfer", namedSelfTransfer.intent, "TRANSFER");
+check("but no account is guessed", namedSelfTransfer.accountId, null);
 
 done();

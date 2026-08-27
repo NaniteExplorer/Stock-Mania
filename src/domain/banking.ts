@@ -276,6 +276,25 @@ export interface CategoriserContext {
   /** Where an unmatched debit and credit go — `Expenses:Uncategorized` and friends. */
   readonly fallbackExpenseId: AccountId | null;
   readonly fallbackIncomeId: AccountId | null;
+  /**
+   * Where a card payment and a platform investment go when the narration does not
+   * name the account.
+   *
+   * Their absence was the whole of a real dead end. The categoriser would
+   * correctly read 41 rows as credit-card bill payments and 46 as money into an
+   * investment platform, then return every one with `accountId: null` — 96 rows to
+   * place by hand in an app whose chart already ships exactly one obvious
+   * destination for each. Spending and income have had a fallback since Phase 2;
+   * these two not having one was an asymmetry rather than a policy.
+   *
+   * Deliberately only these two. A card payment means the card, and money into a
+   * platform means the investments account — both are the account, not a guess at
+   * it. A *self transfer* is different: `SmartReviewImport` can often read the real
+   * destination out of the narration ("NEFT to SBI Savings"), and a default here
+   * would pre-empt that with something worse. So those stay null on purpose.
+   */
+  readonly fallbackCardId: AccountId | null;
+  readonly fallbackInvestmentId: AccountId | null;
 }
 
 /**
@@ -302,7 +321,7 @@ export class Categoriser {
     if (self) return self;
 
     // 3. Structural intent: investing, card settlement, an explicit transfer.
-    const structural = this.matchStructural(haystack, input);
+    const structural = this.matchStructural(haystack, input, context);
     if (structural) return structural;
 
     // 4. Shipped defaults.
@@ -420,23 +439,31 @@ export class Categoriser {
     return null;
   }
 
-  private matchStructural(haystack: string, input: CategorisationInput): Categorisation | null {
+  private matchStructural(
+    haystack: string,
+    input: CategorisationInput,
+    context: CategoriserContext,
+  ): Categorisation | null {
     if (input.direction === "DEBIT" && narrationHas(haystack, ...INVESTMENT_MARKERS)) {
       return {
         intent: "INVESTMENT",
         source: "STRUCTURAL",
-        accountId: null,
+        accountId: context.fallbackInvestmentId,
         ruleId: null,
-        because: "Money moving into an investment platform is not spending.",
+        because: context.fallbackInvestmentId
+          ? "Money moving into an investment platform is not spending — held under Assets:Investments until you say which holding it bought."
+          : "Money moving into an investment platform is not spending.",
       };
     }
     if (narrationHas(haystack, ...CARD_PAYMENT_MARKERS)) {
       return {
         intent: "TRANSFER",
         source: "STRUCTURAL",
-        accountId: null,
+        accountId: context.fallbackCardId,
         ruleId: null,
-        because: "Settling a card bill is a transfer — the spending was already recorded on the card.",
+        because: context.fallbackCardId
+          ? "Settling a card bill is a transfer — the spending was already on the card, so this pays the card down rather than counting twice."
+          : "Settling a card bill is a transfer — the spending was already recorded on the card.",
       };
     }
     if (narrationHas(haystack, ...TRANSFER_MARKERS)) {

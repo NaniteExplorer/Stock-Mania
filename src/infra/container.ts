@@ -196,7 +196,7 @@ export const services = cache(() => {
       recordTransfer: transfer,
       stageImport: new StageStatementImport(accounts, journal, imports, rules, selfPayees),
       confirmUnmatched: new ConfirmUnmatchedRows(imports),
-      smartReview: new SmartReviewImport(imports, accounts),
+      smartReview: new SmartReviewImport(imports, accounts, rules, selfPayees),
       reviewRow: new ReviewImportRow(imports, accounts),
       postBatch: new PostImportBatch(imports, accounts, record, clock),
       undoImport: new UndoImport(imports, journal, clock),
