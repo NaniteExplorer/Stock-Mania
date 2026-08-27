@@ -114,28 +114,46 @@ section("a tombstoned row is invisible to reads");
  */
 const repoSource = stripComments(read("src/infra/repositories.ts"));
 
-/** Plain substring counting — no regex, so no escaping to get wrong. */
-const occurrences = (haystack: string, needle: string): number =>
-  haystack.split(needle).length - 1;
+/*
+ * Checked per *statement*, not by counting adjacent substrings.
+ *
+ * The first version of this guard counted `eq(t.userId, …), isNull(t.deletedAt)`
+ * as one contiguous string and subtracted a hardcoded `writers = 2`. Both halves
+ * were brittle. Reformatting a guarded read across two lines made it look
+ * unguarded, and adding a third legitimate writer (`softDeleteByAccount`, which
+ * arrived with account deletion) failed the count while nothing was actually
+ * leaking. A guard that cries wolf gets its constant bumped, and the next time it
+ * is right nobody believes it.
+ *
+ * So: split the source at each query builder, keep the chunks that scope by user,
+ * and require a `deletedAt` filter in every chunk that *reads*. A chunk that
+ * writes (`.update(`, `.insert(`) is exempt by nature — a tombstoning update has
+ * to reach the very row a read hides.
+ */
+const statements = repoSource.split(/(?=this\.db\s*\n?\s*\.)/);
 
 for (const table of ["ledgerAccounts", "transactions"] as const) {
-  const scopedNeedle = "eq(" + table + ".userId, userId.value)";
-  const guardedNeedle = scopedNeedle + ", isNull(" + table + ".deletedAt)";
-  const scoped = occurrences(repoSource, scopedNeedle);
-  const guarded = occurrences(repoSource, guardedNeedle);
+  const scoped = "eq(" + table + ".userId, userId.value)";
+  const guard = "isNull(" + table + ".deletedAt)";
+
+  const touching = statements.filter((statement) => statement.includes(scoped));
+  const reads = touching.filter(
+    (statement) => !statement.includes(".update(") && !statement.includes(".insert("),
+  );
+  const leaking = reads.filter((statement) => !statement.includes(guard));
 
   /*
-   * The unguarded remainder are the writers, which must reach the very rows a
-   * read hides: for accounts, `softDelete` tombstones one and `restore`
-   * un-tombstones one; for entries, `softDelete` and `softDeleteByImportBatch`.
-   *
-   * This count found a real miss on its first run — `earliestPostedOn` was
-   * reading unfiltered, so a tombstoned entry could still set the start of the
-   * net-worth timeline. That is the kind of leak a `deletedAt` column invites.
+   * The name of the offending method, not just a count — this found a real miss
+   * on its first run (`earliestPostedOn` read unfiltered, so a tombstoned entry
+   * could still set the start of the net-worth timeline) and the name is what made
+   * it fixable in one look.
    */
-  const writers = 2;
-  check("every scoped " + table + " read filters tombstones", scoped - guarded, writers);
-  check("and " + table + " has guarded reads at all", guarded > 0, true);
+  checkDeep(
+    "every scoped " + table + " read filters tombstones",
+    leaking.map((statement) => /async (\w+)\(|(\w+)\s*=\s*this\.db/.exec(statement)?.[0] ?? statement.slice(0, 60)),
+    [],
+  );
+  check("and " + table + " is read at all", reads.length > 0, true);
 }
 
 section("money never crosses the driver boundary as a float");
