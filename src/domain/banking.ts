@@ -1021,6 +1021,7 @@ export interface StagedRow {
   readonly reference: string | null;
   readonly amount: Money;
   readonly direction: RowDirection;
+  readonly balanceAfter: Money | null;
   readonly occurrence: number;
   /** The source line, verbatim, so a re-parse never needs the original file. */
   readonly raw: string;
@@ -1099,6 +1100,9 @@ export interface ImportRepository {
       completedAt?: Date;
     },
   ): Promise<void>;
+
+  /** Hides an import batch and its staged rows after it has been undone. */
+  softDeleteBatch(userId: UserId, batchId: string, at: Date): Promise<void>;
 }
 
 export interface CategoryRuleRepository {

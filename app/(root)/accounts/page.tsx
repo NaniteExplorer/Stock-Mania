@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AlertTriangle, Landmark } from "lucide-react";
+import { AlertTriangle, Download, Landmark } from "lucide-react";
 import { connection } from "next/server";
 import { CalendarDate, DateRange } from "@/core/time";
 import { Money } from "@/core/money";
-import { Card, EmptyState, MoneyText, PageHeader, Pill, Stat } from "@/ui/primitives";
-import { InstitutionMark } from "@/ui/provider-picker";
+import { Card, EmptyState, PageHeader, Pill, Stat } from "@/ui/primitives";
+import { FilterBar } from "@/ui/filter-bar";
+import { formatMoney } from "@/ui/format";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
+import AccountsTable, { type AccountRow } from "./accounts-table";
 import OpenAccountForm from "./open-account-form";
 
 export const metadata: Metadata = { title: "Accounts" };
@@ -22,10 +24,19 @@ export const metadata: Metadata = { title: "Accounts" };
  * `Assets:Wallets`) are cash-like too, and are shown only when something has been
  * posted directly to them: they are legitimate accounts, but listing three empty
  * rows above the real ones would read as clutter rather than as information.
+ *
+ * Editing lives on `/accounts/[accountId]` rather than in a table cell. Eight
+ * inputs and four destructive buttons per row made the one question this page
+ * exists to answer — how much money is where — the hardest thing on it.
  */
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; kind?: string; status?: string; sort?: string }>;
+}) {
   await connection();
 
+  const filters = await searchParams;
   const userId = await currentUserId();
   await ensureSeeded(userId);
 
@@ -34,22 +45,83 @@ export default async function Page() {
   const monthRange = DateRange.monthOf(today);
 
   const [result, flows] = await Promise.all([
-    banking.listCashPositions.execute({ userId, asOf: today }),
+    banking.listCashPositions.execute({ userId, asOf: today, includeClosed: true }),
     repositories.balances.monthlyFlows(userId, monthRange),
   ]);
 
   if (!result.ok) throw new Error(result.error.message);
 
-  // The three seeded group accounts are hidden while empty: they are legitimate,
-  // postable accounts, but three permanent zero rows above the real ones read as
-  // clutter. Named explicitly rather than inferred from "looks like a group", so
-  // a user's own empty account is never hidden from them.
+  // Seeded buckets are parents, not real cash accounts. They must not be shown as
+  // spendable accounts even if a bad import once posted to them.
   const GROUP_CODES = new Set(["Assets:Bank", "Assets:Cash", "Assets:Wallets"]);
   const positions = result.value.positions.filter(
-    (position) =>
-      !position.balance.isZero || !GROUP_CODES.has(position.asset.account.code.toString()),
+    (position) => !GROUP_CODES.has(position.asset.account.code.toString()),
+  );
+  const openPositions = positions.filter((position) => !position.asset.account.isClosed);
+  const totalOpen = Money.total(openPositions.map((position) => position.balance));
+
+  const postingCounts = new Map(
+    await Promise.all(
+      positions.map(
+        async (position) =>
+          [
+            position.asset.id.value,
+            await repositories.accounts.countPostings(userId, position.asset.id),
+          ] as const,
+      ),
+    ),
   );
   const thisMonth = flows.find((flow) => flow.month === today.toMonthKey());
+
+  const needle = (filters.q ?? "").trim().toLowerCase();
+  const rows: AccountRow[] = positions
+    .filter((position) => {
+      const account = position.asset.account;
+      if (filters.status === "open" && account.isClosed) return false;
+      if (filters.status === "closed" && !account.isClosed) return false;
+      if (filters.kind && position.asset.kind !== filters.kind) return false;
+      if (
+        needle &&
+        !account.displayName.toLowerCase().includes(needle) &&
+        !(account.institution?.toLowerCase().includes(needle) ?? false) &&
+        !account.code.toString().toLowerCase().includes(needle)
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .map((position) => {
+      const account = position.asset.account;
+      return {
+        id: account.id.value,
+        name: position.asset.displayName,
+        code: account.code.toString(),
+        institution: account.institution,
+        suffix: account.accountNumberSuffix,
+        kind: KIND_LABELS[position.asset.kind] ?? position.asset.kind,
+        currency: position.asset.currency.code,
+        isClosed: account.isClosed,
+        isSystem: account.isSystem,
+        postingCount: postingCounts.get(account.id.value) ?? 0,
+        balance: formatMoney(position.balance),
+        // Kept off the row type; used only for the sort below.
+        sortKey: account.sortOrder,
+        balanceMinor: position.balance.minor,
+      };
+    })
+    .sort((a, b) => {
+      switch (filters.sort) {
+        case "balance":
+          return a.balanceMinor === b.balanceMinor ? 0 : a.balanceMinor > b.balanceMinor ? -1 : 1;
+        case "name":
+          return a.name.localeCompare(b.name);
+        case "postings":
+          return b.postingCount - a.postingCount;
+        default:
+          return a.sortKey - b.sortKey || a.name.localeCompare(b.name);
+      }
+    })
+    .map(({ sortKey: _sortKey, balanceMinor: _balanceMinor, ...row }) => row);
 
   return (
     <>
@@ -57,11 +129,21 @@ export default async function Page() {
         title="Accounts"
         subtitle="Every bank account, wallet and cash balance — summed from journal postings at read time, never stored."
         badge={<Pill tone="brand">Phase 2</Pill>}
+        action={
+          <a href="/accounts/export" className="ghost-btn h-10 px-4 text-xs" download>
+            <Download className="h-3.5 w-3.5" aria-hidden />
+            Export CSV
+          </a>
+        }
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Total balance" value={result.value.total} hint="Spendable money today" />
-        <Stat label="Accounts" value={<span className="tnum">{positions.length}</span>} hint="Open, cash-like" />
+        <Stat label="Total balance" value={totalOpen} hint="Open spendable money" />
+        <Stat
+          label="Accounts"
+          value={<span className="tnum">{openPositions.length}</span>}
+          hint="Open, cash-like"
+        />
         <Stat label="Money in" value={thisMonth?.income ?? Money.zero()} hint="This month" />
         <Stat label="Money out" value={thisMonth?.expense ?? Money.zero()} hint="This month" />
       </div>
@@ -83,55 +165,56 @@ export default async function Page() {
         </Card>
       )}
 
-      <section className="panel mb-6 p-0">
-        <div className="table-scroll">
-          <table className="w-full text-sm">
-            <caption className="sr-only">
-              Cash accounts, with kind, currency and derived balance
-            </caption>
-            <thead>
-              <tr className="border-b border-gray-600">
-                <th scope="col" className="metric-label px-4 py-3 text-left">Account</th>
-                <th scope="col" className="metric-label px-4 py-3 text-left">Kind</th>
-                <th scope="col" className="metric-label px-4 py-3 text-left">Currency</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Balance</th>
-              </tr>
-            </thead>
-            <tbody>
-              {positions.map((position) => (
-                <tr key={position.asset.id.value} className="border-b border-gray-600/50 last:border-0">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      <InstitutionMark institution={position.asset.account.institution} />
-                      <div>
-                        <span className="font-medium text-gray-100">{position.asset.displayName}</span>
-                        {position.asset.account.institution && (
-                          <span className="ml-2 text-xs text-gray-500">
-                            {position.asset.account.institution}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 text-gray-400">{KIND_LABELS[position.asset.kind]}</td>
-                  <td className="px-4 py-3 text-gray-400">{position.asset.currency.code}</td>
-                  <td className="px-4 py-3 text-right">
-                    <MoneyText value={position.balance} tone="neutral" />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {positions.length > 0 && (
+        <FilterBar
+          searchPlaceholder="Search name, bank or code"
+          filters={[
+            {
+              name: "status",
+              label: "Status",
+              options: [
+                { value: "", label: "Open and closed" },
+                { value: "open", label: "Open only" },
+                { value: "closed", label: "Closed only" },
+              ],
+            },
+            {
+              name: "kind",
+              label: "Kind",
+              options: [
+                { value: "", label: "Any kind" },
+                { value: "BANK_ACCOUNT", label: "Bank" },
+                { value: "WALLET", label: "Wallet" },
+                { value: "CASH_IN_HAND", label: "Cash" },
+              ],
+            },
+            {
+              name: "sort",
+              label: "Sort",
+              options: [
+                { value: "", label: "Your order" },
+                { value: "balance", label: "Largest balance" },
+                { value: "name", label: "Name A–Z" },
+                { value: "postings", label: "Most active" },
+              ],
+            },
+          ]}
+        />
+      )}
 
-        {positions.length === 0 && (
-          <EmptyState
-            icon={Landmark}
-            title="No accounts yet"
-            body="Open a bank account, wallet or cash account below, then import a statement to fill it in."
-          />
+      <div className="mb-6">
+        {positions.length === 0 ? (
+          <section className="panel p-0">
+            <EmptyState
+              icon={Landmark}
+              title="No accounts yet"
+              body="Open a bank account, wallet or cash account below, then import a statement to fill it in."
+            />
+          </section>
+        ) : (
+          <AccountsTable rows={rows} />
         )}
-      </section>
+      </div>
 
       <Card
         title="Open an account"

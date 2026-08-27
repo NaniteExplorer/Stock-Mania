@@ -43,6 +43,7 @@ import {
   RecordSpend,
   ReviewImportRow,
   SeedCategoryRules,
+  SmartReviewImport,
   StageStatementImport,
   UndoImport,
 } from "@/app/banking.usecases";
@@ -195,6 +196,7 @@ export const services = cache(() => {
       recordTransfer: transfer,
       stageImport: new StageStatementImport(accounts, journal, imports, rules, selfPayees),
       confirmUnmatched: new ConfirmUnmatchedRows(imports),
+      smartReview: new SmartReviewImport(imports, accounts),
       reviewRow: new ReviewImportRow(imports, accounts),
       postBatch: new PostImportBatch(imports, accounts, record, clock),
       undoImport: new UndoImport(imports, journal, clock),

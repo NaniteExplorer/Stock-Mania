@@ -14,7 +14,7 @@
  */
 
 import { AggregateRoot, DomainError, UniqueId, UserId, ValueObject, newUuid } from "@/core/kernel";
-import { Currency, Money } from "@/core/money";
+import { Currency } from "@/core/money";
 /* ═══ PostingDirection ════════════════════════════════════════════════ */
 
 /**
@@ -550,11 +550,22 @@ export class Account extends AggregateRoot<AccountId> {
 
   updateDetails(props: {
     institution?: string | null;
+    accountNumberSuffix?: string | null;
     subtype?: AccountSubtype | null;
     sortOrder?: number;
   }): Account {
+    const suffix = props.accountNumberSuffix?.trim() || null;
+    if (suffix !== null && !/^\d{4}$/.test(suffix)) {
+      throw new TypeError(
+        `Account number suffix must be exactly 4 digits, got "${suffix}". ` +
+          `Only the last four are stored — never the full number.`,
+      );
+    }
+
     return this.copyWith({
       institution: props.institution === undefined ? this.institution : props.institution?.trim() || null,
+      accountNumberSuffix:
+        props.accountNumberSuffix === undefined ? this.accountNumberSuffix : suffix,
       subtype: props.subtype === undefined ? this.subtype : props.subtype,
       sortOrder: props.sortOrder ?? this.sortOrder,
     });
@@ -565,6 +576,7 @@ export class Account extends AggregateRoot<AccountId> {
     subtype?: AccountSubtype | null;
     parentId?: AccountId | null;
     institution?: string | null;
+    accountNumberSuffix?: string | null;
     isClosed?: boolean;
     sortOrder?: number;
   }): Account {
@@ -578,7 +590,7 @@ export class Account extends AggregateRoot<AccountId> {
       changes.parentId === undefined ? this.parentId : changes.parentId,
       this.currency,
       changes.institution === undefined ? this.institution : changes.institution,
-      this.accountNumberSuffix,
+      changes.accountNumberSuffix === undefined ? this.accountNumberSuffix : changes.accountNumberSuffix,
       changes.isClosed ?? this.isClosed,
       this.isSystem,
       changes.sortOrder ?? this.sortOrder,
@@ -820,5 +832,11 @@ export interface AccountRepository {
 
   /** How many postings reference this account — decides close-vs-delete. */
   countPostings(userId: UserId, id: AccountId): Promise<number>;
+
+  /** Hide an unused account without destroying its audit trail. */
+  softDelete(userId: UserId, id: AccountId, at: Date): Promise<void>;
+
+  /** Restore a soft-deleted account. */
+  restore(userId: UserId, id: AccountId): Promise<void>;
 
 }

@@ -331,8 +331,28 @@ function buildFromAliases(
     const credit = columns.credit >= 0 ? readAmount(row[columns.credit], currency) : null;
     const signed = columns.amount >= 0 ? readAmount(row[columns.amount], currency) : null;
 
+    /*
+     * Furniture is not a failure.
+     *
+     * A bank CSV is not 747 transactions; it is a dozen preamble lines (branch
+     * address, IFSC, "Statement of account"), the rows, then a legend and a
+     * "computer generated" footer. Those carry neither a date nor an amount, and
+     * reporting each one as an unreadable row put 28 phantom failures on a screen
+     * whose only honest reading was "28 of your transactions were dropped".
+     *
+     * The distinction that matters is whether the line was *trying* to be a
+     * transaction. One date-or-amount and the other missing is a broken row and
+     * still reported. Neither present means it was never a row at all — the same
+     * judgement the blank-line skip above already makes, applied to lines that
+     * happen to contain prose.
+     */
+    const hasAnyAmount =
+      debit?.amount != null || credit?.amount != null || signed?.amount != null;
+
     if (!date) {
-      problems.push({ rowIndex, reason: "No readable date", raw: joinRow(row) });
+      if (hasAnyAmount) {
+        problems.push({ rowIndex, reason: "No readable date", raw: joinRow(row) });
+      }
       return;
     }
     if (description === "") {

@@ -47,6 +47,7 @@ import {
   RecordSpend,
   ReviewImportRow,
   SeedCategoryRules,
+  SmartReviewImport,
   StageStatementImport,
   UndoImport,
 } from "@/app/banking.usecases";
@@ -74,6 +75,15 @@ Date,Narration,Chq/Ref No,Withdrawal (Dr),Deposit (Cr),Closing Balance
 28/04/2026,INT.PD:01-01-2026 TO 31-03-2026,,,"318.40","3,02,401.09"
 02/05/2026,UPI-BLINKIT GROCERY,,"1,120.00",,"3,01,281.09"
 05/05/2026,NEFT DR RENT MAY LANDLORD,REF1004,"18,500.00",,"2,82,781.09"`;
+
+const EMPTY_ACCOUNT_STATEMENT = `AXIS BANK
+Date,Narration,Withdrawal (Dr),Deposit (Cr),Closing Balance
+01/04/2026,SALARY CREDIT APR,,71050.00,483888.83
+02/04/2026,ATM CASH,10000.00,,473888.83`;
+
+const SMART_REVIEW_TRANSFER = `AXIS BANK
+Date,Narration,Withdrawal (Dr),Deposit (Cr),Closing Balance
+03/04/2026,UPI/P2A/123456789/SBI SAVINGS MONTHLY SELF,5000.00,,195000.00`;
 
 async function main() {
   for (const suffix of ["", "-shm", "-wal"]) {
@@ -122,6 +132,7 @@ async function main() {
   const openCash = new OpenCashAccount(accountRepo, openAccount);
   const stage = new StageStatementImport(accountRepo, txnRepo, importRepo, ruleRepo, selfPayees);
   const confirmRest = new ConfirmUnmatchedRows(importRepo);
+  const smartReview = new SmartReviewImport(importRepo, accountRepo);
   const review = new ReviewImportRow(importRepo, accountRepo);
   const post = new PostImportBatch(importRepo, accountRepo, record, clock);
   const undo = new UndoImport(importRepo, txnRepo, clock);
@@ -476,6 +487,84 @@ async function main() {
   const mayFood = mayPlan.envelopes.find((e) => e.accountId.equals(eatingOut.id))!;
   check("May falls back to the recurring 1,000", mayFood.budgeted.toDecimalString(), "1000.00");
   check("and carries April's 257.25 in", mayFood.carriedIn.toDecimalString(), "257.25");
+
+  section("statement imports bootstrap empty accounts from running balance");
+
+  const emptyAxis = await openCash.execute({
+    userId,
+    name: "Axis Salary",
+    subtype: "BANK",
+    institution: "Axis Bank",
+  });
+  if (!emptyAxis.ok) throw new Error("empty account setup failed");
+
+  const emptyStatement = parseStatementRows(parseDelimitedText(EMPTY_ACCOUNT_STATEMENT));
+  const emptyStaged = await stage.execute({
+    userId,
+    accountId: emptyAxis.value.accountId,
+    fileName: "axis-empty.csv",
+    fileHash: "sha256-axis-empty",
+    statement: emptyStatement,
+  });
+  if (!emptyStaged.ok) throw new Error("empty-account staging failed");
+  await confirmRest.execute({ userId, batchId: emptyStaged.value.batchId });
+  const emptyPosted = await post.execute({ userId, batchId: emptyStaged.value.batchId });
+  check("the two statement rows are posted", emptyPosted.ok && emptyPosted.value.posted, 2);
+
+  const emptyBalance = await balances.balanceOf(
+    userId,
+    emptyAxis.value.accountId,
+    CalendarDate.parse("2026-04-30"),
+  );
+  check("and the balance matches the statement closing", emptyBalance.toDecimalString(), "473888.83");
+
+  section("smart review infers obvious own-account transfers");
+
+  const smartAxis = await openCash.execute({
+    userId,
+    name: "Axis Smart",
+    subtype: "BANK",
+    institution: "Axis Bank",
+    openingBalance: Money.fromRupees("200000"),
+    openingBalanceOn: CalendarDate.parse("2026-04-02"),
+  });
+  const smartSbi = await openCash.execute({
+    userId,
+    name: "SBI Savings",
+    subtype: "BANK",
+    institution: "State Bank of India",
+  });
+  if (!smartAxis.ok || !smartSbi.ok) throw new Error("smart-review setup failed");
+
+  const smartStatement = parseStatementRows(parseDelimitedText(SMART_REVIEW_TRANSFER));
+  const smartStaged = await stage.execute({
+    userId,
+    accountId: smartAxis.value.accountId,
+    fileName: "axis-smart.csv",
+    fileHash: "sha256-axis-smart",
+    statement: smartStatement,
+  });
+  if (!smartStaged.ok) throw new Error("smart-review staging failed");
+
+  const smartReviewed = await smartReview.execute({ userId, batchId: smartStaged.value.batchId });
+  check("smart review confirmed the transfer", smartReviewed.ok && smartReviewed.value.confirmed, 1);
+  check("and inferred the counter-account", smartReviewed.ok && smartReviewed.value.inferredTransfers, 1);
+
+  const smartPosted = await post.execute({ userId, batchId: smartStaged.value.batchId });
+  check("the inferred transfer posts", smartPosted.ok && smartPosted.value.posted, 1);
+
+  const smartAxisBalance = await balances.balanceOf(
+    userId,
+    smartAxis.value.accountId,
+    CalendarDate.parse("2026-04-30"),
+  );
+  const smartSbiBalance = await balances.balanceOf(
+    userId,
+    smartSbi.value.accountId,
+    CalendarDate.parse("2026-04-30"),
+  );
+  check("Axis was reduced", smartAxisBalance.toDecimalString(), "195000.00");
+  check("SBI received the transfer", smartSbiBalance.toDecimalString(), "5000.00");
 
   done();
 }

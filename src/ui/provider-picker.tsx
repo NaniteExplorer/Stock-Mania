@@ -40,7 +40,7 @@ export function ProviderPicker({
   const [open, setOpen] = React.useState(false);
   const [highlighted, setHighlighted] = React.useState(0);
   const box = React.useRef<HTMLDivElement>(null);
-  const listId = `${name}-provider-list`;
+  const listId = `${id ?? name}-provider-list`;
 
   const catalogue = React.useMemo(
     () => (kinds ? FINANCIAL_PROVIDERS.filter((provider) => kinds.includes(provider.kind)) : FINANCIAL_PROVIDERS),
@@ -130,7 +130,7 @@ export function ProviderPicker({
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          className={`form-input ${resolved ? "pl-9" : ""}`}
+          className={`form-input ${resolved ? "!pl-10" : ""}`}
           placeholder={placeholder ?? "Search or type a name"}
           autoComplete="off"
           role="combobox"

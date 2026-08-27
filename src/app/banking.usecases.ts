@@ -38,6 +38,7 @@ import {
   StagedRow,
   StatementInput,
   fingerprintOf,
+  normalizeNarration,
   reconcile,
   resolveBudgets,
 } from "@/domain/banking";
@@ -311,6 +312,15 @@ export interface StageStatementImportInput {
   /** SHA-256 of the file's bytes — invariant I02. */
   fileHash: string;
   statement: StatementInput;
+  /**
+   * Stages the file even though these exact bytes were imported before.
+   *
+   * I02 stays intact: the hash is still recorded, the *next* upload is still
+   * checked against it, and the rows staged here still face all three of the
+   * remaining duplicate passes. What this skips is only the short-circuit at
+   * layer 0 — turning "no" into "we told you, and you said yes anyway".
+   */
+  allowReimport?: boolean;
 }
 
 export interface StageStatementImportOutput {
@@ -364,7 +374,9 @@ export class StageStatementImport
 
     // I02: the same bytes are a no-op, and saying so is better than staging 200
     // rows the user then has to reject one by one.
-    const seen = await this.imports.findBatchByFileHash(input.userId, input.fileHash);
+    const seen = input.allowReimport
+      ? null
+      : await this.imports.findBatchByFileHash(input.userId, input.fileHash);
     if (seen) {
       return Ok({
         batchId: seen.id,
@@ -441,6 +453,7 @@ export class StageStatementImport
         reference: row.reference,
         amount: row.amount,
         direction: row.direction,
+        balanceAfter: row.balanceAfter,
         occurrence: row.occurrence,
         raw: row.raw,
         proposedAccountId: categorisation.accountId,
@@ -623,6 +636,113 @@ export class ConfirmUnmatchedRows
   }
 }
 
+export interface SmartReviewImportOutput {
+  confirmed: number;
+  inferredTransfers: number;
+  needingChoice: number;
+}
+
+export class SmartReviewImport
+  implements UseCase<{ userId: UserId; batchId: string }, SmartReviewImportOutput>
+{
+  constructor(
+    private readonly imports: ImportRepository,
+    private readonly accounts: AccountRepository,
+  ) {}
+
+  async execute(input: { userId: UserId; batchId: string }) {
+    const batch = await this.imports.findBatch(input.userId, input.batchId);
+    if (!batch) return Err(new NotFoundError("Import batch", input.batchId));
+
+    const rows = await this.imports.listRows(input.userId, input.batchId, {
+      statuses: ["PARSED"],
+    });
+    const accounts = await this.accounts.list(input.userId);
+    const groupCodes = new Set(["Assets:Bank", "Assets:Cash", "Assets:Wallets"]);
+    const transferTargets = accounts.filter(
+      (account) =>
+        account.type.isBalanceSheet &&
+        account.type !== AccountType.EQUITY &&
+        !account.isClosed &&
+        !groupCodes.has(account.code.toString()) &&
+        !(batch.accountId && account.id.equals(batch.accountId)),
+    );
+
+    let confirmed = 0;
+    let inferredTransfers = 0;
+    let needingChoice = 0;
+
+    for (const row of rows) {
+      if (row.proposedAccountId) {
+        await this.imports.setRowStatus(input.userId, row.id, {
+          status: "CONFIRMED",
+          proposedAccountId: row.proposedAccountId,
+        });
+        confirmed += 1;
+        continue;
+      }
+
+      const inferred = SmartReviewImport.inferCounterAccount(row, transferTargets);
+      if (inferred) {
+        await this.imports.setRowStatus(input.userId, row.id, {
+          status: "CONFIRMED",
+          proposedAccountId: inferred,
+        });
+        confirmed += 1;
+        inferredTransfers += 1;
+        continue;
+      }
+
+      needingChoice += 1;
+    }
+
+    return Ok({ confirmed, inferredTransfers, needingChoice });
+  }
+
+  private static inferCounterAccount(
+    row: StagedRow,
+    candidates: readonly Account[],
+  ): AccountId | null {
+    if (row.intent !== "TRANSFER" && row.intent !== "INVESTMENT") return null;
+    const haystack = normalizeNarration(`${row.description} ${row.reference ?? ""}`);
+    if (haystack.length === 0) return null;
+
+    const scored = candidates
+      .map((account) => ({ account, score: SmartReviewImport.accountMatchScore(account, haystack) }))
+      .filter((candidate) => candidate.score >= 2)
+      .sort((a, b) => b.score - a.score || a.account.code.toString().localeCompare(b.account.code.toString()));
+
+    if (scored.length === 0) return null;
+    if (scored.length > 1 && scored[0].score === scored[1].score) return null;
+    return scored[0].account.id;
+  }
+
+  private static accountMatchScore(account: Account, haystack: string): number {
+    let score = 0;
+    for (const phrase of [account.name, account.institution ?? "", account.code.leaf]) {
+      const normalised = normalizeNarration(phrase);
+      if (normalised && haystack.includes(normalised)) score += 4;
+    }
+    if (account.accountNumberSuffix && haystack.includes(account.accountNumberSuffix)) score += 6;
+
+    const ignored = new Set(["account", "bank", "limited", "ltd", "savings"]);
+    const tokens = normalizeNarration(`${account.name} ${account.institution ?? ""}`)
+      .split(" ")
+      .filter((token) => token.length >= 3 && !ignored.has(token));
+    const haystackTokens = haystack.split(" ");
+    for (const token of new Set(tokens)) {
+      if (
+        haystackTokens.some(
+          (part) => part === token || part.startsWith(token) || token.startsWith(part),
+        )
+      ) {
+        score += 1;
+      }
+    }
+    return score;
+  }
+}
+
 /* ═══ PostImportBatch ═════════════════════════════════════════════════ */
 
 export interface PostImportBatchOutput {
@@ -675,6 +795,35 @@ export class PostImportBatch
 
     let posted = 0;
     const problems: { rowId: string; reason: string }[] = [];
+    const opening = await this.impliedOpeningBalance(input.userId, account, rows);
+    if (opening && opening.isPositive) {
+      const equity = await this.accounts.findByCode(
+        input.userId,
+        AccountCode.parse(SystemAccountCodes.openingBalances),
+      );
+      if (!equity) {
+        return Err(
+          new NotFoundError(
+            `System account "${SystemAccountCodes.openingBalances}" - seed the chart of accounts first`,
+          ),
+        );
+      }
+
+      const firstRow = [...rows].sort((a, b) => a.date.compareTo(b.date) || a.rowIndex - b.rowIndex)[0];
+      const result = await this.record.execute({
+        userId: input.userId,
+        fromAccountId: equity.id,
+        toAccountId: account.id,
+        amount: opening,
+        postedOn: firstRow.date.plusDays(-1),
+        narration: `Opening balance from ${batch.fileName}`,
+        source: "IMPORT",
+        importBatchId: input.batchId,
+      });
+      if (!result.ok) {
+        problems.push({ rowId: firstRow.id, reason: result.error.message });
+      }
+    }
 
     for (const row of rows) {
       // Already posted by an earlier run of this use case — a batch may be posted
@@ -723,11 +872,31 @@ export class PostImportBatch
       });
     }
 
+    const afterRows = await this.imports.listRows(input.userId, input.batchId);
+    const stillPending = afterRows.some(
+      (row) =>
+        row.status === "PARSED" ||
+        (row.status === "CONFIRMED" && !row.matchedTransactionId),
+    );
+    const importedRows = afterRows.filter(
+      (row) => row.status === "CONFIRMED" && row.matchedTransactionId,
+    ).length;
+
+    /*
+     * `rowsFailed` is deliberately *not* written here.
+     *
+     * Staging sets it to the number of lines the parser could not read. This wrote
+     * the number of rows that failed to *post* over the top of it — one column,
+     * two different questions — so posting a batch reset a real count of 28
+     * unreadable lines to 0 and the screen then claimed the whole file had been
+     * read. A row that fails to post keeps its `PARSED` status and is already
+     * counted as remaining, so nothing is lost by leaving the column alone; the
+     * problems themselves are returned to the caller for display.
+     */
     await this.imports.setBatchOutcome(input.userId, input.batchId, {
-      status: problems.length === 0 ? "COMPLETED" : "PARTIAL",
-      rowsImported: posted,
-      rowsFailed: problems.length,
-      completedAt: this.clock.now(),
+      status: problems.length === 0 && !stillPending ? "COMPLETED" : "PARTIAL",
+      rowsImported: importedRows,
+      completedAt: problems.length === 0 && !stillPending ? this.clock.now() : undefined,
     });
 
     return Ok({
@@ -756,6 +925,24 @@ export class PostImportBatch
       ? { from: account.id, to: row.proposedAccountId }
       : { from: row.proposedAccountId, to: account.id };
   }
+
+  private async impliedOpeningBalance(
+    userId: UserId,
+    account: Account,
+    rows: readonly StagedRow[],
+  ): Promise<Money | null> {
+    if (rows.length === 0 || account.type !== AccountType.ASSET) return null;
+
+    const existing = await this.accounts.countPostings(userId, account.id);
+    if (existing > 0) return null;
+
+    const first = [...rows].sort((a, b) => a.date.compareTo(b.date) || a.rowIndex - b.rowIndex)[0];
+    if (!first.balanceAfter) return null;
+
+    const movement = first.direction === "DEBIT" ? first.amount.negated() : first.amount;
+    return first.balanceAfter.minus(movement);
+  }
+
 }
 
 /* ═══ UndoImport ══════════════════════════════════════════════════════ */

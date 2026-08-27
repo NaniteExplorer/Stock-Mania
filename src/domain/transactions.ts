@@ -486,8 +486,6 @@ export function legalityRows(): LegalityRow[] {
   ) => {
     for (const sourceRole of sources) {
       for (const destinationRole of destinations) {
-        // A transfer from an account to itself moves nothing.
-        if (sourceRole === destinationRole && txnType === "TRANSFER") continue;
         rows.push({ txnType, sourceRole, destinationRole });
       }
     }
@@ -2562,6 +2560,9 @@ export interface TransactionRepository {
    * and tell me what changed" was unanswerable.
    */
   softDeleteByImportBatch(userId: UserId, importBatchId: string, at: Date): Promise<number>;
+
+  /** Tombstones every transaction touching an account, used when removing a mistaken account. */
+  softDeleteByAccount(userId: UserId, accountId: AccountId, at: Date): Promise<number>;
 
   /**
    * Stamps `deletedAt` — invariant A03.

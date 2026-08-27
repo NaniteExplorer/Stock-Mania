@@ -221,4 +221,48 @@ const swappedContinuity = checkBalanceContinuity(swapped.rows);
 check("the break is found", swappedContinuity.breaks.length, 1);
 check("and it names the expected balance", swappedContinuity.breaks[0].expected, rupees("9800.00"));
 
+/* ═══ A bank file is not all transactions ═════════════════════════════ */
+
+section("preamble and footer lines are not counted as failures");
+
+/*
+ * A real Indian bank CSV, shape-for-shape: branch furniture above the header and
+ * a legend below it. This produced 28 "unreadable row" problems on a 747-line
+ * file, and the only way to read that screen was "28 of my transactions were
+ * dropped" — of a statement whose every transaction had in fact been read.
+ *
+ * The rule is whether the line was *trying* to be a transaction. Prose with
+ * neither a date nor an amount never was; a row with one and not the other is
+ * broken and still reported.
+ */
+const WITH_FURNITURE = `Account Statement
+Account Number,924010070815236
+Branch,MG Road
+IFSC,UTIB0001234
+
+Date,Narration,Withdrawal (Dr),Deposit (Cr),Closing Balance
+01/04/2026,SALARY CREDIT,,50000.00,50000.00
+02/04/2026,UPI PAYMENT,1200.00,,48800.00
+
+Legend: UPI - Unified Payments Interface
+This is a computer generated statement.
+Please contact the branch for discrepancies.`;
+
+const furnished: ParsedStatement = parseStatementRows(parseDelimitedText(WITH_FURNITURE), INR);
+check("both real transactions are read", furnished.rows.length, 2);
+checkDeep("and nothing is reported as unreadable", furnished.problems.map((one) => one.reason), []);
+
+section("a line that tried to be a transaction is still reported");
+
+// An amount but no date: this one *was* a row, and losing it silently would lose
+// money — which is exactly what the furniture rule must not start doing.
+const BROKEN = `Date,Narration,Withdrawal (Dr),Deposit (Cr),Closing Balance
+01/04/2026,SALARY CREDIT,,50000.00,50000.00
+not-a-date,MYSTERY DEBIT,1200.00,,48800.00`;
+
+const broken: ParsedStatement = parseStatementRows(parseDelimitedText(BROKEN), INR);
+check("only the readable row is kept", broken.rows.length, 1);
+check("and the broken one is reported", broken.problems.length, 1);
+check("by name", broken.problems[0].reason, "No readable date");
+
 done();

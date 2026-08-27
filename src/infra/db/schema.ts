@@ -393,7 +393,9 @@ export const ledgerAccounts = sqliteTable(
     updatedAt: updatedAt(),
   },
   (table) => [
-    uniqueIndex("ledger_accounts_user_code_uq").on(table.userId, table.code),
+    uniqueIndex("ledger_accounts_user_code_uq")
+      .on(table.userId, table.code)
+      .where(sql`${table.deletedAt} IS NULL`),
     index("ledger_accounts_user_type_idx").on(table.userId, table.type),
     index("ledger_accounts_parent_idx").on(table.parentId),
   ],
@@ -460,7 +462,9 @@ export const transactions = sqliteTable(
   (table) => [
     index("transactions_user_date_idx").on(table.userId, table.txnDate),
     index("transactions_batch_idx").on(table.importBatchId),
-    uniqueIndex("transactions_fingerprint_uq").on(table.userId, table.fingerprint),
+    uniqueIndex("transactions_fingerprint_uq")
+      .on(table.userId, table.fingerprint)
+      .where(sql`${table.fingerprint} IS NOT NULL AND ${table.deletedAt} IS NULL`),
     /** L09, among live rows only — a tombstoned import must not block a re-import. */
     uniqueIndex("transactions_external_id_uq")
       .on(table.userId, table.externalId)

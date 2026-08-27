@@ -50,6 +50,20 @@
       "when": 1787596264926,
       "tag": "0006_phase9_gold_leases",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1787677533332,
+      "tag": "0007_live_account_codes",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1787677533333,
+      "tag": "0008_live_transaction_fingerprints",
+      "breakpoints": true
     }
   ]
 }
