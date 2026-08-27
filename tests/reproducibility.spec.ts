@@ -28,7 +28,11 @@ import { Money } from "@/core/money";
 import { CalendarDate } from "@/core/time";
 import { AccountCode } from "@/domain/accounts";
 import { OpenAccount, RecordTransaction, SeedChartOfAccounts } from "@/app/ledger.usecases";
-import { VerifyReproducibility, formatReproducibility } from "@/app/reproducibility.usecases";
+import {
+  VerifyReproducibility,
+  formatReproducibility,
+  type JournalReplaySource,
+} from "@/app/reproducibility.usecases";
 import {
   DrizzleAccountRepository,
   DrizzleBalanceQuery,
@@ -151,19 +155,38 @@ async function main() {
   section("the two recomputations are genuinely independent");
 
   /*
-   * Tombstone the credit leg — the one on the savings account, because the
-   * balance sheet only carries ASSET, LIABILITY and EQUITY and an expense leg
-   * would be excluded by both paths for the same reason.
+   * This used to tombstone a posting, because the journal fold honoured
+   * `deleted_at` and `DrizzleBalanceQuery` did not — a latent inconsistency the
+   * diff found without anyone reading the SQL, and exactly what this job is for.
    *
-   * The journal fold honours `deleted_at`; `DrizzleBalanceQuery` does not filter
-   * it. Nothing in the app soft-deletes a posting today — a reversal is a new
-   * entry — so this is latent rather than live, and the diff finds it without
-   * anyone reading the SQL.
+   * That inconsistency is now fixed (both paths filter both tombstones), so the
+   * lever is gone and no data edit can make the two disagree any more. That is
+   * the outcome we wanted and it leaves the comparator itself untested, so the
+   * divergence is injected at the port instead: the real journal source with one
+   * account's sum shifted by a rupee. If the comparator ever stopped reporting a
+   * difference, the two implementations agreeing would no longer be evidence of
+   * anything.
    */
-  await client.execute(
-    `update postings set deleted_at = 1 where transaction_id = '${spend.value.transactionId.value}' and direction = 'CREDIT'`,
-  );
-  const divergent = await verify.execute({ asOf: on("2026-08-24"), userId });
+  const source = new DrizzleJournalReplaySource(db);
+  const skewed: JournalReplaySource = {
+    users: () => source.users(),
+    unbalancedEntries: (id) => source.unbalancedEntries(id),
+    cachedProjections: (id) => source.cachedProjections(id),
+    counts: (id) => source.counts(id),
+    async accountBalancesFromPostings(id, asOf) {
+      const sums = await source.accountBalancesFromPostings(id, asOf);
+      return sums.map((sum) =>
+        sum.code.includes("Savings")
+          ? { ...sum, balanceMinor: sum.balanceMinor + 100n }
+          : sum,
+      );
+    },
+  };
+
+  const divergent = await new VerifyReproducibility(skewed, balances).execute({
+    asOf: on("2026-08-24"),
+    userId,
+  });
   if (!divergent.ok) return;
   checkTrue(
     "a balance the two paths disagree on is reported",

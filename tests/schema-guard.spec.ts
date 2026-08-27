@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { check, checkDeep, section, done } from "./harness";
+import { check, checkDeep, checkTrue, section, done } from "./harness";
 
 /**
  * Source-level guards for the invariants a schema cannot express.
@@ -130,17 +130,29 @@ const repoSource = stripComments(read("src/infra/repositories.ts"));
  * writes (`.update(`, `.insert(`) is exempt by nature — a tombstoning update has
  * to reach the very row a read hides.
  */
-const statements = repoSource.split(/(?=this\.db\s*\n?\s*\.)/);
+/*
+ * Split per *method*, so a failure names the method and a query cannot be judged
+ * by a filter that belongs to its neighbour. Splitting on `this.db` — the obvious
+ * choice — attributes each chunk to whichever signature happened to precede it,
+ * which reported the wrong method by name and hid one real miss behind another's
+ * pass.
+ */
+const methods = repoSource
+  .split(/(?=\n {2}(?:private |public )?async \w+\()/)
+  .map((chunk) => ({
+    name: /async (\w+)\(/.exec(chunk)?.[1] ?? "(module scope)",
+    body: chunk,
+  }));
 
 for (const table of ["ledgerAccounts", "transactions"] as const) {
   const scoped = "eq(" + table + ".userId, userId.value)";
   const guard = "isNull(" + table + ".deletedAt)";
 
-  const touching = statements.filter((statement) => statement.includes(scoped));
+  const touching = methods.filter((method) => method.body.includes(scoped));
   const reads = touching.filter(
-    (statement) => !statement.includes(".update(") && !statement.includes(".insert("),
+    (method) => !method.body.includes(".update(") && !method.body.includes(".insert("),
   );
-  const leaking = reads.filter((statement) => !statement.includes(guard));
+  const leaking = reads.filter((method) => !method.body.includes(guard));
 
   /*
    * The name of the offending method, not just a count — this found a real miss
@@ -150,10 +162,41 @@ for (const table of ["ledgerAccounts", "transactions"] as const) {
    */
   checkDeep(
     "every scoped " + table + " read filters tombstones",
-    leaking.map((statement) => /async (\w+)\(|(\w+)\s*=\s*this\.db/.exec(statement)?.[0] ?? statement.slice(0, 60)),
+    leaking.map((method) => method.name),
     [],
   );
   check("and " + table + " is read at all", reads.length > 0, true);
+}
+
+/*
+ * Every balance aggregate honours *both* tombstones.
+ *
+ * This is the guard the previous one should have been. `balanceSheet` reached
+ * postings through a `transaction_id IN (SELECT …)` subselect that filtered the
+ * user and the date but not `deleted_at`, while `totals()` and `balanceOf()` —
+ * which join `transactions` directly — always had. So two reads of one ledger
+ * disagreed: a dashboard showed a ₹16.6L net worth composed entirely of deleted
+ * transactions, and reported its own accounting identity broken beneath it.
+ *
+ * `SIGNED_AMOUNT` is the tell. Any statement that sums it is computing a balance,
+ * and a balance that counts a tombstoned row is wrong by definition — so the rule
+ * is checked against the fragment rather than against a list of method names that
+ * would need extending every time an aggregate is added.
+ */
+// `SUM(${SIGNED_AMOUNT}` rather than the bare name: the fragment's own
+// definition mentions it too, and checking that would report a phantom failure
+// against the const rather than against a query.
+for (const method of methods.filter((one) => one.body.includes("SUM(${SIGNED_AMOUNT}"))) {
+  checkTrue(
+    method.name + " excludes tombstoned postings",
+    method.body.includes("isNull(postings.deletedAt)") ||
+      method.body.includes("postings.deletedAt} IS NULL"),
+  );
+  checkTrue(
+    method.name + " excludes postings of tombstoned transactions",
+    method.body.includes("isNull(transactions.deletedAt)") ||
+      method.body.includes("transactions.deletedAt} IS NULL"),
+  );
 }
 
 section("money never crosses the driver boundary as a float");

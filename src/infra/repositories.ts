@@ -321,12 +321,32 @@ export class DrizzleAccountRepository implements AccountRepository {
     return rows.map(AccountMapper.toDomain);
   }
 
+  /**
+   * How many postings this account still has — the number the delete controls
+   * are gated on.
+   *
+   * It joins `transactions` for the same reason every balance query does: a
+   * posting whose transaction is tombstoned is not there any more. Without that
+   * join, an account whose history had already been deleted still reported its
+   * old posting count, so the app refused to delete it as non-empty *and* offered
+   * to delete a history that was already gone — a dead end with no way out of it
+   * from the UI.
+   */
   async countPostings(userId: UserId, id: AccountId): Promise<number> {
     const [row] = await this.db
       .select({ total: count() })
       .from(postings)
       .innerJoin(ledgerAccounts, eq(postings.accountId, ledgerAccounts.id))
-      .where(and(eq(postings.accountId, id.value), eq(ledgerAccounts.userId, userId.value), isNull(ledgerAccounts.deletedAt)));
+      .innerJoin(transactions, eq(postings.transactionId, transactions.id))
+      .where(
+        and(
+          eq(postings.accountId, id.value),
+          eq(ledgerAccounts.userId, userId.value),
+          isNull(postings.deletedAt),
+          isNull(transactions.deletedAt),
+          isNull(ledgerAccounts.deletedAt),
+        ),
+      );
     return row?.total ?? 0;
   }
 
@@ -544,6 +564,26 @@ export class DrizzleTransactionRepository implements TransactionRepository {
     return updated.length;
   }
 
+  async softDeleteByAccount(userId: UserId, accountId: AccountId, at: Date): Promise<number> {
+    const transactionIds = this.db
+      .select({ id: postings.transactionId })
+      .from(postings)
+      .where(and(eq(postings.accountId, accountId.value), isNull(postings.deletedAt)));
+
+    const updated = await this.db
+      .update(transactions)
+      .set({ deletedAt: at })
+      .where(
+        and(
+          eq(transactions.userId, userId.value),
+          isNull(transactions.deletedAt),
+          inArray(transactions.id, transactionIds),
+        ),
+      )
+      .returning({ id: transactions.id });
+    return updated.length;
+  }
+
   /**
    * Soft delete — invariant A03.
    *
@@ -632,9 +672,26 @@ export class DrizzleBalanceQuery implements BalanceQuery {
         postings,
         and(
           eq(postings.accountId, ledgerAccounts.id),
+          isNull(postings.deletedAt),
+          /*
+           * `deleted_at IS NULL` inside the subselect, and it is not optional.
+           *
+           * Without it this query counted the postings of *deleted* transactions
+           * while `totals()` and `balanceOf()` — which join `transactions`
+           * directly and have always filtered it — did not. Two reads of the same
+           * ledger then disagreed, which is exactly what B02 is there to notice:
+           * a dashboard showed a ₹16.6L net worth built entirely from
+           * transactions that had been deleted, and reported its own accounting
+           * identity as broken beneath it.
+           *
+           * The tombstone convention is that a deleted transaction takes its
+           * postings out of every read *through the transaction*, so a read that
+           * reaches postings without consulting it is always wrong.
+           */
           sql`${postings.transactionId} IN (
             SELECT ${transactions.id} FROM ${transactions}
             WHERE ${transactions.userId} = ${userId.value}
+              AND ${transactions.deletedAt} IS NULL
               AND ${transactions.txnDate} <= ${asOf.toISO()}
           )`,
         ),
@@ -673,6 +730,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
       .where(
         and(
           eq(transactions.userId, userId.value), isNull(transactions.deletedAt),
+          isNull(postings.deletedAt),
           eq(postings.accountId, accountId.value),
           sql`${transactions.txnDate} <= ${asOf.toISO()}`,
         ),
@@ -690,7 +748,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
       .innerJoin(ledgerAccounts, eq(postings.accountId, ledgerAccounts.id))
       .innerJoin(transactions, eq(postings.transactionId, transactions.id))
       .where(
-        and(eq(transactions.userId, userId.value), isNull(transactions.deletedAt), sql`${transactions.txnDate} <= ${asOf.toISO()}`),
+        and(eq(transactions.userId, userId.value), isNull(transactions.deletedAt), isNull(postings.deletedAt), sql`${transactions.txnDate} <= ${asOf.toISO()}`),
       )
       .groupBy(ledgerAccounts.type);
 
@@ -723,6 +781,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
       .where(
         and(
           eq(transactions.userId, userId.value), isNull(transactions.deletedAt),
+          isNull(postings.deletedAt),
           sql`${transactions.txnDate} >= ${range.start.toISO()}`,
           sql`${transactions.txnDate} <= ${range.end.toISO()}`,
           sql`${ledgerAccounts.type} IN ('INCOME', 'EXPENSE')`,
@@ -775,9 +834,14 @@ export class DrizzleBalanceQuery implements BalanceQuery {
         postings,
         and(
           eq(postings.accountId, ledgerAccounts.id),
+          isNull(postings.deletedAt),
+          // Same tombstone filter as `balanceSheet`, missing for the same reason:
+          // a subselect is easy to write without remembering what the join to
+          // `transactions` would have forced you to consider.
           sql`${postings.transactionId} IN (
             SELECT ${transactions.id} FROM ${transactions}
             WHERE ${transactions.userId} = ${userId.value}
+              AND ${transactions.deletedAt} IS NULL
               AND ${transactions.txnDate} >= ${range.start.toISO()}
               AND ${transactions.txnDate} <= ${range.end.toISO()}
           )`,
@@ -847,6 +911,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
       .where(
         and(
           eq(transactions.userId, userId.value), isNull(transactions.deletedAt),
+          isNull(postings.deletedAt),
           eq(postings.accountId, accountId.value),
           sql`${transactions.txnDate} >= ${range.start.toISO()}`,
           sql`${transactions.txnDate} <= ${range.end.toISO()}`,
@@ -1733,6 +1798,32 @@ export class DrizzleImportRepository implements ImportRepository {
       })
       .where(and(eq(importBatches.userId, userId.value), eq(importBatches.id, batchId)));
   }
+
+  async softDeleteBatch(userId: UserId, batchId: string, at: Date): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(importRows)
+        .set({ deletedAt: at, updatedAt: at })
+        .where(
+          and(
+            eq(importRows.userId, userId.value),
+            eq(importRows.batchId, batchId),
+            isNull(importRows.deletedAt),
+          ),
+        );
+
+      await tx
+        .update(importBatches)
+        .set({ deletedAt: at })
+        .where(
+          and(
+            eq(importBatches.userId, userId.value),
+            eq(importBatches.id, batchId),
+            isNull(importBatches.deletedAt),
+          ),
+        );
+    });
+  }
 }
 
 type ImportBatchRow = typeof importBatches.$inferSelect;
@@ -1746,6 +1837,7 @@ interface ParsedRowJson {
   amountMinor: string;
   currency: string;
   direction: RowDirection;
+  balanceAfterMinor: string | null;
   occurrence: number;
   proposedAccountId: string | null;
   intent: MovementIntent;
@@ -1778,6 +1870,7 @@ export const ImportMapper = {
       amountMinor: row.amount.minor.toString(),
       currency: row.amount.currency.code,
       direction: row.direction,
+      balanceAfterMinor: row.balanceAfter?.minor.toString() ?? null,
       occurrence: row.occurrence,
       proposedAccountId: row.proposedAccountId?.value ?? null,
       intent: row.intent,
@@ -1801,6 +1894,13 @@ export const ImportMapper = {
         Currency.of(parsed.currency ?? Currency.reporting.code),
       ),
       direction: parsed.direction ?? "DEBIT",
+      balanceAfter:
+        parsed.balanceAfterMinor == null
+          ? null
+          : Money.fromMinor(
+              BigInt(parsed.balanceAfterMinor),
+              Currency.of(parsed.currency ?? Currency.reporting.code),
+            ),
       occurrence: parsed.occurrence ?? 0,
       raw: row.rawJson,
       proposedAccountId: parsed.proposedAccountId ? AccountId.from(parsed.proposedAccountId) : null,
