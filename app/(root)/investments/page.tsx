@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { LineChart } from "lucide-react";
+import { Coins, LineChart } from "lucide-react";
 import { connection } from "next/server";
 import { Money } from "@/core/money";
 import { CalendarDate } from "@/core/time";
@@ -8,6 +8,7 @@ import { allocation } from "@/domain/portfolio";
 import { Card, EmptyState, MoneyText, PageHeader, Pill, Stat } from "@/ui/primitives";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 import AddInstrumentForm from "./add-instrument-form";
+import { LeaseRowActions, OpenLeaseForm, type LeasableHolding } from "./lease-forms";
 
 export const metadata: Metadata = { title: "Investments" };
 
@@ -43,6 +44,23 @@ export default async function Page() {
     positions.length > 0
       ? await investing.returns.execute({ userId, asOf: today })
       : null;
+
+  /*
+   * Leases sit on this screen rather than their own, because leased gold is still
+   * in the holdings table above — a lease changes liquidity, not ownership, so
+   * splitting them apart would invite reading the two totals as separate money.
+   */
+  const leases = await services().leasing.list.execute({ userId, asOf: today });
+  if (!leases.ok) throw new Error(leases.error.message);
+  const leasing = leases.value;
+
+  const leasable: LeasableHolding[] = positions
+    .filter((position) => position.instrument.unit === "GRAM")
+    .map((position) => ({
+      id: position.instrumentId.value,
+      label: position.label,
+      held: position.quantity.toDecimalString(),
+    }));
 
   const slices = allocation(
     positions
@@ -161,6 +179,165 @@ export default async function Page() {
           </div>
         )}
       </section>
+
+      {(leasing.rows.length > 0 || leasable.length > 0) && (
+        <section className="mb-6">
+          <PageHeader
+            title="Gold on lease"
+            subtitle="Interest is paid in grams on completed months, so everything here is grams until the last step."
+            badge={<Pill tone="brand">Phase 9</Pill>}
+          />
+
+          {leasing.rows.length > 0 && (
+            <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <Stat
+                label="On lease"
+                value={<span className="tnum">{leasing.portfolio.leasedGrams.toDecimalString()}g</span>}
+                hint={`${leasing.unleasedGrams.toDecimalString()}g unleased in the wallet`}
+              />
+              <Stat
+                label="Interest earned"
+                value={<span className="tnum">{leasing.portfolio.grossInterestGrams.toDecimalString()}g</span>}
+                hint={`less ${leasing.portfolio.tdsGrams.toDecimalString()}g TDS withheld`}
+              />
+              <Stat
+                label="Net to holdings"
+                value={<span className="tnum">{leasing.portfolio.netInterestGrams.toDecimalString()}g</span>}
+                hint={
+                  leasing.portfolio.unpostedGrams.isZero
+                    ? "All booked to the ledger"
+                    : `${leasing.portfolio.unpostedGrams.toDecimalString()}g not yet booked`
+                }
+              />
+              <Stat
+                label="Value today"
+                value={leasing.portfolio.value}
+                hint={
+                  leasing.portfolio.value
+                    ? "Principal plus net interest, at today's gram price"
+                    : (leasing.unpricedReason ?? "No price resolved")
+                }
+              />
+            </div>
+          )}
+
+          {leasing.overLeased && (
+            <Card title="More grams on lease than held" className="mb-4">
+              <p className="text-sm text-gray-300">
+                The active leases put out more gold than the open lots hold. Either a lease was
+                entered against gold that was never bought, or gold was sold while still on lease —
+                worth resolving before the next accrual, because the interest is computed on the
+                leased quantity.
+              </p>
+            </Card>
+          )}
+
+          {leasing.portfolio.matured.length > 0 && (
+            <Card title="Past their closing date" className="mb-4">
+              <p className="text-sm text-gray-300">
+                {leasing.portfolio.matured.join(", ")} — interest has stopped accruing on these.
+                Close them so the grams stop showing as on lease.
+              </p>
+            </Card>
+          )}
+
+          <div className="panel p-0">
+            {leasing.rows.length === 0 ? (
+              <EmptyState
+                icon={Coins}
+                title="No leases yet"
+                body="Put some of your digital gold out on lease below. Nothing is posted when a lease opens — the gold is still yours, in the same account, at the same value."
+              />
+            ) : (
+              <div className="table-scroll">
+                <table className="w-full text-sm">
+                  <caption className="sr-only">
+                    Gold leases with grams outstanding, interest accrued, TDS withheld and value
+                  </caption>
+                  <thead>
+                    <tr className="border-b border-gray-600">
+                      <th scope="col" className="metric-label px-4 py-3 text-left">Lease</th>
+                      <th scope="col" className="metric-label px-4 py-3 text-right">Grams</th>
+                      <th scope="col" className="metric-label px-4 py-3 text-right">Rate</th>
+                      <th scope="col" className="metric-label px-4 py-3 text-right">Months</th>
+                      <th scope="col" className="metric-label px-4 py-3 text-right">Interest</th>
+                      <th scope="col" className="metric-label px-4 py-3 text-right">TDS</th>
+                      <th scope="col" className="metric-label px-4 py-3 text-right">Total grams</th>
+                      <th scope="col" className="metric-label px-4 py-3 text-right">Value</th>
+                      <th scope="col" className="metric-label px-4 py-3 text-left">Do</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leasing.rows.map((row) => (
+                      <tr key={row.lease.id.value} className="border-b border-gray-600/50 last:border-0">
+                        <td className="px-4 py-3">
+                          <span className="font-medium text-gray-100">{row.lease.reference}</span>
+                          <p className="text-xs text-gray-500">
+                            {row.lease.props.platform} · {row.lease.props.startOn.toISO()} →{" "}
+                            {row.lease.props.closesOn.toISO()}
+                            {row.lease.status !== "ACTIVE" && ` · ${row.lease.status.toLowerCase()}`}
+                            {row.isMatured && row.lease.status === "ACTIVE" && " · matured"}
+                          </p>
+                        </td>
+                        <td className="tnum px-4 py-3 text-right text-gray-300">
+                          {row.lease.quantity.toDecimalString()}
+                        </td>
+                        <td className="tnum px-4 py-3 text-right text-gray-400">
+                          {row.lease.props.annualRate.toFixed(2)}%
+                        </td>
+                        <td className="tnum px-4 py-3 text-right text-gray-400">
+                          {row.accrual.monthsCompleted} / {row.lease.termMonths}
+                        </td>
+                        <td className="tnum px-4 py-3 text-right text-gray-300">
+                          {row.accrual.gross.toDecimalString()}
+                        </td>
+                        <td className="tnum px-4 py-3 text-right text-gray-400">
+                          {row.accrual.tds.toDecimalString()}
+                        </td>
+                        <td className="tnum px-4 py-3 text-right text-gray-100">
+                          {row.totalGrams.toDecimalString()}
+                          {!row.unpostedGrams.isZero && (
+                            <span className="ml-1 text-xs text-amber-500" title="Earned but not yet booked">
+                              +{row.unpostedGrams.toDecimalString()} unbooked
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <MoneyText value={row.value} tone="neutral" />
+                        </td>
+                        <td className="px-4 py-3">
+                          <LeaseRowActions
+                            leaseId={row.lease.id.value}
+                            reference={row.lease.reference}
+                            defaultDate={today.toISO()}
+                            isActive={row.lease.status === "ACTIVE"}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {leasing.returnOnCost && (
+            <p className="mt-3 text-xs text-gray-500">
+              Over what the gold cost: {leasing.returnOnCost.profit.toString()} (
+              {leasing.returnOnCost.percent.toFixed(2)}%). Interest in grams and a gram price that
+              moves are two different gains; this figure contains both.
+            </p>
+          )}
+
+          <Card
+            className="mt-4"
+            title="Put gold out on lease"
+            subtitle="Nothing is posted when a lease opens — leasing changes liquidity, not ownership. The interest posts as grams when you accrue it."
+          >
+            <OpenLeaseForm holdings={leasable} defaultDate={today.toISO()} />
+          </Card>
+        </section>
+      )}
 
       {returns?.ok && (
         <div className="mb-6 grid gap-4 lg:grid-cols-2">

@@ -1754,9 +1754,19 @@ express a yield denominated in the commodity rather than in money.
       records grams already credited, so a second run books nothing and a run a month later
       books one month. `leasing-integration.spec.ts` asserts all four figures move together,
       B02 still holds, and an accrual with no price is refused rather than booked at zero.*
-- [ ] **Screens:** leases on `/investments`, with grams outstanding, accrued-to-date, TDS
+- [x] **Screens:** leases on `/investments`, with grams outstanding, accrued-to-date, TDS
       withheld, and value at today's IBJA price. **Done when** the portfolio value shown
       equals principal plus net accrued interest times the current price.
+      *A section on `/investments` rather than a route of its own, because leased gold is
+      still in the holdings table above it — a lease changes liquidity, not ownership, and
+      two screens would invite reading the two totals as separate money. Everything is in
+      grams until the last column: grams leased, gross interest, TDS withheld, total grams,
+      and only then a value. Accrue and close are separate buttons, because they are
+      separate events — closing does not book the outstanding interest, so a settled lease
+      says how many grams are still unbooked instead of stranding them. The "done when"
+      is now an assertion rather than an eyeball: `leasing-integration.spec.ts` recomputes
+      the value from the two grams figures the screen renders beside it, so a total that
+      disagreed with its own breakdown would fail the build.*
 
 ### 9b — Insurance policies
 
@@ -1838,7 +1848,7 @@ against synthetic data.
 | 6 | Reports and extras | 6 | ✔ Complete (6/6) — gate met; two extras deliberately deferred |
 | 7 | Migration and cutover | 3 | ◑ 2/3 (67%) — gate met on synthetic data; **cutover blocked on the real v1 export**; runbook staged in `71-CUTOVER-RUNBOOK.md` |
 | 8 | Quant readiness | 5 | ✔ Complete (5/5) — gate met twice |
-| 9 | Spreadsheet parity — leasing, insurance, FX, sector, benchmark | 12 | ◐ In progress (2/12) — 9a's domain and ledger done; its screens next |
+| 9 | Spreadsheet parity — leasing, insurance, FX, sector, benchmark | 12 | ◐ In progress (3/12) — 9a complete; 9b insurance next |
 
 Update the status cell to `◐ In progress` / `✔ Complete (n/n)` as phases land.
 

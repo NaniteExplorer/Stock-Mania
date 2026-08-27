@@ -339,6 +339,22 @@ async function main() {
     "0",
   );
   checkTrue("the portfolio has a value", list.value.portfolio.value !== null);
+
+  /*
+   * The screen's own contract, asserted rather than eyeballed: the value shown on
+   * `/investments` is *principal plus net accrued interest*, at the day's gram
+   * price. Computed here from the two grams figures the screen renders beside it,
+   * so a change that made the total disagree with its own breakdown would fail —
+   * which is the failure a reader of the screen could never catch by looking.
+   */
+  const expected = UnitPrice.of("16500", Currency.INR).times(
+    list.value.portfolio.leasedGrams.plus(list.value.portfolio.netInterestGrams),
+  );
+  check(
+    "the value is the grams on screen times the day's price",
+    list.value.portfolio.value?.toDecimalString(),
+    expected.toDecimalString(),
+  );
   checkTrue("and a return over cost", list.value.returnOnCost !== null);
   check("no lease is overdue for settlement", list.value.portfolio.matured.length, 0);
 
