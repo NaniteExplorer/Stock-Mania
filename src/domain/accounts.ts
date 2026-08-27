@@ -626,6 +626,18 @@ export const SystemAccountCodes = {
   investments: "Assets:Investments",
   /** Where tax withheld at source is booked — recoverable, so an asset. */
   taxDeductedAtSource: "Assets:Receivables:TDS",
+  /**
+   * Where a transfer goes when it is certainly the user's own money and certainly
+   * not spending, but the narration does not say which account received it.
+   *
+   * An **asset**, not a miscellaneous expense, and the distinction is the whole
+   * point. "UPI to DEBASISH RANA / self transfer" is money that is still yours;
+   * expensing it would inflate expenses by the amount and cut net worth by it
+   * twice over — once for the money leaving the bank and once for the asset that
+   * never appeared. Holding it here keeps the bank side of the statement exact and
+   * leaves a balance that names precisely how much has not been located yet.
+   */
+  transfersInTransit: "Assets:Transfers in Transit",
 } as const;
 
 export type SystemAccountKey = keyof typeof SystemAccountCodes;
@@ -678,6 +690,23 @@ export const DEFAULT_CHART: readonly SeedAccount[] = [
     name: "Tax Deducted at Source",
     type: "ASSET",
     subtype: "RECEIVABLE",
+    isSystem: true,
+  },
+  /*
+   * The catch-all for an own-account transfer whose destination is unknown.
+   *
+   * A statement says "self transfer to State Bank" and the user may not have an
+   * SBI account in the app. The alternative to this account is what used to
+   * happen: the row could not be posted at all, so a whole import stalled on nine
+   * rows out of 719 and the balance stayed wrong. A visible parking place beats a
+   * blocked queue, and its balance is a to-do list — anything sitting here is a
+   * transfer waiting to be pointed at the account that received it.
+   */
+  {
+    code: SystemAccountCodes.transfersInTransit,
+    name: "Transfers in Transit",
+    type: "ASSET",
+    subtype: "OTHER",
     isSystem: true,
   },
 

@@ -683,6 +683,8 @@ export interface SmartReviewImportOutput {
   inferredTransfers: number;
   /** Rows a re-run of the categoriser could place that the original staging could not. */
   recategorised: number;
+  /** Own-account transfers parked in `Assets:Transfers in Transit` for want of a destination. */
+  parked: number;
   needingChoice: number;
 }
 
@@ -730,6 +732,17 @@ export class SmartReviewImport
         account.type !== AccountType.EQUITY &&
         !account.isClosed &&
         !groupCodes.has(account.code.toString()) &&
+        /*
+         * The transit account is never a *match*, only a last resort.
+         *
+         * It was reachable by name scoring, and "self transfer to State Bank"
+         * duly scored against "Transfers in Transit" — which happened to be the
+         * right destination here and would not have been if the user had an SBI
+         * account. A coincidental word overlap must not outrank a real account,
+         * and a row that lands in transit should be reported as parked rather
+         * than as inferred.
+         */
+        account.code.toString() !== SystemAccountCodes.transfersInTransit &&
         !(batch.accountId && account.id.equals(batch.accountId)),
     );
 
@@ -742,9 +755,15 @@ export class SmartReviewImport
         ? await buildCategoriserContext(input.userId, this.rules, this.selfPayees, this.accounts)
         : null;
 
+    const transitId =
+      accounts.find(
+        (account) => account.code.toString() === SystemAccountCodes.transfersInTransit,
+      )?.id ?? null;
+
     let confirmed = 0;
     let inferredTransfers = 0;
     let recategorised = 0;
+    let parked = 0;
     let needingChoice = 0;
 
     for (const row of rows) {
@@ -784,10 +803,34 @@ export class SmartReviewImport
         continue;
       }
 
+      /*
+       * Last resort, and only for a row already known to be the user's own money
+       * moving: park it in `Assets:Transfers in Transit`.
+       *
+       * The bank side of the statement is exact either way; what is unknown is
+       * only *which* of the user's accounts received it. Parking keeps net worth
+       * right — the money is still theirs — and leaves a balance that names how
+       * much is unlocated, which is a to-do list rather than a wrong number.
+       *
+       * Note what is *not* done here: a row of unknown intent is left alone. A
+       * catch-all that swallowed those too would turn "I don't know what this is"
+       * into a confident posting, and the balance would stop being a question
+       * anyone thought to ask.
+       */
+      if (transitId && (row.intent === "TRANSFER" || row.intent === "INVESTMENT")) {
+        await this.imports.setRowStatus(input.userId, row.id, {
+          status: "CONFIRMED",
+          proposedAccountId: transitId,
+        });
+        confirmed += 1;
+        parked += 1;
+        continue;
+      }
+
       needingChoice += 1;
     }
 
-    return Ok({ confirmed, inferredTransfers, recategorised, needingChoice });
+    return Ok({ confirmed, inferredTransfers, recategorised, parked, needingChoice });
   }
 
   private static inferCounterAccount(

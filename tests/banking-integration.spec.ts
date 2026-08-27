@@ -566,6 +566,73 @@ async function main() {
   check("Axis was reduced", smartAxisBalance.toDecimalString(), "195000.00");
   check("SBI received the transfer", smartSbiBalance.toDecimalString(), "5000.00");
 
+  section("a transfer to an account the user does not have is parked, not blocked");
+
+  /*
+   * The case that stalled a whole import. Nine rows out of 719 said "self
+   * transfer to State Bank" for an SBI account that did not exist, so they could
+   * not be posted, so the balance stayed ₹33,000 wrong and no button could clear
+   * them.
+   *
+   * `Assets:Transfers in Transit` is the answer, and it has to be an *asset*: the
+   * money is still the user's, and expensing it would cut net worth by the amount
+   * twice — once for the cash leaving and once for the asset that never arrived.
+   * Net worth is therefore unchanged by the parking, which is the assertion that
+   * matters most here.
+   */
+  const parkAccount = await openCash.execute({
+    userId,
+    name: "Axis Parking",
+    subtype: "BANK",
+    institution: "Axis Bank",
+    openingBalance: Money.fromRupees("50000"),
+    openingBalanceOn: CalendarDate.parse("2026-04-02"),
+  });
+  if (!parkAccount.ok) throw new Error("parking setup failed");
+
+  const PARK_CSV = `Date,Narration,Withdrawal (Dr),Deposit (Cr),Closing Balance
+05/04/2026,UPI/P2A/999/DEBASISH RANA/self transfer/Nowhere Bank,7000.00,,43000.00`;
+
+  const parkStaged = await stage.execute({
+    userId,
+    accountId: parkAccount.value.accountId,
+    fileName: "axis-parking.csv",
+    fileHash: "sha256-axis-parking",
+    statement: parseStatementRows(parseDelimitedText(PARK_CSV)),
+  });
+  if (!parkStaged.ok) throw new Error("parking staging failed");
+
+  const parkReviewed = await smartReview.execute({ userId, batchId: parkStaged.value.batchId });
+  check("nothing is left needing a choice", parkReviewed.ok && parkReviewed.value.needingChoice, 0);
+  check("the row was parked", parkReviewed.ok && parkReviewed.value.parked, 1);
+
+  const parkPosted = await post.execute({ userId, batchId: parkStaged.value.batchId });
+  check("and it posts", parkPosted.ok && parkPosted.value.posted, 1);
+
+  const parkBalance = await balances.balanceOf(
+    userId,
+    parkAccount.value.accountId,
+    CalendarDate.parse("2026-04-30"),
+  );
+  check("the bank side matches the statement", parkBalance.toDecimalString(), "43000.00");
+
+  const transitAccount = (await accountRepo.list(userId)).find(
+    (account) => account.code.toString() === "Assets:Transfers in Transit",
+  );
+  checkTrue("the transit account exists in the seeded chart", transitAccount !== undefined);
+  if (transitAccount) {
+    const transitBalance = await balances.balanceOf(
+      userId,
+      transitAccount.id,
+      CalendarDate.parse("2026-04-30"),
+    );
+    check(
+      "and holds exactly the unlocated amount",
+      transitBalance.toDecimalString(),
+      "7000.00",
+    );
+  }
+
   done();
 }
 

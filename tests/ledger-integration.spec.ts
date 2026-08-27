@@ -61,9 +61,17 @@ async function main() {
 
   console.log("-- seeding is idempotent --");
   const first = await seed.execute({ userId });
-  // 69 since Phase 9a added `Assets:Receivables:TDS` — tax withheld at source is
-  // an asset the return reclaims, and gold-lease interest withholds it in grams.
-  check("first seed creates the chart", first.ok && first.value.created, 69);
+  /*
+   * 70: `Assets:Receivables:TDS` (tax withheld at source is an asset the return
+   * reclaims, and gold-lease interest withholds it in grams) and
+   * `Assets:Transfers in Transit` (an own-account transfer whose destination the
+   * narration does not name — an asset, because the money is still the user's).
+   *
+   * The count is asserted rather than derived from DEFAULT_CHART on purpose: a
+   * chart entry is a decision, and one appearing without anybody choosing it is
+   * the thing this catches.
+   */
+  check("first seed creates the chart", first.ok && first.value.created, 70);
   const second = await seed.execute({ userId });
   check("second seed creates nothing", second.ok && second.value.created, 0);
 
