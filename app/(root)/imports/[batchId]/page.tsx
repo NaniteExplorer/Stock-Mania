@@ -6,6 +6,7 @@ import { CheckCheck, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
 import { AccountType, DEFAULT_CHART } from "@/domain/accounts";
 import { Card, PageHeader, Pill, Stat } from "@/ui/primitives";
 import { formatMoney } from "@/ui/format";
+import { checkBalanceContinuity } from "@/infra/statements";
 import { ActionForm, SubmitButton } from "@/ui/action-form";
 import { currentUserId, services } from "@/infra/container";
 import {
@@ -66,6 +67,17 @@ export default async function Page({ params }: { params: Promise<{ batchId: stri
    * account is the one being imported sees a full dropdown of things that are
    * all wrong.
    */
+  /*
+   * Recomputed on read rather than stored at staging: the staged rows keep the
+   * printed balance, so the answer is always the answer for the rows that are
+   * actually there — including after a row has been edited in review.
+   */
+  const continuity = checkBalanceContinuity([...rows].sort((a, b) => a.rowIndex - b.rowIndex));
+  const printedClosing =
+    [...rows]
+      .sort((a, b) => b.rowIndex - a.rowIndex)
+      .find((row) => row.balanceAfter !== null)?.balanceAfter ?? null;
+
   const SEEDED_CODES = new Set(DEFAULT_CHART.map((seed) => seed.code));
 
   // The statement's own account is excluded: a transfer needs two sides, and
@@ -140,6 +152,61 @@ export default async function Page({ params }: { params: Promise<{ batchId: stri
         <Stat label="Posted" value={<span className="tnum">{counts.posted}</span>} hint="In the ledger" />
         <Stat label="Skipped" value={<span className="tnum">{counts.rejected}</span>} hint="Kept as evidence" />
       </div>
+
+      {/*
+        * The statement checks its own arithmetic.
+        *
+        * Every row carries the balance the bank printed after it, so each one can
+        * be tested against the row before it plus the movement on it. It is the
+        * cheapest possible proof that the debit and credit columns were read the
+        * right way round — swap them and every row after the first fails — and it
+        * only works because the amounts are exact integers.
+        *
+        * This check has existed and been tested since Phase 2 and nothing called
+        * it, so the answer was computed by the specs and never shown to anyone.
+        */}
+      {continuity.checked > 0 && (
+        <Card
+          className="mb-6"
+          title={
+            continuity.breaks.length === 0
+              ? "The statement agrees with itself"
+              : `${continuity.breaks.length} row(s) break the running balance`
+          }
+          subtitle={
+            continuity.breaks.length === 0
+              ? `${continuity.checked} rows checked against the balance the bank printed beside them. Every debit and credit was read the right way round.`
+              : "The bank's own printed balance does not follow from the row above it plus this row's amount. Either a column was read the wrong way round, or the file has a gap in it."
+          }
+        >
+          {continuity.breaks.length === 0 && printedClosing ? (
+            <p className="text-sm text-gray-400">
+              Closing balance on the file:{" "}
+              <span className="tnum text-gray-100">{formatMoney(printedClosing)}</span>. When every
+              row is posted, the account should read exactly this.
+            </p>
+          ) : (
+            <ul className="space-y-2 text-sm">
+              {continuity.breaks.slice(0, 10).map((brk) => (
+                <li key={brk.rowIndex} className="text-gray-300">
+                  Line <span className="tnum">{brk.rowIndex}</span> — printed{" "}
+                  <span className="tnum text-gray-100">{formatMoney(brk.printed)}</span>, expected{" "}
+                  <span className="tnum text-gray-100">{formatMoney(brk.expected)}</span> (off by{" "}
+                  <span className="tnum text-amber-500">
+                    {formatMoney(brk.printed.minus(brk.expected))}
+                  </span>
+                  )
+                </li>
+              ))}
+              {continuity.breaks.length > 10 && (
+                <li className="text-xs text-gray-500">
+                  and {continuity.breaks.length - 10} more.
+                </li>
+              )}
+            </ul>
+          )}
+        </Card>
+      )}
 
       <Card className="mb-6">
         <div className="flex flex-wrap items-center gap-3">

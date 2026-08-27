@@ -1076,6 +1076,23 @@ export interface ImportRepository {
     options?: { statuses?: readonly ImportRowStatus[] },
   ): Promise<readonly StagedRow[]>;
 
+  /**
+   * Rows staged but not yet in the ledger, grouped by the account they would land
+   * in.
+   *
+   * One query rather than a batch-by-batch walk, because the screens that need it
+   * are the dashboard and the account list — a per-batch loop there is a query per
+   * import for the life of the account.
+   *
+   * The reason this exists at all: a half-posted import leaves a balance that is
+   * arithmetically correct and materially wrong, and nothing said so. A statement
+   * whose outflows are still in the review queue reads as a healthier account than
+   * the bank thinks you have.
+   */
+  pendingRowCounts(
+    userId: UserId,
+  ): Promise<readonly { accountId: string; rows: number; batches: number }[]>;
+
   setRowStatus(
     userId: UserId,
     rowId: string,

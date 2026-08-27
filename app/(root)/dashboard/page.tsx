@@ -30,9 +30,9 @@ export default async function DashboardPage() {
   await ensureSeeded(userId);
 
   const today = CalendarDate.parse(new Date().toISOString().slice(0, 10));
-  const { reports } = services();
+  const { reports, repositories } = services();
 
-  const [statements, series, personal] = await Promise.all([
+  const [statements, series, personal, pendingRows] = await Promise.all([
     reports.statements.execute({
       userId,
       asOf: today,
@@ -40,6 +40,7 @@ export default async function DashboardPage() {
     }),
     reports.netWorthSeries.execute({ userId, months: 12, asOf: today }),
     reports.personal.execute({ userId, asOf: today }),
+    repositories.imports.pendingRowCounts(userId),
   ]);
   if (!statements.ok) throw new Error(statements.error.message);
   if (!series.ok) throw new Error(series.error.message);
@@ -49,6 +50,17 @@ export default async function DashboardPage() {
   const points = series.value.series;
   const previous = points.length > 1 ? points[points.length - 2] : null;
   const change = previous ? sheet.netWorth.minus(previous.netWorth) : null;
+  /*
+   * Rows staged by an import and never posted.
+   *
+   * The headline above is summed from the journal and cannot be wrong about what
+   * is in it — which is exactly why it needs this. An import left half-reviewed
+   * makes a truthful figure answer a different question than the one being asked,
+   * and the queue is rarely balanced: leave the outflows unposted and net worth
+   * reads high by however much they came to.
+   */
+  const pendingImportRows = pendingRows.reduce((total, pending) => total + pending.rows, 0);
+
   const peak = points.reduce(
     (highest, point) => (point.netWorth.isGreaterThan(highest) ? point.netWorth : highest),
     Money.zero(),
@@ -61,6 +73,17 @@ export default async function DashboardPage() {
         subtitle="Assets less liabilities, summed from journal postings. There is no second copy of this figure anywhere in the system, so nothing can disagree with it."
         badge={<Pill tone="brand">Live</Pill>}
       />
+
+      {pendingImportRows > 0 && (
+        <Card
+          title="Net worth is missing a part-reviewed import"
+          subtitle={`${pendingImportRows} staged row(s) have not been posted, so they are not in the figure below.`}
+        >
+          <Link href="/imports" className="text-sm text-brand-400 hover:underline">
+            Finish the review
+          </Link>
+        </Card>
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label="Net worth" value={sheet.netWorth} size="lg" delta={change} hint="Change over last month" />

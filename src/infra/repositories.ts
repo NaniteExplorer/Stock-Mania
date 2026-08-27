@@ -1688,6 +1688,48 @@ export class DrizzleImportRepository implements ImportRepository {
     });
   }
 
+  /**
+   * Staged-but-unposted rows per destination account.
+   *
+   * "Unposted" is `PARSED`, or `CONFIRMED` with no transaction behind it — the
+   * same pair the review screen counts as remaining, kept identical on purpose so
+   * a warning and the screen it points at can never disagree about how much is
+   * left.
+   */
+  async pendingRowCounts(
+    userId: UserId,
+  ): Promise<readonly { accountId: string; rows: number; batches: number }[]> {
+    const rows = await this.db
+      .select({
+        accountId: importBatches.accountId,
+        rows: count(importRows.id),
+        batches: sql<number>`COUNT(DISTINCT ${importRows.batchId})`,
+      })
+      .from(importRows)
+      .innerJoin(importBatches, eq(importRows.batchId, importBatches.id))
+      .where(
+        and(
+          eq(importRows.userId, userId.value),
+          isNull(importRows.deletedAt),
+          isNull(importBatches.deletedAt),
+          sql`${importBatches.status} <> 'UNDONE'`,
+          or(
+            eq(importRows.status, "PARSED"),
+            and(eq(importRows.status, "CONFIRMED"), isNull(importRows.matchedTransactionId)),
+          ),
+        ),
+      )
+      .groupBy(importBatches.accountId);
+
+    return rows
+      .filter((row): row is typeof row & { accountId: string } => row.accountId !== null)
+      .map((row) => ({
+        accountId: row.accountId,
+        rows: Number(row.rows),
+        batches: Number(row.batches),
+      }));
+  }
+
   async findBatch(userId: UserId, batchId: string): Promise<ImportBatchRecord | null> {
     const [row] = await this.db
       .select()

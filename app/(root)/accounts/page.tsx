@@ -44,9 +44,10 @@ export default async function Page({
   const today = CalendarDate.parse(new Date().toISOString().slice(0, 10));
   const monthRange = DateRange.monthOf(today);
 
-  const [result, flows] = await Promise.all([
+  const [result, flows, pendingRows] = await Promise.all([
     banking.listCashPositions.execute({ userId, asOf: today, includeClosed: true }),
     repositories.balances.monthlyFlows(userId, monthRange),
+    repositories.imports.pendingRowCounts(userId),
   ]);
 
   if (!result.ok) throw new Error(result.error.message);
@@ -72,6 +73,23 @@ export default async function Page({
     ),
   );
   const thisMonth = flows.find((flow) => flow.month === today.toMonthKey());
+
+  /*
+   * Staged rows that never reached the ledger, named by their account.
+   *
+   * This exists because the balances here were correct and misleading at the same
+   * time: 96 of 719 statement rows sat in review, their net was −₹6,05,125, and
+   * the account showed a figure six lakh healthier than the bank's. Arithmetically
+   * right, and the wrong answer to the question being asked.
+   */
+  const pendingImports = pendingRows
+    .map((pending) => {
+      const position = positions.find(
+        (candidate) => candidate.asset.id.value === pending.accountId,
+      );
+      return position ? { ...pending, label: position.asset.displayName } : null;
+    })
+    .filter((pending): pending is NonNullable<typeof pending> => pending !== null);
 
   const needle = (filters.q ?? "").trim().toLowerCase();
   const rows: AccountRow[] = positions
@@ -147,6 +165,35 @@ export default async function Page({
         <Stat label="Money in" value={thisMonth?.income ?? Money.zero()} hint="This month" />
         <Stat label="Money out" value={thisMonth?.expense ?? Money.zero()} hint="This month" />
       </div>
+
+      {pendingImports.length > 0 && (
+        <Card
+          className="mb-6"
+          title="Part of an import is still in the review queue"
+          subtitle="Until these rows are posted, the balances below are the balances of the rows that were."
+        >
+          <ul className="space-y-2 text-sm">
+            {pendingImports.map((pending) => (
+              <li key={pending.accountId} className="flex flex-wrap items-baseline gap-2">
+                <span className="text-gray-100">{pending.label}</span>
+                <span className="text-gray-400">
+                  — <span className="tnum">{pending.rows}</span> row
+                  {pending.rows === 1 ? "" : "s"} staged and not posted
+                  {pending.batches > 1 ? ` across ${pending.batches} imports` : ""}
+                </span>
+                <Link href="/imports" className="text-xs text-brand-400 hover:underline">
+                  Review them
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-3 text-xs text-gray-500">
+            Worth finishing rather than ignoring: a review queue is rarely a random sample of a
+            statement, so a part-posted import usually leans one way — and the balance leans with
+            it.
+          </p>
+        </Card>
+      )}
 
       {result.value.anomalies.length > 0 && (
         <Card
