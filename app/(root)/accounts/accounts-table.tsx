@@ -2,13 +2,14 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Archive, ArchiveRestore, ChevronRight } from "lucide-react";
+import { Archive, ArchiveRestore, ChevronRight, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ActionForm, SubmitButton } from "@/ui/action-form";
 import { InstitutionMark } from "@/ui/provider-picker";
 import {
   bulkCloseAccountsAction,
   closeCashAccountAction,
+  deleteEmptyCashAccountAction,
   reopenCashAccountAction,
 } from "./actions";
 
@@ -198,6 +199,41 @@ export default function AccountsTable({ rows }: { rows: readonly AccountRow[] })
                             className="h-9 px-3 text-xs"
                           >
                             Reopen
+                          </SubmitButton>
+                        </ActionForm>
+                      )}
+
+                      {/*
+                        * Delete, here on the row, for an account with nothing
+                        * posted to it.
+                        *
+                        * It used to live only on the detail page, on the theory
+                        * that a destructive control should cost one more click.
+                        * That reasoning does not survive contact with the case it
+                        * applies to: an account with no postings has nothing to
+                        * lose, and hiding its delete behind a page nobody thought
+                        * to open reads as "this app will not let me delete
+                        * anything". The genuinely destructive control — delete the
+                        * account *and its history* — is still detail-page only,
+                        * and still requires the account be closed first.
+                        */}
+                      {!row.isSystem && row.postingCount === 0 && (
+                        <ActionForm
+                          action={deleteEmptyCashAccountAction}
+                          fields={{ accountId: row.id }}
+                          confirm={{
+                            title: `Delete ${row.name}?`,
+                            body: "Nothing has ever been posted to this account, so nothing is lost.",
+                            confirmLabel: "Delete it",
+                            tone: "danger",
+                          }}
+                        >
+                          <SubmitButton
+                            icon={<Trash2 aria-hidden />}
+                            tone="danger"
+                            className="h-9 px-3 text-xs"
+                          >
+                            Delete
                           </SubmitButton>
                         </ActionForm>
                       )}

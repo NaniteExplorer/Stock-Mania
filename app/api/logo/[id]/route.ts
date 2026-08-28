@@ -28,13 +28,20 @@ const MIN_GOOGLE_ICON_BYTES = 1500;
  * Ordered upstream logo URLs for a domain, keyless only.
  *
  * v1 also tried logo.dev and Brandfetch when their API keys were set. Both are
- * gone: v2 takes no API keys, so the ladder is Clearbit (real brand logos, no
- * key) then two favicon services. A favicon is not a logo, which is why a
- * curated local asset always wins and a miss returns 404 rather than a guess.
+ * gone: v2 takes no API keys.
+ *
+ * Clearbit is gone too, and not by preference — its keyless logo API has been
+ * withdrawn and the host now refuses the connection outright. Leaving it first in
+ * the ladder meant every single lookup paid a connect timeout before reaching a
+ * source that works, on a route whose whole job is to be fast and cached.
+ *
+ * What remains are two favicon services. A favicon is not a logo, which is why a
+ * genuine curated asset still wins and why a miss returns 404 rather than a
+ * guess — the client then draws our own badge, which does not pretend to be
+ * anybody's brand.
  */
 function candidateSources(domain: string): Array<{ url: string; minBytes: number }> {
   return [
-    { url: `https://logo.clearbit.com/${domain}?size=128`, minBytes: MIN_ICON_BYTES },
     {
       url: `https://www.google.com/s2/favicons?domain=${domain}&sz=128`,
       minBytes: MIN_GOOGLE_ICON_BYTES,

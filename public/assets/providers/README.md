@@ -1,41 +1,37 @@
 # Provider logos
 
-Drop high-resolution institution logos here to override the favicon fallback.
+A place for **official** institution logos — a file from the bank's own press kit
+or brand guidelines. It is empty on purpose.
 
-## How it works
+## Why it is empty
 
-`ProviderMark` requests one URL — `/api/logo/<id>` — which resolves a logo in
-this order (server-side, cached 7 days):
+It used to hold five hand-traced SVGs (Axis, HDFC, SBI, PNB, Jio Payments). A
+curated asset outranks every remote source, so those approximations *displaced*
+the real thing: Axis and HDFC both publish a usable favicon, and the app drew its
+own two-triangle sketch over the top of it. SBI's was a 143-byte circle.
 
-1. **Local asset** — `provider.logo` in `lib/financial-providers.ts` (preferred)
-2. **Real logo provider** — logo.dev / Brandfetch, when `LOGO_DEV_TOKEN` or
-   `BRANDFETCH_CLIENT_ID` is set (gives proper brand logos, not favicons)
-3. **Clearbit logo API** — keyless real brand logos for `provider.domain`
-4. **Favicon** — Google/DuckDuckGo icon services (keyless, last resort)
-5. **Gradient badge** — branded initials (always works, no network)
+A logo is an identity claim. A near-miss is worse than no logo, because the
+branded badge we fall back to is visibly ours and never pretends to be the bank's
+mark. So the traces are gone rather than improved.
 
-## For real logos everywhere (recommended)
+## How resolution works
 
-Set a free token in `.env.local` — get one at https://logo.dev (or
-https://brandfetch.com):
+`ProviderMark` requests one URL — `/api/logo/<id>` — resolved server-side and
+cached for 7 days:
 
-```
-LOGO_DEV_TOKEN=pk_xxxxxxxx
-```
+1. **Local asset** — `provider.logo` in `src/ui/providers.ts`, if set. Only ever
+   an official file. Drop one here and point `logo` at it.
+2. **Favicon** — Google (128px, rejected below 1500 bytes so a 16px stub does not
+   pass as a logo) then DuckDuckGo.
+3. **404** — the client draws the gradient badge: the provider's short name on its
+   own brand colours.
 
-Then `/api/logo/<id>` serves proper brand logos for every provider with a
-`domain`. No per-bank work needed.
+Clearbit used to sit above the favicons. Its keyless logo API has been withdrawn
+and the host refuses the connection, so it was costing every lookup a connect
+timeout and returning nothing.
 
-## To add a real logo
+## Adding a real one
 
-1. Save the logo (SVG preferred; transparent PNG also fine) in this folder, e.g.
-   `public/assets/providers/hdfc.svg`.
-2. In `lib/financial-providers.ts`, set `logo` on that provider:
-
-   ```ts
-   { id: "hdfc", name: "HDFC Bank", /* … */, logo: "/assets/providers/hdfc.svg" }
-   ```
-
-That's it — the mark prefers your asset and falls back automatically if it's missing.
-
-> Use logos you have the right to use. Square marks render best in the badge slots.
+Drop `<id>.svg` here, then set `logo: "/assets/providers/<id>.svg"` on that
+provider. Use the institution's published asset — if you find yourself drawing it,
+the badge is the better answer.
