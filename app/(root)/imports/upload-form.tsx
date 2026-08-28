@@ -56,7 +56,7 @@ export default function UploadForm({ accounts }: { accounts: readonly AccountOpt
       <Field
         name="file"
         label="Statement file"
-        hint="CSV, TSV, XLSX, XLS, OFX or QFX. Amounts are read as exact decimals."
+        hint="CSV, TSV, XLSX, XLS, PDF, OFX or QFX. Amounts are read as exact decimals."
         required
         error={tooBig ? "That file is over 3 MB. Split it, or export a shorter date range." : errors.file?.[0]}
       >
@@ -65,7 +65,7 @@ export default function UploadForm({ accounts }: { accounts: readonly AccountOpt
             {...props}
             name="file"
             type="file"
-            accept=".csv,.tsv,.txt,.xlsx,.xls,.ofx,.qfx"
+            accept=".csv,.tsv,.txt,.xlsx,.xls,.pdf,.ofx,.qfx"
             className="form-input py-2.5"
             required
             onChange={(event) => setChosen(event.target.files?.[0] ?? null)}

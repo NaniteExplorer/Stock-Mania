@@ -96,8 +96,11 @@ export interface ParsedStatement {
 }
 
 export class StatementParseError extends Error {
-  constructor(message: string) {
-    super(message);
+  // `cause` is optional and forwarded to `Error` so that a failure deep inside a
+  // third-party reader — pdf.js on a corrupt file, say — keeps its stack behind
+  // the message the user is shown, instead of being swallowed by the rewording.
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
     this.name = "StatementParseError";
   }
 }
@@ -190,6 +193,29 @@ function looksNumeric(cell: Cell): boolean {
 
 const SLASHED = /^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})/;
 const ISO = /^(\d{4})-(\d{2})-(\d{2})/;
+
+/**
+ * `27-Jun-2023`, `01 Apr 2024`, `15-SEPT-25` — a spelled month.
+ *
+ * Worth its own pattern rather than a normalisation step upstream, because a
+ * spelled month is the one date format that carries **no ambiguity at all**: it
+ * needs no `DMY`/`MDY` decision, so it must not be routed through one. Jio
+ * Payments Bank prints every date this way, and so do most Indian passbook-style
+ * exports, PDF or CSV alike.
+ */
+const SPELLED = /^(\d{1,2})[\s/-]([A-Za-z]{3,9})[\s/-](\d{2,4})\b/;
+
+const MONTHS: Readonly<Record<string, number>> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+};
+
+/** The month number for a spelled name, by its first three letters. */
+function monthFromName(name: string): number | null {
+  // `sept` and `september` both reduce to `sep`; nothing else in the calendar
+  // collides in three letters, which is why three is enough.
+  return MONTHS[name.slice(0, 3).toLowerCase()] ?? null;
+}
 /** Excel's epoch is 1899-12-30; anything below this is not a plausible date serial. */
 const MIN_EXCEL_SERIAL = 20000;
 
@@ -197,7 +223,18 @@ function looksDate(cell: Cell): boolean {
   if (cell instanceof Date) return !Number.isNaN(cell.getTime());
   if (typeof cell === "number") return Number.isInteger(cell) && cell > MIN_EXCEL_SERIAL;
   const value = text(cell);
-  return SLASHED.test(value) || ISO.test(value);
+  return SLASHED.test(value) || ISO.test(value) || spelledDate(value) !== null;
+}
+
+/** A spelled-month date, or `null` if the cell is not one. */
+function spelledDate(value: string): CalendarDate | null {
+  const match = SPELLED.exec(value);
+  if (!match) return null;
+  const month = monthFromName(match[2]);
+  if (month === null) return null;
+  const yearPart = match[3];
+  const year = yearPart.length === 2 ? 2000 + Number(yearPart) : Number(yearPart);
+  return safeDate(year, month, Number(match[1]));
 }
 
 /**
@@ -239,6 +276,11 @@ export function readDate(cell: Cell, order: DateOrder): CalendarDate | null {
   const value = text(cell);
   const iso = ISO.exec(value);
   if (iso) return safeDate(Number(iso[1]), Number(iso[2]), Number(iso[3]));
+
+  // Before the numeric branch: a spelled month is unambiguous, so the file-wide
+  // `order` decision is not consulted and cannot get it wrong.
+  const spelled = spelledDate(value);
+  if (spelled) return spelled;
 
   const slashed = SLASHED.exec(value);
   if (!slashed) return null;
@@ -360,17 +402,40 @@ function buildFromAliases(
       return;
     }
 
+    /*
+     * A bank writes an empty column one of two ways: it leaves it blank, or it
+     * prints an exact `0.00`. When the *other* column of the pair carries a real
+     * amount, that zero is the second convention — it says "not this column", not
+     * "a transaction of nothing". The Jio Payments statement uses it on every
+     * single row, and reading it literally dropped every deposit in the file as
+     * `Amount is zero`.
+     *
+     * This runs before the `??` chain rather than replacing it, because the fact
+     * that chain protects is still true and still tested: a debit column holding
+     * an exact zero with *no* credit beside it is a broken row, and must not fall
+     * through to be reported as a deposit. Only a genuine pair resolves here.
+     */
+    const paired =
+      debit?.amount != null && credit?.amount != null
+        ? debit.amount.isZero && !credit.amount.isZero
+          ? { amount: credit.amount, direction: "CREDIT" as StatementDirection }
+          : credit.amount.isZero && !debit.amount.isZero
+            ? { amount: debit.amount, direction: "DEBIT" as StatementDirection }
+            : null
+        : null;
+
     // `??`, not `||`. v1 wrote `debit || credit || signed`, so a debit column
     // holding an exact zero fell through to the credit column and the row came
     // out as a deposit. Zero and absent are different facts.
     const chosen =
-      debit?.amount != null
+      paired ??
+      (debit?.amount != null
         ? { amount: debit.amount, direction: "DEBIT" as StatementDirection }
         : credit?.amount != null
           ? { amount: credit.amount, direction: "CREDIT" as StatementDirection }
           : signed?.amount != null
             ? { amount: signed.amount, direction: directionFromSigned(row, columns, signed) }
-            : null;
+            : null);
 
     if (!chosen) {
       problems.push({ rowIndex, reason: "No amount in any amount column", raw: joinRow(row) });
@@ -837,5 +902,15 @@ export async function parseStatementFile(
     return parseStatementRows(rows, currency);
   }
 
-  throw new StatementParseError("Supported files: CSV, TSV, XLSX, XLS, OFX and QFX.");
+  if (extension === "pdf") {
+    /*
+     * Imported lazily so that pdf.js — which is large, and which nothing else in
+     * the app needs — stays out of the bundle for the CSV path that most imports
+     * still take.
+     */
+    const { parsePdfStatement } = await import("./pdf-statements");
+    return parsePdfStatement(new Uint8Array(await file.arrayBuffer()), currency);
+  }
+
+  throw new StatementParseError("Supported files: CSV, TSV, XLSX, XLS, PDF, OFX and QFX.");
 }

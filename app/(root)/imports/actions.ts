@@ -58,7 +58,7 @@ export async function stageStatementAction(
     return fail("Choose the account this statement belongs to.", { accountId: ["Required"] });
   }
   if (!(file instanceof File) || file.size === 0) {
-    return fail("Choose a CSV, XLSX or OFX file.", { file: ["Required"] });
+    return fail("Choose a CSV, XLSX, PDF or OFX file.", { file: ["Required"] });
   }
 
   const userId = await currentUserId();
