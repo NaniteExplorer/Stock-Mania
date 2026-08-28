@@ -25,7 +25,7 @@ import { __test__ } from "@/infra/pdf-statements";
 import { checkBalanceContinuity, parseStatementRows, readDate } from "@/infra/statements";
 import { check, checkDeep, checkTrue, done, section } from "./harness";
 
-const { toRecords, toRow, takeTail, withoutMachineIds, whyThereIsNoText } = __test__;
+const { toRecords, toRow, takeTail, withoutMachineIds, whyThereIsNoText, readProvenance } = __test__;
 
 /* ═══ Fixtures ════════════════════════════════════════════════════════ */
 
@@ -253,25 +253,37 @@ section("an empty extraction is diagnosed, not guessed at");
 const bytesOf = (text: string) => new TextEncoder().encode(text);
 
 /*
- * "Ask the bank for an export" is useless advice to someone whose bank has
- * already given them one. SBI's `Account Summary` export draws every word as
- * vector outlines - 20 content streams of Bezier paths, zero text-showing
- * operators, no font resource anywhere in the file - and it looks perfectly
- * crisp while containing not one readable character. It is not a scan and it is
- * not corrupt; it is the wrong export, and the account statement for the same
- * account reads fine.
+ * The cause, in the one case that has actually happened. The two SBI statements
+ * that import cleanly name `PDFium` as their producer; the one that cannot names
+ * `Microsoft: Print To PDF`, and its three pages hold 20 content streams of
+ * Bezier paths, zero text-showing operators and one image - the bank's logo.
+ * Naming the driver turns an unanswerable complaint into a one-click fix.
  */
+const printed = readProvenance(bytesOf("%PDF-1.7 /Producer (Microsoft: Print To PDF) /Image"));
+check("the producer is read from the file's own bytes", printed.producer, "Microsoft: Print To PDF");
+checkTrue("the print driver is named", whyThereIsNoText(printed).includes("Microsoft Print to PDF"));
+checkTrue("along with what to choose instead", whyThereIsNoText(printed).includes("Save as PDF"));
+
 checkTrue(
-  "a page drawn as outlines is named as such",
-  whyThereIsNoText(bytesOf("%PDF-1.7 /Contents 4 0 R")).includes("drawn as artwork"),
-);
-checkTrue(
-  "and the reader is pointed at the statement export",
-  whyThereIsNoText(bytesOf("%PDF-1.7 /Contents 4 0 R")).includes("statement"),
+  "an unattributed page of outlines is still explained",
+  whyThereIsNoText(readProvenance(bytesOf("%PDF-1.7 /Contents 4 0 R"))).includes("drawn as artwork"),
 );
 checkTrue(
   "a page that is one big image is still called a scan",
-  whyThereIsNoText(bytesOf("%PDF-1.7 /Subtype /Image")).includes("scan"),
+  whyThereIsNoText(readProvenance(bytesOf("%PDF-1.7 /Font /Subtype /Image"))).includes("scan"),
+);
+
+/*
+ * The bug that made this message lie. `getDocumentProxy` hands the array to
+ * pdf.js, which takes ownership and detaches it - so the same questions asked
+ * after extraction all answer "no", and the diagnosis quietly collapses into its
+ * own fallback. It named a real file wrongly before this was caught.
+ */
+const detached = readProvenance(new Uint8Array(0));
+check("a detached buffer knows nothing", detached.producer, "");
+checkTrue(
+  "which is why the facts are read before pdf.js is handed the array",
+  whyThereIsNoText(detached).includes("drawn as artwork"),
 );
 
 /* ═══ Spelled months ══════════════════════════════════════════════════ */

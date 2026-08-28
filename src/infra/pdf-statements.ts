@@ -239,38 +239,69 @@ function blankIfEmpty(token: string): string {
 const HEADER: RawRow = ["Date", "Description", "Reference", "Debit", "Credit", "Balance"];
 
 /**
+ * What the file says about itself, read before pdf.js is allowed near it.
+ *
+ * Not a convenience struct: `getDocumentProxy` hands the array to pdf.js, which
+ * takes ownership and detaches it, so after extraction `bytes` is a zero-length
+ * view and every question asked of it answers "no". That silently turned the
+ * diagnosis below into its own fallback - the honest-looking wrong answer, which
+ * is the worst kind. Reading first, and passing facts rather than the array, is
+ * what stops it happening again.
+ */
+interface PdfProvenance {
+  readonly producer: string;
+  readonly hasFonts: boolean;
+  readonly hasImages: boolean;
+}
+
+function readProvenance(bytes: Uint8Array): PdfProvenance {
+  // The structural keys and the metadata strings are ASCII in the file's own
+  // bytes whatever the streams are compressed with, so this needs no parse.
+  const text = new TextDecoder("latin1").decode(bytes);
+  return {
+    producer: /\/Producer\s*\(([^)]*)\)/.exec(text)?.[1] ?? "",
+    hasFonts: text.includes("/Font"),
+    hasImages: text.includes("/Image"),
+  };
+}
+
+/**
  * Why a PDF that plainly shows a statement yielded no text at all.
  *
  * Three different files reach this point and only one of them is a scan, so the
- * message has to distinguish them - "ask the bank for an export" is useless
+ * message has to tell them apart - "ask the bank for an export" is useless
  * advice to someone whose bank has already given them one.
- *
- * The tell is `/Font`. A PDF that draws its words as vector outlines needs no
- * font at all: SBI's `Account Summary` export does exactly this, 20 content
- * streams of Bezier paths, zero text-showing operators, and it looks perfectly
- * crisp on screen while containing not one readable character. That is not a
- * scan and it is not corrupt - it is the wrong export, and the same account's
- * `Account Statement` download has real text in it.
  */
-function whyThereIsNoText(bytes: Uint8Array): string {
-  // The structural keys are ASCII in the file's own bytes, whatever the streams
-  // are compressed with, so this needs no second parse of the document.
-  const head = new TextDecoder("latin1").decode(bytes);
-  const hasFonts = head.includes("/Font");
-  const hasImages = head.includes("/Image");
-
-  if (!hasFonts && !hasImages) {
-    /*
-     * Plain prose: this reaches the user as text, not as markdown, so backticks
-     * and asterisks would arrive on screen exactly as written.
-     */
+function whyThereIsNoText(source: PdfProvenance): string {
+  /*
+   * The Windows print driver is the single most likely cause, and naming it
+   * turns an unanswerable complaint into a one-click fix. It redraws every glyph
+   * as filled outlines: the page looks perfect and holds no text at all. The two
+   * SBI statements that import cleanly name `PDFium` as their producer; the one
+   * that cannot names `Microsoft: Print To PDF`.
+   */
+  if (/print to pdf/i.test(source.producer)) {
     return (
-      "Every word in that PDF is drawn as artwork rather than stored as text, so " +
-      "there is nothing in it to read — no parser can import it. This is what an " +
-      "account summary export looks like. Download the account statement for the " +
-      "same account instead, or a CSV or Excel export."
+      "That PDF was made with Microsoft Print to PDF, which redraws every word as " +
+      "line art — the page looks perfect and contains no text at all, so there is " +
+      "nothing to import. In the print dialog choose Save as PDF instead of " +
+      "Microsoft Print to PDF, or download the statement from the bank directly."
     );
   }
+
+  /*
+   * A PDF that draws its words needs no font at all, and plain prose is right
+   * here: this reaches the user as text, not as markdown.
+   */
+  if (!source.hasFonts && !source.hasImages) {
+    return (
+      "Every word in that PDF is drawn as artwork rather than stored as text, so " +
+      "there is nothing in it to read — no parser can import it. Printing a page " +
+      "to PDF usually does this. Save it as a PDF from the browser instead, or " +
+      "download the statement from the bank."
+    );
+  }
+
   return (
     "There is no text in that PDF — it looks like a scan or a photograph of a " +
     "statement. Ask the bank for a downloaded PDF, a CSV or an Excel export."
@@ -287,6 +318,8 @@ export async function parsePdfStatement(
   bytes: Uint8Array,
   currency: Currency = Currency.reporting,
 ): Promise<ParsedStatement> {
+  // Before extraction, not after: pdf.js detaches the array it is handed.
+  const source = readProvenance(bytes);
   const lines = await extractPdfLines(bytes);
   const rows: RawRow[] = [HEADER];
 
@@ -297,7 +330,7 @@ export async function parsePdfStatement(
 
   if (rows.length === 1) {
     throw new StatementParseError(
-      lines.length === 0 ? whyThereIsNoText(bytes) : NO_TRANSACTIONS,
+      lines.length === 0 ? whyThereIsNoText(source) : NO_TRANSACTIONS,
     );
   }
 
@@ -323,4 +356,4 @@ function withoutMachineIds(parsed: ParsedStatement): ParsedStatement {
 }
 
 /** Internals, exposed for the spec — not part of the module's contract. */
-export const __test__ = { toRecords, toRow, takeTail, isFurniture, withoutMachineIds, whyThereIsNoText };
+export const __test__ = { toRecords, toRow, takeTail, isFurniture, withoutMachineIds, whyThereIsNoText, readProvenance };
