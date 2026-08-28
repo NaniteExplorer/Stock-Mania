@@ -260,15 +260,19 @@ function whyThereIsNoText(bytes: Uint8Array): string {
   const hasImages = head.includes("/Image");
 
   if (!hasFonts && !hasImages) {
+    /*
+     * Plain prose: this reaches the user as text, not as markdown, so backticks
+     * and asterisks would arrive on screen exactly as written.
+     */
     return (
       "Every word in that PDF is drawn as artwork rather than stored as text, so " +
-      "there is nothing in it to read. A `summary` or `print` view of an account " +
-      "usually looks like this. Download the account *statement* instead - the " +
-      "same account, the longer file - or a CSV or Excel export."
+      "there is nothing in it to read — no parser can import it. This is what an " +
+      "account summary export looks like. Download the account statement for the " +
+      "same account instead, or a CSV or Excel export."
     );
   }
   return (
-    "There is no text in that PDF - it looks like a scan or a photograph of a " +
+    "There is no text in that PDF — it looks like a scan or a photograph of a " +
     "statement. Ask the bank for a downloaded PDF, a CSV or an Excel export."
   );
 }
