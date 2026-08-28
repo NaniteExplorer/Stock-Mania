@@ -25,7 +25,7 @@ import { __test__ } from "@/infra/pdf-statements";
 import { checkBalanceContinuity, parseStatementRows, readDate } from "@/infra/statements";
 import { check, checkDeep, checkTrue, done, section } from "./harness";
 
-const { toRecords, toRow, takeTail } = __test__;
+const { toRecords, toRow, takeTail, withoutMachineIds } = __test__;
 
 /* ═══ Fixtures ════════════════════════════════════════════════════════ */
 
@@ -196,6 +196,55 @@ check("with nothing reported as broken", sbi.problems.length, 0);
 check("a dashed debit is a deposit", sbi.rows[0].direction, "CREDIT");
 check("a dashed credit is a withdrawal", sbi.rows[1].direction, "DEBIT");
 check("single-line rows work too", sbi.rows[2].amount.toDecimalString(), "26.00");
+
+/* ═══ A stamp is not an id ════════════════════════════════════════════ */
+
+section("a reference that repeats is not the bank's id for a movement");
+
+/*
+ * The duplicate matcher treats an external id as decisive: an id match needs no
+ * date window and, until this rule existed, no agreement about the amount. SBI's
+ * reference column carries a teller stamp - branch and terminal, not transaction
+ * - and one stamp appears on 143 rows of a single real statement. Fed to the
+ * matcher as an id, it would let a two-year-old transaction claim a new row.
+ *
+ * The test needs no per-bank knowledge, because it is the definition of an id:
+ * unique in the file, or not an id. The reference itself is kept either way -
+ * it is still what the bank printed, and still worth showing.
+ */
+const stamped2 = parse([
+  ...SBI,
+  "26/03/2024 26/03/2024 WDL TFR",
+  "0097732162091 AT 16587 SUM",
+  "HOSPITAL KALINGANAGAR",
+  "- 40.00 - 1,717.98",
+]);
+check("the repeated stamp is still read as a reference", stamped2.rows[0].reference, "0097732162091 AT 16587 SUM HOSPITAL KALINGANAGAR");
+check("but it is not handed over as an id", stamped2.rows[0].externalId, null);
+check("nor on the row that repeats it", stamped2.rows[3].externalId, null);
+check("while a reference printed once passes the file-wide rule", stamped2.rows[1].externalId, "0097691162095 AT 16587 SUM HOSPITAL KALINGANAGAR");
+
+/*
+ * Which is not enough on its own, and this is the second half of the fix: 650 of
+ * one real statement's stamps appear exactly once in it, so they survive the
+ * file-wide rule while still being stamps - free to collide with a row already
+ * posted from another statement. A PDF carries no machine id at all, so
+ * `parsePdfStatement` drops the claim outright; the file-wide rule stays as the
+ * guard for CSV and XLSX, where a reference column may hold a real id.
+ */
+check(
+  "but a PDF row never claims a machine id",
+  withoutMachineIds(stamped2).rows[1].externalId,
+  null,
+);
+check("with the reference untouched", withoutMachineIds(stamped2).rows[1].reference !== null, true);
+
+/*
+ * The unique-in-file rule alone would have promoted that last one, and it is a
+ * stamp too: 650 stamps in one real statement appear exactly once in it. A PDF
+ * carries no machine id at all, so `parsePdfStatement` drops the claim outright
+ * and the file-wide rule stays as the guard for CSV and XLSX.
+ */
 
 /* ═══ Spelled months ══════════════════════════════════════════════════ */
 

@@ -267,8 +267,26 @@ export async function parsePdfStatement(
     );
   }
 
-  return parseStatementRows(rows, currency);
+  const parsed = parseStatementRows(rows, currency);
+
+  /*
+   * A PDF statement carries no machine id, so no row from one may claim to.
+   *
+   * What looks like an id in these files is a teller stamp - branch and terminal
+   * - and the matcher treats an external id as decisive, matching across any
+   * distance in time. `withIdentifiedReferences` would clear a stamp that repeats
+   * within the file, but 650 of one real statement's stamps appear exactly once
+   * there and would pass that test while still being stamps, free to collide with
+   * a row already posted from another statement. The reference is kept; only the
+   * claim of identity is dropped.
+   */
+  return withoutMachineIds(parsed);
+}
+
+/** Strip the id claim from every row, keeping the reference. */
+function withoutMachineIds(parsed: ParsedStatement): ParsedStatement {
+  return { ...parsed, rows: parsed.rows.map((row) => ({ ...row, externalId: null })) };
 }
 
 /** Internals, exposed for the spec — not part of the module's contract. */
-export const __test__ = { toRecords, toRow, takeTail, isFurniture };
+export const __test__ = { toRecords, toRow, takeTail, isFurniture, withoutMachineIds };

@@ -384,6 +384,32 @@ check("the exact id claims it", contestedOutcome[1].matchedTransactionId, "txn-x
 check("on pass 2", contestedOutcome[1].pass, 2);
 check("and the nearer-dated row is left unmatched", contestedOutcome[0].matchedTransactionId, null);
 
+section("an id that disagrees about the money was never an id");
+
+/*
+ * Pass 2 has no date window and no amount test of its own, because a bank id is
+ * supposed to be exact. Real statements break that assumption: SBI prints a
+ * teller stamp in its reference column - branch and terminal, not transaction -
+ * and one such stamp appears on 143 rows of a single real statement. Parsers now
+ * refuse to call a repeated reference an id, and this is the second line of
+ * defence: whatever claims to be an id must still agree about the movement.
+ */
+const stamped: readonly MatchTarget[] = [
+  { transactionId: "txn-stamp", date: on("2026-01-04"), amount: rupees("40.00"), direction: "DEBIT", externalId: "0097691162095 AT 16587" },
+];
+const collision = matcher.match(
+  [{ key: "row-new", date: on("2026-06-20"), amount: rupees("5000.00"), direction: "DEBIT", externalId: "0097691162095 AT 16587" }],
+  stamped,
+);
+check("a different amount is a different movement", collision[0].matchedTransactionId, null);
+check("so no pass claims it", collision[0].pass, null);
+
+const honest = matcher.match(
+  [{ key: "row-same", date: on("2026-06-20"), amount: rupees("40.00"), direction: "DEBIT", externalId: "0097691162095 AT 16587" }],
+  stamped,
+);
+check("agreeing on the amount still matches on pass 2", honest[0].pass, 2);
+
 section("pass 1 — a rule pins a row");
 
 const pinned = matcher.match(

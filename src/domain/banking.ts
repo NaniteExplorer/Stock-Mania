@@ -566,6 +566,12 @@ export interface StatementMovement {
   readonly date: CalendarDate;
   readonly description: string;
   readonly reference: string | null;
+  /**
+   * The bank's own id for this movement, when the file carries one and proved it
+   * to be per-transaction. Only this may drive the matcher's exact pass; a
+   * `reference` that repeats within a statement is a stamp, not an id.
+   */
+  readonly externalId: string | null;
   readonly amount: Money;
   readonly direction: RowDirection;
   readonly balanceAfter: Money | null;
@@ -681,6 +687,13 @@ export class DuplicateMatcher {
       if (outcomes.has(row.key) || !row.externalId) continue;
       const target = byId.get(row.externalId);
       if (!target || claimed.has(target.transactionId)) continue;
+      /*
+       * An id match still has to agree about the money. The same reference on two
+       * different amounts means the reference was never an id - a terminal number
+       * or a branch stamp - and this pass has no date window and no amount test of
+       * its own to catch it. Cheap, and it costs nothing when the id is real.
+       */
+      if (target.direction !== row.direction || !target.amount.equals(row.amount)) continue;
       claimed.add(target.transactionId);
       outcomes.set(row.key, {
         key: row.key,

@@ -52,6 +52,18 @@ export interface StatementRow {
   readonly date: CalendarDate;
   readonly description: string;
   readonly reference: string | null;
+  /**
+   * The bank's own id for this movement, when the file carries one.
+   *
+   * Narrower than `reference` on purpose: the duplicate matcher treats an
+   * external id as decisive - an id match needs no date window and no matching
+   * amount - so a value that is not per-transaction must never arrive here. SBI
+   * prints a teller stamp in its reference column that reads like an id and is
+   * not one: a single branch-and-terminal stamp appears on 143 rows of one real
+   * statement, and handing that to the matcher would let an unrelated
+   * transaction from two years ago claim a new row.
+   */
+  readonly externalId: string | null;
   readonly amount: Money;
   readonly direction: StatementDirection;
   /** The running balance the statement printed, when it printed one. */
@@ -312,6 +324,26 @@ class OccurrenceCounter {
   }
 }
 
+/**
+ * Promote references that are genuinely per-transaction ids.
+ *
+ * A bank id identifies one movement, so a value printed on two rows of the same
+ * statement is not one - it is a terminal number, a branch stamp, a scheme code.
+ * The test is the definition itself and needs no per-bank knowledge: unique in
+ * the file, or not an id. The reference is still kept and still shown; it just
+ * stops being treated as proof of identity.
+ */
+function withIdentifiedReferences(rows: readonly StatementRow[]): StatementRow[] {
+  const counts = new Map<string, number>();
+  for (const row of rows) {
+    if (row.reference) counts.set(row.reference, (counts.get(row.reference) ?? 0) + 1);
+  }
+  return rows.map((row) => ({
+    ...row,
+    externalId: row.reference !== null && counts.get(row.reference) === 1 ? row.reference : null,
+  }));
+}
+
 /* ═══ Path 1: recognised headers ══════════════════════════════════════ */
 
 function findColumn(headers: readonly string[], aliases: readonly string[]): number {
@@ -454,6 +486,8 @@ function buildFromAliases(
       date,
       description,
       reference: reference === "" ? null : reference,
+      // Decided over the whole file once every row has been read.
+      externalId: null,
       amount: chosen.amount,
       direction: chosen.direction,
       balanceAfter: signedBalance(balance),
@@ -468,7 +502,7 @@ function buildFromAliases(
     });
   });
 
-  return { rows: out, currency, layout: "HEADER_ALIAS", dateOrder: order, problems };
+  return { rows: withIdentifiedReferences(out), currency, layout: "HEADER_ALIAS", dateOrder: order, problems };
 }
 
 /** A single amount column needs a `Dr/Cr` marker or a sign to be readable. */
@@ -701,6 +735,7 @@ function inferByContent(rows: readonly RawRow[], currency: Currency): ParsedStat
       date,
       description,
       reference: null,
+      externalId: null,
       amount,
       direction,
       balanceAfter: balance,
@@ -714,7 +749,7 @@ function inferByContent(rows: readonly RawRow[], currency: Currency): ParsedStat
     });
   }
 
-  return { rows: out, currency, layout: "INFERRED", dateOrder: order, problems };
+  return { rows: withIdentifiedReferences(out), currency, layout: "INFERRED", dateOrder: order, problems };
 }
 
 /* ═══ Entry points ════════════════════════════════════════════════════ */
@@ -818,6 +853,8 @@ export function parseOfx(content: string, currency: Currency = Currency.reportin
       date,
       description,
       reference: fitId === "" ? null : fitId,
+      // `FITID` is defined by OFX as unique per transaction - no inference needed.
+      externalId: fitId === "" ? null : fitId,
       amount: cell.amount,
       direction: cell.negative ? "DEBIT" : "CREDIT",
       balanceAfter: null,
@@ -853,7 +890,13 @@ function safeCurrency(code: string, fallback: Currency): Currency {
  * bank statements round-trip with every amount exact" is asserted with it rather
  * than by eyeballing totals.
  */
-export function checkBalanceContinuity(rows: readonly StatementRow[]): {
+/** The part of a row this check reads - so a staged row can be checked too. */
+export type BalanceCheckable = Pick<
+  StatementRow,
+  "rowIndex" | "amount" | "direction" | "balanceAfter"
+>;
+
+export function checkBalanceContinuity(rows: readonly BalanceCheckable[]): {
   checked: number;
   breaks: readonly { rowIndex: number; expected: Money; printed: Money }[];
 } {

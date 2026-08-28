@@ -432,7 +432,9 @@ export class StageStatementImport
       date: row.date,
       amount: row.amount,
       direction: row.direction,
-      externalId: row.reference,
+      // `externalId`, not `reference`: only a value the file proved to be
+      // per-transaction may drive the matcher's exact pass.
+      externalId: row.externalId,
     }));
     const outcomes = this.matcher.match(matchable, targets);
 
