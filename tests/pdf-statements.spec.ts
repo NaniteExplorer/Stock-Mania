@@ -25,7 +25,7 @@ import { __test__ } from "@/infra/pdf-statements";
 import { checkBalanceContinuity, parseStatementRows, readDate } from "@/infra/statements";
 import { check, checkDeep, checkTrue, done, section } from "./harness";
 
-const { toRecords, toRow, takeTail, withoutMachineIds } = __test__;
+const { toRecords, toRow, takeTail, withoutMachineIds, whyThereIsNoText } = __test__;
 
 /* ═══ Fixtures ════════════════════════════════════════════════════════ */
 
@@ -245,6 +245,34 @@ check("with the reference untouched", withoutMachineIds(stamped2).rows[1].refere
  * carries no machine id at all, so `parsePdfStatement` drops the claim outright
  * and the file-wide rule stays as the guard for CSV and XLSX.
  */
+
+/* ═══ A PDF with no text in it ════════════════════════════════════════ */
+
+section("an empty extraction is diagnosed, not guessed at");
+
+const bytesOf = (text: string) => new TextEncoder().encode(text);
+
+/*
+ * "Ask the bank for an export" is useless advice to someone whose bank has
+ * already given them one. SBI's `Account Summary` export draws every word as
+ * vector outlines - 20 content streams of Bezier paths, zero text-showing
+ * operators, no font resource anywhere in the file - and it looks perfectly
+ * crisp while containing not one readable character. It is not a scan and it is
+ * not corrupt; it is the wrong export, and the account statement for the same
+ * account reads fine.
+ */
+checkTrue(
+  "a page drawn as outlines is named as such",
+  whyThereIsNoText(bytesOf("%PDF-1.7 /Contents 4 0 R")).includes("drawn as artwork"),
+);
+checkTrue(
+  "and the reader is pointed at the statement export",
+  whyThereIsNoText(bytesOf("%PDF-1.7 /Contents 4 0 R")).includes("statement"),
+);
+checkTrue(
+  "a page that is one big image is still called a scan",
+  whyThereIsNoText(bytesOf("%PDF-1.7 /Subtype /Image")).includes("scan"),
+);
 
 /* ═══ Spelled months ══════════════════════════════════════════════════ */
 

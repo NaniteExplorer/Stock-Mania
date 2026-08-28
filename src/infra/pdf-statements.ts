@@ -238,6 +238,46 @@ function blankIfEmpty(token: string): string {
 
 const HEADER: RawRow = ["Date", "Description", "Reference", "Debit", "Credit", "Balance"];
 
+/**
+ * Why a PDF that plainly shows a statement yielded no text at all.
+ *
+ * Three different files reach this point and only one of them is a scan, so the
+ * message has to distinguish them - "ask the bank for an export" is useless
+ * advice to someone whose bank has already given them one.
+ *
+ * The tell is `/Font`. A PDF that draws its words as vector outlines needs no
+ * font at all: SBI's `Account Summary` export does exactly this, 20 content
+ * streams of Bezier paths, zero text-showing operators, and it looks perfectly
+ * crisp on screen while containing not one readable character. That is not a
+ * scan and it is not corrupt - it is the wrong export, and the same account's
+ * `Account Statement` download has real text in it.
+ */
+function whyThereIsNoText(bytes: Uint8Array): string {
+  // The structural keys are ASCII in the file's own bytes, whatever the streams
+  // are compressed with, so this needs no second parse of the document.
+  const head = new TextDecoder("latin1").decode(bytes);
+  const hasFonts = head.includes("/Font");
+  const hasImages = head.includes("/Image");
+
+  if (!hasFonts && !hasImages) {
+    return (
+      "Every word in that PDF is drawn as artwork rather than stored as text, so " +
+      "there is nothing in it to read. A `summary` or `print` view of an account " +
+      "usually looks like this. Download the account *statement* instead - the " +
+      "same account, the longer file - or a CSV or Excel export."
+    );
+  }
+  return (
+    "There is no text in that PDF - it looks like a scan or a photograph of a " +
+    "statement. Ask the bank for a downloaded PDF, a CSV or an Excel export."
+  );
+}
+
+/** A file that had text, but no transactions in it. */
+const NO_TRANSACTIONS =
+  "No transactions were found in that PDF. It may be a summary or a passbook " +
+  "cover page rather than a statement of account.";
+
 /** Parse a PDF bank statement into the `ParsedStatement` a CSV would produce. */
 export async function parsePdfStatement(
   bytes: Uint8Array,
@@ -252,18 +292,8 @@ export async function parsePdfStatement(
   }
 
   if (rows.length === 1) {
-    /*
-     * Reached by two very different files, so the message names both: a summary
-     * page has text but no transactions, and a scan has no text at all. The
-     * second is the one worth calling out, because there is nothing the user can
-     * do to the file to make it work — they have to go back to the bank.
-     */
     throw new StatementParseError(
-      lines.length === 0
-        ? "There is no text in that PDF — it looks like a scan or a photograph of a " +
-            "statement. Ask the bank for a downloaded PDF, a CSV or an Excel export."
-        : "No transactions were found in that PDF. It may be a summary or a passbook " +
-            "cover page rather than a statement of account.",
+      lines.length === 0 ? whyThereIsNoText(bytes) : NO_TRANSACTIONS,
     );
   }
 
@@ -289,4 +319,4 @@ function withoutMachineIds(parsed: ParsedStatement): ParsedStatement {
 }
 
 /** Internals, exposed for the spec — not part of the module's contract. */
-export const __test__ = { toRecords, toRow, takeTail, isFurniture, withoutMachineIds };
+export const __test__ = { toRecords, toRow, takeTail, isFurniture, withoutMachineIds, whyThereIsNoText };
