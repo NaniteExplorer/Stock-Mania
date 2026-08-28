@@ -48,9 +48,24 @@ export async function extractPdfLines(bytes: Uint8Array): Promise<string[]> {
     const extracted = await extractText(document, { mergePages: false });
     pages = Array.isArray(extracted.text) ? extracted.text : [extracted.text];
   } catch (cause) {
+    /*
+     * An encrypted statement is the common case here, not a corrupt one: SBI's
+     * own e-statement download is password-protected as a matter of course. It
+     * deserves its own answer, because "that file could not be read" sends
+     * someone off to re-download a file that was never broken.
+     */
+    const encrypted =
+      cause instanceof Error &&
+      (cause.name === "PasswordException" || /password/i.test(cause.message));
+
     throw new StatementParseError(
-      "That PDF could not be read. If it is a scan or a photograph of a statement " +
-        "there is no text in it to import — ask the bank for a CSV or an Excel export.",
+      encrypted
+        ? "That PDF is password-protected, so it cannot be opened here. Open it in " +
+            "a PDF reader with the bank's password, save an unlocked copy, and " +
+            "upload that."
+        : "That PDF could not be read. If it is a scan or a photograph of a " +
+            "statement there is no text in it to import — ask the bank for a CSV " +
+            "or an Excel export.",
       { cause },
     );
   }
