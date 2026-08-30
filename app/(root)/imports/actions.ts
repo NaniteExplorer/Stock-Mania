@@ -15,8 +15,14 @@ import {
 } from "@/infra/statements";
 import { COUNTER_ACCOUNT_KINDS, counterAccountKindNames } from "./counter-accounts";
 import { fail, ok, type ActionState } from "@/ui/action-state";
+import { archiveImportDocument } from "@/infra/document-archive";
 
 export type { ActionState } from "@/ui/action-state";
+
+const MAX_STATEMENT_BYTES = 2_500_000;
+const MAX_PDF_PASSWORD_LENGTH = 256;
+const MAX_OVERRIDE_REASON_LENGTH = 500;
+const SUPPORTED_STATEMENT_EXTENSIONS = new Set(["csv", "tsv", "txt", "xlsx", "xls", "pdf", "ofx", "qfx"]);
 
 /**
  * The upload form's report, widened by one field.
@@ -99,6 +105,25 @@ export async function stageStatementAction(
   if (!(file instanceof File) || file.size === 0) {
     return fail("Choose a CSV, XLSX, PDF or OFX file.", { file: ["Required"] });
   }
+  if (file.size > MAX_STATEMENT_BYTES) {
+    return fail("That statement is too large. The maximum upload size is 2.5 MB.", {
+      file: ["Maximum size is 2.5 MB"],
+    });
+  }
+  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
+  if (!SUPPORTED_STATEMENT_EXTENSIONS.has(extension)) {
+    return fail("Unsupported statement type. Use CSV, TSV, TXT, XLS, XLSX, PDF, OFX or QFX.", {
+      file: ["Unsupported file type"],
+    });
+  }
+  if (password && password.length > MAX_PDF_PASSWORD_LENGTH) {
+    return fail("The PDF password is too long.", { pdfPassword: ["Maximum 256 characters"] });
+  }
+  if (importAnyway && importAnyway.length > MAX_OVERRIDE_REASON_LENGTH) {
+    return fail("The override reason is too long.", {
+      overrideReason: ["Maximum 500 characters"],
+    });
+  }
 
   const userId = await currentUserId();
   await ensureSeeded(userId);
@@ -176,12 +201,30 @@ export async function stageStatementAction(
   if (!staged.ok) return fail(staged.error.message);
 
   if (staged.value.alreadyImportedBatchId) {
+    await archiveImportDocument({
+      userId,
+      sha256: fileHash,
+      filename: file.name,
+      mimeType: file.type,
+      bytes,
+      batchId: staged.value.alreadyImportedBatchId,
+    });
     return fail(
       "This exact file has already been imported as batch " +
         staged.value.alreadyImportedBatchId.slice(0, 8) +
         '. Tick "import it anyway" to stage it a second time.',
     );
   }
+
+
+  await archiveImportDocument({
+    userId,
+    sha256: fileHash,
+    filename: file.name,
+    mimeType: file.type,
+    bytes,
+    batchId: staged.value.batchId,
+  });
 
   revalidatePath("/imports");
   redirect(`/imports/${staged.value.batchId}`);
@@ -341,6 +384,7 @@ export async function bulkReviewRowsAction(
     .filter((value) => z.string().uuid().safeParse(value).success);
 
   if (rowIds.length === 0) return fail("Tick at least one row first.");
+  if (rowIds.length > 1_000) return fail("Review at most 1,000 rows at a time.");
 
   const userId = await currentUserId();
   const { batchId, decision } = parsed.data;

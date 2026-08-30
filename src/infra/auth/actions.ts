@@ -116,9 +116,11 @@ export async function signInWithEmail(input: { email: string; password: string }
     await auth.api.signInEmail({ body: { email: email.data, password: input.password } });
     return { success: true as const };
   } catch (error) {
+    // Never reveal whether the submitted email address exists.
+    void error;
     return {
       success: false as const,
-      error: describeAuthError(error, "We couldn't sign you in. Please try again."),
+      error: "Incorrect email or password. Please try again.",
     };
   }
 }

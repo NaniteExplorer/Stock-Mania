@@ -34,7 +34,7 @@ import { Percentage, Quantity, Rate, UnitPrice } from "@/core/numeric";
 import { FxQuote, FxRateRepository, PriceDivergence, PriceSourceType, Quote, QuoteRepository, QuoteType, StoredFxRate } from "@/domain/pricing";
 import { AccountBalance, AccountFlow, BalanceQuery, MonthlyFlow, Posting, PostingId, PostingStatus, StoredTransaction, Transaction, TransactionId, TransactionKind, TransactionPage, TransactionQuery, TransactionRepository, TransactionSource, TypeTotals } from "@/domain/transactions";
 import { BudgetRepository, CategoryRuleRepository, ImportBatchRecord, ImportBatchStatus, ImportDiagnostics, ImportRepository, ImportRowStatus, ImportTrust, KeywordRule, MovementIntent, RowDirection, SelfPayeeQuery, StagedRow, StoredBudget } from "@/domain/banking";
-import { goldLeases, users as usersTable, ledgerEvents, projectionCache, taxSettings, priceBars, budgets, categoryRules, corporateActions, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, instruments, ledgerAccounts, loanPrepayments, loanTerms, lotMatches, lots, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, trades, transactions } from "@/infra/db/schema";
+import { goldLeases, users as usersTable, ledgerEvents, netWorthSnapshots, projectionCache, taxSettings, priceBars, budgets, categoryRules, corporateActions, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, instruments, ledgerAccounts, loanPrepayments, loanTerms, lotMatches, lots, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, trades, transactions } from "@/infra/db/schema";
 import { Database } from "@/infra/db/client";
 import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, max, min, or, sql } from "drizzle-orm";
 /* ═══ AccountMapper ═══════════════════════════════════════════════════ */
@@ -766,6 +766,121 @@ export class DrizzleBalanceQuery implements BalanceQuery {
       // them would count every transaction twice.
       netWorth: assets.minus(liabilities),
     };
+  }
+
+  async netWorthSeries(
+    userId: UserId,
+    months: number,
+    asOf: CalendarDate,
+  ): Promise<TypeTotals[]> {
+    if (!Number.isInteger(months) || months < 1 || months > 600) {
+      throw new RangeError(`months must be an integer from 1 to 600, got ${months}`);
+    }
+
+    const firstMonth = asOf.plusMonths(-(months - 1)).startOfMonth();
+    const monthKeys = Array.from({ length: months }, (_, index) =>
+      firstMonth.plusMonths(index).toMonthKey(),
+    );
+    const cached = await this.db
+      .select()
+      .from(netWorthSnapshots)
+      .where(
+        and(
+          eq(netWorthSnapshots.userId, userId.value),
+          inArray(netWorthSnapshots.month, monthKeys),
+        ),
+      );
+    if (cached.length === months) {
+      const byMonth = new Map(cached.map((row) => [row.month, row]));
+      return monthKeys.map((month, index) => {
+        const row = byMonth.get(month)!;
+        return {
+          asOf: firstMonth.plusMonths(index).endOfMonth(),
+          assets: Money.fromMinor(row.assetsMinor, this.currency),
+          liabilities: Money.fromMinor(row.liabilitiesMinor, this.currency),
+          equity: Money.zero(this.currency),
+          netWorth: Money.fromMinor(row.netWorthMinor, this.currency),
+        };
+      });
+    }
+
+    const opening = await this.totals(userId, firstMonth.plusDays(-1));
+    const rows = await this.db
+      .select({
+        month: sql<string>`substr(${transactions.txnDate}, 1, 7)`,
+        type: ledgerAccounts.type,
+        amount: sql<number>`COALESCE(SUM(${SIGNED_AMOUNT}), 0)`,
+      })
+      .from(postings)
+      .innerJoin(ledgerAccounts, eq(postings.accountId, ledgerAccounts.id))
+      .innerJoin(transactions, eq(postings.transactionId, transactions.id))
+      .where(
+        and(
+          eq(transactions.userId, userId.value),
+          isNull(transactions.deletedAt),
+          isNull(postings.deletedAt),
+          gte(transactions.txnDate, firstMonth.toISO()),
+          lte(transactions.txnDate, asOf.endOfMonth().toISO()),
+          sql`${ledgerAccounts.type} IN ('ASSET', 'LIABILITY')`,
+        ),
+      )
+      .groupBy(sql`substr(${transactions.txnDate}, 1, 7)`, ledgerAccounts.type)
+      .orderBy(sql`substr(${transactions.txnDate}, 1, 7)`);
+
+    const deltas = new Map<string, { assets: Money; liabilities: Money }>();
+    for (const row of rows) {
+      const current = deltas.get(row.month) ?? {
+        assets: Money.zero(this.currency),
+        liabilities: Money.zero(this.currency),
+      };
+      if (row.type === "ASSET") current.assets = this.money(row.amount);
+      if (row.type === "LIABILITY") current.liabilities = this.money(row.amount);
+      deltas.set(row.month, current);
+    }
+
+    let assets = opening.assets;
+    let liabilities = opening.liabilities;
+    const result: TypeTotals[] = [];
+    for (let index = 0; index < months; index += 1) {
+      const on = firstMonth.plusMonths(index).endOfMonth();
+      const delta = deltas.get(on.toMonthKey());
+      if (delta) {
+        assets = assets.plus(delta.assets);
+        liabilities = liabilities.plus(delta.liabilities);
+      }
+      result.push({
+        asOf: on,
+        assets,
+        liabilities,
+        equity: Money.zero(this.currency),
+        netWorth: assets.minus(liabilities),
+      });
+    }
+    await this.db.transaction(async (tx) => {
+      for (const total of result) {
+        await tx
+          .insert(netWorthSnapshots)
+          .values({
+            id: newUuid(),
+            userId: userId.value,
+            month: total.asOf.toMonthKey(),
+            assetsMinor: total.assets.toMinorNumber(),
+            liabilitiesMinor: total.liabilities.toMinorNumber(),
+            netWorthMinor: total.netWorth.toMinorNumber(),
+            computedAt: new Date(),
+          })
+          .onConflictDoUpdate({
+            target: [netWorthSnapshots.userId, netWorthSnapshots.month],
+            set: {
+              assetsMinor: total.assets.toMinorNumber(),
+              liabilitiesMinor: total.liabilities.toMinorNumber(),
+              netWorthMinor: total.netWorth.toMinorNumber(),
+              computedAt: new Date(),
+            },
+          });
+      }
+    });
+    return result;
   }
 
   async monthlyFlows(userId: UserId, range: DateRange): Promise<MonthlyFlow[]> {

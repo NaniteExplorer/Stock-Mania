@@ -87,4 +87,23 @@ export const config = {
       port: Number(read("SMTP_PORT") ?? 465),
     };
   },
+
+  /**
+   * Optional encrypted source-document archive. The directory must be durable in
+   * production (a mounted volume); the key is 32 random bytes encoded as base64.
+   * Supplying only one setting is rejected so files are never silently written
+   * unencrypted or to an unintended ephemeral directory.
+   */
+  documents: () => {
+    const directory = read("DOCUMENT_STORAGE_DIR");
+    const encodedKey = read("DOCUMENT_ENCRYPTION_KEY");
+    if (!directory && !encodedKey) return null;
+    if (!directory) throw new MissingEnvError("DOCUMENT_STORAGE_DIR");
+    if (!encodedKey) throw new MissingEnvError("DOCUMENT_ENCRYPTION_KEY");
+    const key = Buffer.from(encodedKey, "base64");
+    if (key.length !== 32) {
+      throw new Error("DOCUMENT_ENCRYPTION_KEY must decode to exactly 32 bytes.");
+    }
+    return { directory, key };
+  },
 } as const;

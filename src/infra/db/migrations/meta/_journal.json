@@ -64,6 +64,13 @@
       "when": 1787677533333,
       "tag": "0008_live_transaction_fingerprints",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788085800000,
+      "tag": "0009_net_worth_snapshot_invalidation",
+      "breakpoints": true
     }
   ]
 }

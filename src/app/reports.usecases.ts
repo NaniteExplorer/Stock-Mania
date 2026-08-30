@@ -231,26 +231,21 @@ export interface NetWorthSeriesOutput {
 /**
  * Net worth at each month end.
  *
- * Recomputed from the journal at every point rather than read from a snapshot
- * table, so a transaction backdated last week changes last year's chart — which is
- * correct, and is exactly what a stored snapshot cannot do. `net_worth_snapshots`
- * exists as a cache and this is what would rebuild it.
+ * Served through the balance read model's rebuildable month-end projection. The
+ * journal remains the source of truth and this use case maps the projection to
+ * report points without creating another accounting balance.
  */
 export class NetWorthSeries implements UseCase<NetWorthSeriesInput, NetWorthSeriesOutput> {
   constructor(private readonly balances: BalanceQuery) {}
 
   async execute(input: NetWorthSeriesInput): Promise<Result<NetWorthSeriesOutput, AppError>> {
-    const points: NetWorthPoint[] = [];
-    for (let index = input.months - 1; index >= 0; index -= 1) {
-      const on = input.asOf.plusMonths(-index).endOfMonth();
-      const totals = await this.balances.totals(input.userId, on);
-      points.push({
-        on,
-        assets: totals.assets,
-        liabilities: totals.liabilities,
-        netWorth: totals.netWorth,
-      });
-    }
+    const totals = await this.balances.netWorthSeries(input.userId, input.months, input.asOf);
+    const points: NetWorthPoint[] = totals.map((total) => ({
+      on: total.asOf,
+      assets: total.assets,
+      liabilities: total.liabilities,
+      netWorth: total.netWorth,
+    }));
 
     return Ok({ series: points, continuityHolds: checkContinuity(points).holds });
   }

@@ -306,6 +306,7 @@ export async function bulkCloseAccountsAction(
     .filter((value) => z.string().uuid().safeParse(value).success);
 
   if (ids.length === 0) return fail("Tick at least one account first.");
+  if (ids.length > 100) return fail("Close at most 100 accounts at a time.");
 
   const userId = await currentUserId();
   const { accounts } = services().repositories;
@@ -481,8 +482,14 @@ export async function bulkDeleteTransactionsAction(
   const { journal } = services().repositories;
   const at = new Date();
 
+  const ids = parsed.data.transactionIds.split(",").filter(Boolean);
+  if (ids.length > 500) return fail("Delete at most 500 transactions at a time.");
+  if (ids.some((id) => !z.string().uuid().safeParse(id).success)) {
+    return fail("The transaction selection is invalid.");
+  }
+
   let deleted = 0;
-  for (const id of parsed.data.transactionIds.split(",").filter(Boolean)) {
+  for (const id of ids) {
     const transactionId = TransactionId.from(id);
     if (await journal.findById(userId, transactionId)) {
       await journal.softDelete(userId, transactionId, at);

@@ -28,6 +28,15 @@ const MIN_ICON_BYTES = 100; // guard against empty/placeholder responses
 // Google upscales nothing: when it has no large icon it returns a ~200-700 byte
 // 16px stub. Require a real 128px-worth of bytes or skip to the next source.
 const MIN_GOOGLE_ICON_BYTES = 1500;
+const MAX_ICON_BYTES = 1_000_000;
+const ALLOWED_REMOTE_IMAGE_TYPES = new Set([
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/gif",
+  "image/x-icon",
+  "image/vnd.microsoft.icon",
+]);
 
 /**
  * How long to wait on one upstream before giving up on it.
@@ -103,10 +112,12 @@ async function fetchImage(url: string, minBytes: number): Promise<Response | nul
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     if (!res.ok) return null;
-    const contentType = res.headers.get("content-type") ?? "";
-    if (!contentType.startsWith("image/")) return null;
+    const contentType = (res.headers.get("content-type") ?? "").split(";", 1)[0]!.trim().toLowerCase();
+    if (!ALLOWED_REMOTE_IMAGE_TYPES.has(contentType)) return null;
+    const declaredLength = Number(res.headers.get("content-length"));
+    if (Number.isFinite(declaredLength) && declaredLength > MAX_ICON_BYTES) return null;
     const buffer = await res.arrayBuffer();
-    if (buffer.byteLength < minBytes) return null;
+    if (buffer.byteLength < minBytes || buffer.byteLength > MAX_ICON_BYTES) return null;
     return new Response(buffer, {
       status: 200,
       headers: {
@@ -137,8 +148,13 @@ export async function GET(
   // the browser caches the crisp vector itself, never a stale redirect target.
   if (provider.logo) {
     try {
-      const filePath = path.join(process.cwd(), "public", provider.logo);
+      const publicRoot = path.resolve(process.cwd(), "public");
+      const filePath = path.resolve(publicRoot, provider.logo.replace(/^[/\\]+/, ""));
+      if (filePath !== publicRoot && !filePath.startsWith(`${publicRoot}${path.sep}`)) {
+        return noLogo(provider.id);
+      }
       const bytes = await readFile(filePath);
+      if (bytes.byteLength > MAX_ICON_BYTES) return noLogo(provider.id);
       const contentType = provider.logo.endsWith(".svg")
         ? "image/svg+xml"
         : provider.logo.endsWith(".webp")
@@ -149,6 +165,9 @@ export async function GET(
         headers: {
           "Content-Type": contentType,
           "Cache-Control": "public, max-age=86400, s-maxage=604800",
+          ...(contentType === "image/svg+xml"
+            ? { "Content-Security-Policy": "default-src 'none'; sandbox" }
+            : {}),
         },
       });
     } catch {

@@ -23,8 +23,15 @@ const PAGE_SIZE = 200;
  * Reading it that way means a transfer between two accounts has no category and
  * says so, rather than being labelled with whichever account came first.
  */
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   await connection();
+
+  const requestedPage = Number.parseInt((await searchParams).page ?? "1", 10);
+  const pageNumber = Number.isSafeInteger(requestedPage) && requestedPage > 0 ? requestedPage : 1;
 
   const userId = await currentUserId();
   await ensureSeeded(userId);
@@ -33,7 +40,7 @@ export default async function Page() {
   const today = CalendarDate.parse(new Date().toISOString().slice(0, 10));
 
   const [page, accounts, flows] = await Promise.all([
-    repositories.journal.find(userId, { limit: PAGE_SIZE }),
+    repositories.journal.find(userId, { limit: PAGE_SIZE, offset: (pageNumber - 1) * PAGE_SIZE }),
     repositories.accounts.list(userId, { includeClosed: true }),
     repositories.balances.monthlyFlows(userId, DateRange.monthOf(today)),
   ]);
@@ -121,10 +128,26 @@ export default async function Page() {
         <RegisterTable rows={rows} />
       )}
 
-      {page.totalCount > rows.length && (
-        <p className="mt-3 text-xs text-gray-500">
-          Showing the most recent {rows.length} of {page.totalCount}.
-        </p>
+      {page.totalCount > PAGE_SIZE && (
+        <nav className="mt-4 flex items-center justify-between gap-3" aria-label="Transaction pages">
+          <Link
+            href={`/transactions?page=${pageNumber - 1}`}
+            aria-disabled={pageNumber === 1}
+            className={`ghost-btn h-9 px-3 text-xs ${pageNumber === 1 ? "pointer-events-none opacity-40" : ""}`}
+          >
+            Previous
+          </Link>
+          <p className="text-xs text-gray-500">
+            Page {pageNumber} of {Math.ceil(page.totalCount / PAGE_SIZE)} · {page.totalCount} transactions
+          </p>
+          <Link
+            href={`/transactions?page=${pageNumber + 1}`}
+            aria-disabled={pageNumber * PAGE_SIZE >= page.totalCount}
+            className={`ghost-btn h-9 px-3 text-xs ${pageNumber * PAGE_SIZE >= page.totalCount ? "pointer-events-none opacity-40" : ""}`}
+          >
+            Next
+          </Link>
+        </nav>
       )}
     </>
   );

@@ -19,7 +19,8 @@ import { readFileSync, readdirSync, existsSync, rmSync } from "node:fs";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import * as schema from "@/infra/db/schema";
-import { users } from "@/infra/db/schema";
+import { netWorthSnapshots, users } from "@/infra/db/schema";
+import { count, eq } from "drizzle-orm";
 import type { Database } from "@/infra/db/client";
 import { FixedClock, UserId } from "@/core/kernel";
 import { Money } from "@/core/money";
@@ -238,7 +239,6 @@ async function main() {
     new BalanceCalculator().verifyIntegrity(everything.transactions).ok,
     true,
   );
-
   /* ── The gate: the three statements reconcile ─────────────────────── */
 
   section("the three statements reconcile — the Phase 6 gate");
@@ -354,6 +354,32 @@ async function main() {
     series.value.series[6].netWorth.toDecimalString(),
     // The series is built to month ends, and September's is the 30th.
     (await balances.totals(userId, on("2026-09-30"))).netWorth.toDecimalString(),
+  );
+  const [cachedPoints] = await db
+    .select({ total: count() })
+    .from(netWorthSnapshots)
+    .where(eq(netWorthSnapshots.userId, userId.value));
+  check("the rebuildable monthly projection is materialised", Number(cachedPoints?.total), 7);
+
+  await record.execute({
+    userId,
+    fromAccountId: bankId,
+    toAccountId: groceries.id,
+    amount: rupees("1"),
+    postedOn: on("2026-06-15"),
+    narration: "Backdated cache invalidation probe",
+  });
+  const [afterBackdate] = await db
+    .select({ total: count() })
+    .from(netWorthSnapshots)
+    .where(eq(netWorthSnapshots.userId, userId.value));
+  check("a backdated write invalidates that month and later snapshots", Number(afterBackdate?.total), 3);
+  const rebuilt = await new NetWorthSeries(balances).execute({ userId, months: 7, asOf });
+  if (!rebuilt.ok) throw new Error(rebuilt.error.message);
+  check(
+    "and the rebuilt latest point remains equal to the live journal",
+    rebuilt.value.series[6].netWorth.toDecimalString(),
+    (await balances.totals(userId, asOf)).netWorth.toDecimalString(),
   );
 
   /* ── Personal metrics ─────────────────────────────────────────────── */

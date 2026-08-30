@@ -2654,6 +2654,19 @@ export interface BalanceQuery {
   /** Assets, liabilities and net worth as of a date. */
   totals(userId: UserId, asOf: CalendarDate): Promise<TypeTotals>;
 
+  /**
+   * Month-end balance-sheet totals, oldest first.
+   *
+   * This is deliberately a read projection over the journal rather than a stored
+   * balance. Implementations can answer it in a bounded number of aggregate
+   * queries, while a backdated posting still changes every affected month.
+   */
+  netWorthSeries(
+    userId: UserId,
+    months: number,
+    asOf: CalendarDate,
+  ): Promise<TypeTotals[]>;
+
   /** Income and expense totals for each month in `range`. */
   monthlyFlows(userId: UserId, range: DateRange): Promise<MonthlyFlow[]>;
 

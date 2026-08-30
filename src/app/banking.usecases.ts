@@ -1157,6 +1157,10 @@ export class PostImportBatch
         narration: `Opening balance from ${batch.fileName}`,
         source: "IMPORT",
         importBatchId: input.batchId,
+        // The unique live fingerprint makes concurrent clicks idempotent. Row
+        // postings already have fingerprints; the inferred opening previously
+        // did not, so two simultaneous post actions could create it twice.
+        fingerprint: `import-opening:${input.batchId}`,
       });
       if (!result.ok) {
         problems.push({ rowId: firstRow.id, reason: result.error.message });

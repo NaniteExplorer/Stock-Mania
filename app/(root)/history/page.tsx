@@ -6,25 +6,34 @@ import { CalendarDate, DateRange, FinancialYear } from "@/core/time";
 import { Percentage } from "@/core/numeric";
 import { Card, EmptyState, MoneyText, PageHeader, Pill, Stat } from "@/ui/primitives";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
+import NetWorthChart from "./net-worth-chart";
 
 export const metadata: Metadata = { title: "History" };
 
-/** How many months of history to show. */
-const MONTHS = 12;
+const HISTORY_PERIODS = [12, 36, 60] as const;
 
 /**
  * Month by month, and the financial year to date.
  *
- * The three statements are recomputed from the journal for every month shown, not
- * read from a snapshot — so a transaction backdated last week changes last
- * October's row, which is correct and is what a stored monthly total cannot do.
+ * The three statements come from rebuildable journal projections. A backdated
+ * transaction changes October's row after invalidating that month and every
+ * later cumulative point.
  *
  * The tax panel is the other half: realised gains for the financial year, with the
  * rule that produced each line. "Why is this ₹37,500?" has an answer here, and it
  * will still have the same answer in three years when the rates have changed.
  */
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: {
+  searchParams: Promise<{ months?: string }>;
+}) {
   await connection();
+
+  const requestedMonths = Number.parseInt((await searchParams).months ?? "12", 10);
+  const months = HISTORY_PERIODS.includes(requestedMonths as (typeof HISTORY_PERIODS)[number])
+    ? requestedMonths
+    : 12;
 
   const userId = await currentUserId();
   await ensureSeeded(userId);
@@ -52,10 +61,10 @@ export default async function Page() {
   };
 
   const [series, flows, tax] = await Promise.all([
-    reports.netWorthSeries.execute({ userId, months: MONTHS, asOf: today }),
+    reports.netWorthSeries.execute({ userId, months, asOf: today }),
     repositories.balances.monthlyFlows(
       userId,
-      DateRange.of(today.plusMonths(-(MONTHS - 1)).startOfMonth(), today),
+      DateRange.of(today.plusMonths(-(months - 1)).startOfMonth(), today),
     ),
     reports.tax.execute({
       userId,
@@ -74,13 +83,13 @@ export default async function Page() {
     <>
       <PageHeader
         title="History"
-        subtitle="Every month recomputed from the journal. A backdated entry changes the month it belongs to, not just the total."
+        subtitle="Every month derives from the journal. A backdated entry rebuilds its month and every later balance."
         badge={<Pill tone="brand">{financialYear.label}</Pill>}
       />
 
       <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Income" value={totalIncome} hint={`Last ${MONTHS} months`} />
-        <Stat label="Expenses" value={totalExpense} hint={`Last ${MONTHS} months`} />
+        <Stat label="Income" value={totalIncome} hint={`Last ${months} months`} />
+        <Stat label="Expenses" value={totalExpense} hint={`Last ${months} months`} />
         <Stat label="Saved" value={totalIncome.minus(totalExpense)} hint="Income less expenses" />
         <Stat
           label="Net worth change"
@@ -92,6 +101,28 @@ export default async function Page() {
           hint="Over the period shown"
         />
       </div>
+
+      <nav className="mb-3 flex gap-2" aria-label="History period">
+        {HISTORY_PERIODS.map((period) => (
+          <a
+            key={period}
+            href={`/history?months=${period}`}
+            aria-current={period === months ? "page" : undefined}
+            className={`rounded-lg border px-3 py-1.5 text-xs ${period === months ? "border-violet-500 text-violet-300" : "border-gray-600 text-gray-400"}`}
+          >
+            {period === 12 ? "1 year" : `${period / 12} years`}
+          </a>
+        ))}
+      </nav>
+
+      {points.length > 0 && (
+        <NetWorthChart
+          points={points.map((point) => ({
+            month: point.on.toMonthKey(),
+            netWorthMinor: point.netWorth.toMinorNumber(),
+          }))}
+        />
+      )}
 
       <section className="panel mb-6 p-0">
         {points.length === 0 ? (
