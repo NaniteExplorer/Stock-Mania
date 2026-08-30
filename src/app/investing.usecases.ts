@@ -44,10 +44,8 @@ import {
 } from "@/domain/corporate";
 import {
   Cashflow,
-  PortfolioSummary,
   PositionSummary,
   Xirr,
-  summarise,
   xirr,
 } from "@/domain/portfolio";
 import {
@@ -59,7 +57,17 @@ import {
   VenueAck,
 } from "@/domain/risk";
 import { Buy, Sell, Transaction, TransactionRepository, accountRef } from "@/domain/transactions";
+import { Institution, InstitutionId, InstitutionRepository } from "@/domain/institutions";
 import { OpenAccount } from "@/app/ledger.usecases";
+
+export interface ReportingCurrencyConverter {
+  convert(
+    amount: Money,
+    into: Currency,
+    asOf: CalendarDate,
+    userId?: UserId,
+  ): Promise<Result<{ amount: Money; resolution: { isStale: boolean; ratedOn: CalendarDate | null; rate: Quantity | null } }, AppError>>;
+}
 
 /* ═══ Adding an instrument ════════════════════════════════════════════ */
 
@@ -79,7 +87,28 @@ export interface AddInstrumentInput {
    * leaf's Zod schema. A bad blob fails here, at registration, rather than on the
    * first screen that reads a strike.
    */
-  metadata?: unknown;
+  readonly metadata?: unknown;
+  /**
+   * The platform it is held on.
+   *
+   * Optional, and its presence changes two things: the holding account is opened
+   * under a platform group rather than directly under `Assets:Investments`, and
+   * the same symbol becomes registrable twice — see the symbol note on
+   * {@link AddInstrument}.
+   */
+  institutionId?: InstitutionId | null;
+}
+
+export interface AddInstrumentOutput {
+  readonly instrumentId: InstrumentId;
+  readonly accountId: AccountId;
+  /**
+   * The symbol actually stored, which is the one asked for unless it was already
+   * taken on another platform and had to be qualified.
+   */
+  readonly symbol: string;
+  /** True when the symbol was qualified, so a form can say so rather than surprise. */
+  readonly symbolQualified: boolean;
 }
 
 /**
@@ -91,40 +120,80 @@ export interface AddInstrumentInput {
  * screen. v1 kept holdings in one collection and the ledger in another, and the
  * two drifted within a month.
  */
-export class AddInstrument
-  implements UseCase<AddInstrumentInput, { instrumentId: InstrumentId; accountId: AccountId }>
-{
+export class AddInstrument implements UseCase<AddInstrumentInput, AddInstrumentOutput> {
   constructor(
     private readonly accounts: AccountRepository,
     private readonly instruments: InstrumentRepository,
     private readonly openAccount: OpenAccount,
+    private readonly institutions?: InstitutionRepository,
   ) {}
 
-  async execute(
-    input: AddInstrumentInput,
-  ): Promise<Result<{ instrumentId: InstrumentId; accountId: AccountId }, AppError>> {
-    const existing = await this.instruments.findBySymbol(input.userId, input.symbol);
-    if (existing) {
-      return Ok({ instrumentId: existing.id, accountId: existing.assetAccountId });
+  async execute(input: AddInstrumentInput): Promise<Result<AddInstrumentOutput, AppError>> {
+    const institution = input.institutionId
+      ? await this.institutions?.findById(input.userId, input.institutionId)
+      : null;
+    if (input.institutionId && !institution) {
+      return Err(new NotFoundError("Platform", input.institutionId.value));
     }
 
-    const parent = await this.accounts.findByCode(
-      input.userId,
-      AccountCode.parse(SystemAccountCodes.investments),
-    );
-    if (!parent) {
-      return Err(
-        new NotFoundError(`System account "${SystemAccountCodes.investments}" — seed the chart first`),
-      );
+    /*
+     * Idempotency is on (symbol, platform), not on the symbol alone.
+     *
+     * Digital gold at Tanishq and digital gold at SafeGold are two holdings with
+     * two cost bases and two sets of grams, and the old key made the second one
+     * silently return the first — so a buy meant for SafeGold landed in the
+     * Tanishq lot. Same symbol, same platform is still the same instrument, which
+     * is what keeps a re-submitted form from opening a second account.
+     */
+    const existing = await this.instruments.findBySymbol(input.userId, input.symbol);
+    if (existing && sameInstitution(existing.institutionId, input.institutionId)) {
+      if (existing.isClosed) {
+        await this.instruments.save(input.userId, existing.kind, {
+          ...existing.props,
+          isClosed: false,
+        });
+      }
+      return Ok({
+        instrumentId: existing.id,
+        accountId: existing.assetAccountId,
+        symbol: existing.symbol,
+        symbolQualified: false,
+      });
     }
+
+    /*
+     * The symbol is unique per user in the schema, so the second platform's copy
+     * needs a distinct one. It is qualified rather than refused — "GOLD999" and
+     * "GOLD999.SAFEGOLD" — and `quoteRef` is pinned to the *bare* symbol so the
+     * price feed still asks for the instrument that exists. Without that pin, a
+     * qualified equity symbol would go to NSE as "INFY.GROWW" and come back
+     * unpriced.
+     */
+    // Soft-deleted rows are hidden from findBySymbol but still participate in
+    // the database unique key. Check the same reservation set as SQLite before
+    // choosing the unqualified symbol.
+    const symbolReserved = await this.instruments.isSymbolReserved(input.userId, input.symbol);
+    const symbol = symbolReserved
+      ? await this.freeSymbol(input.userId, input.symbol, institution)
+      : input.symbol;
+    const quoteRef = input.quoteRef ?? (symbol === input.symbol ? null : input.symbol);
+
+    const parentId = institution
+      ? await this.platformGroup(input.userId, institution)
+      : await this.investmentsRoot(input.userId);
+    if (!parentId.ok) return parentId;
 
     const opened = await this.openAccount.execute({
       userId: input.userId,
       name: input.name,
+      // The human-readable name may contain an em dash or other Unicode. The
+      // ledger path uses the already-unique symbol, which is stable and safe.
+      codeSegment: symbol.replace(/[^A-Za-z0-9 &.'()-]+/g, "-").replace(/^-+|-+$/g, "") || "Holding",
       type: "ASSET",
       subtype: "BROKERAGE",
-      parentId: parent.id,
+      parentId: parentId.value,
       currency: input.currency,
+      institution: institution?.name ?? null,
     });
     if (!opened.ok) return opened;
 
@@ -132,18 +201,94 @@ export class AddInstrument
     await this.instruments.save(input.userId, input.kind, {
       id: instrumentId,
       userId: input.userId,
-      symbol: input.symbol,
+      symbol,
       name: input.name,
       currency: input.currency ?? Currency.reporting,
       isin: input.isin ?? null,
       exchange: input.exchange ?? null,
-      quoteRef: input.quoteRef ?? null,
+      quoteRef,
       assetAccountId: opened.value.accountId,
+      institutionId: institution?.id ?? null,
       metadata: input.metadata,
     });
 
-    return Ok({ instrumentId, accountId: opened.value.accountId });
+    return Ok({
+      instrumentId,
+      accountId: opened.value.accountId,
+      symbol,
+      symbolQualified: symbol !== input.symbol,
+    });
   }
+
+  private async investmentsRoot(userId: UserId): Promise<Result<AccountId, AppError>> {
+    const parent = await this.accounts.findByCode(
+      userId,
+      AccountCode.parse(SystemAccountCodes.investments),
+    );
+    if (!parent) {
+      return Err(
+        new NotFoundError(`System account "${SystemAccountCodes.investments}" — seed the chart first`),
+      );
+    }
+    return Ok(parent.id);
+  }
+
+  /**
+   * `Assets:Investments:Zerodha`, opened on first use.
+   *
+   * A group account per platform is what makes the per-platform total a balance
+   * rollup over a subtree rather than a second sum kept beside the ledger — the
+   * same reason each instrument has its own account. It holds no postings of its
+   * own; only the instrument accounts beneath it do.
+   */
+  private async platformGroup(
+    userId: UserId,
+    institution: Institution,
+  ): Promise<Result<AccountId, AppError>> {
+    const root = await this.investmentsRoot(userId);
+    if (!root.ok) return root;
+
+    const code = AccountCode.parse(SystemAccountCodes.investments).child(institution.accountSegment);
+    const existing = await this.accounts.findByCode(userId, code);
+    if (existing) return Ok(existing.id);
+
+    const opened = await this.openAccount.execute({
+      userId,
+      name: institution.accountSegment,
+      type: "ASSET",
+      subtype: "BROKERAGE",
+      parentId: root.value,
+      institution: institution.name,
+    });
+    if (!opened.ok) return opened;
+    return Ok(opened.value.accountId);
+  }
+
+  /** `INFY`, then `INFY.GROWW`, then `INFY.GROWW.2`, … until one is free. */
+  private async freeSymbol(
+    userId: UserId,
+    symbol: string,
+    institution: Institution | null | undefined,
+  ): Promise<string> {
+    const suffix = (institution?.accountSegment ?? "ALT")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "")
+      .slice(0, 12);
+    const base = `${symbol}.${suffix || "ALT"}`;
+    if (!(await this.instruments.isSymbolReserved(userId, base))) return base;
+    for (let n = 2; n < 50; n += 1) {
+      const candidate = `${base}.${n}`;
+      if (!(await this.instruments.isSymbolReserved(userId, candidate))) return candidate;
+    }
+    throw new Error(`Could not find a free symbol based on "${symbol}"`);
+  }
+}
+
+function sameInstitution(
+  a: InstitutionId | null,
+  b: InstitutionId | null | undefined,
+): boolean {
+  return (a?.value ?? null) === (b?.value ?? null);
 }
 
 /* ═══ Placing an order ════════════════════════════════════════════════ */
@@ -536,10 +681,26 @@ export interface ValuedPosition extends PositionSummary {
   readonly averageCostPerUnit: Money | null;
   readonly pricedOn: CalendarDate | null;
   readonly unpricedReason: string | null;
+  /** Native amounts converted to the app's reporting currency (INR). */
+  readonly reportingCostBasis: Money | null;
+  readonly reportingMarketValue: Money | null;
+  readonly reportingRealisedGain: Money | null;
+  readonly fxRate: Quantity | null;
+  readonly fxRatedOn: CalendarDate | null;
+  readonly fxIsStale: boolean;
 }
 
-export interface ValuePortfolioOutput extends PortfolioSummary {
+export interface ValuePortfolioOutput {
   readonly valued: readonly ValuedPosition[];
+  readonly totalCost: Money | null;
+  readonly totalMarketValue: Money | null;
+  readonly unrealisedGain: Money | null;
+  readonly realisedGain: Money | null;
+  readonly income: Money;
+  readonly absoluteReturn: Percentage | null;
+  readonly unpricedPositions: readonly string[];
+  readonly stalePositions: readonly string[];
+  readonly unconvertedPositions: readonly string[];
 }
 
 /**
@@ -555,6 +716,7 @@ export class ValuePortfolio implements UseCase<ValuePortfolioInput, ValuePortfol
     private readonly instruments: InstrumentRepository,
     private readonly lots: LotRepository,
     private readonly prices: PriceLookup,
+    private readonly converter?: ReportingCurrencyConverter,
   ) {}
 
   async execute(input: ValuePortfolioInput): Promise<Result<ValuePortfolioOutput, AppError>> {
@@ -576,28 +738,87 @@ export class ValuePortfolio implements UseCase<ValuePortfolioInput, ValuePortfol
           disposal.instrumentId.equals(instrument.id),
         );
 
+        const costBasis = position.cost.plus(position.charges);
+        const realisedGain = Money.total(
+          realisedForThis.map((disposal) => disposal.gain),
+          instrument.currency,
+        );
+        const convert = async (amount: Money | null): Promise<Money | null> => {
+          if (amount === null) return null;
+          if (amount.currency.code === Currency.reporting.code) return amount;
+          if (!this.converter) return null;
+          const converted = await this.converter.convert(
+            amount,
+            Currency.reporting,
+            input.asOf,
+            input.userId,
+          );
+          return converted.ok ? converted.value.amount : null;
+        };
+        const fx = instrument.currency.code === Currency.reporting.code || !this.converter
+          ? null
+          : await this.converter.convert(
+              Money.fromRupees("1", instrument.currency),
+              Currency.reporting,
+              input.asOf,
+              input.userId,
+            );
+
         return {
           instrument,
           instrumentId: instrument.id,
           label: instrument.symbol,
           quantity: position.quantity,
-          costBasis: position.cost.plus(position.charges),
+          costBasis,
           marketValue: valuation.value,
-          realisedGain: Money.total(
-            realisedForThis.map((disposal) => disposal.gain),
-            instrument.currency,
-          ),
+          realisedGain,
           income: Money.zero(instrument.currency),
           isStale: valuation.isStale,
           averageCostPerUnit: position.averageCostPerUnit,
           pricedOn: valuation.pricedOn,
           unpricedReason: valuation.unpricedReason,
+          reportingCostBasis: await convert(costBasis),
+          reportingMarketValue: await convert(valuation.value),
+          reportingRealisedGain: await convert(realisedGain),
+          fxRate: fx?.ok ? fx.value.resolution.rate : null,
+          fxRatedOn: fx?.ok ? fx.value.resolution.ratedOn : null,
+          fxIsStale: fx?.ok ? fx.value.resolution.isStale : instrument.currency.code !== Currency.reporting.code,
         };
       }),
     );
 
     const withHoldings = valued.filter((position) => !position.quantity.isZero);
-    return Ok({ ...summarise(withHoldings), valued: withHoldings });
+    const unconverted = withHoldings.filter((position) => position.reportingCostBasis === null);
+    const unpriced = withHoldings.filter(
+      (position) => position.marketValue === null || position.reportingMarketValue === null,
+    );
+    const totalCost = unconverted.length > 0
+      ? null
+      : Money.total(withHoldings.map((position) => position.reportingCostBasis!), Currency.reporting);
+    const totalMarketValue = unpriced.length > 0
+      ? null
+      : Money.total(withHoldings.map((position) => position.reportingMarketValue!), Currency.reporting);
+    const realisedMissing = withHoldings.some((position) => position.reportingRealisedGain === null);
+    const realisedGain = realisedMissing
+      ? null
+      : Money.total(withHoldings.map((position) => position.reportingRealisedGain!), Currency.reporting);
+    const unrealisedGain = totalCost && totalMarketValue ? totalMarketValue.minus(totalCost) : null;
+    const absoluteReturn = totalCost && totalMarketValue && realisedGain && !totalCost.isZero
+      ? Percentage.ratio(totalMarketValue.plus(realisedGain).minus(totalCost), totalCost)
+      : null;
+
+    return Ok({
+      valued: withHoldings,
+      totalCost,
+      totalMarketValue,
+      unrealisedGain,
+      realisedGain,
+      income: Money.zero(Currency.reporting),
+      absoluteReturn,
+      unpricedPositions: unpriced.map((position) => position.label),
+      stalePositions: withHoldings.filter((position) => position.isStale || position.fxIsStale).map((position) => position.label),
+      unconvertedPositions: unconverted.map((position) => position.label),
+    });
   }
 }
 
@@ -703,10 +924,10 @@ export class PortfolioReturns implements UseCase<PortfolioReturnsInput, Portfoli
     const relevant = input.instrumentId
       ? valuation.value.valued.filter((position) => position.instrumentId.equals(input.instrumentId!))
       : valuation.value.valued;
-    const anyUnpriced = relevant.some((position) => position.marketValue === null);
+    const anyUnpriced = relevant.some((position) => position.reportingMarketValue === null);
     const currentValue = anyUnpriced
       ? null
-      : Money.total(relevant.map((position) => position.marketValue!));
+      : Money.total(relevant.map((position) => position.reportingMarketValue!), Currency.reporting);
 
     if (currentValue && currentValue.isPositive) {
       flows.push({ on: input.asOf, amount: currentValue, note: "Closing market value" });

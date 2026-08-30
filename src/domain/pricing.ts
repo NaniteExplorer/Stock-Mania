@@ -765,6 +765,26 @@ export class FxBook {
     private readonly clock: Clock,
   ) {}
 
+  /** Fetches and persists reference rates; provider failures are returned by name. */
+  async refresh(
+    base: string,
+    quotes: readonly string[],
+    range: DateRange,
+  ): Promise<{ persisted: number; errors: readonly string[] }> {
+    let persisted = 0;
+    const errors: string[] = [];
+    for (const provider of this.providers) {
+      const result = await provider.fetchRates({ base, quotes, range });
+      if (!result.ok) {
+        errors.push(`${provider.id}: ${result.error.message}`);
+        continue;
+      }
+      await this.rates.append(result.value);
+      persisted += result.value.length;
+    }
+    return { persisted, errors };
+  }
+
   async rateOn(
     base: string,
     quote: string,

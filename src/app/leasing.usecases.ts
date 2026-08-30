@@ -37,7 +37,7 @@ import {
 import { Money } from "@/core/money";
 import { Percentage, Quantity, UnitPrice } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
-import { AccountCode, AccountRepository, SystemAccountCodes } from "@/domain/accounts";
+import { AccountCode, AccountId, AccountRepository, SystemAccountCodes } from "@/domain/accounts";
 import { InstrumentId, InstrumentRepository, MarketInstrument, PriceLookup } from "@/domain/instruments";
 import {
   GoldLease,
@@ -46,12 +46,14 @@ import {
   LeaseId,
   LeasePortfolio,
   LeaseStatus,
+  PayoutFrequency,
+  PayoutMode,
   leasePortfolio,
   leaseReturn,
   unleasedGrams,
 } from "@/domain/leasing";
 import { Lot, LotRepository } from "@/domain/lots";
-import { InKindInterest, TransactionRepository, accountRef } from "@/domain/transactions";
+import { InKindInterest, Interest, TransactionRepository, accountRef } from "@/domain/transactions";
 
 /* ═══ Opening a lease ═════════════════════════════════════════════════ */
 
@@ -65,6 +67,12 @@ export interface OpenGoldLeaseInput {
   startOn: CalendarDate;
   closesOn: CalendarDate;
   annualRate: Percentage;
+  /** How often it pays out. Monthly unless the platform says otherwise. */
+  payoutFrequency?: PayoutFrequency;
+  /** Grams into the holding, or rupees into an account. */
+  payoutMode?: PayoutMode;
+  /** Where a cash payout lands. Required when `payoutMode` is `CASH`. */
+  payoutAccountId?: AccountId | null;
   tdsRate?: Percentage;
   sourceReference?: string | null;
   notes?: string | null;
@@ -87,8 +95,8 @@ export interface OpenGoldLeaseOutput {
  * worth depend on a distinction the balance sheet does not recognise. What a lease
  * changes is *liquidity*, and that is a fact about the lease, not about the ledger.
  *
- * It does warn when the lease exceeds the units actually held, because that means
- * either a lease against gold never bought or gold sold while still on lease.
+ * A new lease cannot exceed currently unleased grams. An over-leased state can
+ * still arise later if leased gold is sold, so reporting retains that safeguard.
  */
 export class OpenGoldLease implements UseCase<OpenGoldLeaseInput, OpenGoldLeaseOutput> {
   constructor(
@@ -109,10 +117,35 @@ export class OpenGoldLease implements UseCase<OpenGoldLeaseInput, OpenGoldLeaseO
       );
     }
 
+    const [heldBefore, activeBefore] = await Promise.all([
+      this.heldGrams(input.userId, instrument.id),
+      this.leases.list(input.userId, { instrumentId: instrument.id, status: "ACTIVE" }),
+    ]);
+    const available = unleasedGrams(heldBefore, activeBefore).grams;
+    if (input.quantity.isGreaterThan(available)) {
+      return Err(
+        new ValidationError(
+          `Only ${available.toDecimalString()}g is currently available to lease; ` +
+            `${input.quantity.toDecimalString()}g was requested.`,
+          { quantity: [`Maximum ${available.toDecimalString()}g`] },
+        ),
+      );
+    }
+
     const reference = input.reference?.trim() || (await this.nextReference(input.userId));
     const existing = await this.leases.findByReference(input.userId, reference);
     if (existing) {
       return Err(new ValidationError(`A lease called ${reference} already exists.`));
+    }
+
+    if ((input.payoutMode ?? "GRAMS") === "CASH" && !input.payoutAccountId) {
+      return Err(
+        new ValidationError(
+          "A lease that pays its interest in cash needs an account to pay it into. Choose one, " +
+            "or set the payout to grams if the rent arrives as more gold.",
+          { payoutAccountId: ["Required for a cash payout"] },
+        ),
+      );
     }
 
     let lease: GoldLease;
@@ -128,6 +161,9 @@ export class OpenGoldLease implements UseCase<OpenGoldLeaseInput, OpenGoldLeaseO
         startOn: input.startOn,
         closesOn: input.closesOn,
         annualRate: input.annualRate,
+        payoutFrequency: input.payoutFrequency,
+        payoutMode: input.payoutMode,
+        payoutAccountId: input.payoutAccountId ?? null,
         tdsRate: input.tdsRate,
         sourceReference: input.sourceReference ?? null,
         notes: input.notes ?? null,
@@ -275,13 +311,32 @@ export class AccrueLeaseInterest
     // Subtraction, so debits equal credits even when both products round.
     const tdsValue = grossValue.minus(netValue);
 
+    /*
+     * Where the interest lands, which is the whole difference between the two
+     * payout modes. A grams lease credits the holding — the user ends up long
+     * more metal. A cash lease credits a bank account and leaves the leased grams
+     * exactly as they were: same rate, same TDS, entirely different exposure.
+     */
+    const destinationId =
+      lease.payoutMode === "CASH" ? lease.props.payoutAccountId : lease.props.holdingAccountId;
+    if (!destinationId) {
+      return Err(
+        new ValidationError(
+          `${lease.reference} pays its interest in cash but has no account recorded to pay it ` +
+            `into. Set one on the lease — booking it to the gold holding would say the user ` +
+            `received grams they did not.`,
+          { payoutAccountId: ["Required for a cash payout"] },
+        ),
+      );
+    }
+
     const [holding, incomeAccount, tdsAccount] = await Promise.all([
-      this.accounts.findById(input.userId, lease.props.holdingAccountId),
+      this.accounts.findById(input.userId, destinationId),
       this.accounts.findByCode(input.userId, AccountCode.parse(SystemAccountCodes.interestIncome)),
       this.accounts.findByCode(input.userId, AccountCode.parse(TDS_ASSET_CODE)),
     ]);
     if (!holding) {
-      return Err(new NotFoundError("Holding account", lease.props.holdingAccountId.value));
+      return Err(new NotFoundError("Payout account", destinationId.value));
     }
     if (!incomeAccount) {
       return Err(new NotFoundError("Account", SystemAccountCodes.interestIncome));
@@ -295,64 +350,88 @@ export class AccrueLeaseInterest
       );
     }
 
-    const posting = InKindInterest.record(
-      {
-        userId: input.userId,
-        txnDate: input.asOf,
-        description:
-          input.narration ??
-          `${lease.reference}: ${unposted.toDecimalString()}g interest from ${lease.props.platform}`,
-        source: accountRef(incomeAccount),
-        destination: accountRef(holding),
-      },
-      {
-        gross: grossValue,
-        taxDeductedAtSource: tdsValue.isPositive ? tdsValue : null,
-        tdsAccount: tdsValue.isPositive && tdsAccount ? accountRef(tdsAccount) : null,
-        instrumentId: instrument.id.value,
-        taxCategory: instrument.taxProfile().category,
-        unitsReceived: unposted,
-      },
-    );
+    const isCash = lease.payoutMode === "CASH";
+    const context = {
+      userId: input.userId,
+      txnDate: input.asOf,
+      description:
+        input.narration ??
+        (isCash
+          ? `${lease.reference}: ${netValue.toDecimalString()} lease interest from ` +
+            `${lease.props.platform}`
+          : `${lease.reference}: ${unposted.toDecimalString()}g interest from ` +
+            `${lease.props.platform}`),
+      source: accountRef(incomeAccount),
+      destination: accountRef(holding),
+    };
+    const details = {
+      gross: grossValue,
+      taxDeductedAtSource: tdsValue.isPositive ? tdsValue : null,
+      tdsAccount: tdsValue.isPositive && tdsAccount ? accountRef(tdsAccount) : null,
+      instrumentId: instrument.id.value,
+      taxCategory: instrument.taxProfile().category,
+    };
+
+    /*
+     * `Interest` for cash and `InKindInterest` for grams, rather than one class
+     * with a flag. They post differently — the in-kind one carries units and a
+     * unit cost on the debit leg, because grams arriving need a basis or the
+     * same gold is taxed twice — and a cash payout has no units to carry.
+     */
+    const posting = isCash
+      ? Interest.record(context, details)
+      : InKindInterest.record(context, { ...details, unitsReceived: unposted });
 
     await this.journal.save(posting);
 
     /*
-     * The broker-level record first, as a purchase would: a lot references the
-     * trade row that created it, and a lot whose trade is missing is a lot that
-     * cannot be traced to an event. An interest credit *is* an acquisition — grams
-     * arriving at a known per-gram value — so it belongs in the same table as
-     * every other acquisition rather than in a parallel one.
+     * Only a grams payout acquires anything. A cash lease pays rupees and leaves
+     * the position untouched, so writing a trade and a lot for it would invent
+     * grams the user never received — and would then let them be sold.
+     *
+     * For a grams payout the broker-level record comes first, as a purchase
+     * would: a lot references the trade row that created it, and a lot whose
+     * trade is missing cannot be traced to an event. An interest credit *is* an
+     * acquisition — grams arriving at a known per-gram value — so it belongs in
+     * the same table as every other acquisition rather than in a parallel one.
      */
-    await this.lots.recordTrade(input.userId, {
-      id: posting.id.value,
-      instrumentId: instrument.id,
-      side: "BUY",
-      tradedOn: input.asOf,
-      quantity: unposted,
-      pricePerUnit: unposted.perUnit(netValue),
-      charges: Money.zero(currency),
-      transactionId: posting.id.value,
-      // No cash moved and no account settled it: the gold arrived as interest.
-      settlementAccountId: null,
-    });
+    if (!isCash) {
+      await this.lots.recordTrade(input.userId, {
+        id: posting.id.value,
+        instrumentId: instrument.id,
+        side: "BUY",
+        tradedOn: input.asOf,
+        quantity: unposted,
+        pricePerUnit: unposted.perUnit(netValue),
+        charges: Money.zero(currency),
+        transactionId: posting.id.value,
+        // No cash moved and no account settled it: the gold arrived as interest.
+        settlementAccountId: null,
+      });
 
-    // The lot the transaction itself computed, so the basis on the lot and the
-    // basis in the ledger are one number rather than two.
-    const [effect] = posting.lotEffects();
-    if (effect?.kind === "OPEN") {
-      await this.lots.saveLots(input.userId, [
-        Lot.open({
-          instrumentId: instrument.id,
-          acquiredOn: effect.acquiredOn,
-          originalQuantity: effect.quantity,
-          cost: effect.costBasis,
-          buyCharges: Money.zero(currency),
-          openedByTransactionId: posting.id.value,
-        }),
-      ]);
+      // The lot the transaction itself computed, so the basis on the lot and the
+      // basis in the ledger are one number rather than two.
+      const [effect] = posting.lotEffects();
+      if (effect?.kind === "OPEN") {
+        await this.lots.saveLots(input.userId, [
+          Lot.open({
+            instrumentId: instrument.id,
+            acquiredOn: effect.acquiredOn,
+            originalQuantity: effect.quantity,
+            cost: effect.costBasis,
+            buyCharges: Money.zero(currency),
+            openedByTransactionId: posting.id.value,
+          }),
+        ]);
+    }
     }
 
+    /*
+     * The lease records grams credited whichever way it paid. That is what makes
+     * the accrual idempotent — `unpostedOn` is `accrual.net − credited` — and the
+     * grams are the right unit for it even in the cash case, because the *rate*
+     * is on grams and the rupees were only ever their valuation on the day.
+     */
     await this.leases.recordCredit(
       input.userId,
       lease.id,
@@ -370,8 +449,12 @@ export class AccrueLeaseInterest
       because:
         `${grossGrams.toDecimalString()}g gross at ${price.toDecimalString()}/g is ` +
         `${grossValue.toDecimalString()}, less ${tdsGrams.toDecimalString()}g withheld ` +
-        `(${tdsValue.toDecimalString()}); ${unposted.toDecimalString()}g reached the holding at a ` +
-        `cost basis of ${netValue.toDecimalString()}.`,
+        `(${tdsValue.toDecimalString()}); ` +
+        (isCash
+          ? `${netValue.toDecimalString()} was paid into ${holding.displayName}. The leased grams ` +
+            `are unchanged — this lease pays rent in rupees, not in gold.`
+          : `${unposted.toDecimalString()}g reached the holding at a cost basis of ` +
+            `${netValue.toDecimalString()}.`),
     });
   }
 
@@ -505,10 +588,15 @@ export class ListGoldLeases implements UseCase<ListGoldLeasesInput, ListGoldLeas
   async execute(input: ListGoldLeasesInput): Promise<Result<ListGoldLeasesOutput, AppError>> {
     const leases = await this.leases.list(input.userId, { instrumentId: input.instrumentId });
     if (leases.length === 0) {
+      const held = input.instrumentId
+        ? Quantity.sum(
+            (await this.lots.openLots(input.userId, input.instrumentId)).map((lot) => lot.remaining),
+          )
+        : Quantity.ZERO;
       return Ok({
         rows: [],
         portfolio: leasePortfolio([], input.asOf, null),
-        unleasedGrams: Quantity.ZERO,
+        unleasedGrams: held,
         overLeased: false,
         returnOnCost: null,
         unpricedReason: null,
@@ -596,5 +684,126 @@ export class ListGoldLeases implements UseCase<ListGoldLeasesInput, ListGoldLeas
       returnOnCost: leaseReturn(portfolio, cost),
       unpricedReason,
     });
+  }
+}
+
+/* ═══ Correcting a lease ══════════════════════════════════════════════ */
+
+export interface UpdateGoldLeaseInput {
+  userId: UserId;
+  leaseId: LeaseId;
+  platform?: string;
+  quantity?: Quantity;
+  startOn?: CalendarDate;
+  closesOn?: CalendarDate;
+  annualRate?: Percentage;
+  tdsRate?: Percentage;
+  sourceReference?: string | null;
+  notes?: string | null;
+}
+
+/**
+ * Corrects a lease's terms.
+ *
+ * A lease was the one aggregate in the app with a tombstone column, a
+ * soft-delete-aware repository, and no code path that ever wrote either — so a
+ * mistyped rate or closing date was permanent, and the only workaround was a
+ * second lease against gold that was already out.
+ *
+ * The one refusal: **terms that drive an accrual cannot move once grams have
+ * been credited.** Quantity, rate, start and close all feed
+ * `accrualOn`, and the postings already made were computed from the old values.
+ * Changing them would leave the ledger holding grams the lease no longer claims
+ * to have earned, and `unpostedOn` — which is `accrual.net − credited` — could go
+ * negative, which is a number no screen has a sensible way to show.
+ *
+ * The descriptive fields stay editable throughout, because nothing is derived
+ * from them: a platform spelled wrong, a missing reference, a note.
+ */
+export class UpdateGoldLease implements UseCase<UpdateGoldLeaseInput, { ok: true }> {
+  constructor(private readonly leases: GoldLeaseRepository) {}
+
+  async execute(input: UpdateGoldLeaseInput): Promise<Result<{ ok: true }, AppError>> {
+    const lease = await this.leases.findById(input.userId, input.leaseId);
+    if (!lease) return Err(new NotFoundError("Lease", input.leaseId.value));
+
+    const movesTerms =
+      input.quantity !== undefined ||
+      input.startOn !== undefined ||
+      input.closesOn !== undefined ||
+      input.annualRate !== undefined ||
+      input.tdsRate !== undefined;
+
+    if (movesTerms && !lease.credited.isZero) {
+      return Err(
+        new ValidationError(
+          `${lease.reference} has already had ` +
+            `${lease.credited.toDecimalString()}g of interest booked into the ` +
+            `ledger, computed from the terms as they stand. Changing the grams, rate or dates now ` +
+            `would leave those postings claiming an accrual the lease no longer says it earned. ` +
+            `Close this lease and open a corrected one, or edit only the platform and notes.`,
+          { quantity: ["Interest already booked"] },
+        ),
+      );
+    }
+
+    let updated: GoldLease;
+    try {
+      updated = lease.with({
+        platform: input.platform?.trim() || lease.props.platform,
+        quantity: input.quantity ?? lease.quantity,
+        startOn: input.startOn ?? lease.props.startOn,
+        closesOn: input.closesOn ?? lease.props.closesOn,
+        annualRate: input.annualRate ?? lease.props.annualRate,
+        tdsRate: input.tdsRate ?? lease.props.tdsRate,
+        sourceReference:
+          input.sourceReference === undefined
+            ? lease.props.sourceReference
+            : input.sourceReference,
+        notes: input.notes === undefined ? lease.props.notes : input.notes,
+      });
+    } catch (error) {
+      return Err(new ValidationError((error as Error).message));
+    }
+
+    await this.leases.save(updated);
+    return Ok({ ok: true });
+  }
+}
+
+export interface DeleteGoldLeaseInput {
+  userId: UserId;
+  leaseId: LeaseId;
+}
+
+/**
+ * Removes a lease that never earned anything.
+ *
+ * Refused once interest has been booked, because those grams are real: they were
+ * posted into the holding, opened a lot at the value they were taxed at, and
+ * withheld TDS against a receivable. Deleting the lease would leave all three
+ * with nothing to explain them. Settle it as cancelled instead — that is the
+ * record of a lease that ended, which is what actually happened.
+ */
+export class DeleteGoldLease implements UseCase<DeleteGoldLeaseInput, { ok: true }> {
+  constructor(private readonly leases: GoldLeaseRepository) {}
+
+  async execute(input: DeleteGoldLeaseInput): Promise<Result<{ ok: true }, AppError>> {
+    const lease = await this.leases.findById(input.userId, input.leaseId);
+    if (!lease) return Err(new NotFoundError("Lease", input.leaseId.value));
+
+    if (!lease.credited.isZero) {
+      return Err(
+        new ValidationError(
+          `${lease.reference} has booked ${lease.credited.toDecimalString()}g of ` +
+            `interest into the ledger. Those grams are in the holding and were taxed; removing the ` +
+            `lease would leave them unexplained. Close it as cancelled instead.`,
+          { leaseId: ["Interest already booked"] },
+        ),
+      );
+    }
+
+    await this.leases.softDelete(input.userId, input.leaseId, new Date());
+    return Ok({ ok: true });
   }
 }

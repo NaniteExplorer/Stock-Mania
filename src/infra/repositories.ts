@@ -11,7 +11,7 @@
  * audit event.
  */
 
-import { UserId, newUuid } from "@/core/kernel";
+import { AppError, Result, UserId, newUuid } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { CalendarDate, DateRange, FinancialYear } from "@/core/time";
 import { Account, AccountCode, AccountId, AccountRepository, AccountSubtype, AccountType, AccountTypeName, PostingDirection } from "@/domain/accounts";
@@ -19,7 +19,8 @@ import { BillingCycleRule, CardTerms, CardTermsRepository } from "@/domain/asset
 import { DepositContributionInput, DepositProduct, DepositStore, DepositTermsInput, EmployeeProvidentFund, FixedDeposit, NationalPensionSystem, PublicProvidentFund, RecurringDeposit } from "@/domain/deposits";
 import { Loan, LoanStore, LoanTermsInput, StoredLoanTerms, loanFor } from "@/domain/loans";
 import { InstrumentId, InstrumentKind, InstrumentProps, InstrumentRepository, MarketInstrument } from "@/domain/instruments";
-import { Disposal, Lot, LotId, LotRepository, TradeRecord } from "@/domain/lots";
+import { Institution, InstitutionId, InstitutionKind, InstitutionRepository, normaliseInstitutionName } from "@/domain/institutions";
+import { Disposal, Lot, LotId, LotRepository, StoredLotMatch, TradeVoidPlan, TradeRecord } from "@/domain/lots";
 import { CorporateActionRepository, StoredCorporateAction } from "@/domain/corporate";
 import { StoredTaxSettings, TaxSettingsRepository } from "@/domain/tax";
 import type {
@@ -29,12 +30,12 @@ import type {
   UnbalancedEntry,
 } from "@/app/reproducibility.usecases";
 import { Bar, BarGranularity, BarRepository, makeBar } from "@/domain/analysis";
-import { GoldLease, GoldLeaseRepository, LeaseId, LeaseStatus } from "@/domain/leasing";
+import { GoldLease, GoldLeaseRepository, LeaseId, LeaseStatus, PayoutFrequency, PayoutMode } from "@/domain/leasing";
 import { Percentage, Quantity, Rate, UnitPrice } from "@/core/numeric";
 import { FxQuote, FxRateRepository, PriceDivergence, PriceSourceType, Quote, QuoteRepository, QuoteType, StoredFxRate } from "@/domain/pricing";
 import { AccountBalance, AccountFlow, BalanceQuery, MonthlyFlow, Posting, PostingId, PostingStatus, StoredTransaction, Transaction, TransactionId, TransactionKind, TransactionPage, TransactionQuery, TransactionRepository, TransactionSource, TypeTotals } from "@/domain/transactions";
 import { BudgetRepository, CategoryRuleRepository, ImportBatchRecord, ImportBatchStatus, ImportDiagnostics, ImportRepository, ImportRowStatus, ImportTrust, KeywordRule, MovementIntent, RowDirection, SelfPayeeQuery, StagedRow, StoredBudget } from "@/domain/banking";
-import { goldLeases, users as usersTable, ledgerEvents, netWorthSnapshots, projectionCache, taxSettings, priceBars, budgets, categoryRules, corporateActions, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, instruments, ledgerAccounts, loanPrepayments, loanTerms, lotMatches, lots, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, trades, transactions } from "@/infra/db/schema";
+import { goldLeases, institutions, users as usersTable, ledgerEvents, netWorthSnapshots, projectionCache, taxSettings, priceBars, budgets, categoryRules, corporateActions, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, instruments, ledgerAccounts, loanPrepayments, loanTerms, lotMatches, lots, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, trades, transactions } from "@/infra/db/schema";
 import { Database } from "@/infra/db/client";
 import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, max, min, or, sql } from "drizzle-orm";
 /* ═══ AccountMapper ═══════════════════════════════════════════════════ */
@@ -642,10 +643,27 @@ export class DrizzleBalanceQuery implements BalanceQuery {
   constructor(
     private readonly db: Database,
     private readonly currency: Currency = Currency.reporting,
+    private readonly converter?: {
+      convert(amount: Money, into: Currency, asOf: CalendarDate, userId?: UserId): Promise<Result<{ amount: Money }, AppError>>;
+    },
   ) {}
 
   private money(minor: number | null): Money {
     return Money.fromMinor(minor ?? 0, this.currency);
+  }
+
+  private async reportingMoney(
+    amount: Money,
+    asOf: CalendarDate,
+    userId: UserId,
+  ): Promise<Money> {
+    if (amount.currency.code === this.currency.code) return amount;
+    if (!this.converter) {
+      throw new Error(`No FX converter configured for ${amount.currency.code}/${this.currency.code}.`);
+    }
+    const converted = await this.converter.convert(amount, this.currency, asOf, userId);
+    if (!converted.ok) throw converted.error;
+    return converted.value.amount;
   }
 
   async balanceSheet(
@@ -664,6 +682,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
         subtype: ledgerAccounts.subtype,
         institution: ledgerAccounts.institution,
         isClosed: ledgerAccounts.isClosed,
+        currency: ledgerAccounts.currency,
         balance: sql<number>`COALESCE(SUM(${SIGNED_AMOUNT}), 0)`,
         postingCount: sql<number>`COUNT(${postings.id})`,
       })
@@ -716,14 +735,24 @@ export class DrizzleBalanceQuery implements BalanceQuery {
         subtype: row.subtype,
         institution: row.institution,
         isClosed: row.isClosed,
-        balance: this.money(row.balance),
+        balance: Money.fromMinor(row.balance ?? 0, Currency.of(row.currency)),
         postingCount: Number(row.postingCount),
       }));
   }
 
   async balanceOf(userId: UserId, accountId: AccountId, asOf: CalendarDate): Promise<Money> {
+    const [account] = await this.db
+      .select({ currency: ledgerAccounts.currency })
+      .from(ledgerAccounts)
+      // Tombstoned like every other scoped read of this table (A03). A deleted
+      // account has no currency to report in, and falling back to the reporting
+      // currency is the honest answer rather than resurrecting the row.
+      .where(and(eq(ledgerAccounts.userId, userId.value), eq(ledgerAccounts.id, accountId.value), isNull(ledgerAccounts.deletedAt)))
+      .limit(1);
     const [row] = await this.db
-      .select({ balance: sql<number>`COALESCE(SUM(${SIGNED_AMOUNT}), 0)` })
+      .select({
+        balance: sql<number>`COALESCE(SUM(${SIGNED_AMOUNT}), 0)`,
+      })
       .from(postings)
       .innerJoin(ledgerAccounts, eq(postings.accountId, ledgerAccounts.id))
       .innerJoin(transactions, eq(postings.transactionId, transactions.id))
@@ -735,13 +764,14 @@ export class DrizzleBalanceQuery implements BalanceQuery {
           sql`${transactions.txnDate} <= ${asOf.toISO()}`,
         ),
       );
-    return this.money(row?.balance ?? 0);
+    return Money.fromMinor(row?.balance ?? 0, Currency.of(account?.currency ?? this.currency.code));
   }
 
   async totals(userId: UserId, asOf: CalendarDate): Promise<TypeTotals> {
     const rows = await this.db
       .select({
         type: ledgerAccounts.type,
+        currency: postings.currency,
         balance: sql<number>`COALESCE(SUM(${SIGNED_AMOUNT}), 0)`,
       })
       .from(postings)
@@ -750,9 +780,14 @@ export class DrizzleBalanceQuery implements BalanceQuery {
       .where(
         and(eq(transactions.userId, userId.value), isNull(transactions.deletedAt), isNull(postings.deletedAt), sql`${transactions.txnDate} <= ${asOf.toISO()}`),
       )
-      .groupBy(ledgerAccounts.type);
+      .groupBy(ledgerAccounts.type, postings.currency);
 
-    const byType = new Map(rows.map((row) => [row.type, this.money(row.balance)]));
+    const byType = new Map<string, Money>();
+    for (const row of rows) {
+      const native = Money.fromMinor(row.balance, Currency.of(row.currency));
+      const reporting = await this.reportingMoney(native, asOf, userId);
+      byType.set(row.type, (byType.get(row.type) ?? Money.zero(this.currency)).plus(reporting));
+    }
     const zero = Money.zero(this.currency);
     const assets = byType.get("ASSET") ?? zero;
     const liabilities = byType.get("LIABILITY") ?? zero;
@@ -778,6 +813,27 @@ export class DrizzleBalanceQuery implements BalanceQuery {
     }
 
     const firstMonth = asOf.plusMonths(-(months - 1)).startOfMonth();
+    const foreign = await this.db
+      .select({ currency: ledgerAccounts.currency })
+      .from(ledgerAccounts)
+      .where(
+        and(
+          eq(ledgerAccounts.userId, userId.value),
+          isNull(ledgerAccounts.deletedAt),
+          sql`${ledgerAccounts.currency} <> ${this.currency.code}`,
+        ),
+      )
+      .limit(1);
+    if (foreign.length > 0) {
+      // Snapshot rows contain reporting-currency totals. Until their revision key
+      // includes FX-rate revisions, recompute mixed-currency month ends so an FX
+      // update can never leave a plausible but stale INR history behind.
+      return Promise.all(
+        Array.from({ length: months }, (_, index) =>
+          this.totals(userId, firstMonth.plusMonths(index).endOfMonth()),
+        ),
+      );
+    }
     const monthKeys = Array.from({ length: months }, (_, index) =>
       firstMonth.plusMonths(index).toMonthKey(),
     );
@@ -888,6 +944,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
       .select({
         month: sql<string>`substr(${transactions.txnDate}, 1, 7)`,
         type: ledgerAccounts.type,
+        currency: postings.currency,
         total: sql<number>`COALESCE(SUM(${SIGNED_AMOUNT}), 0)`,
       })
       .from(postings)
@@ -902,7 +959,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
           sql`${ledgerAccounts.type} IN ('INCOME', 'EXPENSE')`,
         ),
       )
-      .groupBy(sql`substr(${transactions.txnDate}, 1, 7)`, ledgerAccounts.type);
+      .groupBy(sql`substr(${transactions.txnDate}, 1, 7)`, ledgerAccounts.type, postings.currency);
 
     const zero = Money.zero(this.currency);
     const byMonth = new Map<string, MonthlyFlow>();
@@ -914,8 +971,14 @@ export class DrizzleBalanceQuery implements BalanceQuery {
     }
     for (const row of rows) {
       const flow = byMonth.get(row.month) ?? { month: row.month, income: zero, expense: zero };
-      if (row.type === "INCOME") flow.income = this.money(row.total);
-      else flow.expense = this.money(row.total);
+      const native = Money.fromMinor(row.total, Currency.of(row.currency));
+      const reporting = await this.reportingMoney(
+        native,
+        CalendarDate.parse(`${row.month}-01`).endOfMonth(),
+        userId,
+      );
+      if (row.type === "INCOME") flow.income = flow.income.plus(reporting);
+      else flow.expense = flow.expense.plus(reporting);
       byMonth.set(row.month, flow);
     }
 
@@ -941,6 +1004,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
         code: ledgerAccounts.code,
         name: ledgerAccounts.name,
         type: ledgerAccounts.type,
+        currency: ledgerAccounts.currency,
         amount: sql<number>`COALESCE(SUM(${SIGNED_AMOUNT}), 0)`,
         postingCount: sql<number>`COUNT(${postings.id})`,
       })
@@ -965,14 +1029,20 @@ export class DrizzleBalanceQuery implements BalanceQuery {
       .where(and(eq(ledgerAccounts.userId, userId.value), isNull(ledgerAccounts.deletedAt), typeFilter))
       .groupBy(ledgerAccounts.id);
 
-    const flows: AccountFlow[] = rows.map((row) => ({
-      accountId: AccountId.from(row.accountId),
-      code: row.code,
-      name: row.name,
-      type: row.type as AccountTypeName,
-      amount: this.money(row.amount),
-      postingCount: Number(row.postingCount),
-    }));
+    const flows: AccountFlow[] = await Promise.all(
+      rows.map(async (row) => ({
+        accountId: AccountId.from(row.accountId),
+        code: row.code,
+        name: row.name,
+        type: row.type as AccountTypeName,
+        amount: await this.reportingMoney(
+          Money.fromMinor(row.amount, Currency.of(row.currency)),
+          range.end,
+          userId,
+        ),
+        postingCount: Number(row.postingCount),
+      })),
+    );
 
     const result = options?.rollUp ? this.rollUp(flows) : flows;
 
@@ -1018,6 +1088,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
     const rows = await this.db
       .select({
         date: transactions.txnDate,
+        currency: postings.currency,
         delta: sql<number>`COALESCE(SUM(${SIGNED_AMOUNT}), 0)`,
       })
       .from(postings)
@@ -1032,12 +1103,12 @@ export class DrizzleBalanceQuery implements BalanceQuery {
           sql`${transactions.txnDate} <= ${range.end.toISO()}`,
         ),
       )
-      .groupBy(transactions.txnDate)
+      .groupBy(transactions.txnDate, postings.currency)
       .orderBy(transactions.txnDate);
 
     let running = opening;
     return rows.map((row) => {
-      running = running.plus(this.money(row.delta));
+      running = running.plus(Money.fromMinor(row.delta, Currency.of(row.currency)));
       return { date: CalendarDate.parse(row.date), balance: running };
     });
   }
@@ -1258,6 +1329,13 @@ export class DrizzleGoldLeaseRepository implements GoldLeaseRepository {
       .onConflictDoUpdate({ target: goldLeases.id, set: { ...row, id: undefined } });
   }
 
+  async softDelete(userId: UserId, id: LeaseId, at: Date): Promise<void> {
+    await this.db
+      .update(goldLeases)
+      .set({ deletedAt: at, updatedAt: at })
+      .where(and(eq(goldLeases.userId, userId.value), eq(goldLeases.id, id.value)));
+  }
+
   async recordCredit(
     userId: UserId,
     id: LeaseId,
@@ -1293,6 +1371,9 @@ const GoldLeaseMapper = {
       startOn: CalendarDate.parse(row.startOn),
       closesOn: CalendarDate.parse(row.closesOn),
       annualRate: Percentage.fromScaled(row.annualRateScaled),
+      payoutFrequency: row.payoutFrequency as PayoutFrequency,
+      payoutMode: row.payoutMode as PayoutMode,
+      payoutAccountId: row.payoutAccountId ? AccountId.from(row.payoutAccountId) : null,
       tdsRate: Percentage.fromScaled(row.tdsRateScaled),
       status: row.status as LeaseStatus,
       endedOn: row.endedOn ? CalendarDate.parse(row.endedOn) : null,
@@ -1318,6 +1399,9 @@ const GoldLeaseMapper = {
       // latter, and rightly — it is the same reach for a raw bigint that turns a
       // rate into an approximation everywhere else.
       annualRateScaled: props.annualRate.toScaledNumber(),
+      payoutFrequency: lease.payoutFrequency,
+      payoutMode: lease.payoutMode,
+      payoutAccountId: props.payoutAccountId?.value ?? null,
       tdsRateScaled: lease.tdsRate.toScaledNumber(),
       status: lease.status,
       endedOn: props.endedOn?.toISO() ?? null,
@@ -2872,6 +2956,15 @@ export class DrizzleInstrumentRepository implements InstrumentRepository {
     return row ? InstrumentMapper.toDomain(row) : null;
   }
 
+  async isSymbolReserved(userId: UserId, symbol: string): Promise<boolean> {
+    const [row] = await this.db
+      .select({ id: instruments.id })
+      .from(instruments)
+      .where(and(eq(instruments.userId, userId.value), eq(instruments.symbol, symbol)))
+      .limit(1);
+    return row !== undefined;
+  }
+
   async list(
     userId: UserId,
     options?: { includeClosed?: boolean },
@@ -2905,6 +2998,7 @@ export class DrizzleInstrumentRepository implements InstrumentRepository {
       quoteSource: InstrumentMapper.toQuoteSource(kind),
       quoteSourceRef: props.quoteRef ?? null,
       assetAccountId: props.assetAccountId.value,
+      institutionId: props.institutionId?.value ?? null,
       metadata: props.metadata === undefined ? null : JSON.stringify(props.metadata),
       isClosed: props.isClosed ?? false,
       updatedAt: new Date(),
@@ -2913,6 +3007,27 @@ export class DrizzleInstrumentRepository implements InstrumentRepository {
       .insert(instruments)
       .values(row)
       .onConflictDoUpdate({ target: instruments.id, set: { ...row, id: undefined } });
+  }
+
+  async softDelete(userId: UserId, id: InstrumentId, at: Date): Promise<void> {
+    await this.db
+      .update(instruments)
+      .set({ deletedAt: at, updatedAt: at })
+      .where(and(eq(instruments.userId, userId.value), eq(instruments.id, id.value)));
+  }
+
+  async countTrades(userId: UserId, id: InstrumentId): Promise<number> {
+    const [row] = await this.db
+      .select({ n: count() })
+      .from(trades)
+      .where(
+        and(
+          eq(trades.userId, userId.value),
+          isNull(trades.deletedAt),
+          eq(trades.instrumentId, id.value),
+        ),
+      );
+    return Number(row?.n ?? 0);
   }
 }
 
@@ -2930,6 +3045,7 @@ export const InstrumentMapper = {
       exchange: row.exchange,
       quoteRef: row.quoteSourceRef,
       assetAccountId: AccountId.from(row.assetAccountId),
+      institutionId: row.institutionId === null ? null : InstitutionId.from(row.institutionId),
       /*
        * Parsed here and validated in the leaf's constructor, which is why a
        * malformed blob throws on read rather than surfacing as a missing strike
@@ -2941,7 +3057,7 @@ export const InstrumentMapper = {
   },
 
   /** The coarse `kind` the pre-existing schema column carries. */
-  toStoredKind(kind: InstrumentKind): "EQUITY" | "ETF" | "MUTUAL_FUND" | "BOND" | "GOVT_SECURITY" | "DIGITAL_GOLD" | "DIGITAL_SILVER" | "CRYPTO" | "DERIVATIVE" | "OTHER" {
+  toStoredKind(kind: InstrumentKind): "EQUITY" | "ETF" | "MUTUAL_FUND" | "BOND" | "GOVT_SECURITY" | "DIGITAL_GOLD" | "DIGITAL_SILVER" | "DIGITAL_METAL" | "REIT" | "CRYPTO" | "DERIVATIVE" | "OTHER" {
     switch (kind) {
       case "LISTED_EQUITY":
         return "EQUITY";
@@ -2962,6 +3078,10 @@ export const InstrumentMapper = {
         return "DIGITAL_GOLD";
       case "DIGITAL_SILVER":
         return "DIGITAL_SILVER";
+      case "DIGITAL_PLATINUM":
+        return "DIGITAL_METAL";
+      case "REIT":
+        return "REIT";
       case "CRYPTO":
         return "CRYPTO";
       case "OPTION":
@@ -2980,6 +3100,7 @@ export const InstrumentMapper = {
   toTaxAssetClass(kind: InstrumentKind): "LISTED_EQUITY" | "EQUITY_MUTUAL_FUND" | "DEBT" | "GOLD" | "CRYPTO" | "UNLISTED" | "FNO_BUSINESS" | "OTHER" {
     switch (kind) {
       case "LISTED_EQUITY":
+      case "REIT":
         return "LISTED_EQUITY";
       case "ETF":
       case "INDEX_FUND":
@@ -2994,6 +3115,7 @@ export const InstrumentMapper = {
       case "SOVEREIGN_GOLD_BOND":
       case "DIGITAL_GOLD":
       case "DIGITAL_SILVER":
+      case "DIGITAL_PLATINUM":
         return "GOLD";
       case "CRYPTO":
         return "CRYPTO";
@@ -3007,6 +3129,7 @@ export const InstrumentMapper = {
     switch (kind) {
       case "LISTED_EQUITY":
       case "ETF":
+      case "REIT":
         return "NSE";
       case "INDEX_FUND":
       case "MUTUAL_FUND":
@@ -3016,11 +3139,123 @@ export const InstrumentMapper = {
         return "AMFI";
       case "DIGITAL_GOLD":
       case "DIGITAL_SILVER":
+      case "DIGITAL_PLATINUM":
       case "SOVEREIGN_GOLD_BOND":
         return "METALS";
       default:
         return "MANUAL";
     }
+  },
+};
+
+
+/* ═══ DrizzleInstitutionRepository ════════════════════════════════════ */
+
+/**
+ * Platforms.
+ *
+ * The one thing worth pointing at: `findByName` matches on the **normalised**
+ * name, not the stored one. The table's unique index is on the raw name, so
+ * "Tanishq" and "tanishq " would both be accepted by SQLite and would split a
+ * per-platform total in two — which is the exact failure the entity exists to
+ * prevent. Matching here in the repository, over a small per-user list, is the
+ * cheap fix; the alternative is a stored normalised column and a migration to
+ * backfill it, which is worth doing if this list ever grows past a few dozen.
+ */
+export class DrizzleInstitutionRepository implements InstitutionRepository {
+  constructor(private readonly db: Database) {}
+
+  async findById(userId: UserId, id: InstitutionId): Promise<Institution | null> {
+    const [row] = await this.db
+      .select()
+      .from(institutions)
+      .where(
+        and(
+          eq(institutions.userId, userId.value),
+          isNull(institutions.deletedAt),
+          eq(institutions.id, id.value),
+        ),
+      )
+      .limit(1);
+    return row ? InstitutionMapper.toDomain(row) : null;
+  }
+
+  async findByName(userId: UserId, name: string): Promise<Institution | null> {
+    const needle = normaliseInstitutionName(name);
+    if (needle === "") return null;
+    const rows = await this.db
+      .select()
+      .from(institutions)
+      .where(and(eq(institutions.userId, userId.value), isNull(institutions.deletedAt)));
+    const row = rows.find((candidate) => normaliseInstitutionName(candidate.name) === needle);
+    return row ? InstitutionMapper.toDomain(row) : null;
+  }
+
+  async list(
+    userId: UserId,
+    options?: { includeArchived?: boolean },
+  ): Promise<readonly Institution[]> {
+    const rows = await this.db
+      .select()
+      .from(institutions)
+      .where(
+        and(
+          eq(institutions.userId, userId.value),
+          isNull(institutions.deletedAt),
+          options?.includeArchived ? undefined : eq(institutions.isArchived, false),
+        ),
+      )
+      .orderBy(asc(institutions.name));
+    return rows.map(InstitutionMapper.toDomain);
+  }
+
+  async save(institution: Institution): Promise<void> {
+    const row = InstitutionMapper.toRow(institution);
+    await this.db
+      .insert(institutions)
+      .values(row)
+      .onConflictDoUpdate({ target: institutions.id, set: { ...row, id: undefined } });
+  }
+
+  async softDelete(userId: UserId, id: InstitutionId): Promise<void> {
+    await this.db
+      .update(institutions)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(institutions.userId, userId.value), eq(institutions.id, id.value)));
+  }
+}
+
+type InstitutionRow = typeof institutions.$inferSelect;
+
+export const InstitutionMapper = {
+  toDomain(row: InstitutionRow): Institution {
+    return new Institution({
+      id: InstitutionId.from(row.id),
+      userId: UserId.from(row.userId),
+      name: row.name,
+      providerId: row.providerId,
+      kind: row.kind as InstitutionKind,
+      country: row.country,
+      sellSpread: Percentage.fromScaled(row.sellSpreadScaled),
+      notes: row.notes,
+      isArchived: row.isArchived,
+    });
+  },
+
+  toRow(institution: Institution): typeof institutions.$inferInsert {
+    const props = institution.props;
+    return {
+      id: props.id.value,
+      userId: props.userId.value,
+      name: props.name,
+      providerId: props.providerId ?? null,
+      kind: props.kind,
+      country: props.country,
+      sellSpreadScaled: props.sellSpread.toScaledNumber(),
+      notes: props.notes ?? null,
+      isArchived: props.isArchived,
+      updatedAt: new Date(),
+    };
   },
 };
 
@@ -3152,6 +3387,14 @@ export class DrizzleLotRepository implements LotRepository {
         and(
           eq(lotMatches.userId, userId.value),
           isNull(lotMatches.deletedAt),
+          /*
+           * The sale's own tombstone, not just the match's. Voiding a sale
+           * tombstones both, but a report that joined `trades` without this
+           * filter would keep reporting a gain the user has already undone —
+           * and it would be a *filed* gain, which is the worst place for a
+           * leak like this to surface.
+           */
+          isNull(trades.deletedAt),
           gte(trades.tradedOn, from.toISO()),
           lte(trades.tradedOn, to.toISO()),
         ),
@@ -3171,7 +3414,191 @@ export class DrizzleLotRepository implements LotRepository {
       holdingDays: match.holdingDays,
     }));
   }
+
+  /* ── Corrections ──────────────────────────────────────────────────── */
+
+  async findTrade(userId: UserId, tradeId: string): Promise<TradeRecord | null> {
+    const [row] = await this.db
+      .select({ trade: trades, currency: instruments.currency })
+      .from(trades)
+      .innerJoin(instruments, eq(trades.instrumentId, instruments.id))
+      .where(
+        and(eq(trades.userId, userId.value), isNull(trades.deletedAt), eq(trades.id, tradeId)),
+      )
+      .limit(1);
+    return row ? TradeMapper.toDomain(row.trade, row.currency) : null;
+  }
+
+  async tradesFor(userId: UserId, instrumentId: InstrumentId): Promise<readonly TradeRecord[]> {
+    const rows = await this.db
+      .select({ trade: trades, currency: instruments.currency })
+      .from(trades)
+      .innerJoin(instruments, eq(trades.instrumentId, instruments.id))
+      .where(
+        and(
+          eq(trades.userId, userId.value),
+          isNull(trades.deletedAt),
+          eq(trades.instrumentId, instrumentId.value),
+        ),
+      )
+      .orderBy(asc(trades.tradedOn), asc(trades.id));
+    return rows.map((row) => TradeMapper.toDomain(row.trade, row.currency));
+  }
+
+  async lotsFromBuy(userId: UserId, buyTradeId: string): Promise<readonly Lot[]> {
+    const rows = await this.db
+      .select()
+      .from(lots)
+      .where(
+        and(
+          eq(lots.userId, userId.value),
+          isNull(lots.deletedAt),
+          eq(lots.buyTradeId, buyTradeId),
+        ),
+      )
+      .orderBy(asc(lots.acquiredOn));
+    return rows.map(LotMapper.toDomain);
+  }
+
+  async matchesForSell(userId: UserId, sellTradeId: string): Promise<readonly StoredLotMatch[]> {
+    const rows = await this.db
+      .select()
+      .from(lotMatches)
+      .where(
+        and(
+          eq(lotMatches.userId, userId.value),
+          isNull(lotMatches.deletedAt),
+          eq(lotMatches.sellTradeId, sellTradeId),
+        ),
+      );
+    return rows.map(toStoredMatch);
+  }
+
+  async matchesAgainstLot(userId: UserId, lotId: LotId): Promise<readonly StoredLotMatch[]> {
+    const rows = await this.db
+      .select()
+      .from(lotMatches)
+      .where(
+        and(
+          eq(lotMatches.userId, userId.value),
+          isNull(lotMatches.deletedAt),
+          eq(lotMatches.lotId, lotId.value),
+        ),
+      );
+    return rows.map(toStoredMatch);
+  }
+
+  /**
+   * The whole unwind, in one transaction.
+   *
+   * The order inside it matters even though the transaction makes it atomic,
+   * because it is also the order a reader reconstructs: lots are restored
+   * **before** their matches are tombstoned, so the only inconsistent state the
+   * sequence can pass through double-counts units — which invariant P01 detects
+   * loudly — rather than losing them, which nothing would.
+   *
+   * Deletes are tombstones, never `DELETE`. `tests/schema-guard.spec.ts` enforces
+   * that, and the reason is A03: a correction that erased the row would leave the
+   * ledger's reversal pointing at nothing.
+   */
+  async voidTrade(userId: UserId, plan: TradeVoidPlan, at: Date): Promise<void> {
+    await this.db.transaction(async (tx) => {
+      for (const lot of plan.lotsToRestore) {
+        const row = LotMapper.toRow(userId, lot);
+        await tx
+          .insert(lots)
+          .values(row)
+          .onConflictDoUpdate({ target: lots.id, set: { ...row, id: undefined } });
+      }
+
+      if (plan.matchesToTombstone.length > 0) {
+        await tx
+          .update(lotMatches)
+          .set({ deletedAt: at })
+          .where(
+            and(
+              eq(lotMatches.userId, userId.value),
+              inArray(lotMatches.id, [...plan.matchesToTombstone]),
+            ),
+          );
+      }
+
+      if (plan.lotsToTombstone.length > 0) {
+        await tx
+          .update(lots)
+          .set({ deletedAt: at })
+          .where(
+            and(
+              eq(lots.userId, userId.value),
+              inArray(lots.id, plan.lotsToTombstone.map((id) => id.value)),
+            ),
+          );
+      }
+
+      await tx
+        .update(trades)
+        .set({ deletedAt: at })
+        .where(and(eq(trades.userId, userId.value), eq(trades.id, plan.tradeId)));
+    });
+  }
 }
+
+type TradeRow = typeof trades.$inferSelect;
+
+const TradeMapper = {
+  /*
+   * The currency comes from the instrument, because `trades` has no column for
+   * it — a trade is always in the instrument's own currency, and storing it
+   * twice would be a second place for it to be wrong.
+   */
+  toDomain(row: TradeRow, currencyCode: string): TradeRecord {
+    const currency = Currency.of(currencyCode);
+    /*
+     * Every charge column summed back into one figure, which is the inverse of
+     * what `recordTrade` did to it. Lossy in principle — the STT/brokerage split
+     * matters for deductibility — and lossless in practice today, because only
+     * `otherChargesMinor` is ever written outside a contract-note import. A
+     * correction that re-records a trade therefore cannot yet restore that split,
+     * which is why `CorrectTrade` says so rather than pretending otherwise.
+     */
+    const charges =
+      row.brokerageMinor +
+      row.sttMinor +
+      row.exchangeTxnChargeMinor +
+      row.sebiTurnoverFeeMinor +
+      row.stampDutyMinor +
+      row.gstMinor +
+      row.dpChargesMinor +
+      row.otherChargesMinor;
+    return {
+      id: row.id,
+      instrumentId: InstrumentId.from(row.instrumentId),
+      side: row.side,
+      tradedOn: CalendarDate.parse(row.tradedOn),
+      quantity: Quantity.fromScaled(row.quantity),
+      pricePerUnit: Money.fromMinor(row.pricePerUnitMinor, currency),
+      charges: Money.fromMinor(charges, currency),
+      /*
+       * `RecordBuy` and `RecordSell` use the same id for the trade and the
+       * transaction it posted, so the fallback is that same value rather than a
+       * guess — it only fires for a trade row written without a journal entry,
+       * which nothing currently does.
+       */
+      transactionId: row.transactionId ?? row.id,
+      settlementAccountId: row.settlementAccountId,
+    };
+  },
+};
+
+function toStoredMatch(row: typeof lotMatches.$inferSelect): StoredLotMatch {
+  return {
+    id: row.id,
+    sellTradeId: row.sellTradeId,
+    lotId: LotId.from(row.lotId),
+    quantity: Quantity.fromScaled(row.quantity),
+  };
+}
+
 
 type LotRow = typeof lots.$inferSelect;
 

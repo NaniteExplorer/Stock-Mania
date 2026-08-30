@@ -5,7 +5,13 @@
  * Moved out of v1's `lib/`. Pure data with no dependencies, used by the logo
  * proxy at `app/api/logo/[id]/` and (from Phase 2) by the account-opening form.
  */
-export type ProviderKind = "BANK" | "RETIREMENT" | "SAVINGS" | "WALLET" | "BROKER";
+/**
+ * `BULLION` is its own kind rather than a `BROKER`: a vaulting provider holds
+ * metal against your name and executes no trades, and it is the only kind that
+ * offers a gold lease. A form asking "which platform" for digital gold offers
+ * these and not the brokers.
+ */
+export type ProviderKind = "BANK" | "RETIREMENT" | "SAVINGS" | "WALLET" | "BROKER" | "BULLION";
 
 export interface FinancialProvider {
   id: string;
@@ -62,7 +68,22 @@ export const FINANCIAL_PROVIDERS: FinancialProvider[] = [
   { id: "indmoney", name: "INDmoney", shortName: "IND", aliases: ["ind money"], kind: "BROKER", country: "IN", colors: ["#5235E8", "#2E1C9E"], domain: "indmoney.com" },
   { id: "upstox", name: "Upstox", shortName: "UPSTOX", aliases: [], kind: "BROKER", country: "IN", colors: ["#5C2D91", "#3B1C5E"], domain: "upstox.com" },
   { id: "angelone", name: "Angel One", shortName: "ANGEL", aliases: ["angel broking"], kind: "BROKER", country: "IN", colors: ["#3D2BD6", "#2A1E96"], domain: "angelone.in" },
+  { id: "dhan", name: "Dhan", shortName: "DHAN", aliases: [], kind: "BROKER", country: "IN", colors: ["#0F5FDC", "#0A3E92"], domain: "dhan.co" },
+  { id: "icici-direct", name: "ICICI Direct", shortName: "IDIRECT", aliases: ["icicidirect"], kind: "BROKER", country: "IN", colors: ["#F58220", "#A51C30"], domain: "icicidirect.com" },
+  { id: "hdfc-sky", name: "HDFC Sky", shortName: "SKY", aliases: [], kind: "BROKER", country: "IN", colors: ["#004C8F", "#E31E24"], domain: "hdfcsky.com" },
+  { id: "kotak-neo", name: "Kotak Neo", shortName: "NEO", aliases: [], kind: "BROKER", country: "IN", colors: ["#ED1C24", "#123B72"], domain: "kotaksecurities.com" },
+  { id: "motilal-oswal", name: "Motilal Oswal", shortName: "MOSL", aliases: ["motilal"], kind: "BROKER", country: "IN", colors: ["#F7A600", "#1B365D"], domain: "motilaloswal.com" },
+  { id: "5paisa", name: "5paisa", shortName: "5PAISA", aliases: [], kind: "BROKER", country: "IN", colors: ["#0072BC", "#004E80"], domain: "5paisa.com" },
   { id: "alpaca", name: "Alpaca", shortName: "ALPACA", aliases: [], kind: "BROKER", country: "US", colors: ["#FCD34D", "#F59E0B"], domain: "alpaca.markets" },
+  // Bullion vaults — digital gold, silver and platinum, held in grams
+  { id: "tanishq", name: "Tanishq Digital Gold", shortName: "TANISHQ", aliases: ["tanishq", "titan"], kind: "BULLION", country: "IN", colors: ["#8B1A3A", "#C9A227"], domain: "tanishq.co.in" },
+  { id: "safegold", name: "SafeGold", shortName: "SAFEGOLD", aliases: ["safe gold", "digital gold india"], kind: "BULLION", country: "IN", colors: ["#C9A227", "#7A5C00"], domain: "safegold.com" },
+  { id: "augmont", name: "Augmont", shortName: "AUGMONT", aliases: ["augmont gold"], kind: "BULLION", country: "IN", colors: ["#D4AF37", "#8A6D1F"], domain: "augmont.com" },
+  { id: "mmtc-pamp", name: "MMTC-PAMP", shortName: "MMTC", aliases: ["mmtc", "pamp"], kind: "BULLION", country: "IN", colors: ["#B8860B", "#5C4405"], domain: "mmtcpamp.com" },
+  { id: "phonepe-gold", name: "PhonePe Gold", shortName: "PHONEPE", aliases: ["phonepe"], kind: "BULLION", country: "IN", colors: ["#5F259F", "#3A1663"], domain: "phonepe.com" },
+  { id: "paytm-gold", name: "Paytm Gold", shortName: "PAYTMGOLD", aliases: ["paytm gold"], kind: "BULLION", country: "IN", colors: ["#00BAF2", "#002E6E"], domain: "paytm.com" },
+  { id: "jar", name: "Jar", shortName: "JAR", aliases: ["jar app"], kind: "BULLION", country: "IN", colors: ["#FFC93C", "#8A6A00"], domain: "myjar.app" },
+  { id: "gullak", name: "Gullak", shortName: "GULLAK", aliases: [], kind: "BULLION", country: "IN", colors: ["#F4B400", "#7A5A00"], domain: "gullak.money" },
   // International banks
   { id: "hsbc", name: "HSBC", shortName: "HSBC", aliases: [], kind: "BANK", country: "GB", colors: ["#DB0011", "#9E000C"], domain: "hsbc.com" },
   { id: "standard-chartered", name: "Standard Chartered", shortName: "SC", aliases: ["stan chart"], kind: "BANK", country: "GB", colors: ["#00AEEF", "#2AAE61"], domain: "sc.com" },

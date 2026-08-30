@@ -19,6 +19,8 @@ import {
   DrizzleCorporateActionRepository,
   DrizzleBarRepository,
   DrizzleGoldLeaseRepository,
+  DrizzleInstitutionRepository,
+  DrizzleFxRateRepository,
   DrizzleQuoteRepository,
   DrizzleSelfPayeeQuery,
   DrizzleTaxSettingsRepository,
@@ -61,6 +63,23 @@ import {
   SetSchemeRate,
   ValueNps,
 } from "@/app/lending.usecases";
+import { CorrectTrade, VoidTrade } from "@/app/trade-corrections.usecases";
+import { RealisedGainsHistory } from "@/app/realised-history.usecases";
+import { GoldHoldingAnalytics } from "@/app/gold-analytics.usecases";
+import {
+  CloseInstrument,
+  DeleteInstrument,
+  UpdateInstrument,
+} from "@/app/instrument-admin.usecases";
+import {
+  ArchiveInstitution,
+  DeleteInstitution,
+  ListInstitutions,
+  RegisterInstitution,
+  UpdateInstitution,
+} from "@/app/institutions.usecases";
+import { InstitutionKind } from "@/domain/institutions";
+import { FINANCIAL_PROVIDERS, type ProviderKind } from "@/ui/providers";
 import {
   AddInstrument,
   ApplyCorporateAction,
@@ -83,9 +102,12 @@ import {
   ListGoldLeases,
   OpenGoldLease,
   SettleGoldLease,
+  UpdateGoldLease,
+  DeleteGoldLease,
 } from "@/app/leasing.usecases";
-import { PriceBook } from "@/domain/pricing";
-import { FetchHttpClient, shippedQuoteProviders, systemRuntime } from "@/infra/providers";
+import { FxBook, PriceBook } from "@/domain/pricing";
+import { RefreshPrices } from "@/app/pricing.usecases";
+import { FetchHttpClient, shippedFxProviders, shippedQuoteProviders, systemRuntime } from "@/infra/providers";
 import { getCurrentSession } from "@/infra/auth/session";
 
 /**
@@ -120,7 +142,6 @@ export const services = cache(() => {
 
   const accounts = new DrizzleAccountRepository(db);
   const journal = new DrizzleTransactionRepository(db);
-  const balances = new DrizzleBalanceQuery(db);
   const imports = new DrizzleImportRepository(db);
   const rules = new DrizzleCategoryRuleRepository(db);
   const selfPayees = new DrizzleSelfPayeeQuery(db);
@@ -132,7 +153,9 @@ export const services = cache(() => {
   const quotes = new DrizzleQuoteRepository(db);
   const bars = new DrizzleBarRepository(db);
   const leases = new DrizzleGoldLeaseRepository(db);
+  const platforms = new DrizzleInstitutionRepository(db);
   const taxSettings = new DrizzleTaxSettingsRepository(db);
+  const fxRates = new DrizzleFxRateRepository(db);
 
   /*
    * The price ladder, adapted to the one method an instrument needs.
@@ -142,7 +165,10 @@ export const services = cache(() => {
    * speaks in its own terms (`SYMBOL`, `SLUG`). The mapping lives here, at the
    * boundary, so neither side has to know the other's vocabulary.
    */
-  const priceBook = new PriceBook(shippedQuoteProviders(systemRuntime(new FetchHttpClient())), quotes);
+  const providerRuntime = systemRuntime(new FetchHttpClient());
+  const priceBook = new PriceBook(shippedQuoteProviders(providerRuntime), quotes);
+  const fxBook = new FxBook(shippedFxProviders(providerRuntime), fxRates, clock);
+  const balances = new DrizzleBalanceQuery(db, Currency.reporting, fxBook);
   const prices = {
     async priceOn(
       ref: {
@@ -177,16 +203,33 @@ export const services = cache(() => {
 
   const record = new RecordTransaction(accounts, journal);
   const openAccount = new OpenAccount(accounts, journal, clock);
+  const reverseTransaction = new ReverseTransaction(journal, clock);
+
+  /*
+   * Named rather than inlined because three things now share them: the investing
+   * namespace, `CorrectTrade` (which composes the record use cases rather than
+   * reimplementing them), and `VoidTrade` (which composes the reversal). Two
+   * `RecordSell` instances would be two default lot-selection methods waiting to
+   * diverge.
+   */
+  const recordBuy = new RecordBuy(accounts, instruments, journal, lots);
+  const recordSell = new RecordSell(accounts, instruments, journal, lots);
+  const voidTrade = new VoidTrade(
+    journal,
+    lots,
+    (userId: UserId) => new DrizzleCorporateActionRepository(db, userId),
+    reverseTransaction,
+  );
   const transfer = new RecordAccountTransfer(accounts, record);
 
   return {
     clock,
-    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms, lending, instruments, lots, quotes, bars, taxSettings, leases },
+    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms, lending, instruments, lots, quotes, bars, taxSettings, leases, platforms },
     ledger: {
       seedChart: new SeedChartOfAccounts(accounts),
       openAccount,
       record,
-      reverse: new ReverseTransaction(journal, clock),
+      reverse: reverseTransaction,
     },
     banking: {
       openCashAccount: new OpenCashAccount(accounts, openAccount),
@@ -213,12 +256,14 @@ export const services = cache(() => {
       accrueCharges: new AccrueCardCharges(accounts, journal, balances, cardTerms, record),
     },
     investing: {
-      addInstrument: new AddInstrument(accounts, instruments, openAccount),
-      recordBuy: new RecordBuy(accounts, instruments, journal, lots),
-      recordSell: new RecordSell(accounts, instruments, journal, lots),
+      addInstrument: new AddInstrument(accounts, instruments, openAccount, platforms),
+      recordBuy,
+      recordSell,
       compareMethods: new CompareDisposalMethods(instruments, lots),
-      valuePortfolio: new ValuePortfolio(instruments, lots, prices),
+      valuePortfolio: new ValuePortfolio(instruments, lots, prices, fxBook),
       realisedGains: new RealisedGains(lots),
+      realisedHistory: new RealisedGainsHistory(lots, instruments, platforms),
+      goldAnalytics: new GoldHoldingAnalytics(instruments, lots, leases, quotes, platforms),
       applyCorporateAction: (userId: UserId) =>
         new ApplyCorporateAction(
           accounts,
@@ -228,17 +273,35 @@ export const services = cache(() => {
           clock,
         ),
       corporateActions: (userId: UserId) => new DrizzleCorporateActionRepository(db, userId),
+      voidTrade,
+      correctTrade: new CorrectTrade(lots, instruments, voidTrade, recordBuy, recordSell),
+      updateInstrument: new UpdateInstrument(instruments),
+      closeInstrument: new CloseInstrument(instruments, lots),
+      deleteInstrument: new DeleteInstrument(instruments, lots),
       returns: new PortfolioReturns(
         accounts,
         instruments,
         journal,
-        new ValuePortfolio(instruments, lots, prices),
+        new ValuePortfolio(instruments, lots, prices, fxBook),
       ),
+    },
+    platforms: {
+      register: new RegisterInstitution(platforms),
+      update: new UpdateInstitution(platforms),
+      archive: new ArchiveInstitution(platforms),
+      remove: new DeleteInstitution(platforms, instruments),
+      list: new ListInstitutions(platforms),
+    },
+    pricing: {
+      refresh: new RefreshPrices(priceBook, clock),
+      fx: fxBook,
     },
     leasing: {
       open: new OpenGoldLease(instruments, leases, lots),
       accrue: new AccrueLeaseInterest(accounts, instruments, leases, journal, lots, prices),
       settle: new SettleGoldLease(leases),
+      update: new UpdateGoldLease(leases),
+      remove: new DeleteGoldLease(leases),
       list: new ListGoldLeases(instruments, leases, lots, prices),
     },
     reports: {
@@ -293,4 +356,53 @@ export async function ensureSeeded(userId: UserId): Promise<void> {
   const { ledger, banking } = services();
   await ledger.seedChart.execute({ userId });
   await banking.seedRules.execute({ userId });
+  await seedPlatforms(userId);
 }
+
+/**
+ * Gives a new user the platforms an Indian portfolio is actually spread across.
+ *
+ * Seeded rather than left empty because "which platform" is a question with no
+ * useful blank state: a picker with nothing in it teaches the user to skip the
+ * field, and a portfolio with no platform attributed is the state this whole
+ * dimension exists to end. The list is the shipped catalogue's brokers, bullion
+ * vaults and wallets — the kinds an investment sits on — and every one of them
+ * is archivable, so a user who holds nothing at Upstox hides it in one click.
+ *
+ * Idempotent through `RegisterInstitution`, which matches on the normalised
+ * name: a re-run finds the existing row, and a user who renamed "Groww" to
+ * "Groww (family)" does not get a second one.
+ */
+async function seedPlatforms(userId: UserId): Promise<void> {
+  const { platforms, repositories } = services();
+  // Cheap guard so the common path is one query rather than thirty upserts.
+  const existing = await repositories.platforms.list(userId, { includeArchived: true });
+  if (existing.length > 0) return;
+
+  for (const provider of FINANCIAL_PROVIDERS) {
+    const kind = SEEDED_PLATFORM_KINDS[provider.kind];
+    if (!kind) continue;
+    await platforms.register.execute({
+      userId,
+      name: provider.name,
+      kind,
+      providerId: provider.id,
+      country: provider.country,
+    });
+  }
+}
+
+/**
+ * Which catalogue kinds become platforms, and as what.
+ *
+ * Banks are excluded on purpose: a savings account is not a platform a holding
+ * sits on, and seeding forty of them would bury the six brokers the picker
+ * exists to offer. A user who does hold investments at a bank adds it by hand.
+ */
+const SEEDED_PLATFORM_KINDS: Readonly<Partial<Record<ProviderKind, InstitutionKind>>> = {
+  BROKER: "BROKER",
+  BULLION: "BULLION",
+  WALLET: "WALLET",
+  RETIREMENT: "SCHEME",
+  SAVINGS: "SCHEME",
+};

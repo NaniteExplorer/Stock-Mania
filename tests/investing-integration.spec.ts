@@ -367,7 +367,7 @@ async function main() {
   check(
     "the holding accounts total the portfolio's cost basis",
     Money.total(holdingAccounts).toDecimalString(),
-    portfolio.value.totalCost.toDecimalString(),
+    portfolio.value.totalCost!.toDecimalString(),
   );
 
   section("an unpriced holding makes the total null, and names itself");

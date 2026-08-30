@@ -700,6 +700,40 @@ export interface TradeRecord {
   readonly settlementAccountId: string | null;
 }
 
+/**
+ * A stored `lot_matches` row, identified.
+ *
+ * `Disposal` is the tax report's shape and carries no row id, because nothing
+ * needed to address one match until a sale could be undone. Restoring a lot
+ * means tombstoning exactly the rows that consumed it, so the id is the whole
+ * point of this type existing beside `Disposal` rather than instead of it.
+ */
+export interface StoredLotMatch {
+  readonly id: string;
+  readonly sellTradeId: string;
+  readonly lotId: LotId;
+  readonly quantity: Quantity;
+}
+
+/**
+ * What a void has to write, decided before anything is written.
+ *
+ * A plan rather than a sequence of repository calls, because the whole unwind
+ * has to be one transaction: a restore that half-succeeds leaves a position that
+ * either double-counts units or loses them, and only the first of those is
+ * detectable. Building the plan is also where the `Lot` constructor's P02 check
+ * runs — on objects, before a single row moves.
+ */
+export interface TradeVoidPlan {
+  readonly tradeId: string;
+  /** Lots the voided buy opened. Tombstoned. */
+  readonly lotsToTombstone: readonly LotId[];
+  /** Lots the voided sell consumed, with their quantity already restored. */
+  readonly lotsToRestore: readonly Lot[];
+  /** `lot_matches` rows the voided sell wrote. Tombstoned. */
+  readonly matchesToTombstone: readonly string[];
+}
+
 export interface LotRepository {
   /** Writes the broker-level trade row a lot and a disposal both reference. */
   recordTrade(userId: UserId, trade: TradeRecord): Promise<void>;
@@ -720,4 +754,29 @@ export interface LotRepository {
     from: CalendarDate,
     to: CalendarDate,
   ): Promise<readonly Disposal[]>;
+
+  /* ── Corrections ──────────────────────────────────────────────────── */
+
+  /** One trade by id, or nothing. The id is also the transaction's. */
+  findTrade(userId: UserId, tradeId: string): Promise<TradeRecord | null>;
+
+  /** Every live trade on a position, oldest first, ties broken by id. */
+  tradesFor(userId: UserId, instrumentId: InstrumentId): Promise<readonly TradeRecord[]>;
+
+  /** The lots a buy opened — one, unless a corporate action split it. */
+  lotsFromBuy(userId: UserId, buyTradeId: string): Promise<readonly Lot[]>;
+
+  /** The matches a sale wrote, so a void knows exactly what to give back. */
+  matchesForSell(userId: UserId, sellTradeId: string): Promise<readonly StoredLotMatch[]>;
+
+  /** The matches that consumed a lot, so a buy void knows whether it may. */
+  matchesAgainstLot(userId: UserId, lotId: LotId): Promise<readonly StoredLotMatch[]>;
+
+  /**
+   * Applies a whole void in one transaction: restores, tombstones, done.
+   *
+   * One call rather than four so a correction — void then re-record — can wrap
+   * the pair, and so a partial unwind is not a state the database can be left in.
+   */
+  voidTrade(userId: UserId, plan: TradeVoidPlan, at: Date): Promise<void>;
 }

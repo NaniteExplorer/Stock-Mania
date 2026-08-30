@@ -9,6 +9,8 @@ import {
   settleLeaseAction,
   type LeasingActionState,
 } from "./leasing-actions";
+import { deleteLeaseAction, updateLeaseAction } from "./admin-actions";
+import type { InvestingActionState } from "./actions";
 
 /** A gram-denominated holding a lease can be opened against. */
 export interface LeasableHolding {
@@ -35,9 +37,12 @@ function Result({ state }: { state: LeasingActionState | null }) {
  */
 export function OpenLeaseForm({
   holdings,
+  accounts = [],
   defaultDate,
 }: {
   holdings: readonly LeasableHolding[];
+  /** Cash accounts a rupee payout can land in. */
+  accounts?: readonly { id: string; label: string }[];
   defaultDate: string;
 }) {
   const [state, action, pending] = React.useActionState<LeasingActionState | null, FormData>(
@@ -45,6 +50,23 @@ export function OpenLeaseForm({
     null,
   );
   const errors = state?.fieldErrors ?? {};
+  const [payoutMode, setPayoutMode] = React.useState<"GRAMS" | "CASH">("GRAMS");
+  const [tenure, setTenure] = React.useState("12");
+  const [startOn, setStartOn] = React.useState(defaultDate);
+
+  /*
+   * The closing date is derived from a tenure, because that is how the product
+   * is sold — "a six-month lease", never "a lease closing on the 14th of
+   * August". The date stays editable underneath for the lease that does not fit
+   * a preset.
+   */
+  const closesOn = React.useMemo(() => {
+    if (tenure === "CUSTOM") return "";
+    const start = new Date(`${startOn}T00:00:00Z`);
+    if (Number.isNaN(start.getTime())) return "";
+    start.setUTCMonth(start.getUTCMonth() + Number(tenure));
+    return start.toISOString().slice(0, 10);
+  }, [startOn, tenure]);
 
   if (holdings.length === 0) {
     return (
@@ -77,7 +99,7 @@ export function OpenLeaseForm({
           <ProviderPicker
             {...props}
             name="platform"
-            kinds={["BROKER", "WALLET"]}
+            kinds={["BULLION", "WALLET", "BROKER"]}
             placeholder="Where the lease sits"
           />
         )}
@@ -104,7 +126,34 @@ export function OpenLeaseForm({
 
       <Field name="startOn" label="Started on" required error={errors.startOn?.[0]}>
         {(props) => (
-          <input {...props} name="startOn" type="date" className="form-input" defaultValue={defaultDate} required />
+          <input
+            {...props}
+            name="startOn"
+            type="date"
+            className="form-input"
+            value={startOn}
+            onChange={(event) => setStartOn(event.target.value)}
+            required
+          />
+        )}
+      </Field>
+
+      <Field name="tenure" label="Tenure" hint="The way the product is sold. Sets the closing date.">
+        {(props) => (
+          <select
+            {...props}
+            className="form-input"
+            value={tenure}
+            onChange={(event) => setTenure(event.target.value)}
+          >
+            <option value="3">3 months</option>
+            <option value="6">6 months</option>
+            <option value="12">12 months</option>
+            <option value="18">18 months</option>
+            <option value="24">24 months</option>
+            <option value="36">36 months</option>
+            <option value="CUSTOM">Custom — pick a date</option>
+          </select>
         )}
       </Field>
 
@@ -115,20 +164,92 @@ export function OpenLeaseForm({
         hint="Interest stops here even if nobody closes it."
         error={errors.closesOn?.[0]}
       >
-        {(props) => <input {...props} name="closesOn" type="date" className="form-input" required />}
+        {(props) => (
+          <input
+            {...props}
+            name="closesOn"
+            type="date"
+            className="form-input"
+            key={closesOn}
+            defaultValue={closesOn}
+            required
+          />
+        )}
       </Field>
 
       <Field
         name="annualRate"
         label="Annual rate %"
         required
-        hint="Paid in grams, on completed months only."
+        hint="On the grams leased, per year."
         error={errors.annualRate?.[0]}
       >
         {(props) => (
           <input {...props} name="annualRate" className="form-input tnum" inputMode="decimal" placeholder="4" required />
         )}
       </Field>
+
+      <Field
+        name="payoutFrequency"
+        label="Interest paid"
+        required
+        hint="When a gram is actually earned — nothing is credited between payout dates."
+        error={errors.payoutFrequency?.[0]}
+      >
+        {(props) => (
+          <select {...props} name="payoutFrequency" className="form-input" defaultValue="MONTHLY">
+            <option value="MONTHLY">Monthly</option>
+            <option value="QUARTERLY">Quarterly</option>
+            <option value="HALF_YEARLY">Every six months</option>
+            <option value="ANNUAL">Yearly</option>
+            <option value="ON_MATURITY">Once, at maturity</option>
+          </select>
+        )}
+      </Field>
+
+      <Field
+        name="payoutMode"
+        label="Paid in"
+        required
+        hint="Grams make the holding grow. Rupees leave the leased gold exactly as it is."
+        error={errors.payoutMode?.[0]}
+      >
+        {(props) => (
+          <select
+            {...props}
+            name="payoutMode"
+            className="form-input"
+            value={payoutMode}
+            onChange={(event) => setPayoutMode(event.target.value as "GRAMS" | "CASH")}
+          >
+            <option value="GRAMS">More gold — grams into the holding</option>
+            <option value="CASH">Rupees — into an account</option>
+          </select>
+        )}
+      </Field>
+
+      {payoutMode === "CASH" && (
+        <Field
+          name="payoutAccountId"
+          label="Paid into"
+          required
+          hint="Where the rent lands. Booking it to the gold holding would say you received grams you did not."
+          error={errors.payoutAccountId?.[0]}
+        >
+          {(props) => (
+            <select {...props} name="payoutAccountId" className="form-input" required defaultValue="">
+              <option value="" disabled>
+                Choose an account
+              </option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.label}
+                </option>
+              ))}
+            </select>
+          )}
+        </Field>
+      )}
 
       <Field
         name="tdsRate"
@@ -165,23 +286,57 @@ export function OpenLeaseForm({
 }
 
 /**
- * Book what a lease has earned, and close it.
+ * Add due gold interest into the holding, and close the lease.
  *
- * Two forms, not one button: accruing and closing are separate events, and a
- * screen that did both at once would leave no way to book the last month's grams
- * after a lease had already been settled.
+ * Two forms, not one button: adding due grams and closing are separate events,
+ * and a screen that did both at once would leave no way to book the last month's
+ * grams after a lease had already been settled.
  */
 export function LeaseRowActions({
   leaseId,
   reference,
   defaultDate,
   isActive,
+  platform,
+  quantity,
+  startOn,
+  closesOn,
+  annualRate,
+  tdsRate,
+  hasBookedInterest,
+  autoAccrue = false,
 }: {
   leaseId: string;
   reference: string;
   defaultDate: string;
   isActive: boolean;
+  platform: string;
+  quantity: string;
+  startOn: string;
+  closesOn: string;
+  annualRate: string;
+  tdsRate: string;
+  /**
+   * Whether grams have already been credited into the ledger.
+   *
+   * Decides which fields the edit form offers. Once interest is booked, the terms
+   * that produced it are frozen — the postings were computed from them — so the
+   * form shows only the descriptive fields rather than presenting inputs whose
+   * only outcome is a refusal.
+   */
+  hasBookedInterest: boolean;
+  /** Adds newly completed monthly payouts when this holding is visited. */
+  autoAccrue?: boolean;
 }) {
+  const [editing, setEditing] = React.useState(false);
+  const [updateState, update, saving] = React.useActionState<InvestingActionState | null, FormData>(
+    updateLeaseAction,
+    null,
+  );
+  const [deleteState, remove, removing] = React.useActionState<
+    InvestingActionState | null,
+    FormData
+  >(deleteLeaseAction, null);
   const [accrueState, accrue, accruing] = React.useActionState<LeasingActionState | null, FormData>(
     accrueLeaseAction,
     null,
@@ -191,6 +346,17 @@ export function LeaseRowActions({
     null,
   );
 
+  React.useEffect(() => {
+    if (!autoAccrue || !isActive) return;
+    const storageKey = `gold-lease-accrual:${leaseId}:${defaultDate}`;
+    if (window.sessionStorage.getItem(storageKey)) return;
+    window.sessionStorage.setItem(storageKey, "1");
+    const data = new FormData();
+    data.set("leaseId", leaseId);
+    data.set("asOf", defaultDate);
+    React.startTransition(() => accrue(data));
+  }, [accrue, autoAccrue, defaultDate, isActive, leaseId]);
+
   return (
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
@@ -198,7 +364,7 @@ export function LeaseRowActions({
           <input type="hidden" name="leaseId" value={leaseId} />
           <input type="hidden" name="asOf" value={defaultDate} />
           <button type="submit" className="ghost-btn h-8 px-3 text-xs" disabled={accruing}>
-            {accruing ? "Booking…" : "Accrue interest"}
+            {accruing ? "Booking…" : "Add due grams"}
           </button>
         </form>
 
@@ -220,9 +386,140 @@ export function LeaseRowActions({
             </button>
           </form>
         )}
+
+        <button
+          type="button"
+          className="ghost-btn h-8 px-3 text-xs"
+          onClick={() => setEditing((open) => !open)}
+          aria-expanded={editing}
+        >
+          {editing ? "Cancel" : "Edit"}
+        </button>
+
+        {!hasBookedInterest && (
+          <form action={remove}>
+            <input type="hidden" name="leaseId" value={leaseId} />
+            <button
+              type="submit"
+              className="ghost-btn h-8 px-3 text-xs text-red-400"
+              disabled={removing}
+              title={`Remove ${reference}. Only possible because it has earned nothing yet.`}
+            >
+              {removing ? "Removing…" : "Remove"}
+            </button>
+          </form>
+        )}
       </div>
+
+      {editing && (
+        <form action={update} className="grid gap-3 rounded-xl border border-gray-600 p-3 md:grid-cols-3">
+          <input type="hidden" name="leaseId" value={leaseId} />
+
+          <Field name={`platform-${leaseId}`} label="Platform">
+            {(props) => (
+              <ProviderPicker
+                {...props}
+                name="platform"
+                defaultValue={platform}
+                kinds={["BULLION", "WALLET", "BROKER"]}
+              />
+            )}
+          </Field>
+
+          <Field name={`ref-${leaseId}`} label="Their reference">
+            {(props) => (
+              <input {...props} name="sourceReference" className="form-input" maxLength={120} />
+            )}
+          </Field>
+
+          <Field name={`notes-${leaseId}`} label="Notes">
+            {(props) => <input {...props} name="notes" className="form-input" maxLength={500} />}
+          </Field>
+
+          {hasBookedInterest ? (
+            <p className="md:col-span-3 text-xs text-amber-500">
+              Interest has already been booked into the ledger from these terms, so the grams, rate
+              and dates are fixed — changing them would leave those postings claiming an accrual
+              this lease no longer says it earned. Close it and open a corrected one instead.
+            </p>
+          ) : (
+            <>
+              <Field name={`qty-${leaseId}`} label="Grams">
+                {(props) => (
+                  <input
+                    {...props}
+                    name="quantity"
+                    className="form-input tnum"
+                    inputMode="decimal"
+                    defaultValue={quantity}
+                  />
+                )}
+              </Field>
+
+              <Field name={`rate-${leaseId}`} label="Rate % a year">
+                {(props) => (
+                  <input
+                    {...props}
+                    name="annualRate"
+                    className="form-input tnum"
+                    inputMode="decimal"
+                    defaultValue={annualRate}
+                  />
+                )}
+              </Field>
+
+              <Field name={`tds-${leaseId}`} label="TDS %">
+                {(props) => (
+                  <input
+                    {...props}
+                    name="tdsRate"
+                    className="form-input tnum"
+                    inputMode="decimal"
+                    defaultValue={tdsRate}
+                  />
+                )}
+              </Field>
+
+              <Field name={`start-${leaseId}`} label="Starts">
+                {(props) => (
+                  <input {...props} name="startOn" type="date" className="form-input" defaultValue={startOn} />
+                )}
+              </Field>
+
+              <Field name={`close-${leaseId}`} label="Closes">
+                {(props) => (
+                  <input {...props} name="closesOn" type="date" className="form-input" defaultValue={closesOn} />
+                )}
+              </Field>
+            </>
+          )}
+
+          <div className="md:col-span-3">
+            <button type="submit" className="primary-btn h-9 px-4 text-xs" disabled={saving}>
+              {saving ? "Saving…" : "Save the lease"}
+            </button>
+          </div>
+        </form>
+      )}
+
       <Result state={accrueState} />
       <Result state={settleState} />
+      {updateState && (
+        <p
+          className={updateState.ok ? "text-xs text-green-500" : "max-w-md text-xs text-red-500"}
+          role="status"
+        >
+          {updateState.message}
+        </p>
+      )}
+      {deleteState && (
+        <p
+          className={deleteState.ok ? "text-xs text-green-500" : "max-w-md text-xs text-red-500"}
+          role="status"
+        >
+          {deleteState.message}
+        </p>
+      )}
     </div>
   );
 }

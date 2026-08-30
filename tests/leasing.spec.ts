@@ -77,7 +77,52 @@ checkTrue(
   "and the three reconcile exactly",
   sevenMonths.gross.minus(sevenMonths.tds).equals(sevenMonths.net),
 );
-checkTrue("the reason names the rate and the months", sevenMonths.because.includes("7 completed months"));
+// "paid", not "completed": with a payout frequency in the model the two can
+// differ, and the explanation has to say which it means. A monthly lease is the
+// case where they coincide.
+checkTrue("the reason names the rate and the months", sevenMonths.because.includes("7 paid months"));
+check("nothing is pending on a monthly lease", sevenMonths.monthsPending, 0);
+
+/* ═══ The payout schedule ═════════════════════════════════════════════ */
+
+section("a lease pays on completed periods, not on completed months");
+
+/*
+ * The distinction the whole feature turns on. Seven months into a
+ * quarterly-paying lease the platform has credited two quarters; the seventh
+ * month is earned in the ordinary-language sense and cannot be sold, spent or
+ * leased again. A tracker that accrued it anyway would show grams that are not
+ * there — and would then offer to lease them.
+ */
+const quarterly = lease({ payoutFrequency: "QUARTERLY" });
+const quarterlyAt7 = quarterly.accrualOn(on("2026-08-15"));
+check("six months are payable, not seven", quarterlyAt7.monthsCompleted, 6);
+check("and one is pending", quarterlyAt7.monthsPending, 1);
+check("the next payout is the ninth month", quarterlyAt7.nextPayoutOn?.toISO(), "2026-10-15");
+checkTrue(
+  "the grams are strictly less than the monthly lease's",
+  sevenMonths.gross.isGreaterThan(quarterlyAt7.gross),
+);
+
+const annual = lease({ payoutFrequency: "ANNUAL" });
+check("an annual lease has paid nothing at seven months", annual.accrualOn(on("2026-08-15")).monthsCompleted, 0);
+checkTrue(
+  "and says so rather than showing zero without a reason",
+  annual.accrualOn(on("2026-08-15")).because.includes("yearly"),
+);
+check("and pays the full year at the close", annual.accrualOn(on("2027-01-15")).monthsCompleted, 12);
+
+/*
+ * `ON_MATURITY` is not "annual with a long period": an eighteen-month lease pays
+ * at eighteen months and not at twelve, so the whole term has to be the period.
+ */
+const atMaturity = lease({ payoutFrequency: "ON_MATURITY", closesOn: on("2027-07-15") });
+check("nothing at twelve months", atMaturity.accrualOn(on("2027-01-15")).monthsCompleted, 0);
+check("and eighteen at the close", atMaturity.accrualOn(on("2027-07-15")).monthsCompleted, 18);
+check("with nothing left pending", atMaturity.accrualOn(on("2027-07-15")).monthsPending, 0);
+
+check("a lease defaults to paying monthly", lease().payoutFrequency, "MONTHLY");
+check("and to paying in grams", lease().payoutMode, "GRAMS");
 
 // A full year: 4.3989 × 4% = 0.175956g.
 const fullYear = twelveMonth.accrualOn(on("2027-01-15"));

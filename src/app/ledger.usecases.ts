@@ -87,6 +87,8 @@ export class SeedChartOfAccounts
 export interface OpenAccountInput {
   userId: UserId;
   name: string;
+  /** Stable ledger-path leaf when the display name contains Unicode or punctuation. */
+  codeSegment?: string;
   type: AccountTypeName;
   subtype?: AccountSubtype | null;
   /** Where it sits in the tree. Defaults to the type's root (`Assets`, …). */
@@ -164,7 +166,17 @@ export class OpenAccount implements UseCase<OpenAccountInput, OpenAccountOutput>
     // Codes are unique per user; disambiguate rather than rejecting a name the
     // user reasonably wants to reuse ("HDFC" for both a savings and a salary
     // account).
-    const baseCode = parent ? parent.code.child(name) : AccountCode.parse(name);
+    let baseCode: AccountCode;
+    try {
+      const codeSegment = input.codeSegment?.trim() || name;
+      baseCode = parent ? parent.code.child(codeSegment) : AccountCode.parse(codeSegment);
+    } catch {
+      return Err(
+        new ValidationError("The account name contains characters that cannot be used in its ledger code.", {
+          name: ["Use letters, numbers, spaces, and simple punctuation."],
+        }),
+      );
+    }
     const code = await this.uniqueCode(input.userId, baseCode);
 
     const account = Account.open({

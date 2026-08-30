@@ -19,6 +19,8 @@ import {
   Wallet,
   Gem,
   CreditCard,
+  Building2,
+  TrendingUp,
 } from "lucide-react";
 
 /**
@@ -41,6 +43,8 @@ export const NAV_GROUPS = [
       { href: "/budgets", label: "Budgets", icon: PiggyBank },
       { href: "/imports", label: "Import", icon: Upload },
       { href: "/investments", label: "Investments", icon: LineChart },
+      { href: "/platforms", label: "Platforms", icon: Building2 },
+      { href: "/investments/history", label: "Realised gains", icon: TrendingUp },
       { href: "/assets", label: "Assets", icon: Gem },
       { href: "/deposits", label: "Deposits", icon: PiggyBank },
       { href: "/cards", label: "Cards", icon: CreditCard },

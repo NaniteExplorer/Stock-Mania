@@ -1355,6 +1355,57 @@ export class OpeningBalance extends Transaction<OpeningBalanceDetails> {
 
 /* ═══ ValuationAdjustment ═════════════════════════════════════════════ */
 
+interface OpeningPositionDetails {
+  readonly instrumentId: string;
+  readonly quantity: Quantity;
+  readonly amount: Money;
+  readonly holding: AccountRef;
+}
+
+/** Establishes pre-existing grams and cost basis without inventing a bank-funded buy. */
+export class OpeningPosition extends Transaction<OpeningPositionDetails> {
+  get kind(): "OPENING_BALANCE" { return "OPENING_BALANCE"; }
+
+  static record(context: TransactionContext, details: OpeningPositionDetails): OpeningPosition {
+    return new OpeningPosition(TransactionId.create(), context, details);
+  }
+
+  protected buildPostings(): readonly Posting[] {
+    const refs = this.refs()!;
+    return [
+      Posting.create({
+        accountId: this.details.holding.id,
+        direction: "DEBIT",
+        amount: this.details.amount,
+        instrumentId: this.details.instrumentId,
+        quantity: this.details.quantity,
+        unitCost: this.details.quantity.perUnit(this.details.amount),
+      }),
+      Posting.credit(refs.source.id, this.details.amount),
+    ];
+  }
+
+  protected validate(): void {
+    if (!this.details.quantity.isPositive) {
+      throw new DomainError("LEDGER_OPENING_POSITION_QUANTITY", "An opening position needs positive grams.");
+    }
+    if (!this.details.amount.isPositive) {
+      throw new DomainError("LEDGER_OPENING_POSITION_AMOUNT", "An opening position needs a positive invested amount.");
+    }
+    this.assertUsable(this.details.holding, this.details.amount.currency);
+  }
+
+  override lotEffects(): readonly LotEffect[] {
+    return [{
+      kind: "OPEN",
+      instrumentId: this.details.instrumentId,
+      quantity: this.details.quantity,
+      costBasis: this.details.amount,
+      acquiredOn: this.txnDate,
+    }];
+  }
+}
+
 interface ValuationAdjustmentDetails {
   /** Signed: positive when the asset is now worth more. */
   readonly delta: Money;

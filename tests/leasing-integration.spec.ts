@@ -141,6 +141,24 @@ async function main() {
   section("a lease puts gold to work without moving it");
 
   const openLease = new OpenGoldLease(instruments, leaseRepo, lots);
+  const beforeAnyLease = await new ListGoldLeases(
+    instruments,
+    leaseRepo,
+    lots,
+    new ScriptedPrices({}),
+  ).execute({
+    userId,
+    asOf: on("2026-01-15"),
+    instrumentId: goldId,
+  });
+  checkTrue("the lease screen loads before any lease exists", beforeAnyLease.ok);
+  if (!beforeAnyLease.ok) return;
+  check(
+    "all held gold starts available to lease",
+    beforeAnyLease.value.unleasedGrams.toDecimalString(),
+    "4.7165",
+  );
+
   const opened = await openLease.execute({
     userId,
     instrumentId: goldId,
@@ -164,7 +182,7 @@ async function main() {
     grams("4.7165").valueAt(rupees("15900")).toDecimalString(),
   );
 
-  section("over-leasing is reported, not silently clamped");
+  section("over-leasing is refused");
 
   const overLease = await openLease.execute({
     userId,
@@ -175,22 +193,13 @@ async function main() {
     closesOn: on("2027-02-01"),
     annualRate: Percentage.of("4"),
   });
-  if (!overLease.ok) return;
-  check("the second lease exceeds what is held", overLease.value.warnings.length, 1);
+  checkTrue("the second lease cannot exceed the wallet balance", !overLease.ok);
+  if (overLease.ok) return;
   checkTrue(
-    "and the warning says what to do about it",
-    overLease.value.warnings[0].includes("gold that\nwas never bought") ||
-      overLease.value.warnings[0].includes("never bought"),
+    "and the refusal names the available grams",
+    overLease.error.message.includes("Only 0.3176g is currently available"),
   );
-  // Settle it: the rest of the spec is about the first lease alone.
   const settle = new SettleGoldLease(leaseRepo);
-  const cancelled = await settle.execute({
-    userId,
-    leaseId: (await leaseRepo.findByReference(userId, "LEASE-0002"))!.id,
-    outcome: "CANCELLED",
-    endedOn: on("2026-02-01"),
-  });
-  checkTrue("the mistaken lease is cancelled", cancelled.ok);
 
   section("the accrual books grams as income, and as cost basis");
 
@@ -322,7 +331,7 @@ async function main() {
   });
   checkTrue("the screen loaded", list.ok);
   if (!list.ok) return;
-  check("two leases, one of them cancelled", list.value.rows.length, 2);
+  check("one valid lease is listed", list.value.rows.length, 1);
   check(
     "grams on lease counts only the active one",
     list.value.portfolio.leasedGrams.toDecimalString(),

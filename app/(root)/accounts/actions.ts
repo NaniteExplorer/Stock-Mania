@@ -3,8 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { Money } from "@/core/money";
-import { CalendarDate } from "@/core/time";
+import { Currency, Money } from "@/core/money";
+import { CalendarDate, DateRange } from "@/core/time";
 import { AccountCode, AccountId, SystemAccountCodes } from "@/domain/accounts";
 import { TransactionId } from "@/domain/transactions";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
@@ -35,6 +35,7 @@ const AMOUNT = z
 const openSchema = z.object({
   name: z.string().trim().min(1, "Give the account a name.").max(120),
   subtype: z.enum(["BANK", "SAVINGS", "WALLET", "CASH"]),
+  currency: z.enum(["INR", "USD"]),
   institution: z.string().trim().max(120).optional(),
   accountNumberSuffix: z
     .string()
@@ -70,19 +71,30 @@ export async function openCashAccountAction(
   await ensureSeeded(userId);
 
   const input = parsed.data;
+  const currency = Currency.of(input.currency);
   const result = await services().banking.openCashAccount.execute({
     userId,
     name: input.name,
     subtype: input.subtype,
     institution: input.institution || null,
     accountNumberSuffix: input.accountNumberSuffix || null,
-    openingBalance: input.openingBalance ? Money.fromRupees(input.openingBalance) : null,
+    currency,
+    openingBalance: input.openingBalance ? Money.fromRupees(input.openingBalance, currency) : null,
     openingBalanceOn: input.openingBalanceOn
       ? CalendarDate.parse(input.openingBalanceOn)
       : undefined,
   });
 
   if (!result.ok) return fail(result.error.message);
+
+  if (currency.code !== Currency.reporting.code) {
+    const today = CalendarDate.parse(new Date().toISOString().slice(0, 10));
+    await services().pricing.fx.refresh(
+      currency.code,
+      [Currency.reporting.code],
+      DateRange.of(today.plusDays(-7), today),
+    );
+  }
 
   revalidateAccountSurfaces();
   return ok(`${input.name} opened as ${result.value.code}.`);

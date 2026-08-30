@@ -1,5 +1,5 @@
 /**
- * The `MarketInstrument` hierarchy: thirteen leaf classes, one file.
+ * The `MarketInstrument` hierarchy: seventeen leaf classes, one file.
  *
  * The plan's done-when is that **adding a fourteenth instrument type touches
  * exactly one file**, and that is the entire design constraint. It holds because
@@ -31,6 +31,7 @@ import { Currency, Money } from "@/core/money";
 import { Percentage, Quantity, UnitPrice } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
 import { AccountId } from "@/domain/accounts";
+import { InstitutionId } from "@/domain/institutions";
 import { analyseSeries, type Bar, type InstrumentAnalysis } from "@/domain/analysis";
 import type { PricedAssetClass, QuoteType } from "@/domain/pricing";
 import type { TaxCategory } from "@/domain/tax";
@@ -56,7 +57,7 @@ export class InstrumentId extends ValueObject {
   }
 }
 
-/** The fifteen leaves, as the discriminator a stored row carries. */
+/** The seventeen leaves, as the discriminator a stored row carries. */
 export type InstrumentKind =
   | "LISTED_EQUITY"
   | "ETF"
@@ -70,6 +71,8 @@ export type InstrumentKind =
   | "SOVEREIGN_GOLD_BOND"
   | "DIGITAL_GOLD"
   | "DIGITAL_SILVER"
+  | "DIGITAL_PLATINUM"
+  | "REIT"
   | "CRYPTO"
   | "OPTION"
   | "FUTURE";
@@ -185,6 +188,16 @@ export interface InstrumentProps {
   readonly quoteRef?: string | null;
   /** The asset account this holding's value lives in. */
   readonly assetAccountId: AccountId;
+  /**
+   * The platform it is held on — Zerodha, Groww, Tanishq, SafeGold.
+   *
+   * Optional because it is a property of *where* the holding sits, not of what
+   * it is: the tax treatment, the price key and the unit are all the same
+   * whether the gold is at Tanishq or SafeGold, which is why no leaf reads this
+   * and it stays on the base props. Null means unassigned, and every rollup
+   * reports that as its own group rather than hiding the holding.
+   */
+  readonly institutionId?: InstitutionId | null;
   readonly isClosed?: boolean;
   /**
    * The facts that belong to *this kind* of instrument and to no other.
@@ -278,6 +291,8 @@ const METADATA_SCHEMAS: Readonly<Record<InstrumentKind, z.ZodType>> = {
   SOVEREIGN_GOLD_BOND: SGB_METADATA,
   DIGITAL_GOLD: NO_METADATA,
   DIGITAL_SILVER: NO_METADATA,
+  DIGITAL_PLATINUM: NO_METADATA,
+  REIT: NO_METADATA,
   CRYPTO: NO_METADATA,
   OPTION: OPTION_METADATA,
   FUTURE: FUTURE_METADATA,
@@ -349,6 +364,10 @@ export abstract class MarketInstrument {
     return this.props.assetAccountId;
   }
 
+  get institutionId(): InstitutionId | null {
+    return this.props.institutionId ?? null;
+  }
+
   get isClosed(): boolean {
     return this.props.isClosed ?? false;
   }
@@ -417,7 +436,7 @@ export abstract class MarketInstrument {
         value: null,
         pricedOn: null,
         isStale: true,
-        unpricedReason: `No ${key.quoteType.toLowerCase()} could be resolved for ${this.symbol}.`,
+        unpricedReason: `No ${key.quoteType.toLowerCase()} could be resolved for price reference ${key.ref ?? this.symbol}.`,
       };
     }
 
@@ -497,7 +516,7 @@ export abstract class MarketInstrument {
   /**
    * Builds the right leaf for a stored kind.
    *
-   * The one place that knows all thirteen. A fourteenth instrument adds a class
+   * The one place that knows all seventeen. An eighteenth instrument adds a class
    * and a case here, and nothing else in the codebase changes — which is the
    * plan's done-when, and is only true because no engine switches on the kind.
    */
@@ -527,6 +546,10 @@ export abstract class MarketInstrument {
         return new DigitalGold(props);
       case "DIGITAL_SILVER":
         return new DigitalSilver(props);
+      case "DIGITAL_PLATINUM":
+        return new DigitalPlatinum(props);
+      case "REIT":
+        return new Reit(props);
       case "CRYPTO":
         return new Crypto(props);
       case "OPTION":
@@ -551,6 +574,8 @@ export abstract class MarketInstrument {
       "SOVEREIGN_GOLD_BOND",
       "DIGITAL_GOLD",
       "DIGITAL_SILVER",
+      "DIGITAL_PLATINUM",
+      "REIT",
       "CRYPTO",
       "OPTION",
       "FUTURE",
@@ -1034,8 +1059,9 @@ export class DigitalGold extends MarketInstrument {
   quoteKey(): QuoteKey {
     return {
       assetClass: "COMMODITY",
-      quoteType: "MID",
-      // IBJA publishes a buy and a sell rate; the mid is the fair one to value at.
+      // The shipped bullion feeds publish a daily benchmark close. Asking for
+      // MID made every gold holding permanently unpriced.
+      quoteType: "CLOSE",
       ref: this.props.quoteRef ?? "GOLD999",
       identifierType: "SLUG",
     };
@@ -1057,9 +1083,81 @@ export class DigitalSilver extends MarketInstrument {
   quoteKey(): QuoteKey {
     return {
       assetClass: "COMMODITY",
-      quoteType: "MID",
+      quoteType: "CLOSE",
       ref: this.props.quoteRef ?? "SILVER999",
       identifierType: "SLUG",
+    };
+  }
+}
+
+/**
+ * Digital platinum.
+ *
+ * The same shape as gold and silver — grams with a vaulting provider — and the
+ * same `GOLD` tax category, which is not a naming slip: the category is the
+ * *treatment*, and bullion of any metal is taxed alike as a non-STT capital
+ * asset. Renaming the category to `BULLION` would be truer and would rewrite
+ * every stored `tax_asset_class`, so the name stays and this comment carries the
+ * caveat.
+ *
+ * IBJA publishes platinum irregularly, so a platinum holding may sit unpriced.
+ * That is the honest outcome and the screen already says so; it is not valued at
+ * the gold rate as an approximation.
+ */
+export class DigitalPlatinum extends MarketInstrument {
+  readonly kind = "DIGITAL_PLATINUM" as const;
+  readonly unit = "GRAM" as const;
+
+  constructor(props: InstrumentProps) {
+    super(props);
+  }
+
+  taxProfile(): InstrumentTaxProfile {
+    return METAL_PROFILE;
+  }
+
+  quoteKey(): QuoteKey {
+    return {
+      assetClass: "COMMODITY",
+      quoteType: "CLOSE",
+      ref: this.props.quoteRef ?? "PLATINUM999",
+      identifierType: "SLUG",
+    };
+  }
+}
+
+/* ═══ Real estate ═════════════════════════════════════════════════════ */
+
+/**
+ * A listed real-estate investment trust.
+ *
+ * Priced from an exchange close like a share, and since the 2024 change taxed on
+ * the same twelve-month line as listed equity with STT applying — so the equity
+ * profile is not an approximation here, it is the treatment.
+ *
+ * What a REIT does *not* get modelled as is a property. The unit is a unit, the
+ * price is a close, and the distributions (part interest, part dividend, part
+ * return of capital) are income events rather than instrument facts — they book
+ * through the ledger like any other payout.
+ */
+export class Reit extends MarketInstrument {
+  readonly kind = "REIT" as const;
+  readonly unit = "UNIT" as const;
+
+  constructor(props: InstrumentProps) {
+    super(props);
+  }
+
+  taxProfile(): InstrumentTaxProfile {
+    return EQUITY_PROFILE;
+  }
+
+  quoteKey(): QuoteKey {
+    return {
+      assetClass: "EQUITY",
+      quoteType: "CLOSE",
+      ref: this.props.quoteRef ?? this.symbol,
+      identifierType: "SYMBOL",
     };
   }
 }
@@ -1348,6 +1446,18 @@ export interface StoredInstrument {
 export interface InstrumentRepository {
   findById(userId: UserId, id: InstrumentId): Promise<MarketInstrument | null>;
   findBySymbol(userId: UserId, symbol: string): Promise<MarketInstrument | null>;
+  /** Includes closed and soft-deleted rows because the database unique key does. */
+  isSymbolReserved(userId: UserId, symbol: string): Promise<boolean>;
   list(userId: UserId, options?: { includeClosed?: boolean }): Promise<readonly MarketInstrument[]>;
   save(userId: UserId, kind: InstrumentKind, props: InstrumentProps): Promise<void>;
+
+  /**
+   * Tombstones an instrument. Soft, per A03 — the row keeps its `deleted_at` and
+   * drops out of every read, so a trade that still references it can be
+   * reconstructed rather than pointing at nothing.
+   */
+  softDelete(userId: UserId, id: InstrumentId, at: Date): Promise<void>;
+
+  /** How many live trades reference it — a delete is refused if any do. */
+  countTrades(userId: UserId, id: InstrumentId): Promise<number>;
 }

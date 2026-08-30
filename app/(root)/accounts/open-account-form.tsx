@@ -38,6 +38,15 @@ export default function OpenAccountForm() {
         )}
       </Field>
 
+      <Field name="currency" label="Currency" required error={errors.currency?.[0]}>
+        {(props) => (
+          <select {...props} name="currency" className="form-input" defaultValue="INR">
+            <option value="INR">INR — Indian rupee</option>
+            <option value="USD">USD — US dollar</option>
+          </select>
+        )}
+      </Field>
+
       <Field name="institution" label="Bank or provider" error={errors.institution?.[0]}>
         {(props) => <ProviderPicker {...props} name="institution" kinds={["BANK", "WALLET"]} placeholder="HDFC Bank" />}
       </Field>

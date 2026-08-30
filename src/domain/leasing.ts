@@ -47,6 +47,67 @@ export type LeaseStatus =
   /** Ended early. Interest stops on the cancellation date, not on the closing date. */
   | "CANCELLED";
 
+/**
+ * How often the platform actually pays the interest out.
+ *
+ * Not decoration, and not a display preference: it decides **when a gram is
+ * earned**. A lease paying annually at 4% has earned nothing after seven months
+ * — the platform owes it, but it has not been credited and cannot be sold — and
+ * a tracker that accrued it monthly anyway would show grams the user cannot
+ * touch, in a holding they might then try to lease again.
+ *
+ * `ON_MATURITY` is its own case rather than "annual with a long term": it pays
+ * once at the end whatever the tenure, so an eighteen-month lease pays at
+ * eighteen months and not at twelve.
+ */
+export const PAYOUT_FREQUENCIES = [
+  "MONTHLY",
+  "QUARTERLY",
+  "HALF_YEARLY",
+  "ANNUAL",
+  "ON_MATURITY",
+] as const;
+export type PayoutFrequency = (typeof PAYOUT_FREQUENCIES)[number];
+
+/** Months in one payout period. `null` means the whole term, paid once. */
+export function periodMonths(frequency: PayoutFrequency): number | null {
+  switch (frequency) {
+    case "MONTHLY":
+      return 1;
+    case "QUARTERLY":
+      return 3;
+    case "HALF_YEARLY":
+      return 6;
+    case "ANNUAL":
+      return 12;
+    case "ON_MATURITY":
+      return null;
+  }
+}
+
+export function payoutFrequencyLabel(frequency: PayoutFrequency): string {
+  return {
+    MONTHLY: "Monthly",
+    QUARTERLY: "Quarterly",
+    HALF_YEARLY: "Every six months",
+    ANNUAL: "Yearly",
+    ON_MATURITY: "Once, at maturity",
+  }[frequency];
+}
+
+/**
+ * What the interest is paid in.
+ *
+ * `GRAMS` is the classic gold-lease product: the rent is more gold, so the
+ * holding itself grows and the user is long more metal each period. `CASH` pays
+ * rupees into a bank account and leaves the leased grams exactly as they were —
+ * the same rate, an entirely different exposure, and a different tax posting.
+ * Both are sold in India, sometimes by the same platform on the same metal,
+ * which is why it is a per-lease fact rather than a global setting.
+ */
+export const PAYOUT_MODES = ["GRAMS", "CASH"] as const;
+export type PayoutMode = (typeof PAYOUT_MODES)[number];
+
 /** The statutory withholding on interest income. 10% under §194A. */
 export const DEFAULT_TDS_RATE = Percentage.of("10");
 
@@ -85,6 +146,12 @@ export interface GoldLeaseProps {
   /** When the lease ends. Accrual stops here even if nobody closes it. */
   readonly closesOn: CalendarDate;
   readonly annualRate: Percentage;
+  /** How often interest is actually paid out. Defaults to monthly. */
+  readonly payoutFrequency?: PayoutFrequency;
+  /** Grams into the holding, or rupees into an account. Defaults to grams. */
+  readonly payoutMode?: PayoutMode;
+  /** Where a cash payout lands. Required when `payoutMode` is `CASH`. */
+  readonly payoutAccountId?: AccountId | null;
   /** Withholding on the interest. 10% unless the platform says otherwise. */
   readonly tdsRate?: Percentage;
   readonly status?: LeaseStatus;
@@ -100,8 +167,15 @@ export interface GoldLeaseProps {
 /** What a lease has earned by a date, in grams. */
 export interface LeaseAccrual {
   readonly asOf: CalendarDate;
-  /** Completed months the accrual is paid on. */
+  /**
+   * Months the accrual is actually paid on — completed **periods**, not
+   * completed months. Seven months into an annually-paying lease this is 0.
+   */
   readonly monthsCompleted: number;
+  /** Months that have elapsed but not yet reached a payout date. */
+  readonly monthsPending: number;
+  /** When the next payout falls due, or `null` once the term is over. */
+  readonly nextPayoutOn: CalendarDate | null;
   /** Interest before withholding. */
   readonly gross: Quantity;
   /** Withheld at source, in grams. A tax credit, not a cost. */
@@ -211,16 +285,54 @@ export class GoldLease {
     return ended.isBefore(this.props.closesOn) ? ended : this.props.closesOn;
   }
 
+  get payoutFrequency(): PayoutFrequency {
+    return this.props.payoutFrequency ?? "MONTHLY";
+  }
+
+  get payoutMode(): PayoutMode {
+    return this.props.payoutMode ?? "GRAMS";
+  }
+
   /**
-   * Completed months of accrual on a date.
+   * Months elapsed on a date, before the payout schedule is applied.
    *
-   * Clamped at both ends: never negative before the lease starts, never beyond the
-   * term after it ends.
+   * Clamped at both ends: never negative before the lease starts, never beyond
+   * the term after it ends.
    */
-  monthsCompletedOn(asOf: CalendarDate): number {
+  monthsElapsedOn(asOf: CalendarDate): number {
     const boundary = asOf.isBefore(this.accruesUntil) ? asOf : this.accruesUntil;
     const months = this.props.startOn.monthsUntil(boundary);
     return months > 0 ? months : 0;
+  }
+
+  /**
+   * Months that have actually been **paid out** by a date.
+   *
+   * The elapsed months rounded down to a whole number of payout periods. A
+   * quarterly lease five months in has been paid for three; the other two are
+   * earned in the ordinary-language sense and not yet credited, which is exactly
+   * the distinction {@link LeaseAccrual.monthsPending} carries to the screen.
+   *
+   * `ON_MATURITY` pays nothing until the term is over and then pays all of it —
+   * which is why it is not modelled as "annual with a long period".
+   */
+  monthsCompletedOn(asOf: CalendarDate): number {
+    const elapsed = this.monthsElapsedOn(asOf);
+    const period = periodMonths(this.payoutFrequency);
+    if (period === null) {
+      return asOf.isOnOrAfter(this.accruesUntil) ? elapsed : 0;
+    }
+    return Math.floor(elapsed / period) * period;
+  }
+
+  /** When the next payout falls due, or `null` if the term is over. */
+  nextPayoutOn(asOf: CalendarDate): CalendarDate | null {
+    if (asOf.isOnOrAfter(this.accruesUntil)) return null;
+    const period = periodMonths(this.payoutFrequency);
+    if (period === null) return this.accruesUntil;
+    const next = (Math.floor(this.monthsElapsedOn(asOf) / period) + 1) * period;
+    const due = this.props.startOn.plusMonths(next);
+    return due.isBefore(this.accruesUntil) ? due : this.accruesUntil;
   }
 
   /**
@@ -235,16 +347,24 @@ export class GoldLease {
    */
   accrualOn(asOf: CalendarDate): LeaseAccrual {
     const months = this.monthsCompletedOn(asOf);
+    const elapsed = this.monthsElapsedOn(asOf);
+    const nextPayoutOn = this.nextPayoutOn(asOf);
     if (months === 0) {
       return {
         asOf,
         monthsCompleted: 0,
+        monthsPending: elapsed,
+        nextPayoutOn,
         gross: Quantity.ZERO,
         tds: Quantity.ZERO,
         net: Quantity.ZERO,
         because:
-          `No completed month yet: the lease began on ${this.props.startOn.toISO()} and interest ` +
-          `is paid on completed months, so a part month has earned nothing.`,
+          elapsed === 0
+            ? `No completed month yet: the lease began on ${this.props.startOn.toISO()} and ` +
+              `interest is paid on completed months, so a part month has earned nothing.`
+            : `${elapsed} month${elapsed === 1 ? " has" : "s have"} elapsed, but this lease pays ` +
+              `${payoutFrequencyLabel(this.payoutFrequency).toLowerCase()} — nothing is credited ` +
+              `until ${nextPayoutOn?.toISO() ?? this.accruesUntil.toISO()}.`,
       };
     }
 
@@ -257,17 +377,25 @@ export class GoldLease {
     );
     const tds = gross.timesRatio(this.tdsRate.scaled, PERCENT_DENOMINATOR, "DOWN");
 
+    const pending = elapsed - months;
     return {
       asOf,
       monthsCompleted: months,
+      monthsPending: pending,
+      nextPayoutOn,
       gross,
       tds,
       // Subtraction, not a third rounding: gross, tds and net always reconcile.
       net: gross.minus(tds),
       because:
         `${this.props.quantity.toDecimalString()}g at ${this.props.annualRate.toFixed(2)}% for ` +
-        `${months} completed month${months === 1 ? "" : "s"} is ${gross.toDecimalString()}g, less ` +
-        `${this.tdsRate.toFixed(2)}% TDS of ${tds.toDecimalString()}g.`,
+        `${months} paid month${months === 1 ? "" : "s"} is ${gross.toDecimalString()}g, less ` +
+        `${this.tdsRate.toFixed(2)}% TDS of ${tds.toDecimalString()}g` +
+        (pending > 0
+          ? `. A further ${pending} month${pending === 1 ? "" : "s"} has elapsed and is not yet ` +
+            `payable — this lease pays ` +
+            `${payoutFrequencyLabel(this.payoutFrequency).toLowerCase()}.`
+          : "."),
     };
   }
 
@@ -446,6 +574,9 @@ export interface GoldLeaseRepository {
     options?: { instrumentId?: InstrumentId; status?: LeaseStatus },
   ): Promise<readonly GoldLease[]>;
   save(lease: GoldLease): Promise<void>;
+
+  /** Tombstones a lease. Soft, per A03 — nothing here is ever hard-deleted. */
+  softDelete(userId: UserId, id: LeaseId, at: Date): Promise<void>;
   /**
    * Records grams credited to the holding by an accrual posting.
    *

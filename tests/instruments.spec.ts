@@ -88,9 +88,9 @@ const propsFor = (kind: string): InstrumentProps => ({
 
 /* ═══ Every leaf answers every question ═══════════════════════════════ */
 
-section("every one of the fifteen leaves answers all three questions");
+section("every one of the seventeen leaves answers all three questions");
 
-check("fifteen kinds", MarketInstrument.kinds().length, 15);
+check("seventeen kinds", MarketInstrument.kinds().length, 17);
 
 let missing = 0;
 for (const kind of MarketInstrument.kinds()) {
@@ -104,7 +104,7 @@ check("none is missing a tax profile, a quote key or a unit", missing, 0);
 const kinds = new Set(
   MarketInstrument.kinds().map((kind) => MarketInstrument.of(kind, propsFor(kind)).kind),
 );
-check("and each builds the leaf that matches its own kind", kinds.size, 15);
+check("and each builds the leaf that matches its own kind", kinds.size, 17);
 
 /* ═══ No engine switches on the kind ══════════════════════════════════ */
 
@@ -242,7 +242,7 @@ section("digital gold is measured in grams");
 
 const gold = new DigitalGold(props("SAFEGOLD", "SafeGold"));
 check("commodity", gold.quoteKey().assetClass, "COMMODITY");
-check("valued at the mid rate, not the buy or sell one", gold.quoteKey().quoteType, "MID");
+check("valued at the published bullion benchmark close", gold.quoteKey().quoteType, "CLOSE");
 check("grams", gold.formatQuantity(units("12.5")), "12.5 g");
 check("gold, for tax", gold.taxProfile().category, "GOLD");
 

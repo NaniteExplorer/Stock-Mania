@@ -364,8 +364,14 @@ export const ledgerAccounts = sqliteTable(
       onDelete: "restrict",
     }),
     currency: currencyCode(),
-    /** Bank/broker name, for display and logo lookup. */
+    /**
+     * Bank/broker name, for display and logo lookup.
+     *
+     * Superseded by `institutionId` and kept because it is the only record of
+     * what the user actually typed — which is what the backfill matches on.
+     */
     institution: text("institution"),
+
     /** Last four digits of the account or card, when the user supplied them. */
     accountNumberSuffix: text("account_number_suffix", { length: 4 }),
     /** Closed accounts keep their history but are hidden from pickers. */
@@ -582,6 +588,9 @@ export const INSTRUMENT_KINDS = [
   "GOVT_SECURITY",
   "DIGITAL_GOLD",
   "DIGITAL_SILVER",
+  /** Platinum has no coarse kind of its own; the metals feed treats bullion alike. */
+  "DIGITAL_METAL",
+  "REIT",
   "CRYPTO",
   /** Options and futures share one coarse kind: the price feed treats them alike. */
   "DERIVATIVE",
@@ -613,7 +622,7 @@ export const TAX_ASSET_CLASSES = [
 
 export const QUOTE_SOURCES = ["MANUAL", "AMFI", "NSE", "METALS"] as const;
 
-/** The fifteen leaves of `domain/instruments.ts`, as stored. */
+/** The seventeen leaves of `domain/instruments.ts`, as stored. */
 export const INSTRUMENT_CLASSES = [
   "LISTED_EQUITY",
   "ETF",
@@ -627,6 +636,8 @@ export const INSTRUMENT_CLASSES = [
   "SOVEREIGN_GOLD_BOND",
   "DIGITAL_GOLD",
   "DIGITAL_SILVER",
+  "DIGITAL_PLATINUM",
+  "REIT",
   "CRYPTO",
   "OPTION",
   "FUTURE",
@@ -679,6 +690,14 @@ export const instruments = sqliteTable(
      * own Zod schema in its constructor — so a new asset class is a new class,
      * not a migration. Text, so nothing in here can be a float.
      */
+    /**
+     * The platform this holding sits on.
+     *
+     * Nullable: every row that predates the platform dimension has no answer,
+     * and inventing one would be a guess. Unset means "unassigned", which the
+     * per-platform rollup reports as its own group rather than hiding.
+     */
+    institutionId: text("institution_id").references(() => institutions.id),
     metadata: text("metadata"),
     isClosed: integer("is_closed", { mode: "boolean" }).notNull().default(false),
     deletedAt: deletedAt(),
@@ -688,6 +707,7 @@ export const instruments = sqliteTable(
   (table) => [
     uniqueIndex("instruments_user_symbol_uq").on(table.userId, table.symbol),
     index("instruments_user_kind_idx").on(table.userId, table.kind),
+    index("instruments_user_institution_idx").on(table.userId, table.institutionId),
   ],
 );
 
@@ -906,6 +926,17 @@ export const priceQuotes = sqliteTable(
 
 export const LEASE_STATUSES = ["ACTIVE", "MATURED", "CANCELLED"] as const;
 
+/** How often a lease pays out, and in what. See `domain/leasing.ts`. */
+export const PAYOUT_FREQUENCIES = [
+  "MONTHLY",
+  "QUARTERLY",
+  "HALF_YEARLY",
+  "ANNUAL",
+  "ON_MATURITY",
+] as const;
+
+export const PAYOUT_MODES = ["GRAMS", "CASH"] as const;
+
 /**
  * Gold leased to a platform for a yield **paid in grams**.
  *
@@ -939,11 +970,34 @@ export const goldLeases = sqliteTable(
     holdingAccountId: text("holding_account_id")
       .notNull()
       .references(() => ledgerAccounts.id, { onDelete: "restrict" }),
+    /** What the user typed. `institutionId` is the row it resolves to. */
     platform: text("platform").notNull(),
+    /**
+     * The platform this lease sits on.
+     *
+     * Nullable: every row that predates the platform dimension has no answer,
+     * and inventing one would be a guess. Unset means "unassigned", which the
+     * per-platform rollup reports as its own group rather than hiding.
+     */
+    institutionId: text("institution_id").references(() => institutions.id),
+
     quantityScaled: quantityScaled("quantity_scaled").notNull(),
     startOn: calendarDate("start_on").notNull(),
     closesOn: calendarDate("closes_on").notNull(),
     annualRateScaled: percentScaled("annual_rate_scaled").notNull(),
+    /**
+     * How often the platform pays out, and in what.
+     *
+     * `payoutFrequency` decides when a gram is *earned*, not merely how a screen
+     * groups it: a quarterly lease has credited nothing in month two, and
+     * accruing it anyway would show gold that has not arrived.
+     */
+    payoutFrequency: text("payout_frequency", { enum: PAYOUT_FREQUENCIES })
+      .notNull()
+      .default("MONTHLY"),
+    payoutMode: text("payout_mode", { enum: PAYOUT_MODES }).notNull().default("GRAMS"),
+    /** Where a cash payout lands. Null for a grams lease, which is most of them. */
+    payoutAccountId: text("payout_account_id").references(() => ledgerAccounts.id),
     /** Withholding on the interest. 10% under §194A unless the platform differs. */
     tdsRateScaled: percentScaled("tds_rate_scaled").notNull().default(10_000_000),
     status: text("status", { enum: LEASE_STATUSES }).notNull().default("ACTIVE"),
@@ -1695,6 +1749,21 @@ export const ledgerEvents = sqliteTable(
 
 /* ═══ Institutions and counterparties ═══════════════════════════════════ */
 
+/**
+ * `BULLION` sits apart from `BROKER` because the businesses are: a vaulting
+ * provider holds metal against your name and executes no trades, and it is the
+ * only kind that offers a gold lease.
+ */
+export const INSTITUTION_KINDS = [
+  "BANK",
+  "BROKER",
+  "BULLION",
+  "WALLET",
+  "SCHEME",
+  "LENDER",
+  "OTHER",
+] as const;
+
 /** The bank, broker or scheme an account belongs to — the "parent organisation". */
 export const institutions = sqliteTable(
   "institutions",
@@ -1706,12 +1775,33 @@ export const institutions = sqliteTable(
     name: text("name").notNull(),
     /** Matches an id in `src/ui/providers.ts`, for the logo and display name. */
     providerId: text("provider_id"),
-    kind: text("kind", { enum: ["BANK", "BROKER", "WALLET", "SCHEME", "LENDER", "OTHER"] }).notNull(),
+    kind: text("kind", { enum: INSTITUTION_KINDS }).notNull(),
     country: text("country", { length: 2 }).notNull().default("IN"),
+    /**
+     * How far below the benchmark this platform buys back, as a percentage.
+     *
+     * Only bullion vaults normally set one: digital gold sells back at the
+     * platform's own rate, a few percent under IBJA, and valuing a holding at the
+     * benchmark overstates what it could actually be turned into. Zero means "not
+     * told", not "no spread" — the app shows the benchmark and says so.
+     */
+    sellSpreadScaled: percentScaled("sell_spread_scaled").notNull().default(0),
+    notes: text("notes"),
+    /**
+     * Archived, not deleted. A broker you have closed still owns every trade you
+     * ever placed there, so it drops out of pickers and stays in reports.
+     */
+    isArchived: integer("is_archived", { mode: "boolean" }).notNull().default(false),
     deletedAt: deletedAt(),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
+  /*
+   * No CHECK on the spread, deliberately: SQLite cannot add a table-level
+   * constraint through `ALTER TABLE ADD COLUMN`, so declaring one here would put
+   * this file permanently out of step with the migration that created the column.
+   * `Institution` refuses a spread outside 0-100% in its constructor instead.
+   */
   (table) => [uniqueIndex("institutions_user_name_uq").on(table.userId, table.name)],
 );
 

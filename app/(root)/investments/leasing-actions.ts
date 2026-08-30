@@ -5,7 +5,8 @@ import { z } from "zod";
 import { Percentage, Quantity } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
 import { InstrumentId } from "@/domain/instruments";
-import { LeaseId } from "@/domain/leasing";
+import { AccountId } from "@/domain/accounts";
+import { LeaseId, PAYOUT_FREQUENCIES, PAYOUT_MODES } from "@/domain/leasing";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 
 /**
@@ -47,6 +48,9 @@ const openSchema = z.object({
   startOn: z.string().trim().min(1, "When did the lease start?"),
   closesOn: z.string().trim().min(1, "When does it close?"),
   annualRate: RATE,
+  payoutFrequency: z.enum(PAYOUT_FREQUENCIES).default("MONTHLY"),
+  payoutMode: z.enum(PAYOUT_MODES).default("GRAMS"),
+  payoutAccountId: z.string().trim().optional().or(z.literal("")),
   tdsRate: RATE.optional().or(z.literal("")),
   sourceReference: z.string().trim().max(120).optional().or(z.literal("")),
 });
@@ -90,6 +94,11 @@ export async function openLeaseAction(
     startOn: CalendarDate.parse(parsed.data.startOn),
     closesOn: CalendarDate.parse(parsed.data.closesOn),
     annualRate: Percentage.of(parsed.data.annualRate),
+    payoutFrequency: parsed.data.payoutFrequency,
+    payoutMode: parsed.data.payoutMode,
+    payoutAccountId: parsed.data.payoutAccountId
+      ? AccountId.from(parsed.data.payoutAccountId)
+      : null,
     tdsRate: parsed.data.tdsRate ? Percentage.of(parsed.data.tdsRate) : undefined,
     sourceReference: parsed.data.sourceReference || null,
   });
@@ -97,6 +106,7 @@ export async function openLeaseAction(
   if (!result.ok) return { ok: false, message: result.error.message };
 
   revalidateLeasing();
+  revalidatePath(`/investments/${parsed.data.instrumentId}`);
   const { reference, unleased, warnings } = result.value;
   return {
     ok: true,

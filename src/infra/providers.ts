@@ -856,18 +856,28 @@ export class IbjaMetalProvider extends PriceProvider {
   }
 
   protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
-    const payload = await this.getJson<IbjaPayload>("https://www.ibjarates.com/api/rates");
-    const wanted = new Map(request.instruments.map((ref) => [this.codeFor(ref).toUpperCase(), ref]));
+    // IBJA removed the unauthenticated /api/rates endpoint. Its public rates page
+    // remains the official source and publishes the same daily AM/PM table.
+    const text = await this.getText("https://www.ibjarates.com/");
+    const wanted = new Map(request.instruments.map((ref) => [normaliseMetalCode(this.codeFor(ref)), ref]));
     const quotes: Quote[] = [];
 
-    for (const row of payload.rates ?? []) {
-      const key = row.purity ? `${row.metal}-${row.purity}`.toUpperCase() : row.metal.toUpperCase();
-      const ref = wanted.get(key) ?? wanted.get(row.metal.toUpperCase());
+    // Keep the JSON branch for compatible mirrors and deterministic provider
+    // conformance fixtures; production currently takes the HTML branch.
+    const jsonRows = text.trimStart().startsWith("{")
+      ? (JSON.parse(text) as IbjaPayload).rates ?? []
+      : null;
+    const rows = jsonRows ?? parseIbjaRatesPage(text) ?? [];
+    for (const row of rows) {
+      const key = normaliseMetalCode(row.purity ? `${row.metal}${row.purity}` : row.metal);
+      const ref = wanted.get(key) ?? wanted.get(normaliseMetalCode(row.metal));
       if (!ref) continue;
       const asOf = CalendarDate.parse(row.date);
       if (!request.range.contains(asOf)) continue;
+      const divisor = key.startsWith("SILVER") ? 1000 : 10;
+      const perGram = jsonRows ? row.rate : row.rate / divisor;
       quotes.push(
-        this.quote({ ref, asOf, quoteType: "CLOSE", price: UnitPrice.of(row.rate.toFixed(2), ref.currency) }),
+        this.quote({ ref, asOf, quoteType: "CLOSE", price: UnitPrice.of(perGram.toFixed(2), ref.currency) }),
       );
     }
 
@@ -876,6 +886,32 @@ export class IbjaMetalProvider extends PriceProvider {
     }
     return quotes;
   }
+}
+
+function normaliseMetalCode(value: string): string {
+  return value.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+/** Extracts the official 30-day tables; later PM rows replace AM rows for a date. */
+function parseIbjaRatesPage(html: string): IbjaPayload["rates"] {
+  const byDateAndMetal = new Map<string, { date: string; metal: string; purity: string; rate: number }>();
+  const rowPattern = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+  for (const match of html.matchAll(rowPattern)) {
+    const row = match[1];
+    const dateMatch = /<strong>\s*(\d{2})\/(\d{2})\/(\d{4})\s*<\/strong>/i.exec(row);
+    if (!dateMatch) continue;
+    const date = `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`;
+    const cellPattern = /data-label="(Gold|Silver|Platinum)\s*(\d{3})"[^>]*>\s*([\d,.]+)/gi;
+    for (const cell of row.matchAll(cellPattern)) {
+      const metal = cell[1].toUpperCase();
+      const purity = cell[2];
+      const rate = Number(cell[3].replace(/,/g, ""));
+      if (Number.isFinite(rate) && rate > 0) {
+        byDateAndMetal.set(`${date}:${metal}:${purity}`, { date, metal, purity, rate });
+      }
+    }
+  }
+  return [...byDateAndMetal.values()];
 }
 
 /* ═══ 6. CoinGecko — crypto ═══════════════════════════════════════════ */
