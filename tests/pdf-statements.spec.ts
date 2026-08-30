@@ -25,7 +25,8 @@ import { __test__ } from "@/infra/pdf-statements";
 import { checkBalanceContinuity, parseStatementRows, readDate } from "@/infra/statements";
 import { check, checkDeep, checkTrue, done, section } from "./harness";
 
-const { toRecords, toRow, takeTail, withoutMachineIds, whyThereIsNoText, readProvenance } = __test__;
+const { toRecords, toRow, takeTail, withoutMachineIds, whyThereIsNoText, readProvenance, passwordProblem } =
+  __test__;
 
 /* ═══ Fixtures ════════════════════════════════════════════════════════ */
 
@@ -334,6 +335,38 @@ checkDeep("SBI: the balance chains across a stamped row", checkBalanceContinuity
  *
  *   npm run check:statement -- "path/to/statement.pdf"
  */
+section("a locked file is told apart from a wrong password");
+
+/**
+ * The distinction the retry depends on. If these two collapse, someone who
+ * mistypes is told their file is protected — which they knew — and the form
+ * cannot tell a first prompt from a second attempt.
+ */
+{
+  const NEED = 1;
+  const INCORRECT = 2;
+
+  const withCode = (code: number) => Object.assign(new Error("password"), { code });
+
+  check("a NEED_PASSWORD code asks for one", passwordProblem(withCode(NEED)), NEED);
+  check("an INCORRECT_PASSWORD code reports a bad one", passwordProblem(withCode(INCORRECT)), INCORRECT);
+
+  // A flattened exception loses its code; the name still carries the meaning.
+  const named = new Error("No password given");
+  named.name = "PasswordException";
+  check("a coded-away exception still asks", passwordProblem(named), NEED);
+
+  const incorrect = new Error("Incorrect Password");
+  incorrect.name = "PasswordException";
+  check("and still reports a bad one", passwordProblem(incorrect), INCORRECT);
+
+  // The load-bearing negative: an ordinary failure must not become a password
+  // prompt, or a corrupt file sends the user hunting for a password that does
+  // not exist.
+  check("a corrupt file is not a locked one", passwordProblem(new Error("Invalid PDF structure")), null);
+  check("a non-error is not a locked one", passwordProblem("boom"), null);
+}
+
 section("recorded: both real statements reconcile to the printed totals");
 checkTrue("verified end-to-end against the source PDFs", true);
 

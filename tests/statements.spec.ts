@@ -13,6 +13,8 @@
 import { Currency, Money } from "@/core/money";
 import {
   checkBalanceContinuity,
+  decodeText,
+  layoutFingerprint,
   parseDelimitedText,
   parseOfx,
   parseStatementRows,
@@ -209,17 +211,55 @@ throws(
 
 section("continuity detects a swapped pair");
 
-// Debit and credit swapped on one row: the amounts are all still exact, and the
-// only thing that notices is the running balance.
-const SWAPPED = `Date,Narration,Withdrawal (Dr),Deposit (Cr),Closing Balance
-01/04/2026,OPENING SPEND,500.00,,9500.00
-02/04/2026,SHOULD HAVE BEEN A DEBIT,,300.00,9200.00`;
-
-const swapped: ParsedStatement = parseStatementRows(parseDelimitedText(SWAPPED), INR);
-check("both rows parse", swapped.rows.length, 2);
-const swappedContinuity = checkBalanceContinuity(swapped.rows);
+/*
+ * The detector, on its own.
+ *
+ * Tested against hand-built rows rather than a parsed file, deliberately. This
+ * assertion is about `checkBalanceContinuity` catching a wrong direction; routing
+ * it through `parseStatementRows` would make it depend on which reader that
+ * function decides to prefer, and it would then start passing or failing for
+ * reasons that have nothing to do with the detector.
+ */
+const swappedRows = [
+  { rowIndex: 0, amount: rupees("500.00"), direction: "DEBIT" as const, balanceAfter: rupees("9500.00") },
+  // Money left the account, but this row claims it arrived.
+  { rowIndex: 1, amount: rupees("300.00"), direction: "CREDIT" as const, balanceAfter: rupees("9200.00") },
+];
+const swappedContinuity = checkBalanceContinuity(swappedRows);
 check("the break is found", swappedContinuity.breaks.length, 1);
 check("and it names the expected balance", swappedContinuity.breaks[0].expected, rupees("9800.00"));
+
+section("a transposed header is recovered, not merely detected");
+
+/*
+ * The headings say one thing and the body does the other — `Withdrawal` holds the
+ * deposits. Before the verdict chose between readers this parsed happily and was
+ * accepted, because the alias path produced rows and row count was the only test
+ * it had to pass. Every debit would have posted as a credit.
+ *
+ * Now both readers run: the alias reading breaks the running balance, content
+ * inference reads the columns from the direction the balance actually moved, and
+ * the reading that reconciles wins.
+ *
+ * Six rows rather than two, because inference decides the pair by *voting* over
+ * the rows where each column is populated. On a two-row file that vote has almost
+ * no signal, and a test that passed on two rows would be asserting a coincidence.
+ */
+const TRANSPOSED = `Date,Narration,Withdrawal (Dr),Deposit (Cr),Closing Balance
+01/04/2026,SALARY,50000.00,,60000.00
+02/04/2026,RENT,,18500.00,41500.00
+03/04/2026,GROCERIES,,2500.00,39000.00
+04/04/2026,REFUND,1000.00,,40000.00
+05/04/2026,FUEL,,3000.00,37000.00
+06/04/2026,ELECTRICITY,,1500.00,35500.00`;
+
+const transposed: ParsedStatement = parseStatementRows(parseDelimitedText(TRANSPOSED), INR);
+check("all six rows are read", transposed.rows.length, 6);
+check("the reading that reconciles wins", transposed.verdict.trust, "RECONCILED");
+check("so inference beat the misleading header", transposed.layout, "INFERRED");
+check("the salary is a credit despite the column it sat in", transposed.rows[0].direction, "CREDIT");
+check("and the rent is a debit", transposed.rows[1].direction, "DEBIT");
+checkDeep("nothing breaks the chain", transposed.verdict.breaks, []);
 
 /* ═══ A bank file is not all transactions ═════════════════════════════ */
 
@@ -264,5 +304,196 @@ const broken: ParsedStatement = parseStatementRows(parseDelimitedText(BROKEN), I
 check("only the readable row is kept", broken.rows.length, 1);
 check("and the broken one is reported", broken.problems.length, 1);
 check("by name", broken.problems[0].reason, "No readable date");
+
+section("the vote is starved, and the balance decides anyway");
+
+/*
+ * The case the debit/credit vote is worst at, and the reason it is now checked
+ * against the balance rather than trusted.
+ *
+ * An ordinary salaried month is a wall of debits and one credit. The credit
+ * column is populated on a single row, so it casts one vote; a ranking built
+ * from that is a coin toss dressed as evidence. Headers here are deliberately
+ * ones no alias knows, to force the inference path.
+ *
+ * Balances fall on every row but the salary, so scoring each assignment against
+ * the printed balance settles it outright.
+ */
+const NEWLINE = "\n";
+const STARVED_ROWS = [
+  "Txn Day,Details,Money Out,Money In,Running",
+  "01/05/2026,SALARY,,71050.00,71050.00",
+];
+let starvedBalance = 71050;
+for (let day = 2; day <= 21; day += 1) {
+  starvedBalance -= 100;
+  const date = String(day).padStart(2, "0");
+  STARVED_ROWS.push(`${date}/05/2026,UPI PAYMENT ${day},100.00,,${starvedBalance}.00`);
+}
+
+const starved: ParsedStatement = parseStatementRows(
+  parseDelimitedText(STARVED_ROWS.join(NEWLINE)),
+  INR,
+);
+
+check("headers no alias knows force inference", starved.layout, "INFERRED");
+check("every row is read", starved.rows.length, 21);
+check("the lone salary is a credit", starved.rows[0].direction, "CREDIT");
+check("and the twenty payments are debits", starved.rows[1].direction, "DEBIT");
+check("the reading is proved", starved.verdict.trust, "RECONCILED");
+checkDeep("with no breaks at all", starved.verdict.breaks, []);
+
+/* ═══ The verdict ═════════════════════════════════════════════════════ */
+
+section("every parse now reports what it can prove about itself");
+
+/*
+ * The three states, and why they are three rather than a score.
+ *
+ * Until now every column choice - the alias table, the content inference, the
+ * debit/credit vote - was a guess that nothing checked. The running balance is
+ * the check, and it is exact because amounts are bigint paise. What the verdict
+ * adds is that the answer now travels *with* the parse instead of being
+ * recomputed by whoever remembers to ask.
+ */
+
+check("a clean statement reconciles", hdfc.verdict.trust, "RECONCILED");
+check("and says how many rows were testable", hdfc.verdict.checked, 5);
+checkDeep("with no breaks", hdfc.verdict.breaks, []);
+check("the closing balance is carried", hdfc.verdict.closingBalance, rupees("109800.03"));
+
+/*
+ * The mapping is the answer to the only useful question a wrong import provokes:
+ * which column was read as what? The coarse `layout` enum could never say.
+ */
+check("the balance column is named", hdfc.verdict.mapping.balance, 5);
+check("the debit column is named", hdfc.verdict.mapping.debit, 3);
+check("the credit column is named", hdfc.verdict.mapping.credit, 4);
+
+// The verdict travels with the parse: no second call to the continuity check,
+// and no caller left to remember to make one.
+check("a recovered transposition reports itself", transposed.verdict.trust, "RECONCILED");
+check("and says how many rows carried the proof", transposed.verdict.checked, 5);
+
+/*
+ * No balance column is not a failure — it is an absence of evidence, and saying
+ * so is the whole point. Reporting it as success would be the lie: this parse is
+ * exactly as trustworthy as the column detection, and nothing here can check it.
+ */
+const NO_BALANCE = `Date,Narration,Withdrawal (Dr),Deposit (Cr)
+01/04/2026,SALARY,,50000.00
+02/04/2026,RENT,18500.00,`;
+
+const noBalance: ParsedStatement = parseStatementRows(parseDelimitedText(NO_BALANCE), INR);
+check("both rows still parse", noBalance.rows.length, 2);
+check("but nothing can be checked", noBalance.verdict.checked, 0);
+check("so the verdict is UNVERIFIED", noBalance.verdict.trust, "UNVERIFIED");
+check("and there is no closing balance to report", noBalance.verdict.closingBalance, null);
+
+/*
+ * OFX carries no per-row balance, so it is honestly UNVERIFIED even though the
+ * file states its own closing figure. Spreading LEDGERBAL back over the rows
+ * would make the chain reconcile *by construction* — including when a row was
+ * misread — which manufactures confidence rather than measuring it.
+ */
+check("OFX is unverified", ofx.verdict.trust, "UNVERIFIED");
+
+/* ═══ Phase 4 — the file readers ══════════════════════════════════════ */
+
+section("delimiter sniffing");
+
+/*
+ * The narration carries more commas than the file has separators. Counting
+ * characters - the old rule - picks the comma and shreds every row; counting
+ * *agreement* picks the semicolon, because only the semicolon gives the same
+ * field count on every line.
+ */
+const SEMICOLON = `Date;Narration;Withdrawal;Deposit;Balance
+01/04/2026;UPI/PAYTM, MUMBAI, IN;100.00;;900.00
+02/04/2026;NEFT, ACME CORP, PUNE;;500.00;1400.00`;
+
+const semicolon = parseStatementRows(parseDelimitedText(SEMICOLON), INR);
+check("the semicolon wins on consistency", semicolon.rows.length, 2);
+check("and the narration survives whole", semicolon.rows[0]?.description, "UPI/PAYTM, MUMBAI, IN");
+check("the balances still chain", semicolon.verdict.trust, "RECONCILED");
+
+section("multi-line quoted fields");
+
+/*
+ * One transaction printed across two physical lines. Splitting on newlines
+ * first turns it into a row with no date and no amount, which is then reported
+ * as an unreadable line - a real transaction lost to a formatting choice.
+ */
+const WRAPPED = `Date,Narration,Withdrawal,Deposit,Balance
+01/04/2026,"UPI-ZEPTO
+ORDER 8891",100.00,,900.00
+02/04/2026,SALARY,,500.00,1400.00`;
+
+const wrapped = parseStatementRows(parseDelimitedText(WRAPPED), INR);
+check("the wrapped row is one row", wrapped.rows.length, 2);
+checkTrue(
+  "and keeps both of its lines",
+  (wrapped.rows[0]?.description ?? "").includes("ORDER 8891"),
+);
+check("nothing was reported unreadable", wrapped.problems.length, 0);
+
+section("encoding");
+
+/** The bytes Excel writes for "Unicode Text": a BOM, then UTF-16LE. */
+const utf16le = (text: string): Uint8Array => {
+  const units = [0xfeff, ...text].map((unit) =>
+    typeof unit === "number" ? unit : unit.charCodeAt(0),
+  );
+  const bytes = new Uint8Array(units.length * 2);
+  units.forEach((unit, index) => {
+    bytes[index * 2] = unit & 0xff;
+    bytes[index * 2 + 1] = unit >> 8;
+  });
+  return bytes;
+};
+
+check("UTF-16LE is decoded, not read as NUL-riddled UTF-8", decodeText(utf16le("Date,Amount")), "Date,Amount");
+check(
+  "a UTF-8 BOM is consumed rather than glued to the first header",
+  decodeText(new Uint8Array([0xef, 0xbb, 0xbf, 0x44, 0x61, 0x74, 0x65])),
+  "Date",
+);
+check(
+  "plain ASCII is untouched",
+  decodeText(new Uint8Array([0x44, 0x61, 0x74, 0x65])),
+  "Date",
+);
+
+section("the shape of a file, named");
+
+/*
+ * The fingerprint exists to notice that a bank changed its export, so it must
+ * be made of nothing that changes on its own. Two months of the same statement
+ * differ in every row and in none of the headings.
+ */
+const APRIL = `Date,Narration,Withdrawal (Dr),Deposit (Cr),Closing Balance
+01/04/2026,SALARY,,50000.00,50000.00`;
+const MAY = `Date,Narration,Withdrawal (Dr),Deposit (Cr),Closing Balance
+03/05/2026,RENT,18500.00,,31500.00
+04/05/2026,GROCERIES,1500.00,,30000.00`;
+
+check(
+  "two months of one export fingerprint alike",
+  layoutFingerprint(parseDelimitedText(APRIL)),
+  layoutFingerprint(parseDelimitedText(MAY)),
+);
+
+const MOVED = `Date,Narration,Chq No,Withdrawal (Dr),Deposit (Cr),Closing Balance
+03/05/2026,RENT,,18500.00,,31500.00`;
+checkTrue(
+  "a bank inserting a column does not",
+  layoutFingerprint(parseDelimitedText(MOVED)) !== layoutFingerprint(parseDelimitedText(MAY)),
+);
+
+check(
+  "and a headerless file says so rather than inventing a name",
+  layoutFingerprint([["01/04/2026", "SALARY", "50000.00"]]),
+  "inferred:3",
+);
 
 done();

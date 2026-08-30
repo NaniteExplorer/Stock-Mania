@@ -208,6 +208,84 @@ export default async function Page({ params }: { params: Promise<{ batchId: stri
         </Card>
       )}
 
+      {/*
+        * A statement that printed no running balance.
+        *
+        * The old card simply did not render, which read as "nothing to say" when
+        * the truth is the opposite: this import is exactly as trustworthy as the
+        * column detection, and nothing here can check it. Silence and success
+        * look identical, so the absence has to be stated.
+        */}
+      {continuity.checked === 0 && (
+        <Card
+          className="mb-6"
+          title="This statement cannot check itself"
+          subtitle="The file printed no running balance, so there is nothing to test the reading against. The rows may well be right — but nothing here proves it, and a statement that cannot be checked should not look the same as one that passed."
+        />
+      )}
+
+      {/*
+        * How the file was read, and — if it was overridden — why it was allowed
+        * in. Both are the sort of thing a person needs months later, when the
+        * question is "where did this figure come from?"
+        */}
+      {batch.diagnostics && (
+        <>
+          {Object.keys(batch.diagnostics.verdict.mapping).length > 0 && (
+            <p className="mb-6 -mt-3 text-xs text-gray-500">
+              Columns read as:{" "}
+              {Object.entries(batch.diagnostics.verdict.mapping)
+                .sort((a, b) => a[1] - b[1])
+                .map(([role, index]) => `${index} → ${role}`)
+                .join(", ")}
+              .
+            </p>
+          )}
+          {/*
+            * The bank's own totals. Worth a line even when they agree, because
+            * "the rows are consistent with each other" and "the bank agrees
+            * these are all the rows" are different claims, and only the second
+            * one can notice a transaction nobody read.
+            */}
+          {batch.diagnostics.verdict.controls.status === "MATCHED" && (
+            <p className="mb-6 -mt-3 text-xs text-gray-500">
+              Checked against the totals the bank printed on the statement, and they agree.
+            </p>
+          )}
+          {batch.diagnostics.verdict.controls.status === "MISMATCHED" && (
+            <Card
+              className="mb-6"
+              title="This does not match the bank's own totals"
+              subtitle={batch.diagnostics.verdict.controls.detail ?? undefined}
+            />
+          )}
+
+          {/*
+            * Warnings are about the statement's place among the others, not its
+            * arithmetic: the wrong account, a period already imported, a stretch
+            * of time no statement covers. None of them makes a figure wrong on
+            * its own, and every one of them can make the balance sheet wrong.
+            */}
+          {batch.diagnostics.warnings.length > 0 && (
+            <Card className="mb-6" title="Worth checking before you post this">
+              <ul className="list-disc space-y-1 pl-5 text-sm text-gray-600">
+                {batch.diagnostics.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
+          {batch.diagnostics.override && (
+            <Card
+              className="mb-6"
+              title="Imported over a failed balance check"
+              subtitle={`Someone chose to import this statement even though it does not agree with its own printed balance. Their reason: "${batch.diagnostics.override.reason}"`}
+            />
+          )}
+        </>
+      )}
+
       <Card className="mb-6">
         <div className="flex flex-wrap items-center gap-3">
           <ActionForm action={confirmUnmatchedAction} fields={{ batchId }}>
@@ -304,11 +382,36 @@ export default async function Page({ params }: { params: Promise<{ batchId: stri
         />
       )}
 
-      {batch.rowsFailed > 0 && (
-        <p className="mt-3 text-xs text-gray-500">
-          {batch.rowsFailed} line(s) of the file could not be read and were not staged. They are
-          counted here rather than dropped silently.
-        </p>
+      {batch.diagnostics && batch.diagnostics.problems.length > 0 ? (
+        <Card
+          className="mt-6"
+          title={`${batch.diagnostics.problems.length} line(s) could not be read`}
+          subtitle="Listed rather than counted: a line the parser could not read is a transaction your ledger will simply not contain, and a number alone gives you no way to find out which."
+        >
+          <ul className="space-y-2 text-sm">
+            {batch.diagnostics.problems.slice(0, 25).map((problem) => (
+              <li key={problem.rowIndex} className="text-gray-300">
+                <span className="tnum text-gray-500">Line {problem.rowIndex}</span>{" "}
+                &mdash; {problem.reason}
+                <pre className="mt-1 overflow-x-auto rounded-lg bg-black/30 p-2 text-xs text-gray-400">
+                  {problem.raw}
+                </pre>
+              </li>
+            ))}
+          </ul>
+          {batch.diagnostics.problems.length > 25 && (
+            <p className="mt-2 text-xs text-gray-500">
+              &hellip; and {batch.diagnostics.problems.length - 25} more.
+            </p>
+          )}
+        </Card>
+      ) : (
+        batch.rowsFailed > 0 && (
+          <p className="mt-3 text-xs text-gray-500">
+            {batch.rowsFailed} line(s) of the file could not be read and were not staged. This
+            import predates the change that records which lines, and why.
+          </p>
+        )
       )}
     </>
   );

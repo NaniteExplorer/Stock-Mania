@@ -259,6 +259,17 @@ const CARD_PAYMENT_MARKERS = [
   "bill desk", "billdesk", "cc payment", "card bill",
 ];
 
+/** A bank narration can identify a payment, but cannot prove the card balance. */
+export function isCardPaymentNarration(
+  description: string,
+  reference: string | null = null,
+): boolean {
+  return narrationHas(
+    normalizeNarration(`${description} ${reference ?? ""}`),
+    ...CARD_PAYMENT_MARKERS,
+  );
+}
+
 const TRANSFER_MARKERS = [
   "fund transfer", "fund trf", "a c transfer", "account transfer", "inter account",
   "own account", "trfr to", "trf to r",
@@ -445,6 +456,16 @@ export class Categoriser {
     context: CategoriserContext,
   ): Categorisation | null {
     if (input.direction === "DEBIT" && narrationHas(haystack, ...INVESTMENT_MARKERS)) {
+      if (!context.fallbackInvestmentId) {
+        return {
+          intent: "SPEND",
+          source: "FALLBACK",
+          accountId: context.fallbackExpenseId,
+          ruleId: null,
+          because:
+            "The bank proves money left, but no investment account or holding is evidenced; treated as uncategorized spending until you link one.",
+        };
+      }
       return {
         intent: "INVESTMENT",
         source: "STRUCTURAL",
@@ -455,7 +476,18 @@ export class Categoriser {
           : "Money moving into an investment platform is not spending.",
       };
     }
-    if (narrationHas(haystack, ...CARD_PAYMENT_MARKERS)) {
+    if (isCardPaymentNarration(input.description, input.reference)) {
+      if (!context.fallbackCardId) {
+        return {
+          intent: input.direction === "DEBIT" ? "SPEND" : "RECEIPT",
+          source: "FALLBACK",
+          accountId:
+            input.direction === "DEBIT" ? context.fallbackExpenseId : context.fallbackIncomeId,
+          ruleId: null,
+          because:
+            "The bank proves this movement, but no card statement balance is evidenced; categorized as uncategorized cash flow until you link the card.",
+        };
+      }
       return {
         intent: "TRANSFER",
         source: "STRUCTURAL",
@@ -1075,6 +1107,100 @@ export interface StagedRow {
   readonly rejectedReason: string | null;
 }
 
+/**
+ * What the parse could prove about itself, in domain vocabulary.
+ *
+ * Mirrors `infra/statements.ts`'s `StatementVerdict` structurally rather than
+ * importing it, for the same reason `StatementMovement` does: `tests/layout.spec.ts`
+ * enforces that a use case may not know about infra, and the *shape* of a
+ * reconciliation result is domain vocabulary while pdf.js is not.
+ */
+export type ImportTrust = "RECONCILED" | "UNVERIFIED" | "BROKEN";
+
+export interface ImportVerdict {
+  readonly trust: ImportTrust;
+  /** Rows whose printed balance was testable. `0` means the file printed none. */
+  readonly checked: number;
+  readonly breaks: readonly {
+    readonly rowIndex: number;
+    readonly expected: Money;
+    readonly printed: Money;
+  }[];
+  /** Which source column index was read as which role. */
+  readonly mapping: Readonly<Record<string, number>>;
+  readonly closingBalance: Money | null;
+  /**
+   * Whether the bank's own printed totals agreed with the rows that were read.
+   *
+   * Kept beside `breaks` rather than folded into it because the two answer
+   * different questions. `breaks` says the rows disagree with each other;
+   * this says the rows disagree with the statement — which is the only evidence
+   * that can notice a transaction nobody read at all.
+   */
+  readonly controls: { readonly status: "ABSENT" | "MATCHED" | "MISMATCHED"; readonly detail: string | null };
+}
+
+/**
+ * Everything the import knows about how well it read the file.
+ *
+ * Stored so the review screen can answer "how was this read, and can I trust
+ * it?" months later. Until now `problems` was computed at parse time, counted,
+ * and discarded - the `problems_json` column has existed unused since the schema
+ * was written, and a user whose statement lost 28 lines saw the number 28 and
+ * nothing else.
+ */
+export interface ImportDiagnostics {
+  readonly verdict: ImportVerdict;
+  readonly problems: readonly {
+    readonly rowIndex: number;
+    readonly reason: string;
+    readonly raw: string;
+  }[];
+  /**
+   * Set only when the user imported a statement whose balance did not reconcile,
+   * with the reason they gave. Kept forever: a batch that entered the ledger on a
+   * human override must stay findable as one.
+   */
+  readonly override: { readonly reason: string; readonly at: string } | null;
+  /**
+   * What the statement said about itself: whose account, and which period.
+   *
+   * Only the last four digits of the account number are kept. The full number
+   * identifies the person to anyone who reads the database, it is not needed to
+   * answer the one question asked of it, and a diagnostic blob is the last place
+   * it should live forever.
+   *
+   * The period is stored as ISO dates so a later import can be compared against
+   * it — the December statement that overlapped the previous one by two days had
+   * nothing to be checked against, because no batch recorded what it covered.
+   */
+  readonly statement: {
+    readonly accountSuffix: string | null;
+    readonly periodFrom: string | null;
+    readonly periodTo: string | null;
+  } | null;
+  /**
+   * Things worth saying out loud that are not, by themselves, a refusal.
+   *
+   * An account number that does not match, a period overlapping a batch already
+   * imported, a month with no statement covering it. None of these makes the
+   * arithmetic wrong, and all of them make the balance sheet wrong.
+   */
+  readonly warnings: readonly string[];
+  /**
+   * A stable name for the *shape* of the file this batch came from.
+   *
+   * Its only purpose is to notice change. When two batches share a fingerprint
+   * and disagree about which column held the balance, the bank altered its
+   * export and the user should hear about it. The stored mapping is never
+   * applied to a parse - a mapping that is trusted rather than re-derived is the
+   * one mechanism that could make a reading *less* suspicious than it deserves,
+   * and a bank that moves a column while the file's shape holds would be
+   * misparsed confidently.
+   */
+  readonly fingerprint: string | null;
+}
+
 export interface ImportBatchRecord {
   readonly id: string;
   readonly kind: "BANK_STATEMENT" | "TRADE_BOOK" | "HOLDINGS";
@@ -1086,6 +1212,8 @@ export interface ImportBatchRecord {
   readonly rowsDuplicate: number;
   readonly rowsFailed: number;
   readonly status: ImportBatchStatus;
+  /** `null` for trade-book and holdings imports, which have no balance to check. */
+  readonly diagnostics: ImportDiagnostics | null;
 }
 
 /**

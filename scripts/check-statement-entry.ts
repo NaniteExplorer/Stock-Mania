@@ -45,6 +45,27 @@ const money = (amount: Money) => amount.toDecimalString().padStart(16);
 
 console.log(`\n${basename(path)}`);
 console.log(`  layout        ${parsed.layout}  dates read as ${parsed.dateOrder}`);
+/*
+ * The verdict, and the column map behind it. Printed together because the map is
+ * the answer to the only useful follow-up question a BROKEN verdict provokes:
+ * which column did it read as what?
+ */
+const mapped = Object.entries(parsed.verdict.mapping)
+  .sort((a, b) => a[1] - b[1])
+  .map(([role, index]) => `${index}:${role}`)
+  .join(" ");
+console.log(`  verdict       ${parsed.verdict.trust}  (${parsed.verdict.checked} rows testable)`);
+console.log(`  columns       ${mapped === "" ? "none reported" : mapped}`);
+/*
+ * The bank's own totals, against the rows read. ABSENT is not a failure - many
+ * statements print no control figures - but it is the difference between "these
+ * rows agree with each other" and "these are all the rows", so it is worth
+ * seeing on every run rather than only when it disagrees.
+ */
+console.log(
+  `  controls      ${parsed.verdict.controls.status}` +
+    (parsed.verdict.controls.detail ? `  ${parsed.verdict.controls.detail}` : ""),
+);
 console.log(`  period        ${rows[0].date.toISO()} → ${rows[rows.length - 1].date.toISO()}`);
 console.log(`  transactions  ${rows.length}`);
 console.log(`  withdrawals   ${String(debits.length).padStart(5)} ${money(total(debits))}`);

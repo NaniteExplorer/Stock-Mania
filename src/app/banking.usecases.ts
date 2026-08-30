@@ -28,6 +28,7 @@ import {
   CategoryRuleRepository,
   DuplicateMatcher,
   ImportBatchRecord,
+  type ImportDiagnostics,
   ImportRepository,
   MatchTarget,
   MatchableRow,
@@ -303,6 +304,28 @@ export class RecordAccountTransfer
   }
 }
 
+/**
+ * How many recent batches a new statement is compared against.
+ *
+ * Bounded because this runs on every import and the answer only needs the
+ * account's recent history: an overlap or a gap is with the statements around
+ * it, not with one from four years ago.
+ */
+const HISTORY_DEPTH = 200;
+
+/**
+ * A column mapping as a sentence, for comparing one import against another.
+ *
+ * Sorted by column index rather than by role name so the same layout always
+ * renders the same way, and so the sentence reads left to right across the file
+ * the way a person looking at the export would.
+ */
+function describeMapping(mapping: Readonly<Record<string, number>>): string | null {
+  const entries = Object.entries(mapping).sort((a, b) => a[1] - b[1]);
+  if (entries.length === 0) return null;
+  return entries.map(([role, index]) => `${index} → ${role}`).join(", ");
+}
+
 /* ═══ StageStatementImport ════════════════════════════════════════════ */
 
 export interface StageStatementImportInput {
@@ -322,6 +345,15 @@ export interface StageStatementImportInput {
    * layer 0 — turning "no" into "we told you, and you said yes anyway".
    */
   allowReimport?: boolean;
+  /**
+   * What the parse could prove about itself, recorded with the batch.
+   *
+   * Supplied by the caller rather than derived here because the verdict belongs
+   * to the reader that produced the rows, and this use case never sees the file.
+   * Optional so the trade-book and holdings paths, which have no running balance
+   * to check, need not invent one.
+   */
+  diagnostics?: ImportDiagnostics;
 }
 
 export interface StageStatementImportOutput {
@@ -364,6 +396,109 @@ export class StageStatementImport
     private readonly matcher: DuplicateMatcher = new DuplicateMatcher(),
   ) {}
 
+  /**
+   * The diagnostics, with everything only this layer can know added to them.
+   *
+   * The parser sees one file and can say whether it read that file correctly.
+   * Whether the file is the *right* file, and whether it fits the statements
+   * already imported, are questions about the account's history, and this is
+   * the only place both are in scope.
+   *
+   * All of it is a warning and none of it is a refusal. A statement whose
+   * account number does not match may be a genuinely mis-selected account or a
+   * bank that prints a different number on its exports, and refusing on that
+   * basis would block a correct import over a formatting choice.
+   */
+  private withHistory(
+    diagnostics: ImportDiagnostics,
+    accountSuffix: string | null,
+    history: readonly ImportBatchRecord[],
+  ): ImportDiagnostics {
+    const warnings = [...diagnostics.warnings];
+
+    /*
+     * Layout drift. Two batches with the same fingerprint came from the same
+     * export, so a disagreement about which column held which role means the
+     * bank changed its file. The stored mapping is compared and never applied:
+     * re-deriving the columns every time and checking the answer is what keeps a
+     * changed export loud instead of quietly misread.
+     */
+    if (diagnostics.fingerprint) {
+      const previous = history.find(
+        (batch) =>
+          batch.diagnostics?.fingerprint === diagnostics.fingerprint &&
+          Object.keys(batch.diagnostics?.verdict.mapping ?? {}).length > 0,
+      )?.diagnostics;
+      const before = previous ? describeMapping(previous.verdict.mapping) : null;
+      const now = describeMapping(diagnostics.verdict.mapping);
+      if (before && now && before !== now) {
+        warnings.push(
+          `This export used to be laid out as ${before}; this file reads as ${now}. ` +
+            "The bank appears to have changed its statement format — check a few " +
+            "rows against the PDF before posting.",
+        );
+      }
+    }
+
+    const statement = diagnostics.statement;
+    if (!statement) return warnings.length === diagnostics.warnings.length ? diagnostics : { ...diagnostics, warnings };
+
+    if (statement.accountSuffix && accountSuffix) {
+      const known = accountSuffix.replace(/[^0-9]/g, "").slice(-4);
+      if (known && known !== statement.accountSuffix) {
+        warnings.push(
+          `This statement is for an account ending ${statement.accountSuffix}, ` +
+            `but you are importing it into one ending ${known}.`,
+        );
+      }
+    }
+
+    if (statement.periodFrom && statement.periodTo) {
+      for (const batch of history) {
+        const other = batch.diagnostics?.statement;
+        if (!other?.periodFrom || !other.periodTo) continue;
+        if (statement.periodFrom <= other.periodTo && other.periodFrom <= statement.periodTo) {
+          warnings.push(
+            `This statement covers ${statement.periodFrom} to ${statement.periodTo}, ` +
+              `which overlaps ${batch.fileName} (${other.periodFrom} to ${other.periodTo}). ` +
+              "Rows in the shared days should be caught as duplicates — check that they were.",
+          );
+          break;
+        }
+      }
+
+      /*
+       * The gap is measured against the latest period that ends before this one
+       * starts, so a statement filed out of order does not report a hole that
+       * an earlier import already covers.
+       */
+      const before = history
+        .map((batch) => batch.diagnostics?.statement)
+        .filter(
+          (other): other is NonNullable<typeof other> =>
+            !!other?.periodTo && other.periodTo < statement.periodFrom!,
+        )
+        .sort((a, b) => (a.periodTo! < b.periodTo! ? 1 : -1))[0];
+
+      if (before?.periodTo) {
+        const gap = Math.round(
+          (Date.parse(`${statement.periodFrom}T00:00:00Z`) -
+            Date.parse(`${before.periodTo}T00:00:00Z`)) /
+            86_400_000,
+        ) - 1;
+        if (gap > 0) {
+          warnings.push(
+            `${gap} day(s) between ${before.periodTo} and ${statement.periodFrom} are ` +
+              "covered by no statement in this account. Any transactions in that " +
+              "window are missing from your balance sheet.",
+          );
+        }
+      }
+    }
+
+    return { ...diagnostics, warnings };
+  }
+
   async execute(
     input: StageStatementImportInput,
   ): Promise<Result<StageStatementImportOutput, AppError>> {
@@ -399,6 +534,21 @@ export class StageStatementImport
 
     const context = await this.categoriserContext(input.userId);
     const batchId = newUuid();
+
+    /*
+     * What has already been imported into this account, so the new statement can
+     * be checked against it. Two real failures motivate this and neither was
+     * visible before: two Axis statements overlapped by two days and nothing
+     * said so (duplicate detection happened to catch the rows), and a period
+     * with no statement covering it at all is invisible in every report while
+     * making all of them wrong.
+     */
+    const history = (await this.imports.listBatches(input.userId, HISTORY_DEPTH)).filter(
+      (batch) =>
+        batch.kind === "BANK_STATEMENT" &&
+        batch.accountId?.equals(input.accountId) === true &&
+        batch.id !== batchId,
+    );
 
     // Existing transactions the matcher compares against: the statement's own
     // date range widened by the fuzzy window, so a row at either edge still sees
@@ -486,6 +636,30 @@ export class StageStatementImport
       // Not COMPLETED: nothing has been posted yet, and a batch that says
       // "completed" before the user has reviewed it is a lie the UI would repeat.
       status: "PARTIAL",
+      /*
+       * The problems are carried here rather than only counted. `rowsFailed` says
+       * 28 lines were lost; the diagnostics say which lines and why, which is the
+       * difference between a number and something a user can act on.
+       */
+      diagnostics: this.withHistory(
+        input.diagnostics ?? {
+          verdict: {
+            trust: "UNVERIFIED",
+            checked: 0,
+            breaks: [],
+            mapping: {},
+            closingBalance: null,
+            controls: { status: "ABSENT", detail: null },
+          },
+          problems: input.statement.problems,
+          override: null,
+          statement: null,
+          warnings: [],
+          fingerprint: null,
+        },
+        account.accountNumberSuffix,
+        history,
+      ),
     };
 
     await this.imports.createBatch(input.userId, batch, staged);
@@ -553,33 +727,17 @@ export async function buildCategoriserContext(
     ]);
     const accountIdByCode = new Map(chart.map((account) => [account.code.toString(), account.id]));
 
-    /*
-     * The one card, if there is one, else the chart's own credit-card group.
-     *
-     * A user with exactly one credit card has exactly one place a card payment can
-     * go, and making them pick it 41 times is not a safety feature. With two cards
-     * the narration genuinely does not say which, so it falls back to the group —
-     * still a real account, still correctable in one click, and the cash side of
-     * the statement is right either way.
-     */
-    const cards = chart.filter(
-      (account) =>
-        account.subtype === "CREDIT_CARD" &&
-        !account.isSystem &&
-        account.code.toString() !== "Liabilities:Credit Cards",
-    );
-
     return {
       rules,
       selfPayees: payees,
       accountIdByCode,
       fallbackExpenseId: accountIdByCode.get(SystemAccountCodes.uncategorizedExpense) ?? null,
       fallbackIncomeId: accountIdByCode.get(SystemAccountCodes.uncategorizedIncome) ?? null,
-      fallbackCardId:
-        cards.length === 1
-          ? cards[0].id
-          : (accountIdByCode.get("Liabilities:Credit Cards") ?? null),
-      fallbackInvestmentId: accountIdByCode.get(SystemAccountCodes.investments) ?? null,
+      // A narration is not proof of a destination balance. Card payments need
+      // card history; investment transfers need a real holding/account. Leaving
+      // both null keeps them in review instead of manufacturing net worth.
+      fallbackCardId: null,
+      fallbackInvestmentId: null,
     };
   }
 }
@@ -732,6 +890,7 @@ export class SmartReviewImport
       (account) =>
         account.type.isBalanceSheet &&
         account.type !== AccountType.EQUITY &&
+        !account.isSystem &&
         !account.isClosed &&
         !groupCodes.has(account.code.toString()) &&
         /*
@@ -806,6 +965,29 @@ export class SmartReviewImport
       }
 
       /*
+       * With no evidenced destination account, the statement only proves cash
+       * flow. Production smart review has a categoriser context, so unresolved
+       * outgoing transfers become uncategorized expense (and incoming ones
+       * uncategorized income). This posts every bank row, preserves the printed
+       * closing balance, and does not manufacture an asset or liability.
+       */
+      const cashFlowFallback =
+        context && row.direction === "DEBIT"
+          ? context.fallbackExpenseId
+          : context
+            ? context.fallbackIncomeId
+            : null;
+      if (cashFlowFallback) {
+        await this.imports.setRowStatus(input.userId, row.id, {
+          status: "CONFIRMED",
+          proposedAccountId: cashFlowFallback,
+        });
+        confirmed += 1;
+        recategorised += 1;
+        continue;
+      }
+
+      /*
        * Last resort, and only for a row already known to be the user's own money
        * moving: park it in `Assets:Transfers in Transit`.
        *
@@ -819,7 +1001,7 @@ export class SmartReviewImport
        * into a confident posting, and the balance would stop being a question
        * anyone thought to ask.
        */
-      if (transitId && (row.intent === "TRANSFER" || row.intent === "INVESTMENT")) {
+      if (transitId && row.intent === "TRANSFER") {
         await this.imports.setRowStatus(input.userId, row.id, {
           status: "CONFIRMED",
           proposedAccountId: transitId,
@@ -886,6 +1068,20 @@ export interface PostImportBatchOutput {
   skipped: number;
   failed: number;
   problems: readonly { rowId: string; reason: string }[];
+  /**
+   * The ledger's own balance against the one the statement printed, once the
+   * rows are in.
+   *
+   * The parse already checked that the *rows* reproduce the printed closing
+   * balance. This is the different question that only posting can answer: after
+   * duplicates were skipped and categories applied, does the account actually
+   * end where the bank says it ends? A dedup pass that rejected a row it should
+   * have kept shows up here and nowhere else.
+   *
+   * Absent when the statement printed no closing balance or no period, which is
+   * not a failure - it is simply nothing to compare against.
+   */
+  reconciliation?: ReconciliationReport;
 }
 
 /**
@@ -907,6 +1103,12 @@ export class PostImportBatch
     private readonly accounts: AccountRepository,
     private readonly record: RecordTransaction,
     private readonly clock: Clock,
+    /**
+     * Optional so the two specs that construct this use case directly are
+     * unaffected, and so a caller with no balance source still posts. Without
+     * it the reconciliation is simply not reported.
+     */
+    private readonly balances: BalanceSource | null = null,
   ) {}
 
   async execute(input: {
@@ -1040,6 +1242,39 @@ export class PostImportBatch
       skipped: rows.length - posted - problems.length,
       failed: problems.length,
       problems,
+      reconciliation: await this.reconcileAgainstStatement(input.userId, batch, afterRows),
+    });
+  }
+
+  /**
+   * The posted account against the statement's printed closing balance.
+   *
+   * Reported rather than enforced. A mismatch here has honest explanations - a
+   * row deliberately left unconfirmed, a category not yet chosen - and the count
+   * of rows still waiting travels with the report so the difference between
+   * "wrong" and "unfinished" stays visible.
+   */
+  private async reconcileAgainstStatement(
+    userId: UserId,
+    batch: ImportBatchRecord,
+    rows: readonly StagedRow[],
+  ): Promise<ReconciliationReport | undefined> {
+    const closing = batch.diagnostics?.verdict.closingBalance;
+    const asOfIso = batch.diagnostics?.statement?.periodTo;
+    if (!this.balances || !closing || !asOfIso || !batch.accountId) return undefined;
+
+    const account = await this.accounts.findById(userId, batch.accountId);
+    if (!account || account.currency.code !== closing.currency.code) return undefined;
+
+    const asOf = CalendarDate.parse(asOfIso);
+    return reconcile({
+      statementClosing: closing,
+      ledgerClosing: await this.balances.balanceOf(userId, batch.accountId, asOf),
+      asOf,
+      unmatchedStatementRows: rows.filter(
+        (row) => row.status === "PARSED" || row.status === "DRAFT",
+      ).length,
+      unexplainedTransactions: 0,
     });
   }
 

@@ -198,7 +198,7 @@ export const services = cache(() => {
       confirmUnmatched: new ConfirmUnmatchedRows(imports),
       smartReview: new SmartReviewImport(imports, accounts, rules, selfPayees),
       reviewRow: new ReviewImportRow(imports, accounts),
-      postBatch: new PostImportBatch(imports, accounts, record, clock),
+      postBatch: new PostImportBatch(imports, accounts, record, clock, balances),
       undoImport: new UndoImport(imports, journal, clock),
       reconcile: new ReconcileAccount(accounts, balances, imports),
       planBudgets: new PlanBudgets(budgets, balances),

@@ -24,7 +24,7 @@ import type { Database } from "@/infra/db/client";
 import { FixedClock, UserId } from "@/core/kernel";
 import { Money } from "@/core/money";
 import { CalendarDate } from "@/core/time";
-import { AccountCode } from "@/domain/accounts";
+import { AccountCode, SystemAccountCodes } from "@/domain/accounts";
 import { BalanceCalculator } from "@/domain/transactions";
 import { CashAsset, CashInHand, Wallet } from "@/domain/assets";
 import {
@@ -205,6 +205,21 @@ async function main() {
     fileName: "hdfc-april.csv",
     fileHash: "sha256-april",
     statement: april,
+    diagnostics: {
+      verdict: {
+        trust: april.verdict.trust,
+        checked: april.verdict.checked,
+        breaks: april.verdict.breaks.map((brk) => ({ ...brk })),
+        mapping: { ...april.verdict.mapping } as Record<string, number>,
+        controls: { ...april.verdict.controls },
+        closingBalance: april.verdict.closingBalance,
+      },
+      problems: april.problems.map((problem) => ({ ...problem })),
+      override: { reason: "recorded so the round-trip is testable", at: "2026-04-30T00:00:00.000Z" },
+      statement: { accountSuffix: "7890", periodFrom: "2026-04-01", periodTo: "2026-04-30" },
+      warnings: [],
+      fingerprint: april.fingerprint ?? null,
+    },
   });
   check("all six staged", staged.ok && staged.value.rowsStaged, 6);
   check("none looks like a duplicate yet", staged.ok && staged.value.rowsLikelyDuplicate, 0);
@@ -249,6 +264,39 @@ async function main() {
   const batchAfter = await importRepo.findBatch(userId, batchId);
   check("the batch is completed", batchAfter?.status, "COMPLETED");
   check("and records what it imported", batchAfter?.rowsImported, 6);
+
+  /*
+   * The diagnostics survive the database.
+   *
+   * `problems_json` existed unused since the schema was written, so this is the
+   * first thing that has ever read it back. Money is the part worth asserting:
+   * it is stored as minor units in a string, and a JSON number would have looked
+   * correct here and lost paise on a larger statement.
+   */
+  check("the verdict survives the round trip", batchAfter?.diagnostics?.verdict.trust, "RECONCILED");
+  check("with the rows it checked", batchAfter?.diagnostics?.verdict.checked, 5);
+  check("the column mapping is kept", batchAfter?.diagnostics?.verdict.mapping.balance, 5);
+  check(
+    "the closing balance is exact after JSON",
+    batchAfter?.diagnostics?.verdict.closingBalance?.toDecimalString(),
+    april.verdict.closingBalance?.toDecimalString(),
+  );
+  check(
+    "and the override reason is kept verbatim",
+    batchAfter?.diagnostics?.override?.reason,
+    "recorded so the round-trip is testable",
+  );
+
+  check(
+    "the account the statement named is kept, four digits of it",
+    batchAfter?.diagnostics?.statement?.accountSuffix,
+    "7890",
+  );
+  check(
+    "and the period it covered",
+    batchAfter?.diagnostics?.statement?.periodTo,
+    "2026-04-30",
+  );
 
   const postedAgain = await post.execute({ userId, batchId });
   check("posting the same batch twice posts nothing more", postedAgain.ok && postedAgain.value.posted, 0);
@@ -632,6 +680,151 @@ async function main() {
       "7000.00",
     );
   }
+
+  section("unsupported balance-sheet transfers remain cash flow");
+
+  const uncategorizedForCard = await accountRepo.findByCode(
+    userId,
+    AccountCode.parse(SystemAccountCodes.uncategorizedExpense),
+  );
+  if (!uncategorizedForCard) throw new Error("uncategorized expense account missing");
+
+  const cardOnly = parseStatementRows(
+    parseDelimitedText(`Date,Narration,Withdrawal (Dr),Deposit (Cr),Closing Balance
+06/04/2026,CREDIT CARD PAYMENT,12000.00,,31000.00`),
+  );
+  const cardOnlyStaged = await stage.execute({
+    userId,
+    accountId: parkAccount.value.accountId,
+    fileName: "bank-only-card-payment.csv",
+    fileHash: "sha256-bank-only-card-payment",
+    statement: cardOnly,
+  });
+  if (!cardOnlyStaged.ok) throw new Error("bank-only card staging failed");
+
+  const evidenceAwareReview = new SmartReviewImport(
+    importRepo,
+    accountRepo,
+    ruleRepo,
+    selfPayees,
+  );
+  const cardOnlyReviewed = await evidenceAwareReview.execute({
+    userId,
+    batchId: cardOnlyStaged.value.batchId,
+  });
+  check(
+    "a card payment without card history is still confirmed as bank cash flow",
+    cardOnlyReviewed.ok && cardOnlyReviewed.value.confirmed,
+    1,
+  );
+  const cardOnlyRows = await importRepo.listRows(userId, cardOnlyStaged.value.batchId, {
+    statuses: ["CONFIRMED"],
+  });
+  check(
+    "and uses uncategorized expense rather than manufacturing a liability",
+    cardOnlyRows[0]?.proposedAccountId?.value,
+    uncategorizedForCard.id.value,
+  );
+
+  /*
+   * The guardrail this history exists for. Two real Axis statements overlapped
+   * by two days and nothing said so - duplicate detection happened to catch the
+   * rows, which is luck rather than a check. Staging a second statement whose
+   * period runs into April's must now say so out loud, and must name the file it
+   * collides with, because "there is an overlap" is not actionable and "it
+   * overlaps hdfc-april.csv" is.
+   */
+  const overlapping = await stage.execute({
+    userId,
+    accountId: hdfcId,
+    fileName: "hdfc-overlap-probe.csv",
+    fileHash: "sha256-overlap-probe",
+    statement: { ...april, rows: [april.rows[0]!] },
+    allowReimport: true,
+    diagnostics: {
+      verdict: {
+        trust: "RECONCILED",
+        checked: 5,
+        breaks: [],
+        mapping: { date: 0, description: 1, debit: 4, credit: 5, balance: 6 },
+        closingBalance: null,
+        controls: { status: "ABSENT", detail: null },
+      },
+      problems: [],
+      override: null,
+      statement: { accountSuffix: "1234", periodFrom: "2026-04-25", periodTo: "2026-05-31" },
+      warnings: [],
+      /*
+       * Same export shape, different columns: this is what a bank moving a
+       * column looks like from the outside, and the only thing that notices is
+       * the comparison against the last batch that carried this fingerprint.
+       */
+      fingerprint: april.fingerprint ?? null,
+    },
+  });
+  if (!overlapping.ok) throw new Error("staging the overlapping statement failed");
+  const overlapBatch = await importRepo.findBatch(userId, overlapping.value.batchId);
+  const warnings = overlapBatch?.diagnostics?.warnings ?? [];
+
+  checkTrue(
+    "the overlap with April is reported",
+    warnings.some((warning) => warning.includes("hdfc-april.csv")),
+  );
+  checkTrue(
+    "and so is the account number that does not match",
+    warnings.some((warning) => warning.includes("1234")),
+  );
+  checkTrue(
+    "and the column that moved between the two exports",
+    warnings.some((warning) => warning.includes("changed its statement format")),
+  );
+
+  section("matches against deleted transactions return to review");
+
+  const repairAccount = await openCash.execute({
+    userId,
+    name: "Import Match Repair",
+    subtype: "BANK",
+    openingBalance: Money.fromRupees("0"),
+  });
+  if (!repairAccount.ok) throw new Error("match repair account setup failed");
+  const uncategorized = await accountRepo.findByCode(
+    userId,
+    AccountCode.parse(SystemAccountCodes.uncategorizedExpense),
+  );
+  if (!uncategorized) throw new Error("uncategorized expense account missing");
+
+  const original = await record.execute({
+    userId,
+    fromAccountId: repairAccount.value.accountId,
+    toAccountId: uncategorized.id,
+    amount: Money.fromRupees("77.00"),
+    postedOn: CalendarDate.parse("2026-05-20"),
+    narration: "UPI TEST ORPHANED MATCH",
+  });
+  if (!original.ok) throw new Error("match repair transaction setup failed");
+
+  const repairStatement = parseStatementRows(
+    parseDelimitedText(`Date,Narration,Withdrawal (Dr),Deposit (Cr)
+20/05/2026,UPI TEST ORPHANED MATCH,77.00,`),
+  );
+  const repairStaged = await stage.execute({
+    userId,
+    accountId: repairAccount.value.accountId,
+    fileName: "match-repair.csv",
+    fileHash: "sha256-match-repair",
+    statement: repairStatement,
+  });
+  if (!repairStaged.ok) throw new Error("match repair staging failed");
+  check("the live transaction is initially matched", repairStaged.value.rowsLikelyDuplicate, 1);
+
+  await txnRepo.softDelete(userId, original.value.transactionId, now);
+  const released = await importRepo.listRows(userId, repairStaged.value.batchId, {
+    statuses: ["PARSED"],
+  });
+  check("the stale match is released for confirmation", released.length, 1);
+  check("and no deleted transaction remains attached", released[0]?.matchedTransactionId, null);
+
 
   done();
 }

@@ -129,33 +129,7 @@ export interface StatementVerdict {
   readonly mapping: Readonly<Partial<Record<ColumnKey, number>>>;
   /** The last printed balance, or an OFX `LEDGERBAL`. */
   readonly closingBalance: Money | null;
-  /**
-   * The bank's own control totals, against what was read.
-   *
-   * Row-wise continuity tests the links in the chain and cannot see a link that
-   * was never read: a reader that stops one row short of the statement produces
-   * rows that reconcile perfectly with each other, and a ledger short one
-   * payment. Only a figure printed outside the table - the closing
-   * balance, the transaction totals - can catch that, which makes this strictly
-   * stronger than `breaks` rather than a second opinion on the same evidence.
-   */
-  readonly controls: ControlCheck;
 }
-
-/**
- * Whether the statement's own totals agree with the rows that were read.
- *
- * `detail` is rendered here rather than stored as figures because it exists to
- * be shown to a person and kept with the batch forever; a sentence naming both
- * numbers survives every later change to how money is displayed.
- */
-export interface ControlCheck {
-  readonly status: "ABSENT" | "MATCHED" | "MISMATCHED";
-  readonly detail: string | null;
-}
-
-/** The statement printed no total to check against. Not a failure. */
-export const NO_CONTROLS: ControlCheck = { status: "ABSENT", detail: null };
 
 export interface ParsedStatement {
   readonly rows: readonly StatementRow[];
@@ -169,28 +143,6 @@ export interface ParsedStatement {
    */
   readonly problems: readonly StatementProblem[];
   readonly verdict: StatementVerdict;
-  /**
-   * What the file said about itself outside its table - whose account, which
-   * period, and the totals it was checked against.
-   *
-   * Optional because only the PDF readers look for it today; a CSV export
-   * carries no letterhead and leaves this undefined rather than empty, so the
-   * two cases stay distinguishable. Typed as `unknown`-free structural data
-   * rather than importing `StatementHeader` here, which would make this module
-   * depend on one that already depends on it.
-   */
-  readonly header?: {
-    readonly accountSuffix: string | null;
-    readonly periodFrom: string | null;
-    readonly periodTo: string | null;
-  };
-  /**
-   * A stable name for the shape of the source file - see {@link layoutFingerprint}.
-   *
-   * Set by `parseStatementRows`, so every tabulated reader gets one and OFX,
-   * which has no columns to fingerprint, does not.
-   */
-  readonly fingerprint?: string;
 }
 
 export class StatementParseError extends Error {
@@ -669,14 +621,14 @@ function buildFromAliases(
     });
   });
 
-  const parsed = withIdentifiedReferences(out);
+  const rows = withIdentifiedReferences(out);
   return {
-    rows: parsed,
+    rows,
     currency,
     layout: "HEADER_ALIAS",
     dateOrder: order,
     problems,
-    verdict: verdictFor(parsed, reportedMapping(columns)),
+    verdict: verdictFor(rows, reportedMapping(columns)),
   };
 }
 
@@ -715,39 +667,6 @@ function joinRow(row: RawRow): string {
  * < 0.5` — the float tolerance v1 needed, which would accept a 49-paise
  * disagreement as a match.
  */
-/**
- * How many rows a given debit/credit assignment fails to explain.
- *
- * Reads the printed balance column directly rather than building rows, because
- * it has to run before the rows exist - the whole point is to decide which
- * assignment to build them under. Rows with no printed balance, and the first
- * row of all, are not counted either way: they carry no evidence.
- */
-function pairBreaks(
-  dataRows: readonly { readonly row: RawRow }[],
-  currency: Currency,
-  balanceColumn: number,
-  debitColumn: number,
-  creditColumn: number,
-): number {
-  const at = (row: RawRow, column: number): Money | null =>
-    readAmount(row[column], currency).amount;
-
-  let breaks = 0;
-  let previous: Money | null = null;
-  for (const { row } of dataRows) {
-    const balance = at(row, balanceColumn);
-    if (balance && previous) {
-      const debit = at(row, debitColumn);
-      const credit = at(row, creditColumn);
-      const movement = debit ? debit.negated() : credit;
-      if (!movement || !previous.plus(movement).equals(balance)) breaks += 1;
-    }
-    if (balance) previous = balance;
-  }
-  return breaks;
-}
-
 function inferByContent(rows: readonly RawRow[], currency: Currency): ParsedStatement {
   const width = Math.max(0, ...rows.map((row) => row.length));
   if (width === 0) throw new StatementParseError("The file has no columns.");
@@ -882,25 +801,6 @@ function inferByContent(rows: readonly RawRow[], currency: Currency): ParsedStat
     const ranked = [...amountColumns].sort((a, b) => (votes.get(b) ?? 0) - (votes.get(a) ?? 0));
     creditColumn = ranked[0];
     debitColumn = ranked[ranked.length - 1];
-
-    /*
-     * The vote is a heuristic; the balance is a fact. Try it both ways.
-     *
-     * Voting works when both columns are well populated, and degrades exactly
-     * where real statements live: a salaried month is a hundred debits and one
-     * credit, so the credit column casts a single vote and the ranking is decided
-     * by almost nothing. Scoring each assignment against the printed balance
-     * costs one pass and replaces the guess with a measurement.
-     *
-     * Kept only when it is strictly better, so a file the vote already reads
-     * correctly is never disturbed by a tie.
-     */
-    if (
-      pairBreaks(dataRows, currency, balanceColumn, creditColumn, debitColumn) <
-      pairBreaks(dataRows, currency, balanceColumn, debitColumn, creditColumn)
-    ) {
-      [debitColumn, creditColumn] = [creditColumn, debitColumn];
-    }
   }
 
   const occurrences = new OccurrenceCounter();
@@ -976,7 +876,7 @@ function inferByContent(rows: readonly RawRow[], currency: Currency): ParsedStat
     });
   }
 
-  const parsed = withIdentifiedReferences(out);
+  const rows = withIdentifiedReferences(out);
 
   /*
    * What inference settled on, in the same shape the alias path reports. When
@@ -993,104 +893,34 @@ function inferByContent(rows: readonly RawRow[], currency: Currency): ParsedStat
   }
 
   return {
-    rows: parsed,
+    rows,
     currency,
     layout: "INFERRED",
     dateOrder: order,
     problems,
-    verdict: verdictFor(parsed, mapping),
+    verdict: verdictFor(rows, mapping),
   };
 }
 
 /* ═══ Entry points ════════════════════════════════════════════════════ */
 
 /**
- * Parses already-tabulated rows by running both readers and keeping the one that
- * can prove itself.
+ * Parses already-tabulated rows: the alias path first, content inference second.
  *
- * The old rule was "alias path first, inference only if it produced no rows",
- * and it had a blind spot that a header row makes worse rather than better: a
- * file whose headings say `Withdrawal, Deposit` but whose body puts them the
- * other way round parses happily, produces rows, and is accepted - with every
- * debit posted as a credit. Row count cannot see that. The running balance can.
- *
- * So both candidates are built and scored on trust, and the one that reconciles
- * wins. When neither reconciles the ranking still means something: UNVERIFIED
- * beats BROKEN, because "I could not check this" is a better outcome than "I
- * checked it and it is wrong".
- *
- * This also retires the old bug where a header that matched but yielded zero
- * rows discarded its own `problems` on the way out. There is no merge step: the
- * loser's problems are simply not the ones returned, because the loser is not
- * the parse.
+ * The alias result is used only if it produced rows — a header row that matched
+ * but whose body is laid out differently should fall through rather than report
+ * an empty statement.
  */
 export function parseStatementRows(
   rows: readonly RawRow[],
   currency: Currency = Currency.reporting,
 ): ParsedStatement {
-  const candidates: ParsedStatement[] = [];
-
   const aliased = detectByAliases(rows);
   if (aliased) {
     const parsed = buildFromAliases(rows, aliased.headerIndex, aliased.columns, currency);
-    if (parsed.rows.length > 0) candidates.push(parsed);
+    if (parsed.rows.length > 0) return parsed;
   }
-
-  /*
-   * Inference is the only reader that throws - it gives up loudly when it cannot
-   * find a date or a description column. That is a failure of *this* candidate,
-   * not of the parse, so it is caught and re-raised only if nothing else stands.
-   */
-  let inferenceError: unknown = null;
-  try {
-    candidates.push(inferByContent(rows, currency));
-  } catch (error) {
-    inferenceError = error;
-  }
-
-  if (candidates.length === 0) {
-    throw inferenceError ?? new StatementParseError("No transaction rows were found.");
-  }
-
-  /*
-   * Trust first, row count second. The tie-break matters: two readings that both
-   * reconcile are both right about the rows they found, so the one that found
-   * more of them has dropped fewer transactions.
-   */
-  const winner = candidates.reduce((best, candidate) => {
-    const byTrust = TRUST_ORDER[candidate.verdict.trust] - TRUST_ORDER[best.verdict.trust];
-    if (byTrust !== 0) return byTrust > 0 ? candidate : best;
-    return candidate.rows.length > best.rows.length ? candidate : best;
-  });
-
-  return { ...winner, fingerprint: layoutFingerprint(rows) };
-}
-
-/**
- * A stable name for the *shape* of a file, so two exports from the same bank can
- * be recognised as the same export.
- *
- * Deliberately made of nothing that changes month to month: the column count and
- * the normalised heading text, and nothing about how many rows there were, what
- * dates they carried or what they totalled. A fingerprint that moved with the
- * content would be a fingerprint of one file rather than of a format.
- *
- * A headerless file fingerprints as `inferred` plus its width. That is coarse,
- * and correctly so - there is nothing else stable to hold on to, and pretending
- * otherwise would let two unrelated headerless exports look like drift in one.
- */
-export function layoutFingerprint(rows: readonly RawRow[]): string {
-  const detected = detectByAliases(rows);
-  if (!detected) {
-    const width = rows[0]?.length ?? 0;
-    return `inferred:${width}`;
-  }
-  const header = rows[detected.headerIndex] ?? [];
-  const headings = header
-    .map((cell) => normalizeHeader(cell))
-    .filter((heading) => heading !== "")
-    .join("|");
-  return `${header.length}:${headings}`;
+  return inferByContent(rows, currency);
 }
 
 /** Splits one delimited line, honouring `""`-escaped quotes. */
@@ -1116,154 +946,18 @@ export function splitDelimitedLine(line: string, delimiter: string): string[] {
   return cells;
 }
 
-/** The delimiters worth trying, in no particular order. */
-const DELIMITERS = [",", "\t", ";", "|"] as const;
-
-/** How many leading lines the delimiter sniff looks at. */
-const SNIFF_LINES = 20;
-
-/**
- * How well a delimiter explains the file.
- *
- * The old test was "whichever character occurs most", which is wrong in exactly
- * the case that matters: a narration reading `UPI/PAYTM, MUMBAI, IN` puts more
- * commas inside the fields than the file has real separators, so a semicolon-
- * delimited export was split on commas into ragged nonsense.
- *
- * A real delimiter gives the *same* field count on nearly every line. That is
- * what is measured here - the share of sampled lines agreeing with the most
- * common count - and it is a property stray punctuation cannot fake.
- */
-function delimiterScore(
-  lines: readonly string[],
-  delimiter: string,
-): { agreement: number; fields: number } {
-  const counts = new Map<number, number>();
-  for (const line of lines) {
-    const fields = splitDelimitedLine(line, delimiter).length;
-    counts.set(fields, (counts.get(fields) ?? 0) + 1);
-  }
-  let fields = 0;
-  let agreed = 0;
-  for (const [count, lineCount] of counts) {
-    if (lineCount > agreed || (lineCount === agreed && count > fields)) {
-      fields = count;
-      agreed = lineCount;
-    }
-  }
-  /*
-   * One field is not a split at all. Without this, a character the file does not
-   * contain scores a perfect 1.0 - every line "agrees" on one field - and would
-   * beat the delimiter that actually works on all but one ragged line.
-   */
-  return fields < 2 ? { agreement: 0, fields } : { agreement: agreed / lines.length, fields };
-}
-
-/** The delimiter that splits the sample most consistently. */
-function sniffDelimiter(lines: readonly string[]): string {
-  const sample = lines.slice(0, SNIFF_LINES);
-  let best: string = DELIMITERS[0];
-  let bestScore = { agreement: -1, fields: 0 };
-  for (const delimiter of DELIMITERS) {
-    const score = delimiterScore(sample, delimiter);
-    const better =
-      score.agreement > bestScore.agreement ||
-      (score.agreement === bestScore.agreement && score.fields > bestScore.fields);
-    if (better) {
-      best = delimiter;
-      bestScore = score;
-    }
-  }
-  return best;
-}
-
-/**
- * Split a whole file into records, honouring newlines inside quoted fields.
- *
- * Splitting on newlines first and on the delimiter second is the obvious reading
- * and it is wrong for any export that quotes a multi-line narration: one
- * transaction becomes two half-rows, the second with no date and no amount, and
- * that half is then reported as an unreadable line. The scan below never leaves
- * a quoted field, so such a record stays one record with its newline intact.
- */
-function scanDelimited(content: string, delimiter: string): RawRow[] {
-  const records: RawRow[] = [];
-  let cells: string[] = [];
-  let current = "";
-  let quoted = false;
-
-  const endCell = (): void => {
-    cells.push(current);
-    current = "";
-  };
-  const endRecord = (): void => {
-    endCell();
-    if (cells.some((cell) => cell.trim() !== "")) records.push(cells);
-    cells = [];
-  };
-
-  for (let index = 0; index < content.length; index += 1) {
-    const char = content[index];
-    if (char === '"' && content[index + 1] === '"') {
-      current += '"';
-      index += 1;
-    } else if (char === '"') {
-      quoted = !quoted;
-    } else if (char === delimiter && !quoted) {
-      endCell();
-    } else if (!quoted && (char === "\n" || char === "\r")) {
-      if (char === "\r" && content[index + 1] === "\n") index += 1;
-      endRecord();
-    } else {
-      current += char;
-    }
-  }
-  if (current !== "" || cells.length > 0) endRecord();
-
-  return records;
-}
-
-/** Splits delimited text into rows, sniffing the delimiter from a sample. */
+/** Guesses the delimiter from whichever splits the first ten lines most. */
 export function parseDelimitedText(content: string): RawRow[] {
-  const body = content.replace(/^\uFEFF/, "");
-  const lines = body.split(/\r?\n/).filter((line) => line.trim() !== "");
-  if (lines.length === 0) return [];
-  return scanDelimited(body, sniffDelimiter(lines));
+  const lines = content
+    .replace(/^﻿/, "")
+    .split(/\r?\n/)
+    .filter((line) => line.trim() !== "");
+  const sample = lines.slice(0, 10).join("\n");
+  const delimiter = [",", "\t", ";", "|"].sort(
+    (a, b) => sample.split(b).length - sample.split(a).length,
+  )[0];
+  return lines.map((line) => splitDelimitedLine(line, delimiter));
 }
-
-/**
- * Text from bytes, decoded as the file says it is encoded.
- *
- * `File.text()` always assumes UTF-8. Excel on Windows offers "Unicode Text" as
- * its plain-text export and writes UTF-16LE, which read as UTF-8 is a NUL byte
- * between every letter: the file parsed to garbage rather than failing, and
- * failing would have been the better outcome.
- */
-export function decodeText(bytes: Uint8Array): string {
-  if (bytes[0] === 0xff && bytes[1] === 0xfe) {
-    return new TextDecoder("utf-16le").decode(bytes.subarray(2));
-  }
-  if (bytes[0] === 0xfe && bytes[1] === 0xff) {
-    return new TextDecoder("utf-16be").decode(bytes.subarray(2));
-  }
-  if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
-    return new TextDecoder().decode(bytes.subarray(3));
-  }
-  /*
-   * No BOM. UTF-8 is right for almost everything, but an older export in the
-   * Windows code page decodes to replacement characters, and a narration full of
-   * U+FFFD is unreadable in the ledger for good. The retry is safe: valid UTF-8
-   * never yields one unless the file genuinely contained it.
-   */
-  const utf8 = new TextDecoder().decode(bytes);
-  return utf8.includes("\uFFFD") ? new TextDecoder("windows-1252").decode(bytes) : utf8;
-}
-
-/** The OLE compound-document magic that opens every pre-2007 `.xls`. */
-const OLE_MAGIC = [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1];
-
-const isOleDocument = (bytes: Uint8Array): boolean =>
-  OLE_MAGIC.every((byte, index) => bytes[index] === byte);
 
 /** OFX/QFX: one `STMTTRN` block per movement, with the sign carrying direction. */
 export function parseOfx(content: string, currency: Currency = Currency.reporting): ParsedStatement {
@@ -1326,16 +1020,15 @@ export function parseOfx(content: string, currency: Currency = Currency.reportin
   });
 
   /*
-   * `LEDGERBAL` is the closing balance the bank asserts, and it is read as
-   * exactly that - not spread back over the rows as a running balance.
+   * `LEDGERBAL/BALAMT` is the closing balance, and it is read as exactly that -
+   * a single figure to check the whole file against.
    *
-   * Back-filling a chain from a closing figure would be fabrication: subtract
-   * each movement in turn and the chain reconciles perfectly *by construction*,
-   * including when a row was misread. That manufactures confidence rather than
-   * measuring it, which is the one thing this verdict must never do. OFX carries
-   * no per-row balance, so an OFX parse is honestly UNVERIFIED.
+   * It is deliberately NOT spread backwards over the rows to synthesise a running
+   * balance. A chain computed from the amounts always reconciles against itself,
+   * including when one of those amounts was misread, so doing that would not
+   * verify the parse - it would manufacture the appearance of having verified it.
    */
-  const ledger = /<LEDGERBAL>[\s\S]*?<BALAMT>([^<]+)/i.exec(content)?.[1]?.trim();
+  const ledger = /<LEDGERBAL>[\s\S]*?<BALAMT>([^<\r\n]+)/i.exec(content)?.[1];
   const closingBalance = ledger ? readAmount(ledger, resolved) : null;
 
   return {
@@ -1345,11 +1038,13 @@ export function parseOfx(content: string, currency: Currency = Currency.reportin
     dateOrder: "DMY",
     problems,
     verdict: {
+      // OFX carries no per-row balance, so there is nothing to walk.
       ...verdictFor(rows, {}),
-      closingBalance:
-        closingBalance?.amount && closingBalance.negative
+      closingBalance: closingBalance?.amount
+        ? closingBalance.negative
           ? closingBalance.amount.negated()
-          : (closingBalance?.amount ?? null),
+          : closingBalance.amount
+        : null,
     },
   };
 }
@@ -1439,118 +1134,7 @@ function verdictFor(
   const trust: StatementTrust =
     checked === 0 ? "UNVERIFIED" : breaks.length === 0 ? "RECONCILED" : "BROKEN";
 
-  return { trust, checked, breaks, mapping, closingBalance, controls: NO_CONTROLS };
-}
-
-/**
- * The same parse, re-judged against a printed opening balance.
- *
- * A statement that prints an opening balance carries evidence for its *first*
- * movement, and the readers cannot use it: they build rows, and a row is where
- * the chain starts. Applying it afterwards is the cheap way to test one more row
- * without threading a seed through every reader.
- */
-export function withOpeningBalance(
-  parsed: ParsedStatement,
-  opening: Money | null,
-): ParsedStatement {
-  if (!opening) return parsed;
-  const verdict = verdictFor(parsed.rows, parsed.verdict.mapping, opening);
-  // Re-judging the chain says nothing about the control totals, so whatever was
-  // already established about them is carried across rather than reset.
-  return { ...parsed, verdict: { ...verdict, controls: parsed.verdict.controls } };
-}
-
-/**
- * The same parse, judged against the totals the bank printed for itself.
- *
- * This is the check that catches a whole missing row, and it is the reason a
- * statement can be RECONCILED and still wrong: a reader that stops one row
- * short produces rows that chain flawlessly and a closing balance that is off
- * by exactly the amount it lost. Continuity cannot see it. The bank's own
- * closing figure can.
- *
- * A mismatch is BROKEN, unconditionally. There is no reading under which the
- * rows are right and the bank's own total is wrong, and the whole point of the
- * exercise is that a silently incorrect balance sheet is worse than a refused
- * import.
- */
-export function withPrintedTotals(
-  parsed: ParsedStatement,
-  printedClosing: Money | null,
-  printedTotals: { readonly debit: Money; readonly credit: Money } | null,
-): ParsedStatement {
-  const disagreements: string[] = [];
-
-  if (printedClosing && parsed.verdict.closingBalance) {
-    const read = parsed.verdict.closingBalance;
-    if (!read.equals(printedClosing)) {
-      disagreements.push(
-        `the statement prints a closing balance of ${printedClosing.toDecimalString()}, ` +
-          `but the rows read end at ${read.toDecimalString()}`,
-      );
-    }
-  }
-
-  if (printedTotals) {
-    const zero = Money.zero(parsed.currency);
-    const sum = (direction: StatementDirection): Money =>
-      parsed.rows
-        .filter((row) => row.direction === direction)
-        .reduce((total, row) => total.plus(row.amount), zero);
-
-    const debit = sum("DEBIT");
-    const credit = sum("CREDIT");
-    if (!debit.equals(printedTotals.debit)) {
-      disagreements.push(
-        `the statement totals its withdrawals at ${printedTotals.debit.toDecimalString()}, ` +
-          `but the rows read total ${debit.toDecimalString()}`,
-      );
-    }
-    if (!credit.equals(printedTotals.credit)) {
-      disagreements.push(
-        `the statement totals its deposits at ${printedTotals.credit.toDecimalString()}, ` +
-          `but the rows read total ${credit.toDecimalString()}`,
-      );
-    }
-  }
-
-  const checkable =
-    (printedClosing !== null && parsed.verdict.closingBalance !== null) || printedTotals !== null;
-  if (!checkable) return parsed;
-
-  const controls: ControlCheck =
-    disagreements.length === 0
-      ? { status: "MATCHED", detail: null }
-      : { status: "MISMATCHED", detail: disagreements.join("; ") };
-
-  return {
-    ...parsed,
-    verdict: {
-      ...parsed.verdict,
-      controls,
-      trust: controls.status === "MISMATCHED" ? "BROKEN" : parsed.verdict.trust,
-    },
-  };
-}
-
-/**
- * The first few balance breaks, in a sentence a person can act on.
- *
- * Names the row and both figures rather than saying "the file does not
- * reconcile": the difference is usually the whole diagnosis - a round number is
- * a missing row, a doubled amount is a swapped column, a paisa is a rounding or
- * a sub-rupee amount the reader could not see.
- */
-export function describeBreaks(verdict: StatementVerdict, limit = 3): string {
-  return verdict.breaks
-    .slice(0, limit)
-    .map(
-      (brk) =>
-        `row ${brk.rowIndex} (printed ${brk.printed.toDecimalString()}, ` +
-        `movements imply ${brk.expected.toDecimalString()})`,
-    )
-    .join("; ");
+  return { trust, checked, breaks, mapping, closingBalance };
 }
 
 /** Best first, so two candidate parses of one file can be compared. */
@@ -1571,60 +1155,20 @@ export async function parseStatementFile(
 ): Promise<ParsedStatement> {
   const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
 
-  if (["ofx", "qfx", "csv", "tsv", "txt"].includes(extension)) {
-    const text = decodeText(new Uint8Array(await file.arrayBuffer()));
-    if (["ofx", "qfx"].includes(extension)) return parseOfx(text, currency);
-    return parseStatementRows(parseDelimitedText(text), currency);
+  if (["ofx", "qfx"].includes(extension)) return parseOfx(await file.text(), currency);
+  if (["csv", "tsv", "txt"].includes(extension)) {
+    return parseStatementRows(parseDelimitedText(await file.text()), currency);
   }
   if (["xlsx", "xls"].includes(extension)) {
-    const buffer = await file.arrayBuffer();
-    /*
-     * A pre-2007 `.xls` is an OLE compound document; exceljs reads only the zip
-     * that a `.xlsx` is. Without this check the user gets a corrupt-archive
-     * stack trace for a file Excel opens without complaint. With it, the fix.
-     */
-    if (isOleDocument(new Uint8Array(buffer))) {
-      throw new StatementParseError(
-        "This is an old-format .xls workbook. Open it in Excel or LibreOffice, use Save As to write a .xlsx, and upload that instead.",
-      );
-    }
     const ExcelJS = (await import("exceljs")).default;
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(buffer);
-    if (workbook.worksheets.length === 0) {
-      throw new StatementParseError("The workbook has no sheets.");
-    }
-
-    /*
-     * Every sheet is tried, not only the first. Banks routinely put a cover
-     * page, an account summary, or a terms-and-conditions tab ahead of the
-     * transactions, and reading sheet one alone refused a workbook that plainly
-     * contained the statement. The sheets then compete on the same terms two
-     * column mappings do: one that reconciles beats one that cannot be checked,
-     * and among equals the longer one wins.
-     */
-    let best: ParsedStatement | null = null;
-    let refusal: Error | null = null;
-    for (const sheet of workbook.worksheets) {
-      const rows: RawRow[] = [];
-      // `row.values` is 1-based with a leading hole.
-      sheet.eachRow((row) => rows.push((row.values as Cell[]).slice(1)));
-      try {
-        const candidate = parseStatementRows(rows, currency);
-        if (best === null) {
-          best = candidate;
-          continue;
-        }
-        const byTrust = TRUST_ORDER[candidate.verdict.trust] - TRUST_ORDER[best.verdict.trust];
-        if (byTrust > 0 || (byTrust === 0 && candidate.rows.length > best.rows.length)) {
-          best = candidate;
-        }
-      } catch (cause) {
-        refusal ??= cause instanceof Error ? cause : null;
-      }
-    }
-    if (best) return best;
-    throw refusal ?? new StatementParseError("No sheet in this workbook looks like a statement.");
+    await workbook.xlsx.load(await file.arrayBuffer());
+    const sheet = workbook.worksheets[0];
+    if (!sheet) throw new StatementParseError("The workbook has no sheets.");
+    const rows: RawRow[] = [];
+    // `row.values` is 1-based with a leading hole.
+    sheet.eachRow((row) => rows.push((row.values as Cell[]).slice(1)));
+    return parseStatementRows(rows, currency);
   }
 
   if (extension === "pdf") {

@@ -29,12 +29,35 @@ export default function UploadForm({ accounts }: { accounts: readonly AccountOpt
     null,
   );
   const [chosen, setChosen] = React.useState<File | null>(null);
+  const fileInput = React.useRef<HTMLInputElement>(null);
   const errors = state?.fieldErrors ?? {};
 
   const tooBig = chosen !== null && chosen.size > MAX_BYTES;
   // The server only reports a hash clash after the whole file has been read, so
   // the retry affordance appears once that has actually happened.
   const wasDuplicate = state?.ok === false && state.message.includes("already been imported");
+  const locked = state?.needsPassword;
+  const unreconciled = state?.needsOverride === true;
+
+  /*
+   * Put the chosen file back after a submit that asked for more information.
+   *
+   * React resets an uncontrolled form once its action resolves, which is right
+   * for a form that succeeded and wrong for every one of ours that comes back
+   * asking for a password or a re-import tick: the user answers the question,
+   * presses the button, and is told to choose a file — the one still named on
+   * screen. `chosen` already holds it, so the input can simply be refilled.
+   *
+   * Guarded on the input being empty, so if React ever stops resetting, this
+   * quietly does nothing rather than fighting it.
+   */
+  React.useEffect(() => {
+    const input = fileInput.current;
+    if (!input || !chosen || input.files?.length) return;
+    const transfer = new DataTransfer();
+    transfer.items.add(chosen);
+    input.files = transfer.files;
+  }, [state, chosen]);
 
   return (
     <form action={action} className="grid gap-4 md:grid-cols-2">
@@ -56,13 +79,14 @@ export default function UploadForm({ accounts }: { accounts: readonly AccountOpt
       <Field
         name="file"
         label="Statement file"
-        hint="CSV, TSV, XLSX, XLS, PDF, OFX or QFX. Amounts are read as exact decimals."
+        hint="CSV, TSV, XLSX, XLS, PDF, OFX or QFX. A password-protected PDF is fine — you will be asked for the password. Amounts are read as exact decimals."
         required
         error={tooBig ? "That file is over 3 MB. Split it, or export a shorter date range." : errors.file?.[0]}
       >
         {(props) => (
           <input
             {...props}
+            ref={fileInput}
             name="file"
             type="file"
             accept=".csv,.tsv,.txt,.xlsx,.xls,.pdf,.ofx,.qfx"
@@ -77,6 +101,52 @@ export default function UploadForm({ accounts }: { accounts: readonly AccountOpt
         <p className="text-xs text-gray-500 md:col-span-2">
           {chosen.name} · {(chosen.size / 1024).toFixed(0)} KB
         </p>
+      )}
+
+      {locked && (
+        <Field
+          name="pdfPassword"
+          label="PDF password"
+          hint="Used once to open the file. It is not saved, and never leaves this import."
+          error={locked === "retry" ? "That password did not open the file." : undefined}
+        >
+          {(props) => (
+            <input
+              {...props}
+              name="pdfPassword"
+              type="password"
+              autoComplete="off"
+              className="form-input"
+              placeholder="The password the bank sent with the statement"
+              required
+              autoFocus
+            />
+          )}
+        </Field>
+      )}
+
+      {unreconciled && (
+        <div className="md:col-span-2 rounded-xl border border-red-500/30 bg-red-500/5 p-3">
+          <label className="flex items-start gap-2 text-xs text-gray-300">
+            <input type="checkbox" name="importAnyway" className="mt-0.5 h-4 w-4 accent-brand-500" />
+            <span>
+              <span className="font-medium text-gray-100">Import it anyway.</span> The rows were
+              read, but they do not add up to the balance the bank printed. Every row after the
+              break is suspect. Tick this only if you know why the statement disagrees with itself
+              &mdash; a reversal the bank printed oddly, or a genuine error on their side.
+            </span>
+          </label>
+          <input
+            name="overrideReason"
+            type="text"
+            className="form-input mt-2 text-sm"
+            placeholder="Why is this statement safe to import?"
+            maxLength={200}
+          />
+          <p className="mt-1.5 text-xs text-gray-500">
+            The reason is stored with the import, so this batch stays explicable later.
+          </p>
+        </div>
       )}
 
       {wasDuplicate && (

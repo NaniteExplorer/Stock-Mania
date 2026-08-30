@@ -7,14 +7,30 @@ import { z } from "zod";
 import type { UserId } from "@/core/kernel";
 import { AccountCode, AccountId } from "@/domain/accounts";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
-import { StatementParseError, parseStatementFile } from "@/infra/statements";
+import {
+  StatementLockedError,
+  StatementParseError,
+  describeBreaks,
+  parseStatementFile,
+} from "@/infra/statements";
 import { COUNTER_ACCOUNT_KINDS, counterAccountKindNames } from "./counter-accounts";
 import { fail, ok, type ActionState } from "@/ui/action-state";
 
 export type { ActionState } from "@/ui/action-state";
 
-/** Kept as an alias so the upload form's existing prop type still reads right. */
-export type ImportActionState = ActionState;
+/**
+ * The upload form's report, widened by one field.
+ *
+ * `needsPassword` is set only by the staging action, and only for an encrypted
+ * PDF, so the form knows to reveal its password input. It is not on the shared
+ * `ActionState` because no other action in the app has anything to say about it.
+ */
+export type ImportActionState = ActionState & {
+  /** `"prompt"` on the first locked attempt, `"retry"` after a wrong password. */
+  needsPassword?: "prompt" | "retry";
+  /** The statement contradicts its own balance; the form offers an override. */
+  needsOverride?: boolean;
+};
 
 function revalidateBatch(batchId: string) {
   revalidatePath("/imports");
@@ -47,12 +63,35 @@ function revalidateLedger(batchId: string) {
  * the only place a row can be confirmed.
  */
 export async function stageStatementAction(
-  _previous: ActionState | null,
+  _previous: ImportActionState | null,
   formData: FormData,
-): Promise<ActionState> {
+): Promise<ImportActionState> {
   const accountId = formData.get("accountId");
   const file = formData.get("file");
   const allowReimport = formData.get("allowReimport") === "on";
+  /*
+   * Read, used, and dropped. It is never hashed into `fileHash`, never reaches
+   * the staged batch, and never goes back to the client in the returned state —
+   * a re-rendered form must not carry a bank password in its HTML.
+   */
+  const passwordField = formData.get("pdfPassword");
+  const password =
+    typeof passwordField === "string" && passwordField !== "" ? passwordField : undefined;
+  /*
+   * The escape hatch for a statement whose running balance does not add up.
+   *
+   * A reason is required, not decorative: a batch that entered the ledger over a
+   * failed arithmetic check must stay explicable months later, and "I ticked a
+   * box" is not an explanation. Same shape as `allowReimport`, deliberately -
+   * the user already knows that pattern.
+   */
+  const overrideReason = formData.get("overrideReason");
+  const importAnyway =
+    formData.get("importAnyway") === "on" &&
+    typeof overrideReason === "string" &&
+    overrideReason.trim() !== ""
+      ? overrideReason.trim()
+      : null;
 
   if (typeof accountId !== "string" || !z.string().uuid().safeParse(accountId).success) {
     return fail("Choose the account this statement belongs to.", { accountId: ["Required"] });
@@ -69,10 +108,31 @@ export async function stageStatementAction(
 
   let statement;
   try {
-    statement = await parseStatementFile(file);
+    statement = await parseStatementFile(file, undefined, password);
   } catch (error) {
+    if (error instanceof StatementLockedError) {
+      return { ...fail(error.message), needsPassword: error.wrongPassword ? "retry" : "prompt" };
+    }
     if (error instanceof StatementParseError) return fail(error.message);
     throw error;
+  }
+
+  /*
+   * A statement that contradicts its own printed balance is refused here rather
+   * than staged and flagged. Every row after a break is suspect, so "import it
+   * and look at the warnings" means reviewing hundreds of rows for a fault the
+   * arithmetic already located.
+   */
+  if (statement.verdict.trust === "BROKEN" && importAnyway === null) {
+    return {
+      ...fail(
+        "That statement does not agree with its own printed balance, at " +
+          describeBreaks(statement.verdict) +
+          ". Nothing has been imported. Either a column was read the wrong way " +
+          "round or the file has a gap in it.",
+      ),
+      needsOverride: true,
+    };
   }
 
   const staged = await services().banking.stageImport.execute({
@@ -82,6 +142,35 @@ export async function stageStatementAction(
     fileHash,
     statement,
     allowReimport,
+    diagnostics: {
+      verdict: {
+        trust: statement.verdict.trust,
+        checked: statement.verdict.checked,
+        breaks: statement.verdict.breaks.map((brk) => ({ ...brk })),
+        mapping: { ...statement.verdict.mapping } as Record<string, number>,
+        closingBalance: statement.verdict.closingBalance,
+        controls: { ...statement.verdict.controls },
+      },
+      problems: statement.problems.map((problem) => ({ ...problem })),
+      override:
+        importAnyway === null
+          ? null
+          : { reason: importAnyway, at: new Date().toISOString() },
+      /*
+       * Only the PDF readers look for a letterhead, so a CSV leaves this null.
+       * The account-mismatch and period warnings are raised in the use case,
+       * which is the only layer that can see the account's other batches.
+       */
+      statement: statement.header ?? null,
+      warnings: [],
+      /*
+       * The shape of the file, so the next statement from this bank can be
+       * checked against it. Compared, never applied: a stored mapping that were
+       * trusted instead of re-derived is the one thing here that could make a
+       * reading less suspicious than it deserves.
+       */
+      fingerprint: statement.fingerprint ?? null,
+    },
   });
 
   if (!staged.ok) return fail(staged.error.message);

@@ -33,7 +33,7 @@ import { GoldLease, GoldLeaseRepository, LeaseId, LeaseStatus } from "@/domain/l
 import { Percentage, Quantity, Rate, UnitPrice } from "@/core/numeric";
 import { FxQuote, FxRateRepository, PriceDivergence, PriceSourceType, Quote, QuoteRepository, QuoteType, StoredFxRate } from "@/domain/pricing";
 import { AccountBalance, AccountFlow, BalanceQuery, MonthlyFlow, Posting, PostingId, PostingStatus, StoredTransaction, Transaction, TransactionId, TransactionKind, TransactionPage, TransactionQuery, TransactionRepository, TransactionSource, TypeTotals } from "@/domain/transactions";
-import { BudgetRepository, CategoryRuleRepository, ImportBatchRecord, ImportBatchStatus, ImportRepository, ImportRowStatus, KeywordRule, MovementIntent, RowDirection, SelfPayeeQuery, StagedRow, StoredBudget } from "@/domain/banking";
+import { BudgetRepository, CategoryRuleRepository, ImportBatchRecord, ImportBatchStatus, ImportDiagnostics, ImportRepository, ImportRowStatus, ImportTrust, KeywordRule, MovementIntent, RowDirection, SelfPayeeQuery, StagedRow, StoredBudget } from "@/domain/banking";
 import { goldLeases, users as usersTable, ledgerEvents, projectionCache, taxSettings, priceBars, budgets, categoryRules, corporateActions, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, instruments, ledgerAccounts, loanPrepayments, loanTerms, lotMatches, lots, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, trades, transactions } from "@/infra/db/schema";
 import { Database } from "@/infra/db/client";
 import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, max, min, or, sql } from "drizzle-orm";
@@ -1666,6 +1666,7 @@ export class DrizzleImportRepository implements ImportRepository {
         rowsDuplicate: batch.rowsDuplicate,
         rowsFailed: batch.rowsFailed,
         status: batch.status,
+        problemsJson: ImportMapper.toDiagnosticsJson(batch.diagnostics),
       });
 
       for (let index = 0; index < rows.length; index += PARAM_CHUNK) {
@@ -1760,6 +1761,43 @@ export class DrizzleImportRepository implements ImportRepository {
     batchId: string,
     options?: { statuses?: readonly ImportRowStatus[] },
   ): Promise<readonly StagedRow[]> {
+    /*
+     * A duplicate match is a claim about a *live* ledger transaction. Transactions
+     * are soft-deleted, so the intentionally non-FK `matched_transaction_id` can
+     * outlive the row it matched. Release that stale claim before applying the
+     * caller's status filter; otherwise `listRows(..., { statuses: ["PARSED"] })`
+     * can never surface it for confirmation and real statement movement remains
+     * withheld indefinitely.
+     *
+     * Only matcher-owned rows (`MATCHED`) are repaired. A CONFIRMED row uses the
+     * same column to remember the transaction it posted and must not silently be
+     * turned back into an unreviewed import row.
+     */
+    await this.db
+      .update(importRows)
+      .set({
+        status: "PARSED",
+        matchedTransactionId: null,
+        matchPass: null,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(importRows.userId, userId.value),
+          eq(importRows.batchId, batchId),
+          eq(importRows.status, "MATCHED"),
+          isNull(importRows.deletedAt),
+          sql`${importRows.matchedTransactionId} IS NOT NULL`,
+          sql`NOT EXISTS (
+            SELECT 1
+            FROM ${transactions}
+            WHERE ${transactions.userId} = ${importRows.userId}
+              AND ${transactions.id} = ${importRows.matchedTransactionId}
+              AND ${transactions.deletedAt} IS NULL
+          )`,
+        ),
+      );
+
     const rows = await this.db
       .select()
       .from(importRows)
@@ -1872,6 +1910,30 @@ type ImportBatchRow = typeof importBatches.$inferSelect;
 type ImportRowRow = typeof importRows.$inferSelect;
 
 /** The JSON shape of a staged row's parse. Money as minor units, never a float. */
+/**
+ * `import_batches.problems_json`, as it is actually written.
+ *
+ * Money is stored as minor units in a string plus its currency code, never as a
+ * JSON number: paise above 2^53 would round, and would look fine until they did.
+ * The same rule `ParsedRowJson` follows below, for the same reason.
+ */
+interface DiagnosticsJson {
+  verdict: {
+    trust: ImportTrust;
+    checked: number;
+    breaks: { rowIndex: number; expectedMinor: string; printedMinor: string }[];
+    mapping: Record<string, number>;
+    closingMinor: string | null;
+    controls: { status: "ABSENT" | "MATCHED" | "MISMATCHED"; detail: string | null };
+  };
+  currency: string;
+  problems: { rowIndex: number; reason: string; raw: string }[];
+  override: { reason: string; at: string } | null;
+  statement: { accountSuffix: string | null; periodFrom: string | null; periodTo: string | null } | null;
+  warnings: string[];
+  fingerprint: string | null;
+}
+
 interface ParsedRowJson {
   date: string;
   description: string;
@@ -1899,6 +1961,86 @@ export const ImportMapper = {
       rowsDuplicate: row.rowsDuplicate,
       rowsFailed: row.rowsFailed,
       status: row.status,
+      diagnostics: ImportMapper.fromDiagnosticsJson(row.problemsJson),
+    };
+  },
+
+  toDiagnosticsJson(diagnostics: ImportDiagnostics | null): string | null {
+    if (!diagnostics) return null;
+    const currency =
+      diagnostics.verdict.closingBalance?.currency.code ??
+      diagnostics.verdict.breaks[0]?.printed.currency.code ??
+      Currency.reporting.code;
+    const payload: DiagnosticsJson = {
+      verdict: {
+        trust: diagnostics.verdict.trust,
+        checked: diagnostics.verdict.checked,
+        breaks: diagnostics.verdict.breaks.map((brk) => ({
+          rowIndex: brk.rowIndex,
+          expectedMinor: brk.expected.minor.toString(),
+          printedMinor: brk.printed.minor.toString(),
+        })),
+        mapping: { ...diagnostics.verdict.mapping },
+        closingMinor: diagnostics.verdict.closingBalance?.minor.toString() ?? null,
+        controls: { ...diagnostics.verdict.controls },
+      },
+      currency,
+      problems: diagnostics.problems.map((problem) => ({ ...problem })),
+      override: diagnostics.override,
+      statement: diagnostics.statement,
+      warnings: [...diagnostics.warnings],
+      fingerprint: diagnostics.fingerprint,
+    };
+    return JSON.stringify(payload);
+  },
+
+  /*
+   * Tolerant on the way in: every batch staged before this column was written
+   * has `null` here, and a few have the bare `StatementProblem[]` the column was
+   * originally specified to hold. Neither is corruption, and neither should stop
+   * a review screen from rendering.
+   */
+  fromDiagnosticsJson(raw: string | null): ImportDiagnostics | null {
+    if (!raw) return null;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return null;
+    }
+    if (typeof parsed !== "object" || parsed === null) return null;
+    const payload = parsed as Partial<DiagnosticsJson>;
+    if (!payload.verdict) return null;
+
+    let currency = Currency.reporting;
+    try {
+      if (payload.currency) currency = Currency.of(payload.currency);
+    } catch {
+      // An unknown code is not worth losing the whole diagnostic over.
+    }
+    const money = (minor: string | null | undefined): Money | null =>
+      minor === null || minor === undefined ? null : Money.fromMinor(BigInt(minor), currency);
+
+    return {
+      verdict: {
+        trust: payload.verdict.trust,
+        checked: payload.verdict.checked,
+        breaks: (payload.verdict.breaks ?? []).map((brk: DiagnosticsJson["verdict"]["breaks"][number]) => ({
+          rowIndex: brk.rowIndex,
+          expected: money(brk.expectedMinor)!,
+          printed: money(brk.printedMinor)!,
+        })),
+        mapping: payload.verdict.mapping ?? {},
+        closingBalance: money(payload.verdict.closingMinor),
+        // Absent on every batch written before the control check existed, which
+        // is honest: nothing checked them.
+        controls: payload.verdict.controls ?? { status: "ABSENT", detail: null },
+      },
+      problems: payload.problems ?? [],
+      override: payload.override ?? null,
+      statement: payload.statement ?? null,
+      warnings: payload.warnings ?? [],
+      fingerprint: payload.fingerprint ?? null,
     };
   },
 

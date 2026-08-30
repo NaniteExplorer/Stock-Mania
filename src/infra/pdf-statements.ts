@@ -26,9 +26,26 @@ import { Currency } from "@/core/money";
 import {
   type ParsedStatement,
   type RawRow,
+  StatementLockedError,
   StatementParseError,
+  describeBreaks,
   parseStatementRows,
+  readAmount,
+  withOpeningBalance,
+  withPrintedTotals,
 } from "./statements";
+import { readStatementHeader } from "./statement-header";
+
+/**
+ * pdf.js `PasswordResponses`, inlined.
+ *
+ * The enum lives in pdf.js's `shared/util`, which `unpdf` does not re-export;
+ * reaching it would mean resolving the whole pdf.js module just to compare two
+ * integers, on a path that has already failed. The values are part of the
+ * exception's public shape and have not moved in the life of the library.
+ */
+const NEED_PASSWORD = 1;
+const INCORRECT_PASSWORD = 2;
 
 /* ═══ Text extraction ═════════════════════════════════════════════════ */
 
@@ -39,12 +56,18 @@ import {
  * the statement never leaves the machine, which for a file listing every payment
  * somebody made in three years is the only acceptable arrangement.
  */
-export async function extractPdfLines(bytes: Uint8Array): Promise<string[]> {
+export async function extractPdfLines(bytes: Uint8Array, password?: string): Promise<string[]> {
   const { extractText, getDocumentProxy } = await import("unpdf");
 
   let pages: string[];
   try {
-    const document = await getDocumentProxy(bytes);
+    /*
+     * The password is handed straight to pdf.js, which uses it to derive the
+     * file's decryption key and keeps it nowhere the rest of this module can
+     * reach. Passing `undefined` is exactly the same call as before, so the
+     * unencrypted path is untouched.
+     */
+    const document = await getDocumentProxy(bytes, password ? { password } : undefined);
     const extracted = await extractText(document, { mergePages: false });
     pages = Array.isArray(extracted.text) ? extracted.text : [extracted.text];
   } catch (cause) {
@@ -54,18 +77,13 @@ export async function extractPdfLines(bytes: Uint8Array): Promise<string[]> {
      * deserves its own answer, because "that file could not be read" sends
      * someone off to re-download a file that was never broken.
      */
-    const encrypted =
-      cause instanceof Error &&
-      (cause.name === "PasswordException" || /password/i.test(cause.message));
+    const locked = passwordProblem(cause);
+    if (locked !== null) throw new StatementLockedError(locked === INCORRECT_PASSWORD, { cause });
 
     throw new StatementParseError(
-      encrypted
-        ? "That PDF is password-protected, so it cannot be opened here. Open it in " +
-            "a PDF reader with the bank's password, save an unlocked copy, and " +
-            "upload that."
-        : "That PDF could not be read. If it is a scan or a photograph of a " +
-            "statement there is no text in it to import — ask the bank for a CSV " +
-            "or an Excel export.",
+      "That PDF could not be read. If it is a scan or a photograph of a " +
+        "statement there is no text in it to import — ask the bank for a CSV " +
+        "or an Excel export.",
       { cause },
     );
   }
@@ -74,6 +92,31 @@ export async function extractPdfLines(bytes: Uint8Array): Promise<string[]> {
     .flatMap((page) => page.split("\n"))
     .map((line) => line.replace(/\s+/g, " ").trim())
     .filter((line) => line !== "" && !isFurniture(line));
+}
+
+/**
+ * Whether a failed open was about the password, and which way.
+ *
+ * Returns the pdf.js response code, or `null` if the file failed for some other
+ * reason. The `code` is checked first because it is the exception's actual
+ * contract; the name and message are a fallback for the same error arriving
+ * through a wrapper that flattened it, which is how a rejected worker sometimes
+ * surfaces. The message test stays last so it can never outvote a real code.
+ */
+function passwordProblem(cause: unknown): number | null {
+  if (!(cause instanceof Error)) return null;
+
+  const code = (cause as { code?: unknown }).code;
+  if (code === NEED_PASSWORD || code === INCORRECT_PASSWORD) return code;
+
+  if (cause.name === "PasswordException" || /password/i.test(cause.message)) {
+    // No code to go on: assume the file has not been asked about yet. Guessing
+    // "wrong password" instead would accuse the user of a typo they may not have
+    // made, on the very first attempt.
+    return /incorrect|invalid/i.test(cause.message) ? INCORRECT_PASSWORD : NEED_PASSWORD;
+  }
+
+  return null;
 }
 
 /**
@@ -328,14 +371,82 @@ const NO_TRANSACTIONS =
   "No transactions were found in that PDF. It may be a summary or a passbook " +
   "cover page rather than a statement of account.";
 
-/** Parse a PDF bank statement into the `ParsedStatement` a CSV would produce. */
+/**
+ * Parse a PDF bank statement into the `ParsedStatement` a CSV would produce.
+ *
+ * `password` is optional and transient: it exists for the length of this call,
+ * is given only to pdf.js, and is never stored, logged, or put in an error — a
+ * `StatementLockedError` reports *that* the password was wrong, never what was
+ * tried.
+ */
 export async function parsePdfStatement(
   bytes: Uint8Array,
   currency: Currency = Currency.reporting,
+  password?: string,
 ): Promise<ParsedStatement> {
   // Before extraction, not after: pdf.js detaches the array it is handed.
   const source = readProvenance(bytes);
-  const lines = await extractPdfLines(bytes);
+
+  /*
+   * The geometry reader first, because it does not have to infer anything: it
+   * reads which column an amount was printed in rather than deducing it from the
+   * shape of the text. It declines (returns null) for every statement whose
+   * table it cannot positively identify, which is when the text recovery below -
+   * the path SBI and Jio already take - is the right one.
+   *
+   * pdf.js detaches the array it is given, so each reader gets its own copy.
+   */
+  const { readColumnStatement } = await import("./pdf-columns");
+  const byColumn = await readColumnStatement(Uint8Array.from(bytes), password);
+
+  /*
+   * A geometry reading that does not reconcile is a candidate, not an answer.
+   *
+   * It used to be final: the reader judged itself and threw, so the text path
+   * never got its turn on a file the geometry merely misread. Both readers now
+   * run and the better verdict wins, which is the same rule `parseStatementRows`
+   * applies to its own two readers.
+   */
+  let geometry: ParsedStatement | null = null;
+  if (byColumn) {
+    /*
+     * The bank's own control totals, applied before the verdict is acted on. A
+     * reader that stops one row short produces rows that chain flawlessly and a
+     * closing balance short by exactly what it lost - RECONCILED, and wrong.
+     * Only a figure printed outside the table catches that, so it is checked
+     * here rather than left to the review screen.
+     */
+    const header = readStatementHeader(byColumn.text, currency);
+    geometry = describedBy(
+      header,
+      withoutMachineIds(
+        withPrintedTotals(
+          withOpeningBalance(
+            parseStatementRows(byColumn.rows, currency),
+            byColumn.opening === null ? null : readAmount(byColumn.opening, currency).amount,
+          ),
+          header.printedClosing,
+          header.printedTotals,
+        ),
+      ),
+    );
+    if (geometry.verdict.trust !== "BROKEN") return geometry;
+  }
+
+  /*
+   * Text recovery can fail outright on a file the geometry reader understood -
+   * it looks for a shape that a column-drawn statement need not have. When that
+   * happens the geometry breaks are the more useful complaint, so its error is
+   * held rather than thrown.
+   */
+  let lines: string[];
+  try {
+    lines = await extractPdfLines(bytes, password);
+  } catch (error) {
+    if (geometry && !(error instanceof StatementLockedError)) return refuse(geometry);
+    throw error;
+  }
+
   const rows: RawRow[] = [HEADER];
 
   for (const record of toRecords(lines)) {
@@ -344,12 +455,21 @@ export async function parsePdfStatement(
   }
 
   if (rows.length === 1) {
+    if (geometry) return refuse(geometry);
     throw new StatementParseError(
       lines.length === 0 ? whyThereIsNoText(source) : NO_TRANSACTIONS,
     );
   }
 
-  const parsed = parseStatementRows(rows, currency);
+  const header = readStatementHeader(lines, currency);
+  const parsed = withPrintedTotals(
+    parseStatementRows(rows, currency),
+    header.printedClosing,
+    header.printedTotals,
+  );
+
+  // Both readings are broken: report the one that at least found the columns.
+  if (geometry && parsed.verdict.trust === "BROKEN") return refuse(geometry);
 
   /*
    * A PDF statement carries no machine id, so no row from one may claim to.
@@ -362,7 +482,48 @@ export async function parsePdfStatement(
    * a row already posted from another statement. The reference is kept; only the
    * claim of identity is dropped.
    */
-  return withoutMachineIds(parsed);
+  return describedBy(header, withoutMachineIds(parsed));
+}
+
+/** The parse, carrying what the statement said about itself. */
+function describedBy(
+  header: ReturnType<typeof readStatementHeader>,
+  parsed: ParsedStatement,
+): ParsedStatement {
+  return {
+    ...parsed,
+    header: {
+      accountSuffix: header.accountSuffix,
+      periodFrom: header.period?.from.toISO() ?? null,
+      periodTo: header.period?.to.toISO() ?? null,
+    },
+  };
+}
+
+/**
+ * A statement whose columns were found but whose arithmetic does not follow.
+ *
+ * Refused rather than imported with the bad rows flagged. A balance sheet built
+ * on a statement that does not reconcile is worse than no statement at all,
+ * because it looks finished.
+ */
+function refuse(parsed: ParsedStatement): never {
+  /*
+   * A control-total mismatch is the more specific complaint and takes
+   * precedence: "the rows read total 12,000 but the statement says 13,500" tells
+   * the user a transaction is missing, where a list of balance breaks only tells
+   * them where the chain first noticed.
+   */
+  const why =
+    parsed.verdict.controls.status === "MISMATCHED" && parsed.verdict.controls.detail
+      ? parsed.verdict.controls.detail
+      : `the running balance stops adding up at ${describeBreaks(parsed.verdict)}`;
+
+  throw new StatementParseError(
+    `That statement could not be read reliably: ${why}. Nothing has been ` +
+      "imported, because a statement that does not reconcile would put the " +
+      "wrong figures in your ledger.",
+  );
 }
 
 /** Strip the id claim from every row, keeping the reference. */
@@ -371,4 +532,4 @@ function withoutMachineIds(parsed: ParsedStatement): ParsedStatement {
 }
 
 /** Internals, exposed for the spec — not part of the module's contract. */
-export const __test__ = { toRecords, toRow, takeTail, isFurniture, withoutMachineIds, whyThereIsNoText, readProvenance };
+export const __test__ = { toRecords, toRow, takeTail, isFurniture, withoutMachineIds, whyThereIsNoText, readProvenance, passwordProblem };
