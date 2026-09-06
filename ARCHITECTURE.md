@@ -267,6 +267,28 @@ Computed over **actual dated cash flows**, not a simplified CAGR:
 Solved by Newton–Raphson with a bisection fallback over `[-0.9999, 10]`, so it
 converges on the flow sets where Newton alone diverges. Available per holding,
 per instrument kind, and portfolio-wide.
+#### Income received in kind
+
+An asset that pays in units rather than cash — a digital-gold lease credits
+**grams** — breaks the rule above, because by the time the credit reaches the
+holding it is indistinguishable from a purchase. The convention, chosen after
+measuring all three candidates against the real solver rather than arguing them:
+
+- **The credit is not a cashflow.** It raises units held and surfaces in the
+  terminal inflow. Treating it instead as a synthetic dividend plus an immediate
+  repurchase yields a **bit-identical** rate (measured: `|A − B| = 0`), so the
+  synthetic form is used only to produce the rupee ledger the FY tax statement
+  needs — the rate and the ledger can never disagree.
+- **The terminal inflow uses the realisable price**, not the published benchmark.
+  Where a platform quotes a buy-back spread, valuing at the benchmark overstates
+  the annualised return — measured at 3.99 pp on a 2.5-year holding with a 5%
+  spread. The overstatement is horizon-dependent, so no fixed figure is quoted.
+- A **price-only** rate, excluding in-kind units from the terminal value, is
+  reported beside the blended one. It sits strictly below it whenever anything
+  has been credited.
+
+Full specification, including the long-term-eligibility boundary and why GST is
+not derivable from the current trade schema: `_architecture/30-CALCULATIONS.md` §4.5.
 
 ### FIFO lots
 

@@ -46,3 +46,8 @@ next-env.d.ts
 
 # Test-runner build output
 /tmp
+
+# agent working notes — briefs, research, batons, QA records.
+# Scaffolding for how a change was made, not the change itself: anything durable
+# is folded into _architecture/ and ARCHITECTURE.md before a requirement closes.
+.agents/

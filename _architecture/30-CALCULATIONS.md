@@ -264,6 +264,85 @@ the projection cache (`10-SYSTEM-ARCHITECTURE.md` §8) makes affordable.
 | DTI | `monthly_debt_payments / monthly_gross_income` |
 | Credit utilisation | `Σ card balances / Σ card limits` (Paisa `src/lib/credit_cards.ts`) |
 
+### 4.5 In-kind income and the digital-gold module — implemented 2026-09
+
+Digital gold earns income in **grams**, not rupees: a lease credits metal, and by the time it
+reaches the holding it is indistinguishable from bought metal. That breaks the assumption
+every §4.1 cashflow rule rests on, so the conventions are settled here rather than per caller.
+Implemented in `src/app/gold-analytics.usecases.ts` and `src/app/gold-benchmark.usecases.ts`.
+
+**Three conventions were tested against the real solver before one was chosen** (evidence:
+`.agents/work/digital-gold-analytics/EXPERIMENT.md`):
+
+| Convention | Treatment of a lease credit | Measured XIRR |
+|---|---|---|
+| **A — reinvested in kind** | Not a cashflow at all; surfaces in the terminal value | 15.2318% |
+| **B — synthetic dividend + repurchase** | `+inflow` and an equal simultaneous `−outflow` at the credit-date rate | 15.2318% |
+| **C — lease as separate business** | Excluded; terminal value covers bought grams only | 14.1338% |
+
+`|A − B| = 0.000e+0` percentage points — **bit-identical, measured, not argued**. So:
+
+- **A is the rate.** B costs 48 extra flows on a 30-month holding and changes nothing.
+- **B is the ledger.** Its per-credit rupee valuation is the FY tax statement, and A ≡ B means
+  the rate and the ledger can never disagree on screen.
+- **C is the secondary split**, reported beside A. It sits strictly below A whenever a lease
+  has credited anything.
+
+**Valuation basis — the buy-back rate, never the benchmark.** Digital gold has two prices: you
+buy at the vault rate plus GST and sell a few percent under IBJA. Valuing at the benchmark
+shows a gain that selling could not realise. Measured overstatement: **3.99 pp of annualised
+return** at a 2.5-year horizon, 5% spread, 3% GST. The drag is **horizon-dependent** — a
+one-off cost amortised over an annualised rate — so no fixed figure may be quoted in code or
+copy. `Institution.realisablePrice()` applies the discount once, at the boundary.
+
+**Long-term eligibility.** `longTermDays` comes from the tax regime via the instrument's tax
+category (`GOLD` = 730 days, 12.5%, no indexation post-23-Jul-2024), never a literal. The
+boundary is **strictly greater**, matching `tax.ts:441/503`: day 730 is short-term,
+`longTermOn = acquiredOn + threshold + 1`. A category with `longTermDays: null` renders "no
+long-term treatment", which is not the same as "not yet eligible".
+
+**Break-even gram rate** = `investedCost ÷ totalGrams` — the buy-back rate at which the holding
+recovers cash paid. The benchmark equivalent is grossed up through the spread and
+ceiling-rounded, so discounting it lands on or above break-even rather than a paisa below.
+
+**GST is not derivable, and the schema is why.** `recordTrade` (`repositories.ts:3288`) writes
+the entire charge total into `otherChargesMinor` — deliberately, because splitting it would
+make STT appear deductible when it is not. `gstPaid` is therefore always `null`, carrying
+`gstPaidReason`. **No 3% back-solve is permitted.** Deriving it needs a contract-note import
+that populates `gstMinor`.
+
+**Benchmark replay.** The user's dated rupee outflows are replayed into each alternative with
+its own entry load and its own tax at the holding period each dated purchase implies, then
+`xirr()` over those outflows plus the post-tax terminal inflow. Sales and lease credits are
+excluded from **every** row including the actual holding, so all rows answer the same
+question — which makes the actual row's XIRR a *different figure* from the holding page's
+headline. That divergence is explained in a `basis` string the UI must render verbatim.
+Gold-ETF tax composes two regime lookups — rate from `GOLD`, holding period from
+`LISTED_EQUITY` (365 days) — rather than inventing a category; the composition is published on
+`BenchmarkTaxTreatment` so it stays auditable.
+
+**What the FY statement does and does not cover.** It reports lease income as Income from
+Other Sources, valued at the credit-date buy-back rate, plus TDS withheld. It does **not**
+report realised LTCG/STCG: no term-split realised figure exists on the analytics contract,
+and deriving one in the view layer would put cost-basis arithmetic in a component. The
+screen states the omission rather than showing a plausible wrong number. Adding it means
+extending the use case with a term-split realised figure sourced from `disposalsWithin`,
+not changing the UI.
+
+**Lease TDS defaults to zero**, and the mechanism is retained rather than deleted, so a
+platform that does withhold can still be modelled. §194A withholds on "interest", which
+§2(28A) defines as payable on moneys borrowed or a debt incurred — arguably neither for a
+gram-denominated fee on a bailment of metal. No CBDT circular, ruling or FAQ covers
+gold-lease income, so the head of income is an assumption the product discloses rather than
+asserts. Stored leases keep whatever rate they were opened with; the default is a fallback,
+never a rewrite.
+
+**Metrics deliberately not built here:** Sharpe, Sortino and alpha on a single non-diversified
+asset at retail scale are unstable and were judged noise; candlesticks and technical indicators
+do not apply to a holding that cannot be traded intraday.
+
+---
+
 ---
 
 ## 5. Loan mathematics — absent from all four repos

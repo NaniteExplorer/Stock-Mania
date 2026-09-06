@@ -44,12 +44,14 @@
 import { AppError, Err, NotFoundError, Ok, Result, UseCase, UserId } from "@/core/kernel";
 import { Money } from "@/core/money";
 import { Percentage, Quantity, UnitPrice } from "@/core/numeric";
-import { CalendarDate, DateRange } from "@/core/time";
+import { CalendarDate, DateRange, FinancialYear } from "@/core/time";
 import { InstitutionRepository } from "@/domain/institutions";
 import { InstrumentId, InstrumentRepository } from "@/domain/instruments";
 import { GoldLeaseRepository } from "@/domain/leasing";
 import { Lot, LotRepository, TradeRecord } from "@/domain/lots";
 import { QuoteRepository } from "@/domain/pricing";
+import { Cashflow, Xirr, xirr } from "@/domain/portfolio";
+import { RegimeRegistry, TaxCategory } from "@/domain/tax";
 
 /* ═══ Output ══════════════════════════════════════════════════════════ */
 
@@ -73,6 +75,95 @@ export interface GoldHistoryPoint {
   readonly leaseProfit: Money | null;
   /** The part the gold price moved: total less lease. */
   readonly priceProfit: Money | null;
+}
+
+/**
+ * One open lot, as the ladder shows it.
+ *
+ * A holding is not a single position with a single age. It is a stack of
+ * purchases, each of which crosses the long-term line on its own day, and the
+ * question "can I sell this without paying short-term rates" has one answer per
+ * lot rather than one answer per holding. The ladder is what turns that from a
+ * spreadsheet exercise into a date on a screen.
+ *
+ * **The threshold is never a literal here.** It comes from the tax regime in
+ * force on the as-of date, looked up by the instrument's own tax category, so a
+ * budget that moves gold off 730 days moves this ladder with it. A category the
+ * regime gives no `longTermDays` — post-2023 debt, VDA — is not "not yet
+ * eligible": long-term treatment does not exist for it at any holding period,
+ * and every row then reports `longTermOn: null` and `isLongTerm: false` so a
+ * screen can say so rather than counting down to a day that never arrives.
+ */
+export interface GoldLotRow {
+  readonly lotId: string;
+  readonly acquiredOn: CalendarDate;
+  /** What is left of the lot, after any sale that has eaten into it. */
+  readonly grams: Quantity;
+  /**
+   * Cash paid per remaining gram, or `null` for a lease-origin lot.
+   *
+   * `null` rather than zero, and the distinction is the whole point: zero would
+   * be a price, and a lease credit had no price. It arrived as income already
+   * recognised, and dividing nothing by grams is not a cost basis.
+   */
+  readonly costPerGram: UnitPrice | null;
+  /** Cash paid for what is left. Zero for a lease credit — no money moved. */
+  readonly investedCost: Money;
+  readonly marketValue: Money | null;
+  /**
+   * Market value less cash paid — the same *cash* basis the headline uses, not
+   * the book basis. A lease lot's whole value is therefore unrealised profit,
+   * which is why these rows sum to {@link GoldAnalytics.totalProfit} and not to
+   * {@link GoldAnalytics.unrealisedAgainstBook}.
+   */
+  readonly unrealised: Money | null;
+  readonly origin: "PURCHASE" | "LEASE_CREDIT";
+  readonly holdingDays: number;
+  /**
+   * The first day this lot can be sold at the long-term rate, or `null` when the
+   * category has no long-term treatment.
+   *
+   * `acquiredOn + threshold + 1`, because the regime classifies on
+   * `holdingDays > longTermDays` — strictly greater. A lot held exactly the
+   * threshold is still short-term, and rounding that in the user's favour would
+   * show a rate they cannot claim.
+   */
+  readonly longTermOn: CalendarDate | null;
+  /** Days until {@link longTermOn}. Zero once eligible; `null` when it cannot be. */
+  readonly daysToLongTerm: number | null;
+  readonly isLongTerm: boolean;
+}
+
+/**
+ * A financial year of lease credits, valued in rupees.
+ *
+ * Grams credited by a lease are income when they are credited, and the return
+ * itself never sees them as a cashflow — treating them as a synthetic dividend
+ * plus an immediate repurchase was measured to produce a bit-identical XIRR, so
+ * the rate is computed the cheap way and this ledger is the *other* half of the
+ * same convention: the rupee figure a rate cannot show and a return filing
+ * needs.
+ *
+ * Valued at the **buy-back rate on the credit date**, not today's rate and not
+ * the benchmark: what a credit was worth is what the platform would have paid
+ * for it on the day it landed.
+ */
+export interface GoldLeaseIncomeRow {
+  /** `"2025-26"` — the label a filing uses. */
+  readonly financialYear: string;
+  readonly grams: Quantity;
+  /** Zero when `pricedFrom` is `UNPRICED`, which is a gap rather than a valuation. */
+  readonly value: Money;
+  /**
+   * How the credit date was priced.
+   *
+   * `QUOTE` — a price was published that day. `CARRIED` — the most recent
+   * earlier price was used, which is what a weekend or a holiday credit gets.
+   * `UNPRICED` — no price existed on or before that day, so the rupee figure is
+   * missing rather than estimated, and the screen must say so before anyone
+   * files it.
+   */
+  readonly pricedFrom: "QUOTE" | "CARRIED" | "UNPRICED";
 }
 
 export interface GoldAnalytics {
@@ -154,6 +245,80 @@ export interface GoldAnalytics {
    */
   readonly leaseGramsReconcile: string | null;
 
+  /**
+   * The money-weighted return on cash actually paid, at the buy-back rate.
+   *
+   * A lease credit settles no cash account, so it is **not** a cashflow — it
+   * shows up where it belongs, inside the terminal value, as grams that cost
+   * nothing. Purchases are negative (`quantity × price + charges`, tax-inclusive),
+   * sales positive net of charges, and {@link marketValue} closes the series on
+   * {@link asOf}.
+   *
+   * Returned as the solver's own typed result, never flattened to a number: an
+   * undefined rate carries the reason it is undefined, because the alternative —
+   * rendering it as 0% — is a claim that the holding broke even.
+   */
+  readonly xirr: Xirr;
+  /**
+   * The same series, closed at the value of the **bought grams only**.
+   *
+   * What the gold price alone earned, with the lease stripped out. It sits below
+   * {@link xirr} whenever a lease has credited anything, and the gap between the
+   * two is the rent — the annualised twin of the {@link leaseProfit} /
+   * {@link priceProfit} split.
+   */
+  readonly priceXirr: Xirr;
+  /**
+   * GST paid on purchases, or `null` when it cannot be separated.
+   *
+   * Today it is always `null`, and that is a statement about the data rather
+   * than a missing feature: a trade carries one fused, tax-inclusive `charges`
+   * figure, and the mapper that reads it sums every charge column — GST included
+   * — back into that single number. Back-solving 3% out of it would invent a
+   * split the user never entered, and it would be wrong for anyone whose
+   * platform bundles a delivery or storage fee into the same figure.
+   * {@link gstPaidReason} says this on the screen instead of showing a
+   * confident wrong number.
+   */
+  readonly gstPaid: Money | null;
+  /** Why {@link gstPaid} is blank, when it is. */
+  readonly gstPaidReason: string | null;
+  /**
+   * The buy-back rate at which the holding breaks even on cash paid.
+   *
+   * `investedCost ÷ totalGrams` — arithmetically the same figure as
+   * {@link blendedCostPerGram}, and deliberately a separate field: they answer
+   * different questions, and they stop being equal the moment either definition
+   * moves. This one is a *target*, the rate a screen draws a line at.
+   */
+  readonly breakEvenPricePerGram: UnitPrice | null;
+  /**
+   * The **benchmark** rate that has to print before the buy-back rate reaches
+   * break-even.
+   *
+   * `breakEven ÷ (1 − sellSpread)`. The spread is a cost paid on the way out, so
+   * the published rate must clear break-even by that much before a sale actually
+   * does. With no spread recorded the two coincide, and the screen is then
+   * comparing against a benchmark it already says it is using.
+   */
+  readonly benchmarkBreakEvenPricePerGram: UnitPrice | null;
+
+  /** Every open lot, oldest first, with its long-term countdown. */
+  readonly lotLadder: readonly GoldLotRow[];
+  /** Lease credits bucketed by financial year, valued on their credit dates. */
+  readonly leaseIncomeByFinancialYear: readonly GoldLeaseIncomeRow[];
+  /**
+   * The regime's long-term threshold for this instrument's category, in days, or
+   * `null` when the category has no long-term treatment at all.
+   *
+   * Reported so a screen can explain the rule it is applying — "730 days for
+   * gold, FY2025-26" — rather than asserting an eligibility date the user has to
+   * take on faith.
+   */
+  readonly taxThresholdDays: number | null;
+  /** The category the threshold was looked up under, e.g. `"GOLD"`. */
+  readonly taxCategory: string;
+
   readonly history: readonly GoldHistoryPoint[];
   /** Why a value is missing, when one is. */
   readonly unpricedReason: string | null;
@@ -176,6 +341,14 @@ export class GoldHoldingAnalytics implements UseCase<GoldAnalyticsInput, GoldAna
     private readonly leases: GoldLeaseRepository,
     private readonly quotes: QuoteRepository,
     private readonly platforms: InstitutionRepository,
+    /*
+     * The long-term threshold is a *statute*, not a constant, and it is looked
+     * up rather than written down. Defaulted rather than wired so that the
+     * container keeps working unchanged: nothing about this registry is
+     * per-user, and the alternative — a literal 730 in a gold file — is a figure
+     * that would silently survive the budget that changes it.
+     */
+    private readonly regimes: RegimeRegistry = new RegimeRegistry(),
   ) {}
 
   async execute(input: GoldAnalyticsInput): Promise<Result<GoldAnalytics, AppError>> {
@@ -258,6 +431,35 @@ export class GoldHoldingAnalytics implements UseCase<GoldAnalyticsInput, GoldAna
         ? platform.realisablePrice(benchmarkPricePerGram)
         : benchmarkPricePerGram;
 
+    /*
+     * Every dated price this use case needs, in one query.
+     *
+     * The chart wants a month-end series and the lease ledger wants the rate on
+     * each credit date — both are "what did a gram fetch on day X", and asking
+     * that per credit would be an N+1 against a table the history already reads
+     * a range of. Discounted once, here, so nothing downstream can forget to.
+     */
+    const discount = (benchmark: UnitPrice): UnitPrice =>
+      platform ? platform.realisablePrice(benchmark) : benchmark;
+
+    const firstTradeOn = trades.reduce(
+      (earliest, trade) => (trade.tradedOn.isBefore(earliest) ? trade.tradedOn : earliest),
+      trades[0]?.tradedOn ?? input.asOf,
+    );
+    const quoteSeries =
+      trades.length === 0
+        ? []
+        : (
+            await this.quotes.findRange(
+              input.instrumentId.value,
+              "CLOSE",
+              DateRange.of(CalendarDate.min(firstTradeOn, input.asOf), input.asOf),
+            )
+          )
+            .filter((quote) => !quote.supersededBy)
+            .map((quote) => ({ on: quote.asOf, price: discount(quote.price) }))
+            .sort((a, b) => a.on.compareTo(b.on));
+
     const unpricedReason = pricePerGram
       ? null
       : `No gram price has been recorded for ${instrument.symbol} on or before ` +
@@ -288,6 +490,185 @@ export class GoldHoldingAnalytics implements UseCase<GoldAnalyticsInput, GoldAna
       allLots.filter(isLeaseLot).map((lot) => lot.props.originalQuantity),
     );
     const disposedLeaseGrams = leaseLotGramsEver.minus(leaseGrams);
+
+    /* ── Money-weighted return ─────────────────────────────────────── */
+
+    /*
+     * The flow series, derived from trades rather than from postings.
+     *
+     * Postings cannot express the buy-back discount — they record what the
+     * ledger booked, at the benchmark — and a trade already carries the three
+     * things a flow needs: a date, a tax-inclusive amount, and the
+     * `settlementAccountId` that says whether cash actually moved. A lease
+     * accrual settles nothing and therefore contributes nothing here; its grams
+     * arrive in the terminal value, which is where a return that was paid in
+     * kind honestly belongs.
+     */
+    const orderedTrades = [...trades].sort((a, b) => a.tradedOn.compareTo(b.tradedOn));
+    const flows: Cashflow[] = [];
+    for (const trade of orderedTrades) {
+      const gross = trade.quantity.valueAt(trade.pricePerUnit, "HALF_EVEN");
+      if (trade.side === "BUY") {
+        if (trade.settlementAccountId === null) continue;
+        flows.push({
+          on: trade.tradedOn,
+          amount: gross.plus(trade.charges).negated(),
+          note: `Bought ${trade.quantity.toDecimalString()}g`,
+        });
+      } else {
+        flows.push({
+          on: trade.tradedOn,
+          amount: gross.minus(trade.charges),
+          note: `Sold ${trade.quantity.toDecimalString()}g`,
+        });
+      }
+    }
+
+    /*
+     * The closing flow is a *synthetic* inflow: nothing was sold, and this is
+     * what selling would have paid. Left off entirely when there is no price —
+     * the solver then says why it cannot answer, which is better than closing
+     * the series at a zero the holding is not worth.
+     */
+    const closedAt = (terminal: Money | null, note: string): Xirr =>
+      xirr(terminal ? [...flows, { on: input.asOf, amount: terminal, note }] : flows);
+
+    const priceOnlyValue = pricePerGram ? pricePerGram.times(purchasedGrams) : null;
+
+    /* ── Lot ladder ────────────────────────────────────────────────── */
+
+    /*
+     * `taxThresholdDays` of `null` covers two cases that a screen must not
+     * conflate with "not yet eligible": a category with no long-term treatment
+     * at any holding period, and — via the throw below — a date no shipped
+     * regime covers. Both mean "we cannot state an eligibility date", and both
+     * render as a blank rather than a countdown.
+     */
+    const taxCategory: TaxCategory = instrument.taxProfile().category;
+    let taxThresholdDays: number | null = null;
+    try {
+      taxThresholdDays = this.regimes.forDate(input.asOf).longTermDaysFor(taxCategory);
+    } catch {
+      taxThresholdDays = null;
+    }
+
+    const lotLadder: GoldLotRow[] = [...openLots]
+      .sort(
+        (a, b) => a.acquiredOn.compareTo(b.acquiredOn) || a.id.value.localeCompare(b.id.value),
+      )
+      .map((lot) => {
+        const fromLease = isLeaseLot(lot);
+        // Cash, not book: a lease lot was booked at a basis but bought with none.
+        const cash = fromLease ? zero : lot.remainingCost.plus(lot.remainingCharges);
+        const value = pricePerGram ? pricePerGram.times(lot.remaining) : null;
+        const holdingDays = lot.acquiredOn.daysUntil(input.asOf);
+        /*
+         * `+ 1` because the regime classifies on `holdingDays > longTermDays`,
+         * strictly greater — day 730 is still short-term for gold, and the first
+         * long-term day is 731.
+         */
+        const longTermOn =
+          taxThresholdDays === null ? null : lot.acquiredOn.plusDays(taxThresholdDays + 1);
+        return {
+          lotId: lot.id.value,
+          acquiredOn: lot.acquiredOn,
+          grams: lot.remaining,
+          costPerGram:
+            fromLease || !lot.remaining.isPositive
+              ? null
+              : UnitPrice.fromMoney(lot.remaining.perUnit(cash, "HALF_EVEN")),
+          investedCost: cash,
+          marketValue: value,
+          unrealised: value ? value.minus(cash) : null,
+          origin: fromLease ? ("LEASE_CREDIT" as const) : ("PURCHASE" as const),
+          holdingDays,
+          longTermOn,
+          daysToLongTerm:
+            longTermOn === null ? null : Math.max(0, input.asOf.daysUntil(longTermOn)),
+          isLongTerm: taxThresholdDays !== null && holdingDays > taxThresholdDays,
+        };
+      });
+
+    /* ── Lease income, by financial year ───────────────────────────── */
+
+    /*
+     * The rupee ledger the rate deliberately does not contain. Each credit is
+     * valued at the buy-back rate published on or before its own date, then
+     * bucketed by the financial year that date falls in — so a credit on 31
+     * March and one on 1 April land in different years, which is the whole
+     * reason this is bucketed by `FinancialYear` and not by calendar year.
+     */
+    const priceAsOf = (on: CalendarDate): { price: UnitPrice | null; exact: boolean } => {
+      let found: { on: CalendarDate; price: UnitPrice } | null = null;
+      for (const quote of quoteSeries) {
+        if (!quote.on.isOnOrBefore(on)) break;
+        found = quote;
+      }
+      return { price: found?.price ?? null, exact: found !== null && found.on.compareTo(on) === 0 };
+    };
+
+    const byYear = new Map<
+      string,
+      { grams: Quantity; value: Money; pricedFrom: GoldLeaseIncomeRow["pricedFrom"] }
+    >();
+    for (const trade of orderedTrades) {
+      if (trade.side !== "BUY" || trade.settlementAccountId !== null) continue;
+      const label = FinancialYear.containing(trade.tradedOn).label;
+      const { price, exact } = priceAsOf(trade.tradedOn);
+      const priced: GoldLeaseIncomeRow["pricedFrom"] =
+        price === null ? "UNPRICED" : exact ? "QUOTE" : "CARRIED";
+      const existing = byYear.get(label) ?? { grams: Quantity.ZERO, value: zero, pricedFrom: "QUOTE" as const };
+      byYear.set(label, {
+        grams: existing.grams.plus(trade.quantity),
+        value: existing.value.plus(price ? price.times(trade.quantity) : zero),
+        /*
+         * The worst provenance in the year wins. A year whose total is missing
+         * one credit is not a "quoted" year, and a filing figure that hides a
+         * gap inside a confident total is the failure this flag exists for.
+         */
+        pricedFrom:
+          existing.pricedFrom === "UNPRICED" || priced === "UNPRICED"
+            ? "UNPRICED"
+            : existing.pricedFrom === "CARRIED" || priced === "CARRIED"
+              ? "CARRIED"
+              : "QUOTE",
+      });
+    }
+    const leaseIncomeByFinancialYear: GoldLeaseIncomeRow[] = [...byYear.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([financialYear, row]) => ({ financialYear, ...row }));
+
+    /* ── Break-even ────────────────────────────────────────────────── */
+
+    // Rounded `UP`: a break-even that rounded down would name a rate at which
+    // the sale is a paisa short, which is the one direction this must not err.
+    const breakEvenPricePerGram = totalGrams.isPositive
+      ? UnitPrice.fromMoney(totalGrams.perUnit(investedCost, "UP"))
+      : null;
+    /*
+     * Grossed back up through the spread: the platform pays `(1 − spread)` of
+     * whatever the benchmark prints, so the benchmark has to reach
+     * `breakEven ÷ (1 − spread)` before a sale clears cash paid. A 100% spread
+     * would be a platform that pays nothing, and no benchmark clears that — the
+     * constructor of `Institution` rejects more than 100%, and this guards the
+     * boundary rather than dividing by zero.
+     */
+    const hundredPercent = BigInt(Percentage.of("100").toScaledNumber());
+    const remainingShare = hundredPercent - BigInt(sellSpread.toScaledNumber());
+    /*
+     * Rounded **up**, and it has to be: `realisablePrice` truncates on the way
+     * back down, so a benchmark rounded down would discount to a paisa *below*
+     * break-even — a target that misses by construction. Ceiling here means
+     * discounting this figure by the spread always lands on or above break-even,
+     * which is the only property this number has to have.
+     */
+    const benchmarkBreakEvenPricePerGram =
+      breakEvenPricePerGram && remainingShare > 0n
+        ? UnitPrice.fromScaled(
+            (breakEvenPricePerGram.scaled * hundredPercent + remainingShare - 1n) / remainingShare,
+            currency,
+          )
+        : null;
 
     return Ok({
       asOf: input.asOf,
@@ -340,9 +721,25 @@ export class GoldHoldingAnalytics implements UseCase<GoldAnalyticsInput, GoldAna
             `credited. One of the two was written outside the accrual, and the split between ` +
             `lease profit and price profit below is only as good as this reconciliation.`,
 
-      history: await this.buildHistory(input, trades, leaseTxnIds, zero, (price) =>
-        platform ? platform.realisablePrice(price) : price,
-      ),
+      xirr: closedAt(marketValue, "Holding valued at the buy-back rate"),
+      priceXirr: closedAt(priceOnlyValue, "Bought grams valued at the buy-back rate"),
+
+      gstPaid: null,
+      gstPaidReason:
+        `A trade records one tax-inclusive charges figure, so the GST inside it cannot be ` +
+        `separated from brokerage, delivery or storage fees. Rather than back-solving a 3% ` +
+        `share that would be wrong for anyone whose platform bundles other costs into the ` +
+        `same line, it is left blank — the tax is inside ${investedCost.toDecimalString()} ` +
+        `of cash paid, and every figure here is already net of it.`,
+
+      breakEvenPricePerGram,
+      benchmarkBreakEvenPricePerGram,
+      lotLadder,
+      leaseIncomeByFinancialYear,
+      taxThresholdDays,
+      taxCategory,
+
+      history: await this.buildHistory(input, trades, leaseTxnIds, zero, quoteSeries),
       unpricedReason,
     });
   }
@@ -363,7 +760,8 @@ export class GoldHoldingAnalytics implements UseCase<GoldAnalyticsInput, GoldAna
     trades: readonly TradeRecord[],
     leaseTxnIds: ReadonlySet<string>,
     zero: Money,
-    discount: (benchmark: UnitPrice) => UnitPrice,
+    /** Already discounted to the buy-back rate, ascending, by `execute`. */
+    quoteSeries: readonly { on: CalendarDate; price: UnitPrice }[],
   ): Promise<readonly GoldHistoryPoint[]> {
     if (trades.length === 0) return [];
 
@@ -378,20 +776,14 @@ export class GoldHoldingAnalytics implements UseCase<GoldAnalyticsInput, GoldAna
       input.asOf.plusMonths(-(months - 1)).startOfMonth(),
     );
 
-    const quotes = await this.quotes.findRange(
-      input.instrumentId.value,
-      "CLOSE",
-      DateRange.of(windowStart, input.asOf),
-    );
     /*
      * The last published price in each month. A month with no quote inherits the
      * previous month's, because gold did not stop existing — but a month before
      * the very first quote stays `null`, which is the honest "we do not know".
      */
     const monthEndPrice = new Map<string, UnitPrice>();
-    for (const quote of [...quotes].sort((a, b) => a.asOf.compareTo(b.asOf))) {
-      if (quote.supersededBy) continue;
-      monthEndPrice.set(quote.asOf.toMonthKey(), discount(quote.price));
+    for (const quote of quoteSeries) {
+      monthEndPrice.set(quote.on.toMonthKey(), quote.price);
     }
 
     const ordered = [...trades].sort((a, b) => a.tradedOn.compareTo(b.tradedOn));

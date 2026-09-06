@@ -4,6 +4,7 @@ import { cache } from "react";
 import { SystemClock, UserId } from "@/core/kernel";
 import { Currency } from "@/core/money";
 import { CalendarDate } from "@/core/time";
+import { config } from "@/core/config";
 import type { IdentifierType, PricedAssetClass, QuoteType } from "@/domain/pricing";
 import { db } from "@/infra/db/client";
 import {
@@ -66,6 +67,7 @@ import {
 import { CorrectTrade, VoidTrade } from "@/app/trade-corrections.usecases";
 import { RealisedGainsHistory } from "@/app/realised-history.usecases";
 import { GoldHoldingAnalytics } from "@/app/gold-analytics.usecases";
+import { GoldBenchmarkReplay } from "@/app/gold-benchmark.usecases";
 import {
   CloseInstrument,
   DeleteInstrument,
@@ -107,7 +109,13 @@ import {
 } from "@/app/leasing.usecases";
 import { FxBook, PriceBook } from "@/domain/pricing";
 import { RefreshPrices } from "@/app/pricing.usecases";
-import { FetchHttpClient, shippedFxProviders, shippedQuoteProviders, systemRuntime } from "@/infra/providers";
+import {
+  FetchHttpClient,
+  ProviderBenchmarkFeed,
+  shippedFxProviders,
+  shippedQuoteProviders,
+  systemRuntime,
+} from "@/infra/providers";
 import { getCurrentSession } from "@/infra/auth/session";
 
 /**
@@ -166,7 +174,10 @@ export const services = cache(() => {
    * boundary, so neither side has to know the other's vocabulary.
    */
   const providerRuntime = systemRuntime(new FetchHttpClient());
-  const priceBook = new PriceBook(shippedQuoteProviders(providerRuntime), quotes);
+  const priceBook = new PriceBook(
+    shippedQuoteProviders(providerRuntime, new Map(), undefined, config.marketData()),
+    quotes,
+  );
   const fxBook = new FxBook(shippedFxProviders(providerRuntime), fxRates, clock);
   const balances = new DrizzleBalanceQuery(db, Currency.reporting, fxBook);
   const prices = {
@@ -264,6 +275,20 @@ export const services = cache(() => {
       realisedGains: new RealisedGains(lots),
       realisedHistory: new RealisedGainsHistory(lots, instruments, platforms),
       goldAnalytics: new GoldHoldingAnalytics(instruments, lots, leases, quotes, platforms),
+      /*
+       * The benchmark replay gets its own feed rather than the price ladder: the
+       * ladder writes what it fetches into `quotes`, and a benchmark series is not
+       * a price for anything the user holds. Storing GOLDBEES closes against a
+       * digital-gold instrument would corrupt the very valuation this table is
+       * comparing against.
+       */
+      goldBenchmark: new GoldBenchmarkReplay(
+        instruments,
+        lots,
+        quotes,
+        platforms,
+        new ProviderBenchmarkFeed(providerRuntime),
+      ),
       applyCorporateAction: (userId: UserId) =>
         new ApplyCorporateAction(
           accounts,

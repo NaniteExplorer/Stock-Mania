@@ -55,6 +55,10 @@ const lease = (overrides: Partial<GoldLeaseProps> = {}): GoldLease =>
     startOn: on("2026-01-15"),
     closesOn: on("2027-01-15"),
     annualRate: Percentage.of("4"),
+    // Stated, not defaulted: the default is now zero (no CBDT guidance covers
+    // gold-lease income, and the surveyed platforms withhold nothing), so a
+    // helper that wants the withholding arithmetic has to ask for it.
+    tdsRate: Percentage.of("10"),
     ...overrides,
   });
 
@@ -65,7 +69,14 @@ section("interest is paid in grams, on completed months");
 const twelveMonth = lease();
 
 check("the term is twelve months", twelveMonth.termMonths, 12);
-check("the default withholding is 10%", DEFAULT_TDS_RATE.toFixed(2), "10.00");
+check("nothing is withheld unless the platform says so", DEFAULT_TDS_RATE.toFixed(2), "0.00");
+// A lease that states no rate accrues gross, and still reports a TDS line of
+// zero rather than dropping the concept.
+const undefaulted = lease({ tdsRate: undefined }).accrualOn(on("2026-08-15"));
+check("a lease with no stated rate accrues gross", undefaulted.gross.toDecimalString(), "0.102641");
+check("with an explicit zero withheld", undefaulted.tds.toDecimalString(), "0");
+check("so net equals gross", undefaulted.net.toDecimalString(), "0.102641");
+checkTrue("and the reason still names the rate", undefaulted.because.includes("0.00% TDS"));
 
 // 4.3989g × 4% × 7/12 = 0.102641g, less 10% = 0.0092376…
 const sevenMonths = twelveMonth.accrualOn(on("2026-08-15"));

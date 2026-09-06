@@ -38,8 +38,8 @@ export default function DigitalGoldLeaseForm({ instrumentId, platform, available
       <Field name="annualRate" label="Gold interest % p.a." required hint="Paid monthly as additional grams." error={state?.fieldErrors?.annualRate?.[0]}>
         {(props) => <input {...props} name="annualRate" className="form-input tnum" inputMode="decimal" min="0" step="0.0001" placeholder="4.00" required />}
       </Field>
-      <Field name="tdsRate" label="TDS %" hint="Defaults to 10% when left blank." error={state?.fieldErrors?.tdsRate?.[0]}>
-        {(props) => <input {...props} name="tdsRate" className="form-input tnum" inputMode="decimal" min="0" max="100" step="0.0001" placeholder="10" />}
+      <Field name="tdsRate" label="TDS %" hint="Leave blank if the platform withholds nothing — most digital-gold platforms do not." error={state?.fieldErrors?.tdsRate?.[0]}>
+        {(props) => <input {...props} name="tdsRate" className="form-input tnum" inputMode="decimal" min="0" max="100" step="0.0001" placeholder="0" />}
       </Field>
       <Field name="sourceReference" label="Platform reference" hint={`Lease held with ${platform}.`} error={state?.fieldErrors?.sourceReference?.[0]}>
         {(props) => <input {...props} name="sourceReference" className="form-input" maxLength={120} />}

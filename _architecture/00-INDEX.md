@@ -24,6 +24,8 @@ reasoning behind it:
 | Money/precision rules and the testing strategy | `30` §1, §9 |
 | The legality matrix, enum catalogue, or a worked posting example | `20` §2, §3.6, §5 |
 | Corporate-action semantics, the 3-pass dedup matcher, provider endpoints | `40` §5, §6.5, §2 |
+| Whether a market-data feed actually works (measured, not assumed) | `40` §2.5 |
+| In-kind income, digital-gold XIRR conventions, benchmark replay | `30` §4.5 |
 
 ---
 

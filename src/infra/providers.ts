@@ -1,5 +1,5 @@
 /**
- * Market-data providers: the resilience machinery, and the eight concrete sources.
+ * Market-data providers: the resilience machinery and the concrete sources.
  *
  * **The resilience lives in the base class, not in each provider.** That is the
  * whole design. `40-MARKET-DATA.md` §3.1 requires retry with jitter, a token
@@ -19,7 +19,13 @@
  * suite that fails for reasons that have nothing to do with the change under test.
  */
 
+import type {
+  BenchmarkSeriesFeed,
+  BenchmarkSeriesKey,
+  BenchmarkSeriesOutcome,
+} from "@/app/gold-benchmark.usecases";
 import { Err, Ok, Result } from "@/core/kernel";
+import { Currency } from "@/core/money";
 import { Quantity, UnitPrice } from "@/core/numeric";
 import { CalendarDate, DateRange } from "@/core/time";
 import {
@@ -458,6 +464,72 @@ export abstract class PriceProvider implements QuoteProviderPort {
 }
 
 const EQUITY_CLASSES: readonly PricedAssetClass[] = ["EQUITY", "ETF"];
+
+interface FinnhubQuotePayload {
+  c?: number;
+  t?: number;
+}
+
+/** Authenticated real-time current quotes for USD-denominated US equities. */
+export class FinnhubQuoteProvider extends PriceProvider {
+  readonly id = "finnhub";
+  readonly displayName = "Finnhub (real-time US equities)";
+
+  constructor(
+    runtime: ProviderRuntime,
+    private readonly token: string,
+    options: ProviderOptions = {},
+  ) {
+    super(runtime, options);
+  }
+
+  capabilities(): ProviderCapabilities {
+    return {
+      assetClasses: EQUITY_CLASSES,
+      supportsIntraday: true,
+      supportsHistorical: false,
+      supportsCorporateActions: false,
+      supportsInstrumentSearch: false,
+      identifierTypes: ["TICKER", "MIC_TICKER"],
+      maxHistoryYears: 0,
+      quoteDelayMinutes: 0,
+      quoteTypes: ["LAST", "CLOSE"],
+    };
+  }
+
+  override rateLimit(): RateLimitBudget {
+    return { requests: 60, perMillis: 60_000, burst: 10 };
+  }
+
+  protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
+    const today = CalendarDate.fromUtcInstant(new Date(this.runtime.now()));
+    if (!request.range.contains(today)) return [];
+
+    const quotes: Quote[] = [];
+    for (const ref of request.instruments) {
+      // Finnhub's standard real-time entitlement covers US stocks. Do not label
+      // international quotes real-time without the corresponding vendor plan.
+      if (ref.currency.code !== "USD") continue;
+      const symbol = this.codeFor(ref);
+      const payload = await this.getJson<FinnhubQuotePayload>(
+        `https://finnhub.io/api/v1/quote?symbol=${encodeURIComponent(symbol)}`,
+        { "X-Finnhub-Token": this.token },
+      );
+      if (!payload.c || payload.c <= 0) continue;
+      const asOf = payload.t
+        ? CalendarDate.fromUtcInstant(new Date(payload.t * 1000))
+        : today;
+      if (!request.range.contains(asOf)) continue;
+      quotes.push(this.quote({
+        ref,
+        asOf,
+        quoteType: request.quoteType === "LAST" ? "LAST" : "CLOSE",
+        price: UnitPrice.of(payload.c.toString(), ref.currency),
+      }));
+    }
+    return quotes;
+  }
+}
 
 /* ═══ 1. MFAPI — mutual fund NAV ══════════════════════════════════════ */
 
@@ -1209,18 +1281,25 @@ export function shippedQuoteProviders(
   runtime: ProviderRuntime,
   manual: ReadonlyMap<string, readonly { asOf: CalendarDate; price: UnitPrice }[]> = new Map(),
   options?: ProviderOptions,
+  credentials: { finnhubToken?: string } = {},
 ): readonly QuoteProviderPort[] {
-  return [
+  const providers: QuoteProviderPort[] = [
     // The user's own assertion outranks every feed: for an unpriceable asset it is
     // the only truth, and for a priceable one they had a reason.
     new ManualProvider(runtime, manual, options),
+  ];
+  if (credentials.finnhubToken) {
+    providers.push(new FinnhubQuoteProvider(runtime, credentials.finnhubToken, options));
+  }
+  providers.push(
     new NseQuoteProvider(runtime, options),
     new MfApiNavProvider(runtime, options),
     new AmfiNavProvider(runtime, options),
     new IbjaMetalProvider(runtime, options),
     new CoinGeckoProvider(runtime, options),
     new YahooQuoteProvider(runtime, options),
-  ];
+  );
+  return providers;
 }
 
 export function shippedFxProviders(runtime: ProviderRuntime): readonly FxProviderPort[] {
@@ -1239,3 +1318,296 @@ export function providersFor(
 ): readonly QuoteProviderPort[] {
   return providers.filter((provider) => provider.capabilities().assetClasses.includes(assetClass));
 }
+
+/* ═══ 9. AMFI historical NAV — the citable archive ════════════════════ */
+
+/**
+ * `portal.amfiindia.com/DownloadNAVHistoryReport_Po.aspx`.
+ *
+ * The archive {@link AmfiNavProvider} deliberately does not have: an arbitrary
+ * date range for one AMC, which is what a benchmark replay over the user's own
+ * purchase dates needs. MFAPI can serve history too, but how *much* history is a
+ * lottery on scheme age — one gold fund answers with 105 NAVs and another with
+ * 978 — so for a replay that must reach a specific first-purchase date, this is
+ * the source that can be asked for a range and told to produce it.
+ *
+ * Two things about the format, both measured rather than assumed:
+ *
+ *   - It is `;`-delimited **with section headings interleaved** as bare lines
+ *     (`Open Ended Schemes ( Exchange Traded Funds (ETFs) - Gold ETF )`). A parser
+ *     that assumed every line is a scheme would read a heading as a fund.
+ *   - The column order is read from the header row rather than hardcoded, because
+ *     this report and the daily `NAVAll.txt` do not share one.
+ *
+ * Only the `portal.` host serves it; `www.amfiindia.com` returns 404 for the same
+ * path. And **the old-format download is stated to sunset on 30 September 2026** —
+ * which affects `AmfiNavProvider` above as much as this class, and is a
+ * requirement of its own rather than something to paper over here.
+ *
+ * The instrument's code for this provider is `"<amcId>:<schemeCode>"`, because the
+ * endpoint is keyed by AMC and filtered by scheme.
+ */
+export class AmfiNavHistoryProvider extends PriceProvider {
+  readonly id = "amfi-history";
+  readonly displayName = "AMFI (historical NAV archive)";
+
+  capabilities(): ProviderCapabilities {
+    return {
+      assetClasses: ["MUTUAL_FUND", "ETF"],
+      supportsIntraday: false,
+      supportsHistorical: true,
+      supportsCorporateActions: false,
+      supportsInstrumentSearch: false,
+      identifierTypes: ["SCHEME_CODE"],
+      maxHistoryYears: 20,
+      quoteDelayMinutes: 24 * 60,
+      quoteTypes: ["NAV"],
+    };
+  }
+
+  override rateLimit(): RateLimitBudget {
+    // The report is close to a megabyte per AMC-month. Asking slowly is the only
+    // polite way to use it, and the replay needs it once a day at most.
+    return { requests: 6, perMillis: 60_000, burst: 2 };
+  }
+
+  protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
+    const quotes: Quote[] = [];
+
+    for (const ref of request.instruments) {
+      const [amcId, schemeCode] = this.codeFor(ref).split(":");
+      if (!amcId || !schemeCode) {
+        throw new ProviderError(
+          "UNSUPPORTED",
+          this.id,
+          `${this.id} needs an "<amcId>:<schemeCode>" reference for ${ref.symbol}; got "${this.codeFor(ref)}".`,
+        );
+      }
+
+      const text = await this.getText(
+        "https://portal.amfiindia.com/DownloadNAVHistoryReport_Po.aspx" +
+          `?mf=${encodeURIComponent(amcId)}&tp=1` +
+          `&frmdt=${AmfiNavHistoryProvider.formatDate(request.range.start)}` +
+          `&todt=${AmfiNavHistoryProvider.formatDate(request.range.end)}`,
+      );
+
+      const rows = AmfiNavHistoryProvider.parseReport(text);
+      if (rows.length === 0) {
+        throw new ProviderError(
+          "MALFORMED_RESPONSE",
+          this.id,
+          `${this.id} returned no parseable rows for AMC ${amcId} (${text.slice(0, 80)}…).`,
+        );
+      }
+
+      let matched = 0;
+      for (const row of rows) {
+        if (row.schemeCode !== schemeCode) continue;
+        matched += 1;
+        if (!request.range.contains(row.on)) continue;
+        quotes.push(
+          this.quote({ ref, asOf: row.on, quoteType: "NAV", price: UnitPrice.of(row.nav, ref.currency) }),
+        );
+      }
+      if (matched === 0) throw ProviderError.unknownSymbol(this.id, schemeCode);
+    }
+
+    return quotes;
+  }
+
+  /** `DD-Mon-YYYY`, which is the only date format the endpoint accepts. */
+  static formatDate(date: CalendarDate): string {
+    const [year, month, day] = date.toISO().split("-");
+    return `${day}-${AMFI_MONTHS[Number(month) - 1]}-${year}`;
+  }
+
+  /**
+   * The `;`-delimited report, minus its section headings.
+   *
+   * Column positions come from the header row rather than from a constant: the
+   * daily file and this report disagree about them, and a fixed index that silently
+   * read the repurchase price instead of the NAV would produce numbers that look
+   * entirely plausible.
+   */
+  static parseReport(text: string): readonly { schemeCode: string; nav: string; on: CalendarDate }[] {
+    const lines = text.split(/\r?\n/);
+    const headerIndex = lines.findIndex(
+      (line) => line.includes(";") && /scheme\s*code/i.test(line),
+    );
+    if (headerIndex < 0) return [];
+
+    const header = lines[headerIndex].split(";").map((cell) => cell.trim().toLowerCase());
+    const codeAt = header.findIndex((cell) => /scheme\s*code/.test(cell));
+    const navAt = header.findIndex((cell) => /net\s*asset\s*value/.test(cell));
+    const dateAt = header.findIndex((cell) => cell === "date");
+    if (codeAt < 0 || navAt < 0 || dateAt < 0) return [];
+
+    const rows: { schemeCode: string; nav: string; on: CalendarDate }[] = [];
+    for (const line of lines.slice(headerIndex + 1)) {
+      const parts = line.split(";");
+      // A section heading has no delimiters at all, and a blank line has none
+      // either. Both are skipped here rather than being read as a scheme.
+      if (parts.length <= Math.max(codeAt, navAt, dateAt)) continue;
+      const schemeCode = parts[codeAt].trim();
+      const nav = parts[navAt].trim();
+      const on = AmfiNavProvider.parseAmfiDate(parts[dateAt]);
+      if (!on || schemeCode === "" || nav === "" || nav === "N.A." || !/^\d/.test(schemeCode)) continue;
+      rows.push({ schemeCode, nav, on });
+    }
+    return rows;
+  }
+}
+
+const AMFI_MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+] as const;
+
+/* ═══ The benchmark feed ══════════════════════════════════════════════ */
+
+/**
+ * The two external series the gold benchmark replay needs, and nothing more.
+ *
+ * `GoldBenchmarkReplay` gets its bullion series from the app's own recorded gram
+ * quotes, so the only feeds it needs from outside are a gold ETF and the Nifty 50
+ * — both of which Yahoo serves, and both of which were measured to work keyless.
+ *
+ * Three properties this adapter owes the use case:
+ *
+ *   - **A failure is a value.** Every provider error becomes an `{ ok: false,
+ *     because }` outcome carrying the reason in plain English, so an outage costs
+ *     the page one row rather than the whole render.
+ *   - **One fetch per day.** The results are cached against the runtime's own
+ *     calendar day, per key and range, because a holding page that refetches five
+ *     years of daily closes on every reload is how an unofficial endpoint starts
+ *     rate-limiting the user.
+ *   - **No `null` closes.** `YahooQuoteProvider` already drops market holidays, so
+ *     the points handed on are real observations; the series' own last date is the
+ *     "as of" stamp, never `asOf` itself.
+ *
+ * `AmfiNavHistoryProvider` is wired as the ETF fallback and used only when an
+ * `"<amcId>:<schemeCode>"` reference is supplied, because there is no shipped
+ * AMC id this code could assert without inventing one.
+ */
+export class ProviderBenchmarkFeed implements BenchmarkSeriesFeed {
+  private readonly yahoo: YahooQuoteProvider;
+  private readonly amfiHistory: AmfiNavHistoryProvider;
+  private readonly cache = new Map<string, { day: number; outcome: BenchmarkSeriesOutcome }>();
+
+  constructor(
+    private readonly runtime: ProviderRuntime,
+    options?: ProviderOptions,
+    private readonly symbols: BenchmarkSymbols = DEFAULT_BENCHMARK_SYMBOLS,
+  ) {
+    this.yahoo = new YahooQuoteProvider(runtime, options);
+    this.amfiHistory = new AmfiNavHistoryProvider(runtime, options);
+  }
+
+  async load(request: {
+    readonly keys: readonly BenchmarkSeriesKey[];
+    readonly range: DateRange;
+    readonly currency: Currency;
+  }): Promise<ReadonlyMap<BenchmarkSeriesKey, BenchmarkSeriesOutcome>> {
+    const day = Math.floor(this.runtime.now() / 86_400_000);
+    const results = new Map<BenchmarkSeriesKey, BenchmarkSeriesOutcome>();
+
+    for (const key of request.keys) {
+      const cacheKey = `${key}|${request.range.toString()}|${request.currency.code}`;
+      const cached = this.cache.get(cacheKey);
+      if (cached && cached.day === day) {
+        results.set(key, cached.outcome);
+        continue;
+      }
+      const outcome = await this.fetchOne(key, request.range, request.currency);
+      this.cache.set(cacheKey, { day, outcome });
+      results.set(key, outcome);
+    }
+    return results;
+  }
+
+  private async fetchOne(
+    key: BenchmarkSeriesKey,
+    range: DateRange,
+    currency: Currency,
+  ): Promise<BenchmarkSeriesOutcome> {
+    const spec = this.symbols[key];
+    const ref: InstrumentRef = {
+      instrumentId: `benchmark:${key}`,
+      symbol: spec.symbol,
+      assetClass: spec.assetClass,
+      currency,
+      identifierType: "TICKER",
+      providerRefs: {
+        yahoo: spec.symbol,
+        ...(spec.amfiCode ? { "amfi-history": spec.amfiCode } : {}),
+      },
+    };
+
+    const attempts: { provider: PriceProvider; quoteType: QuoteType }[] = [
+      { provider: this.yahoo, quoteType: "CLOSE" },
+    ];
+    if (spec.amfiCode) {
+      attempts.push({ provider: this.amfiHistory, quoteType: "NAV" });
+    }
+
+    const reasons: string[] = [];
+    for (const attempt of attempts) {
+      // A throw from a provider would be a bug in the base class rather than an
+      // outage, but a benchmark row is not worth a failed page render either way.
+      let result;
+      try {
+        result = await attempt.provider.fetchQuotes({
+          instruments: [ref],
+          range,
+          quoteType: attempt.quoteType,
+        });
+      } catch (thrown) {
+        reasons.push(`${attempt.provider.id} threw: ${(thrown as Error).message}`);
+        continue;
+      }
+      if (!result.ok) {
+        reasons.push(result.error.message);
+        continue;
+      }
+      const points = result.value
+        .filter((quote) => quote.price.isPositive)
+        .map((quote) => ({ on: quote.asOf, price: quote.price }));
+      if (points.length === 0) {
+        reasons.push(`${attempt.provider.id} returned no usable prices for ${spec.symbol}.`);
+        continue;
+      }
+      return {
+        ok: true,
+        series: { key, symbol: spec.symbol, sourceId: attempt.provider.id, points },
+      };
+    }
+
+    return {
+      ok: false,
+      because:
+        `No price series for ${spec.symbol} could be fetched, so this row is left out rather ` +
+        `than shown as zero. ${reasons.join(" ")}`,
+    };
+  }
+}
+
+export interface BenchmarkSymbolSpec {
+  readonly symbol: string;
+  readonly assetClass: PricedAssetClass;
+  /** `"<amcId>:<schemeCode>"`, when an AMFI archive fallback is configured. */
+  readonly amfiCode?: string;
+}
+
+export type BenchmarkSymbols = Readonly<Record<BenchmarkSeriesKey, BenchmarkSymbolSpec>>;
+
+/**
+ * The shipped symbols, and why these two.
+ *
+ * `GOLDBEES.NS` is the oldest and most liquid Indian gold ETF, so it has the
+ * deepest history to replay against; `^NSEI` is the Nifty 50 itself rather than a
+ * fund tracking it, which keeps the index row free of any one fund's tracking
+ * error. Both were measured to return five years of daily closes keyless.
+ */
+export const DEFAULT_BENCHMARK_SYMBOLS: BenchmarkSymbols = {
+  GOLD_ETF: { symbol: "GOLDBEES.NS", assetClass: "ETF" },
+  NIFTY_50: { symbol: "^NSEI", assetClass: "EQUITY" },
+};

@@ -88,6 +88,13 @@ export const config = {
     };
   },
 
+  marketData: () => ({
+    /** Optional production quote feed. The token is server-only. */
+    finnhubToken: read("FINNHUB_API_TOKEN"),
+    /** Shared secret used by the scheduled market refresh endpoint. */
+    cronSecret: read("CRON_SECRET"),
+  }),
+
   /**
    * Optional encrypted source-document archive. The directory must be durable in
    * production (a mounted volume); the key is 32 random bytes encoded as base64.

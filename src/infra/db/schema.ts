@@ -998,8 +998,8 @@ export const goldLeases = sqliteTable(
     payoutMode: text("payout_mode", { enum: PAYOUT_MODES }).notNull().default("GRAMS"),
     /** Where a cash payout lands. Null for a grams lease, which is most of them. */
     payoutAccountId: text("payout_account_id").references(() => ledgerAccounts.id),
-    /** Withholding on the interest. 10% under §194A unless the platform differs. */
-    tdsRateScaled: percentScaled("tds_rate_scaled").notNull().default(10_000_000),
+    /** Withholding on the interest. Zero unless the platform says it withholds — see `DEFAULT_TDS_RATE`. */
+    tdsRateScaled: percentScaled("tds_rate_scaled").notNull().default(0),
     status: text("status", { enum: LEASE_STATUSES }).notNull().default("ACTIVE"),
     /** Set when the lease ended early; the accrual stops here instead. */
     endedOn: calendarDate("ended_on"),

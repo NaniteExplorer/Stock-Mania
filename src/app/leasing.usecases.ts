@@ -203,14 +203,28 @@ export class OpenGoldLease implements UseCase<OpenGoldLeaseInput, OpenGoldLeaseO
     return Quantity.sum(open.map((lot) => lot.remaining));
   }
 
-  /** `LEASE-0001`, `LEASE-0002`, … so a user need not invent one. */
+  /**
+   * `LEASE-0001`, `LEASE-0002`, … so a user need not invent one.
+   *
+   * Built from {@link GoldLeaseRepository.takenReferences}, which includes
+   * soft-deleted leases — `list` does not, and using it here handed out a
+   * reference a tombstone still held, so the insert failed on
+   * `gold_leases_user_reference_uq` and the user could not create a lease at all.
+   *
+   * The scan steps past any taken number rather than adding one to the highest,
+   * because the highest is not the only one that can be taken: a user who
+   * deletes LEASE-0002 of three leases leaves a hole, and a reference that
+   * merely looks free is exactly the bug being fixed.
+   */
   private async nextReference(userId: UserId): Promise<string> {
-    const all = await this.leases.list(userId);
-    const highest = all
-      .map((lease) => /^LEASE-(\d+)$/.exec(lease.reference)?.[1])
-      .filter((digits): digits is string => digits !== undefined)
-      .reduce((max, digits) => Math.max(max, Number(digits)), 0);
-    return `LEASE-${String(highest + 1).padStart(4, "0")}`;
+    const taken = new Set(await this.leases.takenReferences(userId));
+    for (let candidate = 1; candidate <= taken.size + 1; candidate += 1) {
+      const reference = `LEASE-${String(candidate).padStart(4, "0")}`;
+      if (!taken.has(reference)) return reference;
+    }
+    /* Unreachable: the loop runs one further than the number of taken
+       references, so at least one candidate must be free. */
+    throw new Error("Could not allocate a lease reference.");
   }
 }
 

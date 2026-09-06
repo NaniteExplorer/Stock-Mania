@@ -44,11 +44,11 @@ export default function RefreshPricesButton({
   const autoSyncedRef = React.useRef(false);
 
   React.useEffect(() => {
-    if (!auto || !instrumentId) return;
+    if (!auto) return;
 
     const refresh = () => {
       const data = new FormData();
-      data.set("instrumentId", instrumentId);
+      if (instrumentId) data.set("instrumentId", instrumentId);
       React.startTransition(() => action(data));
     };
 

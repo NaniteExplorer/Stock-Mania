@@ -6,7 +6,7 @@ import { Money } from "@/core/money";
 import { Percentage } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
 import { ASSET_GROUPS, groupBlurb, groupLabel, groupOf, kindLabel } from "@/domain/asset-groups";
-import { DEFAULT_TDS_RATE, payoutFrequencyLabel } from "@/domain/leasing";
+import { payoutFrequencyLabel } from "@/domain/leasing";
 import { CashAsset } from "@/domain/assets";
 import { allocation } from "@/domain/portfolio";
 import { Card, EmptyState, MoneyText, PageHeader, Pill, Stat } from "@/ui/primitives";
@@ -196,7 +196,7 @@ export default async function Page() {
             <Link href="/platforms" className="ghost-btn h-10 px-4 text-xs">
               Platforms
             </Link>
-            <RefreshPricesButton />
+            <RefreshPricesButton auto staleAfterMinutes={5} />
           </div>
         }
       />
@@ -575,7 +575,7 @@ export default async function Page() {
                             startOn={row.lease.props.startOn.toISO()}
                             closesOn={row.lease.props.closesOn.toISO()}
                             annualRate={row.lease.props.annualRate.toFixed(2)}
-                            tdsRate={(row.lease.props.tdsRate ?? DEFAULT_TDS_RATE).toFixed(2)}
+                            tdsRate={row.lease.tdsRate.toFixed(2)}
                             hasBookedInterest={!row.lease.credited.isZero}
                           />
                         </td>

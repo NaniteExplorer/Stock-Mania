@@ -1321,6 +1321,19 @@ export class DrizzleGoldLeaseRepository implements GoldLeaseRepository {
     return rows.map(GoldLeaseMapper.toDomain);
   }
 
+  /**
+   * Deliberately no `isNull(deletedAt)`: the unique index this feeds does not
+   * exclude tombstones either, so hiding them here is what let a freed
+   * reference be handed out twice.
+   */
+  async takenReferences(userId: UserId): Promise<readonly string[]> {
+    const rows = await this.db
+      .select({ reference: goldLeases.reference })
+      .from(goldLeases)
+      .where(eq(goldLeases.userId, userId.value));
+    return rows.map((row) => row.reference);
+  }
+
   async save(lease: GoldLease): Promise<void> {
     const row = GoldLeaseMapper.toRow(lease);
     await this.db

@@ -254,11 +254,11 @@ export function OpenLeaseForm({
       <Field
         name="tdsRate"
         label="TDS %"
-        hint="10% under §194A unless the platform says otherwise."
+        hint="Blank means no TDS withheld, which is what most digital-gold platforms do. Set a rate only if yours deducts one."
         error={errors.tdsRate?.[0]}
       >
         {(props) => (
-          <input {...props} name="tdsRate" className="form-input tnum" inputMode="decimal" placeholder="10" />
+          <input {...props} name="tdsRate" className="form-input tnum" inputMode="decimal" placeholder="0" />
         )}
       </Field>
 

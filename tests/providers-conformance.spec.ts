@@ -26,6 +26,7 @@ import {
   AmfiNavProvider,
   CoinGeckoProvider,
   EcbFxProvider,
+  FinnhubQuoteProvider,
   IbjaMetalProvider,
   ManualProvider,
   MfApiNavProvider,
@@ -574,6 +575,30 @@ section("a provider quoting the wrong currency is refused");
     "...and the message names both currencies, so the mapping can be fixed",
     !result.ok && result.error.message.includes("INR") && result.error.message.includes("GBP"),
   );
+}
+
+section("Finnhub real-time quotes");
+{
+  const http = new FixtureHttpClient([{
+    match: "finnhub.io/api/v1/quote?symbol=AAPL",
+    body: JSON.stringify({ c: 261.74 }),
+  }]);
+  const provider = new FinnhubQuoteProvider(
+    new VirtualRuntime(http, { startMillis: Date.parse("2026-09-02T10:00:00Z") }),
+    "test-token",
+  );
+  const result = await provider.fetchQuotes({
+    instruments: [ref({ id: "AAPL", symbol: "AAPL", assetClass: "EQUITY", currency: USD })],
+    range: range("2026-09-01", "2026-09-02"),
+    quoteType: "CLOSE",
+  });
+  check("current USD quote is persisted", result.ok && result.value[0]?.price.toDecimalString(), "261.74");
+  check("feed declares zero delay", provider.capabilities().quoteDelayMinutes, 0);
+}
+{
+  const provider = new FinnhubQuoteProvider(new VirtualRuntime(new FixtureHttpClient([])), "test-token");
+  const result = await provider.fetchQuotes({ instruments: [infy], range: WEEK, quoteType: "CLOSE" });
+  check("standard entitlement does not mislabel INR quotes as real-time", result.ok && result.value.length, 0);
 }
 {
   // The same instrument legitimately priced in dollars still works — the check is

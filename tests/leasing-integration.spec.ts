@@ -25,7 +25,7 @@ import { Percentage, Quantity, UnitPrice } from "@/core/numeric";
 import { CalendarDate, DateRange } from "@/core/time";
 import { AccountCode } from "@/domain/accounts";
 import { BalanceCalculator } from "@/domain/transactions";
-import { InstrumentId, type PriceLookup } from "@/domain/instruments";
+import { type PriceLookup } from "@/domain/instruments";
 import { OpenAccount, SeedChartOfAccounts } from "@/app/ledger.usecases";
 import { AddInstrument, RecordBuy } from "@/app/investing.usecases";
 import { BuildStatements } from "@/app/reports.usecases";
@@ -167,6 +167,11 @@ async function main() {
     startOn: on("2026-01-15"),
     closesOn: on("2027-01-15"),
     annualRate: Percentage.of("4"),
+    // Stated deliberately. The default is zero — no CBDT guidance covers
+    // gold-lease income and the platforms surveyed withhold nothing — so the
+    // three-legged withholding posting below only exists when a platform is
+    // known to withhold, and this lease is the one that says it does.
+    tdsRate: Percentage.of("10"),
   });
   checkTrue("the lease opened", opened.ok);
   if (!opened.ok) return;
@@ -395,6 +400,103 @@ async function main() {
       "0",
     );
   }
+
+  section("a lease that states no withholding accrues gross, end to end");
+
+  /*
+   * The default case, now that zero is the default. The gold still moves and the
+   * income is still recognised in full; what disappears is the TDS receivable
+   * leg. It disappears as a *zero*, not as an absence: the accrual result still
+   * carries a tds figure, so an FY statement can say "no TDS was withheld"
+   * rather than omit the concept and leave the reader guessing.
+   */
+  const grossOnly = await openLease.execute({
+    userId,
+    instrumentId: goldId,
+    platform: "SafeGold",
+    quantity: grams("0.3"),
+    startOn: on("2026-01-15"),
+    closesOn: on("2027-01-15"),
+    annualRate: Percentage.of("4"),
+  });
+  checkTrue("a lease opens without stating a withholding rate", grossOnly.ok);
+  if (grossOnly.ok) {
+    const plain = (await leaseRepo.findById(userId, grossOnly.value.leaseId))!;
+    check("and it carries a zero rate", plain.tdsRate.toFixed(2), "0.00");
+
+    // 0.3g x 4% x 7/12 = 0.007g, and all of it reaches the holding.
+    const plainAccrual = plain.accrualOn(on("2026-08-15"));
+    check("gross accrues as before", plainAccrual.gross.toDecimalString(), "0.007");
+    check("nothing is withheld", plainAccrual.tds.toDecimalString(), "0");
+    check("so the net is the gross", plainAccrual.net.toDecimalString(), "0.007");
+    checkTrue(
+      "and the TDS line is reported as zero rather than dropped",
+      plainAccrual.because.includes("0.00% TDS of 0g"),
+    );
+
+    const posted = await accrue.execute({
+      userId,
+      leaseId: plain.id,
+      asOf: on("2026-08-15"),
+    });
+    checkTrue("the accrual runs", posted.ok);
+    if (posted.ok) {
+      // 0.007g x 16,400 = 114.80, and gross, TDS and net still reconcile.
+      check("gross income recognised", posted.value.grossValue.toDecimalString(), "114.80");
+      check("with no TDS receivable", posted.value.tdsValue.toDecimalString(), "0.00");
+      check("and the whole of it reaching the holding", posted.value.netValue.toDecimalString(), "114.80");
+      check("net grams booked", posted.value.postedGrams.toDecimalString(), "0.007");
+    }
+
+    const stillBalanced = new BalanceCalculator().verifyIntegrity(
+      (await journal.find(userId, { limit: 400 })).transactions,
+    );
+    checkTrue("and a two-legged posting still balances", stillBalanced.ok);
+  }
+
+  section("a deleted lease does not free its reference");
+
+  /*
+   * The regression this exists for: `nextReference` read `list`, which hides
+   * tombstones, while `gold_leases_user_reference_uq` does not. Delete your only
+   * lease and the next one was handed `LEASE-0001` again, the insert died on the
+   * unique index, and the user could not create a lease at all.
+   */
+  const deletable = await openLease.execute({
+    userId,
+    instrumentId: goldId,
+    platform: "SafeGold",
+    quantity: grams("0.1"),
+    startOn: on("2026-03-01"),
+    closesOn: on("2027-03-01"),
+    annualRate: Percentage.of("4"),
+  });
+  checkTrue("a further lease opened", deletable.ok);
+  if (!deletable.ok) return;
+  const freedReference = deletable.value.reference;
+
+  await leaseRepo.softDelete(userId, deletable.value.leaseId, new Date());
+  const survivors = await leaseRepo.list(userId);
+  checkTrue(
+    "the deleted lease is gone from every screen",
+    survivors.every((lease) => lease.reference !== freedReference),
+  );
+
+  const afterDelete = await openLease.execute({
+    userId,
+    instrumentId: goldId,
+    platform: "SafeGold",
+    quantity: grams("0.1"),
+    startOn: on("2026-04-01"),
+    closesOn: on("2027-04-01"),
+    annualRate: Percentage.of("4"),
+  });
+  checkTrue("a lease still opens after one was deleted", afterDelete.ok);
+  if (!afterDelete.ok) return;
+  checkTrue(
+    "and it does not reuse the tombstoned reference",
+    afterDelete.value.reference !== freedReference,
+  );
 
   section("the store refuses an impossible lease even by raw SQL");
 

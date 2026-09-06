@@ -68,6 +68,46 @@ data is authoritative for their own holdings anyway).
 | **Bank aggregation** | India: **Account Aggregator** (Setu / Finvu / OneMoney). EU/UK: **GoCardless** (Actual's choice). US: **Plaid** or **SimpleFIN** (Actual's choice). | |
 | **Broker** | Kite Connect, Upstox, Angel One, Groww, HDFC Securities (all five from myFinance, Dossier 05 §2) | |
 
+### 2.5 Measured feed verdicts — probed 2026-09-05
+
+Every row below was **probed, not assumed** (evidence:
+`.agents/work/digital-gold-analytics/EXPERIMENT.md` Spike 2). Threshold: HTTP 200, parseable,
+and ≥500 daily observations where history is required. Re-probe before trusting an old verdict.
+
+| Source | Verdict | What was measured |
+|---|---|---|
+| AMFI `portal.amfiindia.com/spages/NAVAll.txt` | **PASS** | 1.5 MB, 18,022 lines, 83 gold-ETF rows |
+| AMFI history `portal.amfiindia.com/DownloadNAVHistoryReport_Po.aspx?mf=<amcId>&tp=1&frmdt=&todt=` | **PASS** | 918 KB for one AMC-month; `;`-delimited; **section headings are interleaved**, so a parser must skip non-data lines |
+| AMFI history on the `www.` host | **FAIL** | 404 — only `portal.` serves it |
+| Yahoo `^NSEI`, `GOLDBEES.NS`, `GOLDIETF.NS`, `SILVERBEES.NS`, `INR=X`, `GC=F` | **PASS** | 495–1,301 closes |
+| IBJA `ibjarates.com` | **PASS** | 153 KB HTML; **~30-day window only** — not a multi-year history source |
+| Frankfurter `api.frankfurter.dev` | **PASS** | 685 daily USD/INR, keyless, ECB-sourced |
+| mfapi.in | **PARTIAL** | Depth is a lottery on scheme age (105–978 NAVs). Choose a scheme for history, not by search rank |
+| **NSE `api/quote-equity`** | **FAIL** | Akamai 403 — for SGB symbols **and for `INFY`**, after priming both `nseindia.com/` and the SGB page and forwarding the full cookie jar with complete `sec-ch-ua`/`sec-fetch-*` headers. **`NseQuoteProvider` (`providers.ts:819`) is therefore likely already broken.** Not verified from a residential IP; check there before removing it |
+| SGB via Yahoo | **FAIL** | 404 on every series tried |
+| Stooq `xauusd` CSV | **FAIL** | Returns HTML, not CSV. Do not use |
+
+**Traps this cost us, worth keeping:**
+
+- **Never take the last element of a Yahoo `close` array** — it can be `null` on a non-trading
+  day. Take the last non-null and carry *its* date as the "as of" stamp.
+- **Sovereign Gold Bonds have no keyless price feed at all.** Combined with fresh issuance
+  being discontinued, SGB is rendered as an explicit *unavailable* entry with its reason, never
+  as an empty row or an invented number.
+- **No free authoritative retail-jeweller feed exists.** Physical-gold making charges and
+  resale purity discounts are modelled as **user-configurable assumptions**, never fetched.
+- **AMFI's old-format `NAVAll.txt` is stated to sunset 30 September 2026.** It affects the
+  existing `AmfiNavProvider` and now the benchmark replay too. Tracked as its own requirement.
+- `AmfiNavHistoryProvider` ships **no AMC id**, so the ETF history fallback is inert until one
+  is configured. Inventing one would have been fabrication.
+
+**Licence posture.** Every keyless Indian source above is a scrape of a site with no data
+licence. Acceptable for a personal app; cache one fetch per day, degrade to the last known rate
+with an explicit "as of" stamp and source, never hard-fail a page render on a provider outage,
+and do not redistribute.
+
+---
+
 ---
 
 ## 3. The provider abstraction

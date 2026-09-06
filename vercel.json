@@ -2,6 +2,15 @@
   "functions": {
     "app/api/prices/[symbol]/route.ts": {
       "maxDuration": 60
+    },
+    "app/api/cron/market-data/route.ts": {
+      "maxDuration": 60
     }
-  }
+  },
+  "crons": [
+    {
+      "path": "/api/cron/market-data",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

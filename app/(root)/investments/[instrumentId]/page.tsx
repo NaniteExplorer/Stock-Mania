@@ -20,7 +20,11 @@ import MetalTransactionActions from "./metal-transaction-actions";
 import DigitalGoldLeaseForm from "./digital-gold-lease-form";
 import GoldProfitChart, { type GoldProfitPoint } from "./gold-profit-chart";
 import { LeaseRowActions } from "../lease-forms";
-import { DEFAULT_TDS_RATE } from "@/domain/leasing";
+import GoldAdvisoryNote from "./gold-advisory-note";
+import GoldReturnsPanel from "./gold-returns-panel";
+import GoldLotLadder from "./gold-lot-ladder";
+import GoldBenchmarkTable from "./gold-benchmark-table";
+import GoldTaxStatement from "./gold-tax-statement";
 
 export const metadata: Metadata = { title: "Holding" };
 
@@ -172,6 +176,18 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
     : null;
   if (analyticsResult && !analyticsResult.ok) throw new Error(analyticsResult.error.message);
   const analytics = analyticsResult?.ok ? analyticsResult.value : null;
+
+  /*
+   * The benchmark replay is gold-only and deliberately non-fatal: it reaches a
+   * price feed, and a comparison table that cannot be built is a missing panel,
+   * never a 500 on the holding the user came to see. A failure is reported in
+   * place of the table rather than swallowed.
+   */
+  const benchmarkResult = instrument.kind === "DIGITAL_GOLD"
+    ? await investing.goldBenchmark.execute({ userId, instrumentId: id, asOf: today })
+    : null;
+  const benchmark = benchmarkResult?.ok ? benchmarkResult.value : null;
+  const benchmarkError = benchmarkResult && !benchmarkResult.ok ? benchmarkResult.error.message : null;
   const profitPoints: GoldProfitPoint[] = (analytics?.history ?? []).map((point) => ({
     month: point.month,
     totalProfitMinor: point.totalProfit?.toMinorNumber() ?? null,
@@ -278,6 +294,7 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
               hint={metalReturn ? `${formatPercent(metalReturn)} absolute; tax applies only on sale` : "Current value less invested amount; tax applies only on sale"}
             />
           </div>
+          {instrument.kind === "DIGITAL_GOLD" && <GoldAdvisoryNote isLeased={leasedGrams.isPositive} />}
           <section className="panel mb-6 p-5">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div>
@@ -501,7 +518,33 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
                 </div>
               </section>
 
+              <GoldReturnsPanel analytics={analytics} />
+
               <GoldProfitChart points={profitPoints} currency={instrument.currency.code} />
+
+              <GoldLotLadder analytics={analytics} unit={isDigitalMetal ? "Grams" : "Units"} />
+
+              {instrument.kind === "DIGITAL_GOLD" && (
+                <>
+                  {benchmark ? (
+                    <GoldBenchmarkTable comparison={benchmark} />
+                  ) : (
+                    <section className="panel mb-6 p-5">
+                      <h2 className="text-sm font-semibold text-gray-100">
+                        Was digital gold the right vehicle?
+                      </h2>
+                      <p className="mt-2 text-xs text-amber-500">
+                        {benchmarkError ??
+                          "The benchmark comparison could not be built for this holding."}
+                      </p>
+                    </section>
+                  )}
+                  <GoldTaxStatement
+                    analytics={analytics}
+                    tdsWithheldGrams={analytics.tdsGrams.toDecimalString()}
+                  />
+                </>
+              )}
             </>
           )}
 
@@ -551,10 +594,10 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
                       <td className="tnum px-4 py-3 text-right text-gray-200">{row.lease.quantity.toDecimalString()}g</td>
                       <td className="tnum px-4 py-3 text-right text-gray-400">{row.lease.props.startOn.daysUntil(row.lease.props.closesOn)} days</td>
                       <td className="tnum px-4 py-3 text-right text-gray-400">{row.lease.props.annualRate.toFixed(2)}% p.a.</td>
-                      <td className="tnum px-4 py-3 text-right text-green-500">{row.lease.schedule()[0]?.netInMonth.toDecimalString() ?? "0"}g<p className="text-xs text-gray-500">after TDS</p></td>
+                      <td className="tnum px-4 py-3 text-right text-green-500">{row.lease.schedule()[0]?.netInMonth.toDecimalString() ?? "0"}g<p className="text-xs text-gray-500">{row.lease.tdsRate.isZero ? "no TDS withheld" : "after TDS"}</p></td>
                       <td className="tnum px-4 py-3 text-right text-green-500">{row.accrual.net.toDecimalString()}g<p className="text-xs text-gray-500">gross {row.accrual.gross.toDecimalString()}g</p></td>
                       <td className="tnum px-4 py-3 text-right text-amber-500">{row.unpostedGrams.toDecimalString()}g</td>
-                      <td className="px-4 py-3"><LeaseRowActions leaseId={row.lease.id.value} reference={row.lease.reference} defaultDate={today.toISO()} isActive={row.lease.status === "ACTIVE"} platform={row.lease.props.platform} quantity={row.lease.quantity.toDecimalString()} startOn={row.lease.props.startOn.toISO()} closesOn={row.lease.props.closesOn.toISO()} annualRate={row.lease.props.annualRate.toFixed(2)} tdsRate={(row.lease.props.tdsRate ?? DEFAULT_TDS_RATE).toFixed(2)} hasBookedInterest={!row.lease.credited.isZero} autoAccrue /></td>
+                      <td className="px-4 py-3"><LeaseRowActions leaseId={row.lease.id.value} reference={row.lease.reference} defaultDate={today.toISO()} isActive={row.lease.status === "ACTIVE"} platform={row.lease.props.platform} quantity={row.lease.quantity.toDecimalString()} startOn={row.lease.props.startOn.toISO()} closesOn={row.lease.props.closesOn.toISO()} annualRate={row.lease.props.annualRate.toFixed(2)} tdsRate={row.lease.tdsRate.toFixed(2)} hasBookedInterest={!row.lease.credited.isZero} autoAccrue /></td>
                     </tr>
                   ))}</tbody>
                 </table></div>

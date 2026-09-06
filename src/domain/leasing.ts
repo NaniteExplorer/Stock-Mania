@@ -3,8 +3,9 @@
  *
  * A digital-gold platform leases the user's gold to a jeweller and pays interest
  * **in grams** — 4% a year on 4.3989g is 0.1759g a year, not ₹2,900 — withholding
- * 10% TDS, also in grams. That one fact is why this is a new file rather than a
- * sixth `DepositProduct`: every deposit in `domain/deposits.ts` grows in `Money`,
+ * any TDS, if it withholds any at all, in grams too. That one fact is why this
+ * is a new file rather than a sixth `DepositProduct`: every deposit in
+ * `domain/deposits.ts` grows in `Money`,
  * and a `Money` return type cannot express a return denominated in gold. Forcing
  * it through a rupee figure would have to pick a price, and there is no honest
  * price to pick — the interest is grams until the day it is sold.
@@ -27,7 +28,10 @@
  *      difference.** Rounding happens twice, on the gross and on the tax, and never
  *      a third time: `net = gross − tds` is subtraction, so the three figures
  *      always reconcile. Reported separately because the TDS is a tax credit the
- *      return can reclaim, not a cost.
+ *      return can reclaim, not a cost — and reported even when it is zero, which
+ *      is now the default: no CBDT guidance covers gold-lease income and the
+ *      platforms surveyed withhold nothing, so a rate is something the user tells
+ *      us rather than something we presume. See {@link DEFAULT_TDS_RATE}.
  */
 
 import { DomainError, UserId, ValueObject } from "@/core/kernel";
@@ -108,8 +112,24 @@ export function payoutFrequencyLabel(frequency: PayoutFrequency): string {
 export const PAYOUT_MODES = ["GRAMS", "CASH"] as const;
 export type PayoutMode = (typeof PAYOUT_MODES)[number];
 
-/** The statutory withholding on interest income. 10% under §194A. */
-export const DEFAULT_TDS_RATE = Percentage.of("10");
+/**
+ * The withholding assumed when a lease does not state one. **Zero.**
+ *
+ * This was 10% under §194A, and that was an assumption rather than a finding.
+ * §194A withholds on *interest*, which §2(28A) defines as payable on money
+ * borrowed or a debt incurred; a fee denominated in grams, on a bailment of
+ * metal that comes back as metal, is arguably neither. No CBDT circular, ruling
+ * or FAQ covers gold-lease income either way, and every platform surveyed
+ * withholds nothing — including the user's own, confirmed 2026-09-05.
+ *
+ * So the default is zero and a lease left alone accrues gross. The mechanism is
+ * untouched: a user whose platform *does* withhold sets {@link
+ * GoldLeaseProps.tdsRate} explicitly and gets exactly the arithmetic that was
+ * here before. Zero is a modelled rate, not an absent one — every accrual still
+ * reports gross, TDS and net separately, so a statement can say "no TDS was
+ * withheld" rather than leave the reader wondering whether anyone looked.
+ */
+export const DEFAULT_TDS_RATE = Percentage.ZERO;
 
 export class LeaseId extends ValueObject {
   private constructor(readonly value: string) {
@@ -152,7 +172,10 @@ export interface GoldLeaseProps {
   readonly payoutMode?: PayoutMode;
   /** Where a cash payout lands. Required when `payoutMode` is `CASH`. */
   readonly payoutAccountId?: AccountId | null;
-  /** Withholding on the interest. 10% unless the platform says otherwise. */
+  /**
+   * Withholding on the interest, in the same grams. Zero unless the platform
+   * says otherwise — see {@link DEFAULT_TDS_RATE} for why nothing is assumed.
+   */
   readonly tdsRate?: Percentage;
   readonly status?: LeaseStatus;
   /** Set when the lease ended early; accrual stops here instead. */
@@ -574,6 +597,22 @@ export interface GoldLeaseRepository {
     options?: { instrumentId?: InstrumentId; status?: LeaseStatus },
   ): Promise<readonly GoldLease[]>;
   save(lease: GoldLease): Promise<void>;
+
+  /**
+   * Every reference this user has ever used, **soft-deleted leases included**.
+   *
+   * Separate from `list` because the two questions differ on exactly the rows
+   * that matter here. `list` hides tombstones, which is right for every screen —
+   * but `gold_leases_user_reference_uq` does not, so a reference freed by a
+   * delete is still taken as far as the database is concerned. Generating the
+   * next reference from `list` handed out `LEASE-0001` a second time and the
+   * insert died on the unique index with no path back for the user.
+   *
+   * References are audit identifiers besides: reusing the one a deleted lease
+   * carried would make two different leases share a name in any statement that
+   * outlived the delete.
+   */
+  takenReferences(userId: UserId): Promise<readonly string[]>;
 
   /** Tombstones a lease. Soft, per A03 — nothing here is ever hard-deleted. */
   softDelete(userId: UserId, id: LeaseId, at: Date): Promise<void>;
