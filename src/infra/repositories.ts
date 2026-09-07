@@ -33,11 +33,20 @@ import { Bar, BarGranularity, BarRepository, makeBar } from "@/domain/analysis";
 import { GoldLease, GoldLeaseRepository, LeaseId, LeaseStatus, PayoutFrequency, PayoutMode } from "@/domain/leasing";
 import { Percentage, Quantity, Rate, UnitPrice } from "@/core/numeric";
 import { FxQuote, FxRateRepository, PriceDivergence, PriceSourceType, Quote, QuoteRepository, QuoteType, StoredFxRate } from "@/domain/pricing";
+import {
+  CatalogCandidate,
+  CatalogInstrumentId,
+  CatalogProviderMapping,
+  CatalogSnapshot,
+  InstrumentCatalogRepository,
+  normalizeCatalogText,
+  verifiedIsin,
+} from "@/domain/instrument-catalog";
 import { AccountBalance, AccountFlow, BalanceQuery, MonthlyFlow, Posting, PostingId, PostingStatus, StoredTransaction, Transaction, TransactionId, TransactionKind, TransactionPage, TransactionQuery, TransactionRepository, TransactionSource, TypeTotals } from "@/domain/transactions";
 import { BudgetRepository, CategoryRuleRepository, ImportBatchRecord, ImportBatchStatus, ImportDiagnostics, ImportRepository, ImportRowStatus, ImportTrust, KeywordRule, MovementIntent, RowDirection, SelfPayeeQuery, StagedRow, StoredBudget } from "@/domain/banking";
-import { goldLeases, institutions, users as usersTable, ledgerEvents, netWorthSnapshots, projectionCache, taxSettings, priceBars, budgets, categoryRules, corporateActions, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, instruments, ledgerAccounts, loanPrepayments, loanTerms, lotMatches, lots, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, trades, transactions } from "@/infra/db/schema";
+import { goldLeases, institutions, users as usersTable, ledgerEvents, netWorthSnapshots, projectionCache, taxSettings, priceBars, budgets, categoryRules, corporateActions, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, instrumentCatalog, instrumentCatalogFetches, instrumentCatalogLinks, instrumentCatalogListings, instrumentProviderMappings, instruments, ledgerAccounts, loanPrepayments, loanTerms, lotMatches, lots, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, trades, transactions } from "@/infra/db/schema";
 import { Database } from "@/infra/db/client";
-import { and, asc, count, desc, eq, gte, inArray, isNull, like, lte, max, min, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNull, like, lt, lte, max, min, ne, or, sql } from "drizzle-orm";
 /* ═══ AccountMapper ═══════════════════════════════════════════════════ */
 
 type AccountRow = typeof ledgerAccounts.$inferSelect;
@@ -3724,4 +3733,399 @@ export class DrizzleCorporateActionRepository implements CorporateActionReposito
       .set({ status: "APPLIED", appliedTransactionId: transactionId, appliedAt: at })
       .where(and(eq(corporateActions.userId, this.userId.value), eq(corporateActions.id, id)));
   }
+}
+
+/* ═══ DrizzleInstrumentCatalogRepository ═════════════════════════════ */
+
+type CatalogListingRow = typeof instrumentCatalogListings.$inferSelect;
+type CatalogIdentityRow = typeof instrumentCatalog.$inferSelect;
+type CatalogMappingRow = typeof instrumentProviderMappings.$inferSelect;
+
+export class DrizzleInstrumentCatalogRepository implements InstrumentCatalogRepository {
+  constructor(private readonly db: Database) {}
+
+  async latestSuccessfulFetch(source?: string) {
+    const [row] = await this.db
+      .select()
+      .from(instrumentCatalogFetches)
+      .where(and(
+        source ? eq(instrumentCatalogFetches.source, source) : undefined,
+        ne(instrumentCatalogFetches.checksum, ""),
+        isNull(instrumentCatalogFetches.deletedAt),
+      ))
+      .orderBy(desc(instrumentCatalogFetches.fetchedAt))
+      .limit(1);
+    return row
+      ? { source: row.source, fetchedAt: row.fetchedAt, checksum: row.checksum, rowCount: row.rowCount }
+      : null;
+  }
+
+  async latestFetchAttempt(source: string) {
+    const [row] = await this.db.select().from(instrumentCatalogFetches)
+      .where(and(
+        eq(instrumentCatalogFetches.source, source),
+        isNull(instrumentCatalogFetches.deletedAt),
+      ))
+      .orderBy(desc(instrumentCatalogFetches.fetchedAt)).limit(1);
+    return row
+      ? { source: row.source, attemptedAt: row.fetchedAt, outcome: row.checksum ? "SUCCESS" as const : "FAILED" as const }
+      : null;
+  }
+
+  async recordFetchFailure(source: string, attemptedAt: Date): Promise<void> {
+    await this.db.insert(instrumentCatalogFetches).values({
+      id: newUuid(), source, fetchedAt: attemptedAt, checksum: "", rowCount: 0,
+    }).onConflictDoNothing();
+  }
+
+  async count(): Promise<number> {
+    const [row] = await this.db.select({ value: count() }).from(instrumentCatalog)
+      .where(isNull(instrumentCatalog.deletedAt));
+    return row?.value ?? 0;
+  }
+
+  async ingest(snapshot: CatalogSnapshot) {
+    let instrumentCount = 0;
+    let listingCount = 0;
+    let mappingCount = 0;
+    let unmatchedMappings = 0;
+
+    for (const record of snapshot.instruments) {
+      if (record.verifiedIsin && verifiedIsin(record.verifiedIsin) !== record.verifiedIsin) {
+        throw new Error("Instrument catalogue received an unverified ISIN.");
+      }
+      const normalizedSymbol = normalizeCatalogText(record.listing.symbol);
+      const normalizedName = normalizeCatalogText(record.listing.name);
+      let identity: CatalogIdentityRow | undefined;
+      if (record.verifiedIsin) {
+        [identity] = await this.db
+          .select()
+          .from(instrumentCatalog)
+          .where(eq(instrumentCatalog.isin, record.verifiedIsin))
+          .limit(1);
+      }
+
+      const [existingListing] = await this.db
+        .select({ identity: instrumentCatalog, listing: instrumentCatalogListings })
+        .from(instrumentCatalogListings)
+        .innerJoin(
+          instrumentCatalog,
+          eq(instrumentCatalog.id, instrumentCatalogListings.catalogInstrumentId),
+        )
+        .where(and(
+          eq(instrumentCatalogListings.exchange, record.listing.exchange),
+          eq(instrumentCatalogListings.segment, record.listing.segment),
+          eq(instrumentCatalogListings.normalizedSymbol, normalizedSymbol),
+        ))
+        .limit(1);
+
+      if (identity && existingListing && identity.id !== existingListing.identity.id) {
+        throw new Error("Instrument catalogue identity conflict for an exchange listing.");
+      }
+      identity ??= existingListing?.identity;
+      if (!identity) {
+        const id = CatalogInstrumentId.create().value;
+        await this.db.insert(instrumentCatalog).values({
+          id,
+          isin: record.verifiedIsin,
+          name: record.name,
+          instrumentType: record.instrumentType,
+          updatedAt: snapshot.fetchedAt,
+        });
+        [identity] = await this.db.select().from(instrumentCatalog).where(eq(instrumentCatalog.id, id)).limit(1);
+        instrumentCount += 1;
+      } else {
+        if (identity.isin && record.verifiedIsin && identity.isin !== record.verifiedIsin) {
+          throw new Error("Instrument catalogue received conflicting verified ISINs.");
+        }
+        await this.db.update(instrumentCatalog).set({
+          isin: identity.isin ?? record.verifiedIsin,
+          name: record.name,
+          instrumentType: record.instrumentType,
+          updatedAt: snapshot.fetchedAt,
+        }).where(eq(instrumentCatalog.id, identity.id));
+      }
+
+      let listing = existingListing?.listing;
+      if (!listing) {
+        const id = newUuid();
+        await this.db.insert(instrumentCatalogListings).values({
+          id,
+          catalogInstrumentId: identity.id,
+          exchange: record.listing.exchange,
+          segment: record.listing.segment,
+          symbol: record.listing.symbol,
+          normalizedSymbol,
+          name: record.listing.name,
+          normalizedName,
+          instrumentType: record.listing.instrumentType,
+          currency: record.listing.currency,
+          active: true,
+          source: snapshot.source,
+          fetchedAt: snapshot.fetchedAt,
+          checksum: snapshot.checksum,
+          updatedAt: snapshot.fetchedAt,
+        });
+        [listing] = await this.db.select().from(instrumentCatalogListings)
+          .where(eq(instrumentCatalogListings.id, id)).limit(1);
+        listingCount += 1;
+      } else {
+        await this.db.update(instrumentCatalogListings).set({
+          catalogInstrumentId: identity.id,
+          symbol: record.listing.symbol,
+          normalizedSymbol,
+          name: record.listing.name,
+          normalizedName,
+          instrumentType: record.listing.instrumentType,
+          currency: record.listing.currency,
+          active: true,
+          source: snapshot.source,
+          fetchedAt: snapshot.fetchedAt,
+          checksum: snapshot.checksum,
+          updatedAt: snapshot.fetchedAt,
+        }).where(eq(instrumentCatalogListings.id, listing.id));
+      }
+
+      for (const mapping of record.providerMappings) {
+        await this.storeMapping(identity.id, listing.id, mapping, snapshot);
+        mappingCount += 1;
+      }
+    }
+
+    for (const mapping of snapshot.mappings) {
+      const [listing] = await this.db.select().from(instrumentCatalogListings).where(and(
+        eq(instrumentCatalogListings.exchange, mapping.exchange),
+        eq(instrumentCatalogListings.segment, mapping.segment),
+        eq(instrumentCatalogListings.normalizedSymbol, normalizeCatalogText(mapping.tradingSymbol)),
+        eq(instrumentCatalogListings.active, true),
+      )).limit(1);
+      if (!listing) {
+        unmatchedMappings += 1;
+        continue;
+      }
+      await this.storeMapping(listing.catalogInstrumentId, listing.id, mapping, snapshot);
+      mappingCount += 1;
+    }
+
+    if (snapshot.instruments.length > 0) {
+      await this.db.update(instrumentCatalogListings).set({ active: false }).where(and(
+        eq(instrumentCatalogListings.source, snapshot.source),
+        lt(instrumentCatalogListings.fetchedAt, snapshot.fetchedAt),
+        isNull(instrumentCatalogListings.deletedAt),
+      ));
+    }
+    if (snapshot.instruments.length + snapshot.mappings.length > 0) {
+      const effectiveThrough = snapshot.fetchedAt.toISOString().slice(0, 10);
+      await this.db.update(instrumentProviderMappings).set({ effectiveThrough }).where(and(
+        eq(instrumentProviderMappings.source, snapshot.source),
+        isNull(instrumentProviderMappings.effectiveThrough),
+        lt(instrumentProviderMappings.fetchedAt, snapshot.fetchedAt),
+        isNull(instrumentProviderMappings.deletedAt),
+      ));
+    }
+
+    await this.db.insert(instrumentCatalogFetches).values({
+      id: newUuid(),
+      source: snapshot.source,
+      fetchedAt: snapshot.fetchedAt,
+      checksum: snapshot.checksum,
+      rowCount: snapshot.instruments.length + snapshot.mappings.length,
+    }).onConflictDoUpdate({
+      target: [instrumentCatalogFetches.source, instrumentCatalogFetches.fetchedAt],
+      set: { checksum: snapshot.checksum, rowCount: snapshot.instruments.length + snapshot.mappings.length },
+    });
+
+    return { instruments: instrumentCount, listings: listingCount, mappings: mappingCount, unmatchedMappings };
+  }
+
+  async search(normalizedQuery: string, limit: number) {
+    const exactRows = await this.searchRows(and(
+      eq(instrumentCatalogListings.active, true),
+      or(
+        eq(instrumentCatalogListings.normalizedSymbol, normalizedQuery),
+        eq(instrumentCatalog.isin, normalizedQuery),
+      ),
+    ));
+
+    const tokens = normalizedQuery.split(" ").filter(Boolean);
+    const abbreviationPattern = tokens.length >= 2
+      ? `%${tokens.slice(0, 3).map((token) => token.slice(0, 4)).join("%")}%`
+      : null;
+    const broadRows = await this.searchRows(and(
+      eq(instrumentCatalogListings.active, true),
+      or(
+        like(instrumentCatalogListings.normalizedSymbol, `${normalizedQuery}%`),
+        like(instrumentCatalogListings.normalizedName, `%${normalizedQuery}%`),
+        abbreviationPattern ? like(instrumentCatalogListings.normalizedName, abbreviationPattern) : undefined,
+      ),
+    ), limit);
+
+    const merged = new Map<string, CatalogCandidate>();
+    for (const candidate of [...exactRows, ...broadRows]) merged.set(candidate.listing.id, candidate);
+    return {
+      candidates: [...merged.values()].slice(0, Math.max(limit, exactRows.length)),
+      exactIdentifierMatches: exactRows,
+    };
+  }
+
+  async linkPortfolioInstrument(input: {
+    userId: UserId;
+    portfolioInstrumentId: string;
+    catalogInstrumentId: CatalogInstrumentId;
+    listingId: string;
+    linkedAt: Date;
+  }): Promise<boolean> {
+    const [owned] = await this.db.select({ id: instruments.id }).from(instruments).where(and(
+      eq(instruments.id, input.portfolioInstrumentId),
+      eq(instruments.userId, input.userId.value),
+      isNull(instruments.deletedAt),
+    )).limit(1);
+    const [listing] = await this.db.select({ id: instrumentCatalogListings.id })
+      .from(instrumentCatalogListings)
+      .innerJoin(instrumentCatalog, eq(instrumentCatalog.id, instrumentCatalogListings.catalogInstrumentId))
+      .where(and(
+        eq(instrumentCatalogListings.id, input.listingId),
+        eq(instrumentCatalogListings.catalogInstrumentId, input.catalogInstrumentId.value),
+        isNull(instrumentCatalogListings.deletedAt),
+        isNull(instrumentCatalog.deletedAt),
+      )).limit(1);
+    if (!owned || !listing) return false;
+
+    await this.db.insert(instrumentCatalogLinks).values({
+      portfolioInstrumentId: input.portfolioInstrumentId,
+      catalogInstrumentId: input.catalogInstrumentId.value,
+      listingId: input.listingId,
+      linkedAt: input.linkedAt,
+    }).onConflictDoUpdate({
+      target: instrumentCatalogLinks.portfolioInstrumentId,
+      set: {
+        catalogInstrumentId: input.catalogInstrumentId.value,
+        listingId: input.listingId,
+        linkedAt: input.linkedAt,
+      },
+    });
+    return true;
+  }
+
+  private async storeMapping(
+    catalogInstrumentId: string,
+    listingId: string,
+    mapping: {
+      provider: string;
+      providerInstrumentId: string;
+      providerToken: string | null;
+      tradingSymbol: string;
+      effectiveFrom: string;
+    },
+    snapshot: CatalogSnapshot,
+  ): Promise<void> {
+    const [active] = await this.db.select().from(instrumentProviderMappings).where(and(
+      eq(instrumentProviderMappings.listingId, listingId),
+      eq(instrumentProviderMappings.provider, mapping.provider),
+      isNull(instrumentProviderMappings.effectiveThrough),
+    )).orderBy(desc(instrumentProviderMappings.effectiveFrom)).limit(1);
+    const same = active
+      && active.providerInstrumentId === mapping.providerInstrumentId
+      && active.providerToken === mapping.providerToken
+      && active.tradingSymbol === mapping.tradingSymbol;
+    if (same) {
+      await this.db.update(instrumentProviderMappings).set({
+        source: snapshot.source,
+        fetchedAt: snapshot.fetchedAt,
+        checksum: snapshot.checksum,
+      }).where(eq(instrumentProviderMappings.id, active.id));
+      return;
+    }
+    if (active?.effectiveFrom === mapping.effectiveFrom) {
+      await this.db.update(instrumentProviderMappings).set({
+        providerInstrumentId: mapping.providerInstrumentId,
+        providerToken: mapping.providerToken,
+        tradingSymbol: mapping.tradingSymbol,
+        source: snapshot.source,
+        fetchedAt: snapshot.fetchedAt,
+        checksum: snapshot.checksum,
+      }).where(eq(instrumentProviderMappings.id, active.id));
+      return;
+    }
+    if (active) {
+      await this.db.update(instrumentProviderMappings)
+        .set({ effectiveThrough: mapping.effectiveFrom })
+        .where(eq(instrumentProviderMappings.id, active.id));
+    }
+    await this.db.insert(instrumentProviderMappings).values({
+      id: newUuid(),
+      catalogInstrumentId,
+      listingId,
+      provider: mapping.provider,
+      providerInstrumentId: mapping.providerInstrumentId,
+      providerToken: mapping.providerToken,
+      tradingSymbol: mapping.tradingSymbol,
+      effectiveFrom: mapping.effectiveFrom,
+      effectiveThrough: null,
+      source: snapshot.source,
+      fetchedAt: snapshot.fetchedAt,
+      checksum: snapshot.checksum,
+    });
+  }
+
+  private async searchRows(condition: ReturnType<typeof and>, limit?: number): Promise<CatalogCandidate[]> {
+    const query = this.db.select({ identity: instrumentCatalog, listing: instrumentCatalogListings })
+      .from(instrumentCatalogListings)
+      .innerJoin(instrumentCatalog, eq(instrumentCatalog.id, instrumentCatalogListings.catalogInstrumentId))
+      .where(and(
+        condition,
+        isNull(instrumentCatalogListings.deletedAt),
+        isNull(instrumentCatalog.deletedAt),
+      ))
+      .orderBy(asc(instrumentCatalogListings.normalizedSymbol));
+    const rows = limit ? await query.limit(limit) : await query;
+    if (rows.length === 0) return [];
+    const listingIds = rows.map((row) => row.listing.id);
+    const mappings = await this.db.select().from(instrumentProviderMappings).where(and(
+      inArray(instrumentProviderMappings.listingId, listingIds),
+      isNull(instrumentProviderMappings.effectiveThrough),
+      isNull(instrumentProviderMappings.deletedAt),
+    ));
+    return rows.map(({ identity, listing }) => this.toCandidate(identity, listing, mappings));
+  }
+
+  private toCandidate(
+    identity: CatalogIdentityRow,
+    listing: CatalogListingRow,
+    mappings: readonly CatalogMappingRow[],
+  ): CatalogCandidate {
+    return {
+      catalogInstrumentId: CatalogInstrumentId.from(identity.id),
+      isin: identity.isin,
+      name: identity.name,
+      instrumentType: identity.instrumentType,
+      listing: {
+        id: listing.id,
+        exchange: listing.exchange,
+        segment: listing.segment,
+        symbol: listing.symbol,
+        name: listing.name,
+        instrumentType: listing.instrumentType,
+        currency: listing.currency,
+        active: listing.active,
+        source: listing.source,
+        fetchedAt: listing.fetchedAt,
+        checksum: listing.checksum,
+      },
+      providerMappings: mappings.filter((mapping) => mapping.listingId === listing.id).map(this.toMapping),
+    };
+  }
+
+  private readonly toMapping = (mapping: CatalogMappingRow): CatalogProviderMapping => ({
+    id: mapping.id,
+    provider: mapping.provider,
+    providerInstrumentId: mapping.providerInstrumentId,
+    providerToken: mapping.providerToken,
+    tradingSymbol: mapping.tradingSymbol,
+    effectiveFrom: mapping.effectiveFrom,
+    effectiveThrough: mapping.effectiveThrough,
+    source: mapping.source,
+    fetchedAt: mapping.fetchedAt,
+    checksum: mapping.checksum,
+  });
 }

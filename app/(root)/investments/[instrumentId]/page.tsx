@@ -25,6 +25,7 @@ import GoldReturnsPanel from "./gold-returns-panel";
 import GoldLotLadder from "./gold-lot-ladder";
 import GoldBenchmarkTable from "./gold-benchmark-table";
 import GoldTaxStatement from "./gold-tax-statement";
+import HoldingNav, { normalizeHoldingView, type HoldingViewSearchParams } from "./holding-nav";
 
 export const metadata: Metadata = { title: "Holding" };
 
@@ -81,10 +82,17 @@ function GramBar({
  * sale realise different gains, and the difference is money the user can choose to
  * keep.
  */
-export default async function Page({ params }: { params: Promise<{ instrumentId: string }> }) {
+export default async function Page({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ instrumentId: string }>;
+  searchParams: Promise<HoldingViewSearchParams>;
+}) {
   await connection();
 
   const { instrumentId } = await params;
+  const activeView = normalizeHoldingView((await searchParams).view);
   const userId = await currentUserId();
   const today = CalendarDate.parse(new Date().toISOString().slice(0, 10));
   const id = InstrumentId.from(instrumentId);
@@ -213,6 +221,11 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
   const metalReturn = metalUnrealised && investedValue.isPositive
     ? Percentage.ratio(metalUnrealised, investedValue)
     : absoluteReturn;
+  const holdingMarketValue = isDigitalMetal ? metalValue : (position?.marketValue ?? null);
+  const holdingUnrealised = holdingMarketValue ? holdingMarketValue.minus(investedValue) : null;
+  const holdingReturn = holdingUnrealised && investedValue.isPositive
+    ? Percentage.ratio(holdingUnrealised, investedValue)
+    : null;
 
   /*
    * Two different facts, and conflating them is what makes a working feed look
@@ -255,7 +268,9 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
         }
       />
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <HoldingNav instrumentId={instrumentId} activeView={activeView} />
+
+      {activeView === "summary" && <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat
           label={isDigitalMetal ? "Grams held" : "Units held"}
           value={<span className="tnum">{open.quantity.toDecimalString()}</span>}
@@ -272,11 +287,11 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
           }
         />
         <Stat label="Realised" value={position?.realisedGain ?? Money.zero()} hint="Gains already taken" />
-      </div>
+      </div>}
 
       {isDigitalMetal && (
         <>
-          <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {activeView === "summary" && <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <Stat label="Average buy rate / gram" value={averageBuyRate} hint="Total invested ÷ grams held" />
             <Stat
               label={hasSpread ? "Buy-back rate / gram" : "Current gold price / gram"}
@@ -293,9 +308,9 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
               value={metalUnrealised}
               hint={metalReturn ? `${formatPercent(metalReturn)} absolute; tax applies only on sale` : "Current value less invested amount; tax applies only on sale"}
             />
-          </div>
-          {instrument.kind === "DIGITAL_GOLD" && <GoldAdvisoryNote isLeased={leasedGrams.isPositive} />}
-          <section className="panel mb-6 p-5">
+          </div>}
+          {activeView === "summary" && instrument.kind === "DIGITAL_GOLD" && <GoldAdvisoryNote isLeased={leasedGrams.isPositive} />}
+          {activeView === "income-leases" && <section className="panel mb-6 p-5">
             <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold text-gray-100">Investor analysis</h2>
@@ -344,10 +359,10 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
                 </div>
               </div>
             </div>
-          </section>
+          </section>}
           {analytics && (
             <>
-              <section className="panel mb-6 p-5">
+              {activeView === "performance" && <section className="panel mb-6 p-5">
                 <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h2 className="text-sm font-semibold text-gray-100">Where the profit came from</h2>
@@ -516,15 +531,15 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
                     </p>
                   </div>
                 </div>
-              </section>
+              </section>}
 
-              <GoldReturnsPanel analytics={analytics} />
+              {activeView === "performance" && <GoldReturnsPanel analytics={analytics} />}
 
-              <GoldProfitChart points={profitPoints} currency={instrument.currency.code} />
+              {activeView === "performance" && <GoldProfitChart points={profitPoints} currency={instrument.currency.code} />}
 
-              <GoldLotLadder analytics={analytics} unit={isDigitalMetal ? "Grams" : "Units"} />
+              {activeView === "lots-tax" && <GoldLotLadder analytics={analytics} unit={isDigitalMetal ? "Grams" : "Units"} />}
 
-              {instrument.kind === "DIGITAL_GOLD" && (
+              {activeView === "performance" && instrument.kind === "DIGITAL_GOLD" && (
                 <>
                   {benchmark ? (
                     <GoldBenchmarkTable comparison={benchmark} />
@@ -539,16 +554,18 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
                       </p>
                     </section>
                   )}
-                  <GoldTaxStatement
-                    analytics={analytics}
-                    tdsWithheldGrams={analytics.tdsGrams.toDecimalString()}
-                  />
                 </>
+              )}
+              {activeView === "lots-tax" && instrument.kind === "DIGITAL_GOLD" && (
+                <GoldTaxStatement
+                  analytics={analytics}
+                  tdsWithheldGrams={analytics.tdsGrams.toDecimalString()}
+                />
               )}
             </>
           )}
 
-          <section className="panel mb-6 p-0">
+          {activeView === "activity" && <section className="panel mb-6 p-0">
             <div className="flex items-center justify-between border-b border-gray-600 px-5 py-4">
               <div><h2 className="text-sm font-semibold text-gray-100">Investment transactions</h2><p className="mt-1 text-xs text-gray-500">Every monthly investment is retained separately and drives the holding totals above.</p></div>
               <Pill tone="neutral">{trades.length} entries</Pill>
@@ -567,11 +584,11 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
                 </tr>;
               })}</tbody>
             </table></div>}
-          </section>
-          <Card title="Add investment transaction" subtitle="Record each monthly investment separately with its grams, invested amount and acquisition date. The average buy rate and all portfolio totals are recalculated automatically." className="mb-6">
+          </section>}
+          {activeView === "activity" && <Card title="Add investment transaction" subtitle="Record each monthly investment separately with its grams, invested amount and acquisition date. The average buy rate and all portfolio totals are recalculated automatically." className="mb-6">
             <MetalHoldingForm instrumentId={instrumentId} defaultDate={today.toISO()} accounts={settlementAccounts} />
-          </Card>
-          {instrument.kind === "DIGITAL_GOLD" && (
+          </Card>}
+          {activeView === "income-leases" && instrument.kind === "DIGITAL_GOLD" && (
             <section className="panel mb-6 p-0">
               <div className="flex items-center justify-between border-b border-gray-600 px-5 py-4">
                 <div>
@@ -612,7 +629,67 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
         </>
       )}
 
-      {!isDigitalMetal && <section className="panel mb-6 p-0">
+      {!isDigitalMetal && activeView === "performance" && (
+        <section className="panel mb-6 p-5" aria-labelledby="holding-performance-heading">
+          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 id="holding-performance-heading" className="text-sm font-semibold text-gray-100">
+                Holding performance
+              </h2>
+              <p className="mt-1 max-w-2xl text-xs text-gray-500">
+                Valuation, unrealised gain and realised gain for this holding, from the current
+                lots and price-book contract.
+              </p>
+            </div>
+            <Pill tone="neutral">
+              {position?.pricedOn ? `Priced ${position.pricedOn.toISO()}` : "Unpriced"}
+            </Pill>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat label="Invested" value={investedValue} hint="Open-lot cost plus charges" />
+            <Stat
+              label="Market value"
+              value={holdingMarketValue}
+              hint={position?.unpricedReason ?? "Latest resolved holding valuation"}
+            />
+            <Stat
+              label="Unrealised gain / loss"
+              value={holdingUnrealised}
+              hint={holdingReturn ? `${formatPercent(holdingReturn)} on open cost` : "Needs a priced open position"}
+            />
+            <Stat
+              label="Realised gain / loss"
+              value={position?.realisedGain ?? Money.zero(instrument.currency)}
+              hint="Disposals recorded for this holding"
+            />
+          </div>
+          <p className="mt-4 rounded-lg border border-gray-600 px-3 py-2 text-xs text-gray-500">
+            Holding-level XIRR and TWR are unavailable in this route contract today; the
+            portfolio Performance route owns those metrics and shows typed unavailable reasons
+            where boundary inputs are missing.
+          </p>
+        </section>
+      )}
+
+      {activeView === "income-leases" && instrument.kind !== "DIGITAL_GOLD" && (
+        <section className="panel mb-6 p-5" aria-labelledby="holding-income-heading">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 id="holding-income-heading" className="text-sm font-semibold text-gray-100">
+                Income & leases
+              </h2>
+              <p className="mt-1 max-w-2xl text-xs text-gray-500">
+                Lease features are only defined for digital gold in the current contract. This
+                holding keeps income and ownership in its trade and lot records, with no lease
+                controls to show.
+              </p>
+            </div>
+            <Pill tone="neutral">Not applicable</Pill>
+          </div>
+        </section>
+      )}
+
+      {!isDigitalMetal && activeView === "lots-tax" && <section className="panel mb-6 p-0">
         <div className="flex items-center justify-between border-b border-gray-600 px-5 py-4">
           <h2 className="text-sm font-semibold text-gray-100">Lots</h2>
           <p className="text-xs text-gray-500">
@@ -672,7 +749,7 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
         </div>
       </section>}
 
-      {!isDigitalMetal && <section className="panel mb-6 p-0">
+      {!isDigitalMetal && activeView === "activity" && <section className="panel mb-6 p-0">
         <div className="flex items-center justify-between border-b border-gray-600 px-5 py-4">
           <h2 className="text-sm font-semibold text-gray-100">Trades</h2>
           <p className="max-w-md text-xs text-gray-500">
@@ -752,7 +829,7 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
         )}
       </section>}
 
-      {!isDigitalMetal && comparison?.ok && open.quantity.isPositive && (
+      {!isDigitalMetal && activeView === "lots-tax" && comparison?.ok && open.quantity.isPositive && (
         <Card
           title="What selling everything today would realise"
           subtitle="The same sale under each method. The difference is the tax you can choose."
@@ -786,7 +863,7 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
         </Card>
       )}
 
-      {!isDigitalMetal && actions.length > 0 && (
+      {!isDigitalMetal && activeView === "activity" && actions.length > 0 && (
         <Card title="Corporate actions" subtitle="Applied as events, so each one can be undone." className="mb-6">
           <ul className="space-y-2 text-sm">
             {actions.map((action) => (
@@ -802,7 +879,7 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
         </Card>
       )}
 
-      {!isDigitalMetal && <Card
+      {!isDigitalMetal && activeView === "activity" && <Card
         title="Record a trade"
         subtitle="A trade is a ledger transaction first; the lot is derived from it, so the portfolio can always be rebuilt from the journal."
       >
@@ -814,7 +891,7 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
         />
       </Card>}
 
-      <Card
+      {activeView === "settings" && <Card
         className="mt-6"
         title="This holding's details"
         subtitle="Correct the name, the platform, or the code the price feed knows it by — a holding that will not price is almost always a wrong code here."
@@ -832,7 +909,7 @@ export default async function Page({ params }: { params: Promise<{ instrumentId:
           isClosed={instrument.isClosed}
           canDelete={trades.length === 0}
         />
-      </Card>
+      </Card>}
     </>
   );
 }

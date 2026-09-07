@@ -16,6 +16,7 @@ import {
   DrizzleDepositRepository,
   DrizzleImportRepository,
   DrizzleInstrumentRepository,
+  DrizzleInstrumentCatalogRepository,
   DrizzleLotRepository,
   DrizzleCorporateActionRepository,
   DrizzleBarRepository,
@@ -86,6 +87,7 @@ import {
   AddInstrument,
   ApplyCorporateAction,
   CompareDisposalMethods,
+  InvestmentWorkspace,
   PortfolioReturns,
   RealisedGains,
   RecordBuy,
@@ -117,6 +119,15 @@ import {
   systemRuntime,
 } from "@/infra/providers";
 import { getCurrentSession } from "@/infra/auth/session";
+import {
+  LinkPortfolioInstrumentCatalog,
+  RefreshInstrumentCatalog,
+  SearchInstrumentCatalog,
+} from "@/app/instrument-catalog.usecases";
+import {
+  UpstoxPublicInstrumentMaster,
+  ZerodhaInstrumentCsvMapping,
+} from "@/infra/instrument-catalog";
 
 /**
  * How an instrument's own identifier vocabulary maps to a provider's.
@@ -164,6 +175,7 @@ export const services = cache(() => {
   const platforms = new DrizzleInstitutionRepository(db);
   const taxSettings = new DrizzleTaxSettingsRepository(db);
   const fxRates = new DrizzleFxRateRepository(db);
+  const instrumentCatalog = new DrizzleInstrumentCatalogRepository(db);
 
   /*
    * The price ladder, adapted to the one method an instrument needs.
@@ -173,7 +185,8 @@ export const services = cache(() => {
    * speaks in its own terms (`SYMBOL`, `SLUG`). The mapping lives here, at the
    * boundary, so neither side has to know the other's vocabulary.
    */
-  const providerRuntime = systemRuntime(new FetchHttpClient());
+  const http = new FetchHttpClient();
+  const providerRuntime = systemRuntime(http);
   const priceBook = new PriceBook(
     shippedQuoteProviders(providerRuntime, new Map(), undefined, config.marketData()),
     quotes,
@@ -225,6 +238,8 @@ export const services = cache(() => {
    */
   const recordBuy = new RecordBuy(accounts, instruments, journal, lots);
   const recordSell = new RecordSell(accounts, instruments, journal, lots);
+  const valuePortfolio = new ValuePortfolio(instruments, lots, prices, fxBook);
+  const portfolioReturns = new PortfolioReturns(accounts, instruments, journal, valuePortfolio);
   const voidTrade = new VoidTrade(
     journal,
     lots,
@@ -232,10 +247,17 @@ export const services = cache(() => {
     reverseTransaction,
   );
   const transfer = new RecordAccountTransfer(accounts, record);
+  const zerodhaApiKey = process.env.ZERODHA_API_KEY?.trim();
+  const zerodhaAccessToken = process.env.ZERODHA_ACCESS_TOKEN?.trim();
+  const zerodhaCatalog = zerodhaApiKey && zerodhaAccessToken
+    ? new ZerodhaInstrumentCsvMapping(http, () => clock.now(), {
+        authorization: `token ${zerodhaApiKey}:${zerodhaAccessToken}`,
+      })
+    : null;
 
   return {
     clock,
-    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms, lending, instruments, lots, quotes, bars, taxSettings, leases, platforms },
+    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms, lending, instruments, instrumentCatalog, lots, quotes, bars, taxSettings, leases, platforms },
     ledger: {
       seedChart: new SeedChartOfAccounts(accounts),
       openAccount,
@@ -271,7 +293,8 @@ export const services = cache(() => {
       recordBuy,
       recordSell,
       compareMethods: new CompareDisposalMethods(instruments, lots),
-      valuePortfolio: new ValuePortfolio(instruments, lots, prices, fxBook),
+      valuePortfolio,
+      workspace: new InvestmentWorkspace(valuePortfolio, portfolioReturns),
       realisedGains: new RealisedGains(lots),
       realisedHistory: new RealisedGainsHistory(lots, instruments, platforms),
       goldAnalytics: new GoldHoldingAnalytics(instruments, lots, leases, quotes, platforms),
@@ -303,12 +326,7 @@ export const services = cache(() => {
       updateInstrument: new UpdateInstrument(instruments),
       closeInstrument: new CloseInstrument(instruments, lots),
       deleteInstrument: new DeleteInstrument(instruments, lots),
-      returns: new PortfolioReturns(
-        accounts,
-        instruments,
-        journal,
-        new ValuePortfolio(instruments, lots, prices, fxBook),
-      ),
+      returns: portfolioReturns,
     },
     platforms: {
       register: new RegisterInstitution(platforms),
@@ -320,6 +338,16 @@ export const services = cache(() => {
     pricing: {
       refresh: new RefreshPrices(priceBook, clock),
       fx: fxBook,
+    },
+    instrumentCatalog: {
+      search: new SearchInstrumentCatalog(instrumentCatalog, clock),
+      refresh: new RefreshInstrumentCatalog(
+        instrumentCatalog,
+        new UpstoxPublicInstrumentMaster(http, () => clock.now()),
+        zerodhaCatalog,
+        clock,
+      ),
+      link: new LinkPortfolioInstrumentCatalog(instrumentCatalog, clock),
     },
     leasing: {
       open: new OpenGoldLease(instruments, leases, lots),

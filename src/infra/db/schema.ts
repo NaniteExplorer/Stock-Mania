@@ -711,6 +711,127 @@ export const instruments = sqliteTable(
   ],
 );
 
+/* ═══ Persistent instrument catalogue ════════════════════════════════ */
+
+/** Canonical identities are global; user holdings link to them separately. */
+export const instrumentCatalog = sqliteTable(
+  "instrument_catalog",
+  {
+    id: text("id").primaryKey(),
+    /** Nullable because a broker dump may omit it; any stored value is verified. */
+    isin: text("isin", { length: 12 }),
+    name: text("name").notNull(),
+    instrumentType: text("instrument_type", {
+      enum: ["EQUITY", "ETF", "MUTUAL_FUND", "BOND", "GOVT_SECURITY", "REIT", "DERIVATIVE", "OTHER"],
+    }).notNull(),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [uniqueIndex("instrument_catalog_isin_uq").on(table.isin)],
+);
+
+export const instrumentCatalogListings = sqliteTable(
+  "instrument_catalog_listings",
+  {
+    id: text("id").primaryKey(),
+    catalogInstrumentId: text("catalog_instrument_id")
+      .notNull()
+      .references(() => instrumentCatalog.id, { onDelete: "cascade" }),
+    exchange: text("exchange").notNull(),
+    segment: text("segment").notNull(),
+    symbol: text("symbol").notNull(),
+    normalizedSymbol: text("normalized_symbol").notNull(),
+    name: text("name").notNull(),
+    normalizedName: text("normalized_name").notNull(),
+    instrumentType: text("instrument_type", {
+      enum: ["EQUITY", "ETF", "MUTUAL_FUND", "BOND", "GOVT_SECURITY", "REIT", "DERIVATIVE", "OTHER"],
+    }).notNull(),
+    currency: text("currency", { length: 3 }).notNull().default("INR"),
+    active: integer("active", { mode: "boolean" }).notNull().default(true),
+    source: text("source").notNull(),
+    fetchedAt: timestamp("fetched_at").notNull(),
+    checksum: text("checksum").notNull(),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    uniqueIndex("instrument_catalog_listing_uq").on(table.exchange, table.segment, table.normalizedSymbol),
+    index("instrument_catalog_listing_search_idx").on(table.normalizedSymbol, table.normalizedName),
+    index("instrument_catalog_listing_instrument_idx").on(table.catalogInstrumentId),
+  ],
+);
+
+export const instrumentProviderMappings = sqliteTable(
+  "instrument_provider_mappings",
+  {
+    id: text("id").primaryKey(),
+    catalogInstrumentId: text("catalog_instrument_id")
+      .notNull()
+      .references(() => instrumentCatalog.id, { onDelete: "cascade" }),
+    listingId: text("listing_id")
+      .notNull()
+      .references(() => instrumentCatalogListings.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    providerInstrumentId: text("provider_instrument_id").notNull(),
+    providerToken: text("provider_token"),
+    tradingSymbol: text("trading_symbol").notNull(),
+    effectiveFrom: calendarDate("effective_from").notNull(),
+    /** Exclusive end; null is the active mapping. */
+    effectiveThrough: calendarDate("effective_through"),
+    source: text("source").notNull(),
+    fetchedAt: timestamp("fetched_at").notNull(),
+    checksum: text("checksum").notNull(),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex("instrument_provider_mapping_version_uq").on(
+      table.provider,
+      table.providerInstrumentId,
+      table.effectiveFrom,
+    ),
+    index("instrument_provider_mapping_active_idx").on(table.listingId, table.provider, table.effectiveThrough),
+  ],
+);
+
+/** Refresh attempts. An empty checksum marks a failed attempt; raw bulk data is never stored. */
+export const instrumentCatalogFetches = sqliteTable(
+  "instrument_catalog_fetches",
+  {
+    id: text("id").primaryKey(),
+    source: text("source").notNull(),
+    fetchedAt: timestamp("fetched_at").notNull(),
+    checksum: text("checksum").notNull(),
+    rowCount: integer("row_count").notNull(),
+    deletedAt: deletedAt(),
+  },
+  (table) => [
+    uniqueIndex("instrument_catalog_fetch_uq").on(table.source, table.fetchedAt),
+    index("instrument_catalog_fetch_latest_idx").on(table.source, table.fetchedAt),
+  ],
+);
+
+/** The durable join from a user-owned holding to its canonical catalogue identity. */
+export const instrumentCatalogLinks = sqliteTable(
+  "instrument_catalog_links",
+  {
+    portfolioInstrumentId: text("portfolio_instrument_id")
+      .primaryKey()
+      .references(() => instruments.id, { onDelete: "cascade" }),
+    catalogInstrumentId: text("catalog_instrument_id")
+      .notNull()
+      .references(() => instrumentCatalog.id, { onDelete: "restrict" }),
+    listingId: text("listing_id")
+      .notNull()
+      .references(() => instrumentCatalogListings.id, { onDelete: "restrict" }),
+    linkedAt: timestamp("linked_at").notNull(),
+    deletedAt: deletedAt(),
+  },
+  (table) => [index("instrument_catalog_link_identity_idx").on(table.catalogInstrumentId)],
+);
+
 /**
  * A buy or sell, with each statutory charge in its own column.
  *

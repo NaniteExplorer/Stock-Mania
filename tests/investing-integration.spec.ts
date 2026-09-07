@@ -22,13 +22,13 @@ import * as schema from "@/infra/db/schema";
 import { users } from "@/infra/db/schema";
 import type { Database } from "@/infra/db/client";
 import { FixedClock, UserId } from "@/core/kernel";
-import { Money } from "@/core/money";
+import { Currency, Money } from "@/core/money";
 import { Quantity, UnitPrice } from "@/core/numeric";
 import { CalendarDate, FinancialYear } from "@/core/time";
-import { AccountCode } from "@/domain/accounts";
+import { AccountCode, AccountId } from "@/domain/accounts";
 import { BalanceCalculator } from "@/domain/transactions";
-import { InstrumentId, type PriceLookup } from "@/domain/instruments";
-import { LotBook } from "@/domain/lots";
+import { InstrumentId, ListedEquity, type InstrumentRepository, type PriceLookup } from "@/domain/instruments";
+import { Lot, LotBook, type LotRepository } from "@/domain/lots";
 import { Split } from "@/domain/corporate";
 import {
   DrizzleAccountRepository,
@@ -43,6 +43,7 @@ import {
   AddInstrument,
   ApplyCorporateAction,
   CompareDisposalMethods,
+  InvestmentWorkspace,
   PortfolioReturns,
   RealisedGains,
   RecordBuy,
@@ -434,6 +435,129 @@ async function main() {
   check("nothing was realised the year before", earlierYear.ok && earlierYear.value.disposals.length, 0);
 
   /* ── The ledger is still sound ────────────────────────────────────── */
+
+  section("the workspace read model includes a fully closed instrument");
+
+  const closedTcs = await sell.execute({
+    userId,
+    instrumentId: tcs,
+    toAccountId: bankId,
+    quantity: units("15"),
+    pricePerUnit: rupees("4300"),
+    tradedOn: on("2025-08-20"),
+    charges: rupees("150.00"),
+    deductibleCharges: rupees("100.00"),
+  });
+  if (!closedTcs.ok) throw new Error("closing TCS failed");
+  check("TCS has no open lots", (await lotRepo.openLots(userId, tcs)).length, 0);
+
+  const closedHoldingValuation = new ValuePortfolio(
+    instrumentRepo,
+    lotRepo,
+    priced(new Map([[infy.value, "455.75"]])),
+  );
+  const afterClose = await closedHoldingValuation.execute({ userId, asOf: on("2025-09-01") });
+  if (!afterClose.ok) throw new Error("closed-holding valuation failed");
+  check("only the open instrument is a position", afterClose.value.valued.map((row) => row.label).join(","), "INFY");
+  check(
+    "portfolio realised P&L includes the fully closed instrument",
+    afterClose.value.realisedGain?.toDecimalString(),
+    sold.value.realisedGain.plus(soldTcs.value.realisedGain).plus(closedTcs.value.realisedGain).toDecimalString(),
+  );
+
+  const workspace = new InvestmentWorkspace(
+    closedHoldingValuation,
+    new PortfolioReturns(accountRepo, instrumentRepo, txnRepo, closedHoldingValuation),
+  );
+  const workspaceResult = await workspace.execute({ userId, asOf: on("2025-09-01") });
+  if (!workspaceResult.ok) throw new Error("workspace read failed");
+  check("workspace output is JSON serialisable", JSON.parse(JSON.stringify(workspaceResult.value)).asOf, "2025-09-01");
+  check("realised P&L is available", workspaceResult.value.metrics.realisedPnl.status, "AVAILABLE");
+  check(
+    "workspace realised P&L includes closed TCS",
+    workspaceResult.value.metrics.realisedPnl.status === "AVAILABLE" && workspaceResult.value.metrics.realisedPnl.value,
+    afterClose.value.realisedGain!.toDecimalString(),
+  );
+  check("income is explicitly unavailable", workspaceResult.value.metrics.income.status, "UNAVAILABLE");
+  check(
+    "income names the missing repository input",
+    workspaceResult.value.metrics.income.status === "UNAVAILABLE" && workspaceResult.value.metrics.income.reason,
+    "INCOME_INPUTS_UNVERIFIED",
+  );
+  check("TWR is explicitly unavailable", workspaceResult.value.metrics.twr.status, "UNAVAILABLE");
+  check(
+    "TWR names missing boundary valuations",
+    workspaceResult.value.metrics.twr.status === "UNAVAILABLE" && workspaceResult.value.metrics.twr.reason,
+    "TWR_BOUNDARY_VALUATIONS_UNAVAILABLE",
+  );
+  check("metric scope is explicit", workspaceResult.value.metrics.realisedPnl.scope, "PORTFOLIO");
+  check("metric as-of is explicit", workspaceResult.value.metrics.realisedPnl.asOf, "2025-09-01");
+  checkTrue("metric provenance is present", workspaceResult.value.metrics.realisedPnl.provenance.length > 0);
+
+  section("a native foreign quote is not mislabeled when FX is unavailable");
+
+  const foreignInstrument = new ListedEquity({
+    id: InstrumentId.from("00000000-0000-4000-8000-000000000101"),
+    userId,
+    symbol: "USCO",
+    name: "US Company",
+    currency: Currency.USD,
+    assetAccountId: AccountId.from("00000000-0000-4000-8000-000000000102"),
+  });
+  const foreignLot = Lot.open({
+    instrumentId: foreignInstrument.id,
+    acquiredOn: on("2025-01-02"),
+    originalQuantity: units("2"),
+    cost: Money.fromRupees("180", Currency.USD),
+    buyCharges: Money.zero(Currency.USD),
+    openedByTransactionId: "foreign_buy",
+  });
+  const foreignValuation = new ValuePortfolio(
+    { list: async () => [foreignInstrument] } as unknown as InstrumentRepository,
+    {
+      allLots: async () => [foreignLot],
+      disposalsWithin: async () => [],
+    } as unknown as LotRepository,
+    {
+      priceOn: async () => ({
+        price: UnitPrice.of("110", Currency.USD),
+        pricedOn: on("2025-09-01"),
+        isStale: false,
+        rung: "GOLDEN",
+      }),
+    },
+  );
+  const noReturnInputs = {
+    execute: async () => ({
+      ok: true as const,
+      value: {
+        xirr: { ok: false as const, reason: "TOO_FEW_FLOWS" as const, because: "No verified flows." },
+        invested: Money.zero(),
+        withdrawn: Money.zero(),
+        currentValue: null,
+        absoluteReturn: null,
+        flows: [],
+      },
+    }),
+  } as unknown as PortfolioReturns;
+  const foreignWorkspace = await new InvestmentWorkspace(foreignValuation, noReturnInputs).execute({
+    userId,
+    asOf: on("2025-09-01"),
+  });
+  if (!foreignWorkspace.ok) throw new Error("foreign workspace read failed");
+  const foreignPosition = foreignWorkspace.value.positions[0];
+  check("the reporting value is unavailable", foreignPosition.marketValue, null);
+  check(
+    "the reason distinguishes FX from a missing native quote",
+    foreignPosition.marketValueStatus,
+    "REPORTING_CURRENCY_CONVERSION_UNAVAILABLE",
+  );
+  checkTrue("the explanation names both currencies", Boolean(foreignPosition.unavailableReason?.includes("USD") && foreignPosition.unavailableReason.includes("INR")));
+  check("the valid native quote keeps its date", foreignPosition.pricedOn, "2025-09-01");
+  check("missing FX is not mislabeled stale", foreignPosition.isStale, false);
+  check("the portfolio names an unconverted position", foreignWorkspace.value.dataQuality.unconvertedPositions.join(","), "USCO");
+  check("the portfolio does not call it unpriced", foreignWorkspace.value.dataQuality.unpricedPositions.join(","), "");
+  check("the portfolio does not call missing FX stale", foreignWorkspace.value.dataQuality.stalePositions.join(","), "");
 
   section("the ledger still balances");
 

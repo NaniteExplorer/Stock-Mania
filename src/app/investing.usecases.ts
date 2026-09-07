@@ -720,7 +720,17 @@ export class ValuePortfolio implements UseCase<ValuePortfolioInput, ValuePortfol
   ) {}
 
   async execute(input: ValuePortfolioInput): Promise<Result<ValuePortfolioOutput, AppError>> {
-    const held = await this.instruments.list(input.userId, { includeClosed: false });
+    const [held, allDisposals] = await Promise.all([
+      this.instruments.list(input.userId, { includeClosed: false }),
+      this.lots.disposalsWithin(input.userId, CalendarDate.parse("1900-01-01"), input.asOf),
+    ]);
+    const convertToReporting = async (amount: Money | null): Promise<Money | null> => {
+      if (amount === null) return null;
+      if (amount.currency.code === Currency.reporting.code) return amount;
+      if (!this.converter) return null;
+      const converted = await this.converter.convert(amount, Currency.reporting, input.asOf, input.userId);
+      return converted.ok ? converted.value.amount : null;
+    };
 
     const valued = await Promise.all(
       held.map(async (instrument): Promise<ValuedPosition> => {
@@ -729,12 +739,7 @@ export class ValuePortfolio implements UseCase<ValuePortfolioInput, ValuePortfol
         const position = LotBook.openPosition(open, instrument.currency);
         const valuation = await instrument.valueOn(position.quantity, input.asOf, this.prices);
 
-        const realised = await this.lots.disposalsWithin(
-          input.userId,
-          CalendarDate.parse("1900-01-01"),
-          input.asOf,
-        );
-        const realisedForThis = realised.filter((disposal) =>
+        const realisedForThis = allDisposals.filter((disposal) =>
           disposal.instrumentId.equals(instrument.id),
         );
 
@@ -743,18 +748,6 @@ export class ValuePortfolio implements UseCase<ValuePortfolioInput, ValuePortfol
           realisedForThis.map((disposal) => disposal.gain),
           instrument.currency,
         );
-        const convert = async (amount: Money | null): Promise<Money | null> => {
-          if (amount === null) return null;
-          if (amount.currency.code === Currency.reporting.code) return amount;
-          if (!this.converter) return null;
-          const converted = await this.converter.convert(
-            amount,
-            Currency.reporting,
-            input.asOf,
-            input.userId,
-          );
-          return converted.ok ? converted.value.amount : null;
-        };
         const fx = instrument.currency.code === Currency.reporting.code || !this.converter
           ? null
           : await this.converter.convert(
@@ -777,9 +770,9 @@ export class ValuePortfolio implements UseCase<ValuePortfolioInput, ValuePortfol
           averageCostPerUnit: position.averageCostPerUnit,
           pricedOn: valuation.pricedOn,
           unpricedReason: valuation.unpricedReason,
-          reportingCostBasis: await convert(costBasis),
-          reportingMarketValue: await convert(valuation.value),
-          reportingRealisedGain: await convert(realisedGain),
+          reportingCostBasis: await convertToReporting(costBasis),
+          reportingMarketValue: await convertToReporting(valuation.value),
+          reportingRealisedGain: await convertToReporting(realisedGain),
           fxRate: fx?.ok ? fx.value.resolution.rate : null,
           fxRatedOn: fx?.ok ? fx.value.resolution.ratedOn : null,
           fxIsStale: fx?.ok ? fx.value.resolution.isStale : instrument.currency.code !== Currency.reporting.code,
@@ -789,19 +782,19 @@ export class ValuePortfolio implements UseCase<ValuePortfolioInput, ValuePortfol
 
     const withHoldings = valued.filter((position) => !position.quantity.isZero);
     const unconverted = withHoldings.filter((position) => position.reportingCostBasis === null);
-    const unpriced = withHoldings.filter(
-      (position) => position.marketValue === null || position.reportingMarketValue === null,
-    );
+    const unpriced = withHoldings.filter((position) => position.marketValue === null);
     const totalCost = unconverted.length > 0
       ? null
       : Money.total(withHoldings.map((position) => position.reportingCostBasis!), Currency.reporting);
-    const totalMarketValue = unpriced.length > 0
+    const totalMarketValue = unpriced.length > 0 || unconverted.length > 0
       ? null
       : Money.total(withHoldings.map((position) => position.reportingMarketValue!), Currency.reporting);
-    const realisedMissing = withHoldings.some((position) => position.reportingRealisedGain === null);
-    const realisedGain = realisedMissing
+    const convertedDisposalGains = await Promise.all(
+      allDisposals.map((disposal) => convertToReporting(disposal.gain)),
+    );
+    const realisedGain = convertedDisposalGains.some((gain) => gain === null)
       ? null
-      : Money.total(withHoldings.map((position) => position.reportingRealisedGain!), Currency.reporting);
+      : Money.total(convertedDisposalGains as Money[], Currency.reporting);
     const unrealisedGain = totalCost && totalMarketValue ? totalMarketValue.minus(totalCost) : null;
     const absoluteReturn = totalCost && totalMarketValue && realisedGain && !totalCost.isZero
       ? Percentage.ratio(totalMarketValue.plus(realisedGain).minus(totalCost), totalCost)
@@ -816,7 +809,9 @@ export class ValuePortfolio implements UseCase<ValuePortfolioInput, ValuePortfol
       income: Money.zero(Currency.reporting),
       absoluteReturn,
       unpricedPositions: unpriced.map((position) => position.label),
-      stalePositions: withHoldings.filter((position) => position.isStale || position.fxIsStale).map((position) => position.label),
+      stalePositions: withHoldings
+        .filter((position) => position.isStale || (position.fxRate !== null && position.fxIsStale))
+        .map((position) => position.label),
       unconvertedPositions: unconverted.map((position) => position.label),
     });
   }
@@ -948,6 +943,201 @@ export class PortfolioReturns implements UseCase<PortfolioReturnsInput, Portfoli
 }
 
 /* ═══ Corporate actions ═══════════════════════════════════════════════ */
+
+export type InvestmentMetricUnavailableReason =
+  | "INCOMPLETE_VALUATION"
+  | "UNCONVERTED_CURRENCY"
+  | "XIRR_UNDEFINED"
+  | "INCOME_INPUTS_UNVERIFIED"
+  | "TOTAL_GAIN_REQUIRES_INCOME"
+  | "TWR_BOUNDARY_VALUATIONS_UNAVAILABLE";
+
+export interface InvestmentMetricContext {
+  readonly scope: "PORTFOLIO";
+  readonly period: { readonly from: "INCEPTION"; readonly through: string };
+  readonly asOf: string;
+  readonly provenance: readonly string[];
+}
+
+export type InvestmentMetric =
+  | (InvestmentMetricContext & {
+      readonly status: "AVAILABLE";
+      readonly unit: "MONEY" | "PERCENTAGE";
+      readonly value: string;
+      readonly currency: string | null;
+    })
+  | (InvestmentMetricContext & {
+      readonly status: "UNAVAILABLE";
+      readonly unit: "MONEY" | "PERCENTAGE";
+      readonly currency: string | null;
+      readonly reason: InvestmentMetricUnavailableReason;
+      readonly message: string;
+    });
+
+export interface InvestmentWorkspacePosition {
+  readonly instrumentId: string;
+  readonly symbol: string;
+  readonly name: string;
+  readonly kind: InstrumentKind;
+  readonly quantity: string;
+  readonly nativeCurrency: string;
+  readonly costBasis: { readonly amount: string; readonly currency: string } | null;
+  readonly marketValue: { readonly amount: string; readonly currency: string } | null;
+  readonly realisedGain: { readonly amount: string; readonly currency: string } | null;
+  readonly pricedOn: string | null;
+  readonly marketValueStatus?:
+    | "AVAILABLE"
+    | "NATIVE_PRICE_UNAVAILABLE"
+    | "REPORTING_CURRENCY_CONVERSION_UNAVAILABLE";
+  readonly isStale: boolean;
+  readonly unavailableReason: string | null;
+}
+
+export interface InvestmentWorkspaceOutput {
+  readonly asOf: string;
+  readonly reportingCurrency: string;
+  readonly positions: readonly InvestmentWorkspacePosition[];
+  readonly dataQuality: {
+    readonly status: "COMPLETE" | "STALE" | "PARTIAL";
+    readonly unpricedPositions: readonly string[];
+    readonly stalePositions: readonly string[];
+    readonly unconvertedPositions: readonly string[];
+  };
+  readonly metrics: {
+    readonly investedAmount: InvestmentMetric;
+    readonly marketValue: InvestmentMetric;
+    readonly unrealisedPnl: InvestmentMetric;
+    readonly realisedPnl: InvestmentMetric;
+    readonly income: InvestmentMetric;
+    readonly totalInvestmentGain: InvestmentMetric;
+    readonly absoluteReturn: InvestmentMetric;
+    readonly xirr: InvestmentMetric;
+    readonly twr: InvestmentMetric;
+  };
+}
+
+/** JSON-safe facts for the investment routes. Unsupported metrics say why. */
+export class InvestmentWorkspace implements UseCase<ValuePortfolioInput, InvestmentWorkspaceOutput> {
+  constructor(
+    private readonly valuation: ValuePortfolio,
+    private readonly returns: PortfolioReturns,
+  ) {}
+
+  async execute(input: ValuePortfolioInput): Promise<Result<InvestmentWorkspaceOutput, AppError>> {
+    const valuation = await this.valuation.execute(input);
+    if (!valuation.ok) return valuation;
+    const returns = await this.returns.execute(input);
+    if (!returns.ok) return returns;
+
+    const asOf = input.asOf.toISO();
+    const context = (provenance: readonly string[]): InvestmentMetricContext => ({
+      scope: "PORTFOLIO",
+      period: { from: "INCEPTION", through: asOf },
+      asOf,
+      provenance,
+    });
+    const money = (value: Money, provenance: readonly string[]): InvestmentMetric => ({
+      status: "AVAILABLE",
+      unit: "MONEY",
+      value: value.toDecimalString(),
+      currency: value.currency.code,
+      ...context(provenance),
+    });
+    const percent = (value: Percentage, provenance: readonly string[]): InvestmentMetric => ({
+      status: "AVAILABLE",
+      unit: "PERCENTAGE",
+      value: value.toFixed(6),
+      currency: null,
+      ...context(provenance),
+    });
+    const unavailable = (
+      unit: "MONEY" | "PERCENTAGE",
+      reason: InvestmentMetricUnavailableReason,
+      message: string,
+      provenance: readonly string[],
+    ): InvestmentMetric => ({
+      status: "UNAVAILABLE",
+      unit,
+      currency: unit === "MONEY" ? Currency.reporting.code : null,
+      reason,
+      message,
+      ...context(provenance),
+    });
+    const valuationSources = ["lot_repository.open_lots", "price_lookup.as_of", "reporting_currency_converter"];
+    const returnSources = ["ledger.transaction_postings", "closing_market_value", "domain.portfolio.xirr"];
+    const missingValuation = unavailable(
+      "MONEY",
+      valuation.value.unconvertedPositions.length ? "UNCONVERTED_CURRENCY" : "INCOMPLETE_VALUATION",
+      valuation.value.unconvertedPositions.length
+        ? `Reporting-currency conversion is unavailable for: ${valuation.value.unconvertedPositions.join(", ")}.`
+        : `A complete market value is unavailable for: ${valuation.value.unpricedPositions.join(", ")}.`,
+      valuationSources,
+    );
+
+    return Ok({
+      asOf,
+      reportingCurrency: Currency.reporting.code,
+      positions: valuation.value.valued.map((position) => {
+        const nativePriceUnavailable = position.marketValue === null;
+        const reportingConversionUnavailable = !nativePriceUnavailable && position.reportingMarketValue === null;
+        return {
+          instrumentId: position.instrumentId.value,
+          symbol: position.instrument.symbol,
+          name: position.instrument.name,
+          kind: position.instrument.kind,
+          quantity: position.quantity.toDecimalString(),
+          nativeCurrency: position.instrument.currency.code,
+          costBasis: position.reportingCostBasis
+            ? { amount: position.reportingCostBasis.toDecimalString(), currency: position.reportingCostBasis.currency.code }
+            : null,
+          marketValue: position.reportingMarketValue
+            ? { amount: position.reportingMarketValue.toDecimalString(), currency: position.reportingMarketValue.currency.code }
+            : null,
+          realisedGain: position.reportingRealisedGain
+            ? { amount: position.reportingRealisedGain.toDecimalString(), currency: position.reportingRealisedGain.currency.code }
+            : null,
+          pricedOn: position.pricedOn?.toISO() ?? null,
+          marketValueStatus: nativePriceUnavailable
+            ? "NATIVE_PRICE_UNAVAILABLE" as const
+            : reportingConversionUnavailable
+              ? "REPORTING_CURRENCY_CONVERSION_UNAVAILABLE" as const
+              : "AVAILABLE" as const,
+          isStale: position.isStale || (position.fxRate !== null && position.fxIsStale),
+          unavailableReason: nativePriceUnavailable
+            ? position.unpricedReason ?? "A native-currency price is unavailable."
+            : reportingConversionUnavailable
+              ? `A ${position.instrument.currency.code} market value is available, but conversion to ${Currency.reporting.code} is unavailable.`
+              : null,
+        };
+      }),
+      dataQuality: {
+        status: valuation.value.unpricedPositions.length || valuation.value.unconvertedPositions.length
+          ? "PARTIAL"
+          : valuation.value.stalePositions.length ? "STALE" : "COMPLETE",
+        unpricedPositions: valuation.value.unpricedPositions,
+        stalePositions: valuation.value.stalePositions,
+        unconvertedPositions: valuation.value.unconvertedPositions,
+      },
+      metrics: {
+        investedAmount: money(returns.value.invested, ["ledger.transaction_postings"]),
+        marketValue: valuation.value.totalMarketValue ? money(valuation.value.totalMarketValue, valuationSources) : missingValuation,
+        unrealisedPnl: valuation.value.unrealisedGain ? money(valuation.value.unrealisedGain, valuationSources) : missingValuation,
+        realisedPnl: valuation.value.realisedGain
+          ? money(valuation.value.realisedGain, ["lot_repository.disposals_since_inception"])
+          : unavailable("MONEY", "UNCONVERTED_CURRENCY", "A realised disposal cannot be converted to the reporting currency.", ["lot_repository.disposals_since_inception"]),
+        income: unavailable("MONEY", "INCOME_INPUTS_UNVERIFIED", "The ledger does not yet classify investment income by instrument and portfolio scope.", ["ledger.investment_income_mapping_missing"]),
+        totalInvestmentGain: unavailable("MONEY", "TOTAL_GAIN_REQUIRES_INCOME", "Total investment gain requires verified portfolio-scoped investment income.", [...valuationSources, "lot_repository.disposals_since_inception", "ledger.investment_income_mapping_missing"]),
+        absoluteReturn: returns.value.absoluteReturn
+          ? percent(returns.value.absoluteReturn, returnSources)
+          : unavailable("PERCENTAGE", "INCOMPLETE_VALUATION", "A complete closing valuation and invested capital are required.", returnSources),
+        xirr: returns.value.xirr.ok
+          ? percent(returns.value.xirr.rate.percent, returnSources)
+          : unavailable("PERCENTAGE", "XIRR_UNDEFINED", returns.value.xirr.because, returnSources),
+        twr: unavailable("PERCENTAGE", "TWR_BOUNDARY_VALUATIONS_UNAVAILABLE", "Valuations immediately before and after every external cashflow are not stored.", ["valuation_history.boundaries_missing", "domain.portfolio.trueTwr"]),
+      },
+    });
+  }
+}
 
 export interface ApplyCorporateActionInput {
   userId: UserId;
