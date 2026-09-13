@@ -143,6 +143,75 @@ async function conformance(label: string, bars: BarRepository): Promise<void> {
   );
   const afterRefusal = await bars.findRange(INSTRUMENT, "DAY", DateRange.of(on("2026-01-08"), on("2026-01-08")));
   check(`${label}: and nothing was written`, afterRefusal.length, 0);
+
+  section(`${label}: a split restatement supersedes rather than overwrites (C5)`);
+
+  /*
+   * The C5 path. A newly logged 1:2 split makes the vendor restate every prior
+   * close into post-split terms. `append` cannot express that — the bitemporal
+   * key includes `ingested_at`, so the restated rows would sit *alongside* the
+   * old ones and `findRange` would return a doubled series. `restate` inserts the
+   * new belief and points every live row for the same day at it, in one
+   * transaction, deleting nothing.
+   */
+  const beforeRestatement = await bars.findRange(
+    INSTRUMENT,
+    "DAY",
+    DateRange.of(on("2026-01-05"), on("2026-01-07")),
+  );
+  const restatement = await bars.restate([
+    bar("2026-01-05", { open: "50", high: "52", low: "49.5", close: "51.5" }, { ingestedAt: "2026-03-01T00:00:00Z", providerId: "yahoo-restated" }),
+    bar("2026-01-06", { open: "51.5", high: "54", low: "51.25", close: "53.5" }, { ingestedAt: "2026-03-01T00:00:00Z", providerId: "yahoo-restated" }),
+    bar("2026-01-07", { open: "53.5", high: "53.5", low: "50.5", close: "51" }, { ingestedAt: "2026-03-01T00:00:00Z", providerId: "yahoo-restated" }),
+  ]);
+  check(`${label}: three bars were appended`, restatement.appended, 3);
+  check(
+    `${label}: and every previously-live belief for those days was superseded`,
+    restatement.superseded,
+    beforeRestatement.length,
+  );
+
+  const afterRestatement = await bars.findRange(
+    INSTRUMENT,
+    "DAY",
+    DateRange.of(on("2026-01-05"), on("2026-01-07")),
+  );
+  check(`${label}: the current series is one bar a day, not a doubled one`, afterRestatement.length, 3);
+  check(
+    `${label}: and it is the post-split series`,
+    afterRestatement.map((row) => row.close.toDecimalString()).join(","),
+    "51.5,53.5,51",
+  );
+  check(
+    `${label}: coverage is unchanged by a restatement`,
+    (await bars.coverage(INSTRUMENT, "DAY"))?.count,
+    3,
+  );
+
+  section(`${label}: gaps, because coverage cannot see a hole`);
+
+  /*
+   * 2026-01-05 is a Monday and 2026-01-07 a Wednesday, so the stored series
+   * covers Mon-Wed. Asking about the fortnight shows the rest of that week and
+   * all of the next as holes — which `coverage` reports as "2026-01-05 to
+   * 2026-01-07, 3 rows" and therefore cannot distinguish from complete.
+   */
+  const holes = await bars.gaps(INSTRUMENT, "DAY", DateRange.of(on("2026-01-05"), on("2026-01-16")));
+  check(`${label}: one gap run, from the day after the last bar`, holes.length, 1);
+  check(`${label}: starting the day after the last stored bar`, holes[0].start.toISO(), "2026-01-08");
+  check(`${label}: and running to the end of the window`, holes[0].end.toISO(), "2026-01-16");
+
+  const interior = await bars.gaps(INSTRUMENT, "DAY", DateRange.of(on("2026-01-05"), on("2026-01-07")));
+  check(`${label}: a fully covered window has no gaps`, interior.length, 0);
+
+  const weekendOnly = await bars.gaps(INSTRUMENT, "DAY", DateRange.of(on("2026-01-10"), on("2026-01-11")));
+  check(`${label}: a weekend alone is not a gap`, weekendOnly.length, 0);
+
+  check(
+    `${label}: gaps are a daily-series question, so a MONTH query answers none`,
+    (await bars.gaps(INSTRUMENT, "MONTH", DateRange.of(on("2026-01-01"), on("2026-12-31")))).length,
+    0,
+  );
 }
 
 async function main() {

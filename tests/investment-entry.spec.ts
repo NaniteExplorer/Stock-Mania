@@ -8,8 +8,9 @@ import {
   InstrumentCatalogRepository,
   InstrumentMasterProvider,
 } from "@/domain/instrument-catalog";
+import { CatalogQuoteKeyStubs } from "./doubles";
 import { check, checkTrue, done, section } from "./harness";
-import { catalogPortfolioIdentity } from "../app/(root)/investments/entry-identity";
+import { addableReference, catalogPortfolioIdentity } from "../app/(root)/investments/entry-identity";
 
 const now = new Date("2026-09-06T04:00:00.000Z");
 const tcs: CatalogCandidate = {
@@ -89,17 +90,43 @@ async function main() {
   checkTrue("catalogue identity is hidden only after confirmation", formSource.includes('name="selectionConfirmed"'));
   checkTrue("actual execution price is collected", formSource.includes("Execution price per unit"));
   checkTrue("tax withheld has its own field", formSource.includes('name="taxWithheld"'));
-  checkTrue("submit waits for a confirmed identity", formSource.includes("disabled={pending || !selection || accounts.length === 0}"));
+  checkTrue("submit waits for a confirmed and priceable identity", formSource.includes("disabled={pending || !addable || accounts.length === 0}"));
+  checkTrue("the form reuses the shared priceability predicate", formSource.includes("addableReference(selected)"));
+  checkTrue("manual entry is labelled not live-priced", formSource.includes("not live-priced"));
+
+  section("as-you-type search");
+  checkTrue("search is debounced", searchSource.includes("DEBOUNCE_MS"));
+  checkTrue("out-of-order responses are discarded", searchSource.includes("ticket.current !== mine"));
+  checkTrue("a failed search has a visible error state", searchSource.includes('role="alert"'));
+  checkTrue("the empty result state is distinct from the error state", searchSource.includes("Nothing in the catalogue matches"));
+  checkTrue("every candidate is labelled with its exchange", searchSource.includes("candidate.listing.exchange"));
+  checkTrue("every candidate is labelled with its currency", searchSource.includes("candidate.listing.currency"));
+  checkTrue("an unpriceable candidate is visibly unaddable", searchSource.includes("Not priceable"));
+  checkTrue("confirm is disabled for an unpriceable candidate", searchSource.includes("disabled={!stagedReference?.ok}"));
+  checkTrue("the spinner respects reduced motion", searchSource.includes("motion-safe:animate-spin"));
 
   section("search refresh regression");
   const actionSource = readFileSync("app/(root)/investments/catalog-actions.ts", "utf8");
-  const refreshIndex = actionSource.indexOf("instrumentCatalog.refresh.execute()");
-  const searchIndex = actionSource.indexOf("instrumentCatalog.search.execute({ query, limit: 12 })");
-  checkTrue("production search invokes refresh before local search", refreshIndex >= 0 && refreshIndex < searchIndex);
   const searchActionBody = actionSource.slice(
     actionSource.indexOf("export async function searchInstrumentCatalogAction"),
     actionSource.indexOf("export async function recordInvestmentEntryAction"),
   );
+  /*
+   * This assertion used to read the other way round — refresh *before* search —
+   * and that is exactly what shipped a combobox stuck on "Searching...": the
+   * refresh walks five public masters, a source with no successful fetch on
+   * record is retried every call, and the whole thing was awaited once per
+   * debounce. C10 is the rule it broke: an ingest is never a keystroke
+   * dependency. The cache is read first now, and only a genuinely empty one
+   * blocks, because then there is nothing else to show.
+   */
+  const refreshIndex = searchActionBody.indexOf("refreshCatalogOnce(serviceBag)");
+  const searchIndex = searchActionBody.indexOf("instrumentCatalog.search.execute({ query, limit: 12 })");
+  checkTrue("the cache is read before any refresh is considered", searchIndex >= 0 && searchIndex < refreshIndex);
+  checkTrue("a blocking refresh is reached only on an empty cache", searchActionBody.includes('first.cache.status === "EMPTY"'));
+  checkTrue("a stale cache is refreshed after the response", searchActionBody.includes("after(() => refreshCatalogOnce(serviceBag))"));
+  checkTrue("shown rows have their quote keys probed after the response", searchActionBody.includes("reconcileQuoteKeys.reconcileListings(unchecked)"));
+  checkTrue("an unprobed row is not reported as a refusal", searchSource.includes("Checking price source"));
   checkTrue("production search does not return refresh errors", !searchActionBody.includes("sources") && !searchActionBody.includes("error"));
 
   const cachedRepo = new SearchRefreshRepository([tcs]);
@@ -133,6 +160,11 @@ async function main() {
   const fundIdentity = catalogPortfolioIdentity({
     ...tcs,
     catalogInstrumentId: "22222222-2222-4222-8222-222222222222",
+    priceable: true,
+    quoteChecked: true,
+    quoteKey: null,
+    quoteStale: false,
+    firstTradeDate: null,
     isin: "INF209K01VE6",
     name: "Test Flexi Cap Fund - Direct - Growth",
     instrumentType: "MUTUAL_FUND",
@@ -145,6 +177,11 @@ async function main() {
   const usIdentity = catalogPortfolioIdentity({
     ...tcs,
     catalogInstrumentId: "33333333-3333-4333-8333-333333333333",
+    priceable: true,
+    quoteChecked: true,
+    quoteKey: "AAPL",
+    quoteStale: false,
+    firstTradeDate: "1980-12-12",
     isin: null,
     name: "Apple Inc.",
     listing: { ...tcs.listing, id: "listing-aapl", exchange: "NASDAQ", segment: "US_EQUITY", symbol: "AAPL", currency: "USD" },
@@ -152,6 +189,64 @@ async function main() {
   });
   check("US ticker remains the market quote reference", usIdentity.quoteRef, "AAPL");
   check("US catalogue rows retain USD", usIdentity.currency, "USD");
+  checkTrue("a resolved catalogue identity is live-priced", usIdentity.livePriced);
+
+  section("the priceability gate is server-side");
+  const resolved = catalogPortfolioIdentity({
+    ...tcs,
+    catalogInstrumentId: "44444444-4444-4444-8444-444444444444",
+    priceable: true,
+    quoteChecked: true,
+    quoteKey: "TCS.NS",
+    quoteStale: false,
+    firstTradeDate: "2004-08-25",
+  });
+  check("the engine-resolved quote key is stored, not the uppercased symbol", resolved.quoteRef, "TCS.NS");
+
+  const unresolved = addableReference({
+    ...tcs,
+    catalogInstrumentId: "55555555-5555-4555-8555-555555555555",
+    priceable: false,
+    quoteChecked: true,
+    quoteKey: null,
+    quoteStale: false,
+    firstTradeDate: null,
+  });
+  checkTrue("a listing with no accepted quote key is refused", !unresolved.ok);
+
+  const dead = addableReference({
+    ...tcs,
+    catalogInstrumentId: "66666666-6666-4666-8666-666666666666",
+    priceable: false,
+    quoteChecked: true,
+    quoteKey: "TATAMOTORS.NS",
+    quoteStale: true,
+    firstTradeDate: "2004-08-25",
+  });
+  checkTrue("a stale quote key cannot start a new holding", !dead.ok);
+
+  let refusedServerSide = false;
+  try {
+    catalogPortfolioIdentity({
+      ...tcs,
+      catalogInstrumentId: "77777777-7777-4777-8777-777777777777",
+      priceable: false,
+      quoteChecked: true,
+      quoteKey: null,
+      quoteStale: false,
+      firstTradeDate: null,
+    });
+  } catch {
+    refusedServerSide = true;
+  }
+  checkTrue("resolveIdentity's mapper throws rather than fabricating a key", refusedServerSide);
+
+  const catalogActionSource = readFileSync("app/(root)/investments/catalog-actions.ts", "utf8");
+  checkTrue(
+    "manual mode stores no fabricated quote key",
+    !catalogActionSource.includes("quoteRef: input.symbol.toUpperCase()"),
+  );
+  checkTrue("manual mode is flagged as not live-priced", catalogActionSource.includes("livePriced: false"));
 
   done();
 }
@@ -203,10 +298,12 @@ function formatMinor(value: bigint): string {
   return `${sign}${abs / 100n}.${(abs % 100n).toString().padStart(2, "0")}`;
 }
 
-class SearchRefreshRepository implements InstrumentCatalogRepository {
+class SearchRefreshRepository extends CatalogQuoteKeyStubs implements InstrumentCatalogRepository {
   failureRecorded = false;
 
-  constructor(private readonly rows: readonly CatalogCandidate[]) {}
+  constructor(private readonly rows: readonly CatalogCandidate[]) {
+    super();
+  }
 
   async latestSuccessfulFetch() {
     return this.rows.length > 0

@@ -245,6 +245,17 @@ async function main() {
   check("750 units after", applied.ok && applied.value.quantityAfter.toDecimalString(), "750");
   check("no cash moved", applied.ok && applied.value.cashMoved.toDecimalString(), "0.00");
 
+  /* The ratio has to survive the write, or `normaliseTrade` is blind to it: a
+     chart series arrives already restated into post-split terms, so a trade
+     booked before the ex-date can only be put in current-share terms if the
+     factor is still on the record. This was persisted as "" once, which made the
+     whole normalisation path unreachable. */
+  const storedSplits = await actionRepo.listFor(infy);
+  const storedSplit = storedSplits.find((action) => action.kind === "SPLIT");
+  check("the split is on the record", storedSplit !== undefined, true);
+  check("with its from side", storedSplit?.terms.ratioFrom, "1");
+  check("and its to side", storedSplit?.terms.ratioTo, "5");
+
   const afterSplit = await lotRepo.openLots(userId, infy);
   check("still two lots", afterSplit.length, 2);
   check("500 units in the first", afterSplit[0].remaining.toDecimalString(), "500");

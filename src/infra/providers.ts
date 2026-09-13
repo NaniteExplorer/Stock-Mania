@@ -19,6 +19,8 @@
  * suite that fails for reasons that have nothing to do with the change under test.
  */
 
+import { gunzipSync } from "node:zlib";
+
 import type {
   BenchmarkSeriesFeed,
   BenchmarkSeriesKey,
@@ -60,6 +62,25 @@ export interface HttpResponse {
  */
 export interface HttpClient {
   get(url: string, init?: { headers?: Record<string, string>; timeoutMs?: number }): Promise<HttpResponse>;
+
+  /**
+   * A GET whose body is bytes, decompressed if the *payload itself* is compressed.
+   *
+   * This exists because of a measured defect, not for symmetry. Upstox's public
+   * master is served as `NSE.json.gz` with `content-type: application/gzip` and
+   * **no** `content-encoding` header, so `fetch` does not decompress it and
+   * `response.text()` returns 1.9 MB of mangled binary. `JSON.parse` then throws,
+   * the provider's catch reports "UPSTOX_PUBLIC is unavailable", and the catalogue
+   * silently never ingests — which is exactly what was happening, and is why the
+   * BSE master (D-6, 2 510 unfindable BSE-only ISINs) could not be added.
+   *
+   * Optional so the fixture clients in `tests/doubles.ts` stay three lines; a
+   * caller that needs it checks for it and says what it needs it for.
+   */
+  getDecoded?(
+    url: string,
+    init?: { headers?: Record<string, string>; timeoutMs?: number },
+  ): Promise<HttpResponse>;
 }
 
 /** The real one. `AbortController` gives the timeout its teeth. */
@@ -89,6 +110,48 @@ export class FetchHttpClient implements HttpClient {
         headers[key] = value;
       });
       return { status: response.status, body: await response.text(), headers };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * The same request, but the body is read as bytes and gunzipped if it *is* gzip.
+   *
+   * The test is the two magic bytes rather than the `content-type`, because the
+   * header is what cannot be trusted: a `.json.gz` behind a CDN has been observed
+   * as `application/gzip`, `application/octet-stream` and `application/json`, and
+   * only one of those is honest. `1f 8b` is the gzip member header and nothing
+   * else starts with it.
+   *
+   * The **headers are identical to `get`**, deliberately: C13 — the browser-shaped
+   * User-Agent is load-bearing, and a second client with a different one is how a
+   * cold 429 gets reintroduced.
+   */
+  async getDecoded(
+    url: string,
+    init?: { headers?: Record<string, string>; timeoutMs?: number },
+  ): Promise<HttpResponse> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), init?.timeoutMs ?? this.defaultTimeoutMs);
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "user-agent": "Mozilla/5.0 (compatible; StockMania/1.0)",
+          accept: "application/json,text/plain,*/*",
+          ...init?.headers,
+        },
+        signal: controller.signal,
+      });
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+
+      const bytes = Buffer.from(await response.arrayBuffer());
+      const gzipped = bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+      const body = gzipped ? gunzipSync(bytes).toString("utf8") : bytes.toString("utf8");
+      return { status: response.status, body, headers };
     } finally {
       clearTimeout(timer);
     }
@@ -1377,7 +1440,17 @@ export function shippedQuoteProviders(
   runtime: ProviderRuntime,
   manual: ReadonlyMap<string, readonly { asOf: CalendarDate; price: UnitPrice }[]> = new Map(),
   options?: ProviderOptions,
-  credentials: { finnhubToken?: string; zerodhaAuthorization?: string } = {},
+  credentials: {
+    finnhubToken?: string;
+    zerodhaAuthorization?: string;
+    /**
+     * Opt-in for a **paid** feed. C1 forbids one by default, and holding a
+     * credential is not the same as choosing to spend it: Zerodha's market-data
+     * entitlement is a monthly subscription, and a key left in `.env` from an
+     * experiment would otherwise silently become the primary quote source.
+     */
+    allowPaidQuoteProviders?: boolean;
+  } = {},
 ): readonly QuoteProviderPort[] {
   const providers: QuoteProviderPort[] = [
     // The user's own assertion outranks every feed: for an unpriceable asset it is
@@ -1387,11 +1460,21 @@ export function shippedQuoteProviders(
   if (credentials.finnhubToken) {
     providers.push(new FinnhubQuoteProvider(runtime, credentials.finnhubToken, options));
   }
-  if (credentials.zerodhaAuthorization) {
+  // D-4: gated out of the default chain. Still constructible, still tested, but
+  // it takes an explicit `allowPaidQuoteProviders` to reach a request.
+  if (credentials.zerodhaAuthorization && credentials.allowPaidQuoteProviders) {
     providers.push(new ZerodhaQuoteProvider(runtime, credentials.zerodhaAuthorization, options));
   }
   providers.push(
-    new NseQuoteProvider(runtime, options),
+    /*
+     * `NseQuoteProvider` is gone from the chain — D-3, confirmed.
+     * `nseindia.com/api/*` returns 403 to everything that is not a browser session
+     * with a cookie handshake, and has done across roughly 900 probes. Keeping a
+     * dead provider in a failover chain is worse than not having it: every quote
+     * pays its timeout and its breaker trips on healthy days. The class stays in
+     * this file so `providers-conformance.spec.ts` still exercises it and so the
+     * day NSE opens the endpoint is a one-line re-add.
+     */
     new MfApiNavProvider(runtime, options),
     new AmfiNavProvider(runtime, options),
     new IbjaMetalProvider(runtime, options),
@@ -1401,8 +1484,28 @@ export function shippedQuoteProviders(
   return providers;
 }
 
-export function shippedFxProviders(runtime: ProviderRuntime): readonly FxProviderPort[] {
-  return [new EcbFxProvider(runtime)];
+/**
+ * The FX chain, in priority order.
+ *
+ * Frankfurter is the primary (D-5): it serves the ECB daily reference series back
+ * to 2000-01-13 — 6 824 points measured for USD/INR — where `EcbFxProvider` reads
+ * the `eurofxref-hist-90d.xml` file, which is **ninety days, EUR-based only**. A
+ * ninety-day window cannot value a holding bought in 2019, and deriving
+ * USD/INR through EUR adds a second rounding to every rate.
+ *
+ * ECB stays as the last line rather than being deleted, and that is deliberate:
+ * it is the same *kind* of number (an ECB daily reference fixing), so falling back
+ * to it does not violate the chain's refusal to mix rate kinds — it is the only
+ * safe last resort in the set.
+ *
+ * `primaries` is how the market-data engine's keyless FX adapters are injected
+ * without this file importing the engine; the container passes them in.
+ */
+export function shippedFxProviders(
+  runtime: ProviderRuntime,
+  primaries: readonly FxProviderPort[] = [],
+): readonly FxProviderPort[] {
+  return [...primaries, new EcbFxProvider(runtime)];
 }
 
 /**

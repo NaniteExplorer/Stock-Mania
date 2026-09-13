@@ -3,6 +3,7 @@ import { Currency } from "@/core/money";
 import { ViewLiveDataCenter } from "@/app/live-data.usecases";
 import type { InstrumentCatalogRepository } from "@/domain/instrument-catalog";
 import type { InstrumentRepository, MarketInstrument } from "@/domain/instruments";
+import { CatalogQuoteKeyStubs } from "./doubles";
 import { check, checkTrue, done, section } from "./harness";
 
 const now = new Date("2026-09-06T04:00:00.000Z");
@@ -33,7 +34,7 @@ class InstrumentFixture implements InstrumentRepository {
   async softDelete() {}
 }
 
-class CatalogFixture implements InstrumentCatalogRepository {
+class CatalogFixture extends CatalogQuoteKeyStubs implements InstrumentCatalogRepository {
   async latestSuccessfulFetch(source?: string) {
     return source === "AMFI_NAV"
       ? { source, fetchedAt: now, checksum: "a".repeat(64), rowCount: 1 }

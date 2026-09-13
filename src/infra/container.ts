@@ -110,7 +110,13 @@ import {
   DeleteGoldLease,
 } from "@/app/leasing.usecases";
 import { FxBook, PriceBook } from "@/domain/pricing";
-import { RefreshPrices } from "@/app/pricing.usecases";
+import { BackfillInstrumentHistory, IngestInstrumentBars, RefreshPrices } from "@/app/pricing.usecases";
+import {
+  EngineFxProvider,
+  EngineHistoryFeed,
+  YahooQuoteKeyProber,
+  buildMarketDataEngine,
+} from "@/infra/market-data";
 import {
   FetchHttpClient,
   ProviderBenchmarkFeed,
@@ -127,7 +133,10 @@ import {
 import { ViewLiveDataCenter } from "@/app/live-data.usecases";
 import {
   AmfiMutualFundMaster,
+  InstrumentQuoteKeyReconciler,
+  MoneycontrolScIdHarvester,
   SecCompanyTickerMaster,
+  UpstoxBsePublicInstrumentMaster,
   UpstoxPublicInstrumentMaster,
   ZerodhaInstrumentCsvMapping,
 } from "@/infra/instrument-catalog";
@@ -198,10 +207,37 @@ export const services = cache(() => {
     shippedQuoteProviders(providerRuntime, new Map(), undefined, {
       finnhubToken: marketDataConfig.finnhubToken,
       zerodhaAuthorization,
+      // D-4: a paid feed is opt-in, not "we happen to have a key".
+      allowPaidQuoteProviders: marketDataConfig.allowPaidQuoteProviders,
     }),
     quotes,
   );
-  const fxBook = new FxBook(shippedFxProviders(providerRuntime), fxRates, clock);
+
+  /*
+   * The market-data engine.
+   *
+   * Built once per request beside the price ladder, not instead of it: the ladder
+   * still answers "what is this holding worth", and the engine answers the three
+   * questions it never could — a full daily series for a chart, an FX rate that
+   * says which date and which *kind* of rate it is, and whether a quote key
+   * resolves at all.
+   */
+  const marketData = buildMarketDataEngine(providerRuntime);
+
+  /*
+   * Frankfurter first, then Exchangerate.dev and currency-api through the engine's
+   * own chain, and `EcbFxProvider` last (D-5). The ECB file is ninety days and
+   * EUR-only, which cannot value a 2019 purchase; it is kept as the final line
+   * because it is the same *kind* of number as Frankfurter's, so falling back to
+   * it never violates the no-mixed-rate-kinds rule.
+   */
+  const fxBook = new FxBook(
+    shippedFxProviders(providerRuntime, [
+      new EngineFxProvider(marketData.chain, marketData.registry, () => clock.now().getTime()),
+    ]),
+    fxRates,
+    clock,
+  );
   const balances = new DrizzleBalanceQuery(db, Currency.reporting, fxBook);
   const prices = {
     async priceOn(
@@ -347,7 +383,39 @@ export const services = cache(() => {
     },
     pricing: {
       refresh: new RefreshPrices(priceBook, clock),
+      /*
+       * Written in Phase 8 and never constructed until now. Without it every
+       * return figure silently starts at signup: a holding owned since 2019 would
+       * report an XIRR computed from the day the app was installed, which is not
+       * a smaller answer but a wrong one.
+       */
+      backfill: new BackfillInstrumentHistory(priceBook, quotes, clock),
+      /*
+       * The other half of a backfill, and a different table: `backfill` fills
+       * `price_quotes` (the number a holding is valued at) through the price
+       * ladder, this fills `price_bars` (the OHLC series a chart is drawn from)
+       * through the engine's history chain. Each resumes from its own coverage.
+       */
+      ingestBars: new IngestInstrumentBars(new EngineHistoryFeed(marketData.chain), bars, clock),
       fx: fxBook,
+    },
+    marketData: {
+      registry: marketData.registry,
+      chain: marketData.chain,
+      /** The documented fallback chain, rendered, for the operations surface. */
+      describeChains: () => marketData.registry.describe(),
+      /**
+       * The priceability gate's offline sweep (C10). Resolves a first quote key,
+       * re-confirms an existing one, and marks a dead one `quoteStale` without
+       * ever deleting a row (C6). Never called under a user's cursor.
+       */
+      reconcileQuoteKeys: new InstrumentQuoteKeyReconciler(
+        instrumentCatalog,
+        new YahooQuoteKeyProber(marketData.yahoo),
+        () => clock.now(),
+      ),
+      /** Offline `sc_id` harvesting for the Moneycontrol quote failover (C11). */
+      moneycontrolScIds: new MoneycontrolScIdHarvester(http),
     },
     instrumentCatalog: {
       search: new SearchInstrumentCatalog(instrumentCatalog, clock),
@@ -355,6 +423,10 @@ export const services = cache(() => {
         instrumentCatalog,
         new UpstoxPublicInstrumentMaster(http, () => clock.now()),
         [
+          // D-6: the BSE master, which was missing entirely. BSE-only scrips are
+          // a full tier at 96% priceable, and 2 510 ISINs were unfindable without
+          // it. Its row filter is on the BSE *group code*, never on "EQ" (C9).
+          new UpstoxBsePublicInstrumentMaster(http, () => clock.now()),
           new AmfiMutualFundMaster(http, () => clock.now()),
           new SecCompanyTickerMaster(http, () => clock.now()),
           ...(zerodhaCatalog ? [zerodhaCatalog] : []),

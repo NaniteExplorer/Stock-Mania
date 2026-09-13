@@ -96,6 +96,15 @@ export const config = {
     zerodhaAccessToken: read("ZERODHA_ACCESS_TOKEN"),
     /** Shared secret used by the scheduled market refresh endpoint. */
     cronSecret: read("CRON_SECRET"),
+    /**
+     * Opt-in for a paid quote feed.
+     *
+     * Free and keyless is the standing rule, and holding a credential is not the
+     * same as choosing to spend it: a Zerodha key left over from an experiment
+     * would otherwise silently become the primary quote source and start billing.
+     * Must be exactly "true".
+     */
+    allowPaidQuoteProviders: read("ALLOW_PAID_QUOTE_PROVIDERS") === "true",
   }),
 
   /**

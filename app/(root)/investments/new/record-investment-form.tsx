@@ -8,6 +8,7 @@ import { kindLabel } from "@/domain/asset-groups";
 import { Field } from "@/ui/primitives";
 import { PlatformSelect, type PlatformOption } from "../platform-select";
 import { recordInvestmentEntryAction, type InvestmentEntryActionState } from "../catalog-actions";
+import { addableReference } from "../entry-identity";
 import InstrumentSearch, { type ConfirmedInstrument } from "./instrument-search";
 
 export interface AccountOption {
@@ -68,6 +69,13 @@ export default function RecordInvestmentForm({
   const selected = selection?.candidate ?? null;
   const identityMode = selection?.mode ?? "MANUAL";
   const selectedKind = selected ? CATALOG_KIND[selected.instrumentType] : manualKind;
+  /*
+   * The same predicate the combobox greys a row with and the server action
+   * refuses on. Disabling submit is a courtesy, not the gate — `resolveIdentity`
+   * throws on an unpriceable listing however the POST arrives.
+   */
+  const reference = selected ? addableReference(selected) : null;
+  const addable = selection !== null && (reference === null || reference.ok);
   const currency = selected?.listing.currency === "USD" ? "USD" : selected?.listing.currency === "INR" ? "INR" : manualCurrency;
   const preview = cashPreviewFromStrings({ side, quantity, unitPrice, brokerage, exchangeFees, statutoryCharges, taxWithheld, currency });
 
@@ -93,9 +101,22 @@ export default function RecordInvestmentForm({
               <div><dt className="text-gray-500">Currency</dt><dd className="text-gray-200">{selected.listing.currency}</dd></div>
               <div><dt className="text-gray-500">Provider</dt><dd className="text-gray-200">{preferredProvider(selected.providerMappings)}</dd></div>
             </dl>
+            {reference?.ok ? (
+              <p className="mt-3 text-xs text-gray-500">
+                Quote key <span className="tnum text-gray-300">{reference.quoteRef}</span>
+                {selected.firstTradeDate ? ` · priced from ${selected.firstTradeDate}` : ""}
+              </p>
+            ) : (
+              <p className="mt-3 text-xs text-amber-400" role="alert">{reference?.reason}</p>
+            )}
           </div>
         ) : selection?.mode === "MANUAL" ? (
-          <div className="grid gap-4 md:grid-cols-3">
+          <div className="space-y-4">
+            <p className="rounded-lg border border-amber-500/30 bg-amber-500/[0.05] p-3 text-xs text-amber-300">
+              Manual entry is not live-priced. No quote key is stored for it, so its value stays whatever you record —
+              use it for holdings the catalogue genuinely cannot identify.
+            </p>
+            <div className="grid gap-4 md:grid-cols-3">
             <Field name="symbol" label="Symbol" required error={errors.symbol?.[0]}>
               {(props) => <input {...props} name="symbol" className="form-input" maxLength={40} required />}
             </Field>
@@ -123,6 +144,7 @@ export default function RecordInvestmentForm({
                 </select>
               )}
             </Field>
+            </div>
           </div>
         ) : (
           <p className="rounded-lg border border-gray-600/70 p-3 text-sm text-gray-500">
@@ -216,7 +238,7 @@ export default function RecordInvestmentForm({
         </div>
 
         <div className="md:col-span-4 flex flex-wrap items-center gap-3">
-          <button type="submit" className="btn-glow" disabled={pending || !selection || accounts.length === 0}>
+          <button type="submit" className="btn-glow" disabled={pending || !addable || accounts.length === 0}>
             {pending ? "Recording..." : "Record investment"}
           </button>
           {state && (

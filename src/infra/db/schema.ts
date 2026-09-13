@@ -749,6 +749,32 @@ export const instrumentCatalogListings = sqliteTable(
     }).notNull(),
     currency: text("currency", { length: 3 }).notNull().default("INR"),
     active: integer("active", { mode: "boolean" }).notNull().default(true),
+    /*
+     * The priceability gate (C10).
+     *
+     * `quote_key` is the exact string a history adapter *accepted* — `RELIANCE.NS`,
+     * `BRK-B` — written only after a probe came back with at least one bar, a
+     * matching currency and an EQUITY/ETF type. Null means "never resolved", which
+     * is a different and much more useful state than an uppercased guess: a row
+     * with no quote key is a row that cannot be added, and the reason is visible
+     * rather than inferred from a later blank chart.
+     */
+    quoteKey: text("quote_key"),
+    /** Which adapter accepted it — the registry's per-instrument vendor pin. */
+    quoteProvider: text("quote_provider"),
+    /** When the key was last confirmed to still resolve. Drives re-validation (C6). */
+    quoteValidatedAt: timestamp("quote_validated_at"),
+    /**
+     * True when a previously-good key stopped resolving (`TATAMOTORS.NS` 404s
+     * after the demerger). The row is **never deleted**: the holding stays valued
+     * at its last known close behind a visible badge, and a retro-delete would
+     * silently rewrite history that was correct when it was recorded.
+     */
+    quoteStale: integer("quote_stale", { mode: "boolean" }).notNull().default(false),
+    /** The source's own inception date, recorded at the moment the key resolved. */
+    firstTradeDate: calendarDate("first_trade_date"),
+    /** Moneycontrol's `sc_id` (`RI` for Reliance), for its keyless `pricefeed` quote. */
+    moneycontrolScId: text("moneycontrol_sc_id"),
     source: text("source").notNull(),
     fetchedAt: timestamp("fetched_at").notNull(),
     checksum: text("checksum").notNull(),
@@ -760,6 +786,9 @@ export const instrumentCatalogListings = sqliteTable(
     uniqueIndex("instrument_catalog_listing_uq").on(table.exchange, table.segment, table.normalizedSymbol),
     index("instrument_catalog_listing_search_idx").on(table.normalizedSymbol, table.normalizedName),
     index("instrument_catalog_listing_instrument_idx").on(table.catalogInstrumentId),
+    index("instrument_catalog_listing_quote_key_idx").on(table.quoteKey, table.quoteStale),
+    // The re-validation sweep's query: oldest-confirmed active rows first.
+    index("instrument_catalog_listing_quote_age_idx").on(table.active, table.quoteValidatedAt),
   ],
 );
 

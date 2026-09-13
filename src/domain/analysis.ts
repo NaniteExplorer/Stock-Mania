@@ -123,6 +123,72 @@ export interface BarRepository {
 
   /** Marks a bar corrected by a later one, keeping both. */
   supersede(supersededBarId: string, bySupersedingBarId: string): Promise<void>;
+
+  /**
+   * Replaces a stretch of history without destroying what was believed before.
+   *
+   * This is the C5 path. A newly logged split makes a vendor restate **every**
+   * prior bar into post-split terms, so the stored series is not merely extended,
+   * it is contradicted. `append` cannot express that: the bitemporal unique key
+   * includes `ingested_at`, so a restatement would simply sit alongside the old
+   * row and `findRange` would return both, doubling the series.
+   *
+   * So a restatement is one transaction: the new bars are inserted, and every
+   * currently-live bar for the same instrument, granularity and date is pointed at
+   * its replacement. Nothing is deleted — "what did the chart show last March"
+   * stays answerable, which is the entire reason the table has two time axes.
+   */
+  restate(bars: readonly Bar[]): Promise<{ appended: number; superseded: number }>;
+
+  /**
+   * The weekday stretches inside `range` that have no live bar.
+   *
+   * A chart needs this and `coverage` cannot give it: coverage is the outer
+   * bounds, so a series missing all of 2019 looks complete. Weekdays rather than
+   * trading days on purpose — a holiday is indistinguishable from a hole without a
+   * per-exchange calendar, and reporting a handful of holidays as gaps is a
+   * harmless over-report, whereas silently treating a real hole as a holiday is
+   * a chart that lies.
+   */
+  gaps(
+    instrumentId: string,
+    granularity: BarGranularity,
+    range: DateRange,
+  ): Promise<readonly DateRange[]>;
+}
+
+/**
+ * The weekday runs in `range` that are not in `present`, as closed ranges.
+ *
+ * Shared by both repository implementations rather than written twice: the double
+ * and the store must answer this identically or the conformance suite is proving
+ * nothing. Only meaningful for `DAY`; a weekly or monthly series has its own
+ * spacing, so callers get an empty list rather than a wrong one.
+ */
+export function weekdayGaps(
+  range: DateRange,
+  present: ReadonlySet<string>,
+  granularity: BarGranularity = "DAY",
+): readonly DateRange[] {
+  if (granularity !== "DAY") return [];
+  const gaps: DateRange[] = [];
+  let runStart: CalendarDate | null = null;
+  let runEnd: CalendarDate | null = null;
+
+  for (let day = range.start; day.isOnOrBefore(range.end); day = day.plusDays(1)) {
+    const weekday = day.toUtcInstant().getUTCDay();
+    if (weekday === 0 || weekday === 6) continue;
+    if (present.has(day.toISO())) {
+      if (runStart && runEnd) gaps.push(DateRange.of(runStart, runEnd));
+      runStart = null;
+      runEnd = null;
+      continue;
+    }
+    if (!runStart) runStart = day;
+    runEnd = day;
+  }
+  if (runStart && runEnd) gaps.push(DateRange.of(runStart, runEnd));
+  return gaps;
 }
 
 /* ═══ Indicators ══════════════════════════════════════════════════════ */

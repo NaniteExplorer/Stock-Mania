@@ -31,8 +31,9 @@ import type {
   QuoteType,
   StoredFxRate,
 } from "@/domain/pricing";
+import type { CatalogQuoteKeyState, QuoteKeyCandidateListing } from "@/domain/instrument-catalog";
 import type { Bar, BarGranularity, BarRepository } from "@/domain/analysis";
-import { makeBar } from "@/domain/analysis";
+import { makeBar, weekdayGaps } from "@/domain/analysis";
 import { mulberry32 } from "./harness";
 
 /* ═══ Virtual runtime ═════════════════════════════════════════════════ */
@@ -336,6 +337,47 @@ export class InMemoryBarRepository implements BarRepository {
     const index = this.rows.findIndex((row) => row.id === supersededBarId);
     if (index >= 0) this.rows[index] = { ...this.rows[index], supersededBy: bySupersedingBarId };
   }
+
+  async restate(bars: readonly Bar[]): Promise<{ appended: number; superseded: number }> {
+    let superseded = 0;
+    for (const bar of bars) {
+      const checked = makeBar(bar);
+      const id = `b${this.nextId++}`;
+      for (let index = 0; index < this.rows.length; index += 1) {
+        const row = this.rows[index];
+        if (
+          row.instrumentId === checked.instrumentId &&
+          row.granularity === checked.granularity &&
+          row.asOf.toISO() === checked.asOf.toISO() &&
+          !row.supersededBy
+        ) {
+          this.rows[index] = { ...row, supersededBy: id };
+          superseded += 1;
+        }
+      }
+      this.rows.push({ ...checked, id });
+    }
+    return { appended: bars.length, superseded };
+  }
+
+  async gaps(
+    instrumentId: string,
+    granularity: BarGranularity,
+    range: DateRange,
+  ): Promise<readonly DateRange[]> {
+    const present = new Set(
+      this.rows
+        .filter(
+          (row) =>
+            row.instrumentId === instrumentId &&
+            row.granularity === granularity &&
+            !row.supersededBy &&
+            range.contains(row.asOf),
+        )
+        .map((row) => row.asOf.toISO()),
+    );
+    return weekdayGaps(range, present, granularity);
+  }
 }
 
 export class InMemoryFxRateRepository implements FxRateRepository {
@@ -384,3 +426,61 @@ export const price = (value: string, currency = Money.fromRupees("0").currency) 
 export const on = (value: string) => CalendarDate.parse(value);
 export const range = (from: string, to: string) => DateRange.of(on(from), on(to));
 export const units = (value: string) => Quantity.fromString(value);
+
+/* ═══ Catalogue quote-key gate ═════════════════════════════════════════ */
+
+/**
+ * The quote-key half of `InstrumentCatalogRepository`, stubbed.
+ *
+ * The gate added six methods to the port, and four existing fixtures care about
+ * none of them — they are testing search and refresh, not priceability. Extending
+ * this keeps each fixture about its own subject while still making it a complete
+ * implementation of the interface, which is the property that stops a fixture
+ * drifting away from the port it stands in for.
+ *
+ * Every stub records what it was asked, so a spec that *does* care can assert on
+ * it without writing a fifth fixture.
+ */
+export class CatalogQuoteKeyStubs {
+  readonly recordedQuoteKeys: unknown[] = [];
+  readonly staleMarks: { listingId: string; reason: string }[] = [];
+  readonly touches: string[] = [];
+  readonly scIds = new Map<string, string>();
+
+  async listingsDueQuoteKeyCheck(
+    _limit: number,
+    _asAt: Date,
+  ): Promise<readonly (QuoteKeyCandidateListing & CatalogQuoteKeyState)[]> {
+    return [];
+  }
+
+  /** Defaults to the due-set, so a fixture that overrides one gets both. */
+  async listingsForQuoteKeyProbe(
+    listingIds: readonly string[],
+    asAt: Date,
+  ): Promise<readonly (QuoteKeyCandidateListing & CatalogQuoteKeyState)[]> {
+    const due = await this.listingsDueQuoteKeyCheck(listingIds.length || 1, asAt);
+    return due.filter((row) => listingIds.includes(row.listingId));
+  }
+
+  async recordQuoteKey(resolution: unknown): Promise<void> {
+    this.recordedQuoteKeys.push(resolution);
+  }
+
+  async markQuoteStale(listingId: string, _at: Date, reason: string): Promise<void> {
+    this.staleMarks.push({ listingId, reason });
+  }
+
+  async touchQuoteKey(listingId: string, _at?: Date): Promise<void> {
+    this.touches.push(listingId);
+  }
+
+  async recordMoneycontrolScIds(rows: readonly { listingId: string; scId: string }[]): Promise<number> {
+    for (const row of rows) this.scIds.set(row.listingId, row.scId);
+    return rows.length;
+  }
+
+  async moneycontrolScIdMap(): Promise<ReadonlyMap<string, string>> {
+    return this.scIds;
+  }
+}

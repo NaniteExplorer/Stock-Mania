@@ -38,6 +38,7 @@ import {
   strategyFor,
 } from "@/domain/lots";
 import {
+  Bonus,
   CorporateAction,
   CorporateActionRepository,
   applyAction,
@@ -1190,6 +1191,24 @@ export class ApplyCorporateAction
       instrument.currency,
     );
 
+    // The rescale ratio is what makes a logged split reversible later: a chart
+    // series arrives already restated into post-split terms, so a trade booked
+    // before the ex-date can only be expressed in current-share terms if the
+    // factor survives here. Persisting "" discarded it, which left
+    // `normaliseTrade` unable to see any split the owner had logged.
+    // A bonus enlarges the share count without a RESCALE effect — it opens new
+    // nil-cost lots instead — but a price series is restated for it exactly as
+    // it is for a split. Expressed as a share-count ratio it is held:(held+received),
+    // which is the same shape the normaliser wants, so it is recorded that way.
+    const rescaleRatio =
+      input.action.lotEffects().find((effect) => effect.kind === "RESCALE")?.ratio ??
+      (input.action instanceof Bonus
+        ? {
+            from: input.action.ratio.held,
+            to: input.action.ratio.held.plus(input.action.ratio.received),
+          }
+        : undefined);
+
     await this.actions.save({
       id: newUuid(),
       kind: input.action.kind,
@@ -1198,8 +1217,8 @@ export class ApplyCorporateAction
       recordDate: input.action.context.recordDate ?? null,
       terms: {
         source: input.action.context.source ?? "MANUAL",
-        ratioFrom: "",
-        ratioTo: "",
+        ratioFrom: rescaleRatio ? rescaleRatio.from.toDecimalString() : "",
+        ratioTo: rescaleRatio ? rescaleRatio.to.toDecimalString() : "",
         cash: cashMoved.isZero ? "" : cashMoved.abs().toDecimalString(),
         targetInstrumentId: "",
       },

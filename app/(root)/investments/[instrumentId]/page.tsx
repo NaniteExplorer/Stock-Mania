@@ -3,9 +3,18 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Money } from "@/core/money";
-import { Percentage, Quantity } from "@/core/numeric";
+import { Percentage, Quantity, UnitPrice } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
+import { DateRange } from "@/core/time";
 import { InstrumentId } from "@/domain/instruments";
+import type { StoredCorporateAction } from "@/domain/corporate";
+import {
+  cumulativeSplitFactorAfter,
+  isIdentity,
+  loggedSplit,
+  normaliseTrade,
+  type LoggedSplit,
+} from "@/domain/split-normalisation";
 import { LotBook } from "@/domain/lots";
 import { CashAsset } from "@/domain/assets";
 import { Card, MoneyText, PageHeader, Pill, Stat } from "@/ui/primitives";
@@ -26,6 +35,8 @@ import GoldLotLadder from "./gold-lot-ladder";
 import GoldBenchmarkTable from "./gold-benchmark-table";
 import GoldTaxStatement from "./gold-tax-statement";
 import HoldingNav, { normalizeHoldingView, type HoldingViewSearchParams } from "./holding-nav";
+import PriceHistoryChart, { type PriceHistoryGap, type PriceHistoryPoint } from "./price-history-chart";
+import ReturnsPanel, { type HoldingReturns } from "./returns-panel";
 
 export const metadata: Metadata = { title: "Holding" };
 
@@ -38,6 +49,37 @@ const formatSyncedAt = (date: Date): string =>
 
 const formatQuantityPercent = (value: Quantity): string =>
   `${value.toApproximateNumber().toFixed(2)}%`;
+
+/**
+ * The owner's own logged splits, in the shape `split-normalisation.ts` wants.
+ *
+ * C2: a provider-observed split is never one of these. Only what the user
+ * recorded as a corporate action counts, because only that has already moved his
+ * lots.
+ *
+ * Bonuses count too: they enlarge the share count without a RESCALE effect, but a
+ * price series is restated for them exactly as it is for a split, so omitting them
+ * reproduces the same C3 error.
+ *
+ * A row missing either ratio side is skipped rather than guessed — inventing a 2:1
+ * because most splits are 2:1 is exactly the class of silent wrongness C3 is about.
+ * `ApplyCorporateAction` now persists both sides, but actions logged *before* that
+ * fix stored empty strings and stay skipped until re-logged: visibly absent, never
+ * quietly wrong.
+ */
+function loggedSplitsFrom(actions: readonly StoredCorporateAction[]): readonly LoggedSplit[] {
+  const splits: LoggedSplit[] = [];
+  for (const action of actions) {
+    if (action.kind !== "SPLIT" && action.kind !== "REVERSE_SPLIT" && action.kind !== "BONUS") continue;
+    const from = action.terms.ratioFrom?.trim();
+    const to = action.terms.ratioTo?.trim();
+    if (!from || !to) continue;
+    splits.push(
+      loggedSplit(action.exDate.toISO(), Quantity.fromString(from).scaled, Quantity.fromString(to).scaled),
+    );
+  }
+  return splits;
+}
 
 function GramBar({
   label,
@@ -97,7 +139,7 @@ export default async function Page({
   const today = CalendarDate.parse(new Date().toISOString().slice(0, 10));
   const id = InstrumentId.from(instrumentId);
 
-  const { investing, repositories, leasing } = services();
+  const { investing, repositories, leasing, instrumentCatalog } = services();
   const instrument = await repositories.instruments.findById(userId, id);
   if (!instrument) notFound();
   const isDigitalMetal = instrument.kind === "DIGITAL_GOLD" || instrument.kind === "DIGITAL_SILVER" || instrument.kind === "DIGITAL_PLATINUM";
@@ -235,6 +277,136 @@ export default async function Page({
    * watching only the first concludes nothing is updating; a user shown only the
    * second cannot tell that the price is three days old.
    */
+  /*
+   * The price chart and the returns panel, for everything that is not digital
+   * metal (which has its own gram-priced pair above).
+   *
+   * Loaded here rather than inside the components so the components stay
+   * presentational: the page is the only place that touches a repository, which
+   * is the layering the rest of this route already follows.
+   */
+  const showMarketPanels = !isDigitalMetal && activeView === "performance";
+
+  const barCoverage = showMarketPanels ? await repositories.bars.coverage(instrumentId, "DAY") : null;
+  const historyRange = barCoverage
+    ? DateRange.of(barCoverage.from, today.isAfter(barCoverage.through) ? today : barCoverage.through)
+    : null;
+  const [storedBars, barGaps] = historyRange
+    ? await Promise.all([
+        repositories.bars.findRange(instrumentId, "DAY", historyRange),
+        repositories.bars.gaps(instrumentId, "DAY", historyRange),
+      ])
+    : [[], []];
+
+  const historyPoints: PriceHistoryPoint[] = storedBars.map((bar) => ({
+    on: bar.asOf.toISO(),
+    /*
+     * `toMoney()` rounds the 1e8-scaled close to the currency's minor units once,
+     * here at the edge, and the number that crosses to the client is a count of
+     * paise. No float touches the money path (C8) — recharts only ever scales
+     * pixels from it.
+     */
+    closeMinor: bar.close.toMoney().toMinorNumber(),
+  }));
+  const historyGaps: PriceHistoryGap[] = barGaps.map((gap) => ({
+    from: gap.start.toISO(),
+    to: gap.end.toISO(),
+    weekdays: gap.days,
+  }));
+
+  /* The live last price, appended past the last stored bar. */
+  const marketQuotes = showMarketPanels
+    ? await repositories.quotes.findLatestOnOrBefore(id.value, "CLOSE", today, 1)
+    : [];
+  const liveQuote = marketQuotes[0] ?? null;
+  const livePoint = liveQuote
+    ? { on: liveQuote.asOf.toISO(), closeMinor: liveQuote.price.toMoney().toMinorNumber() }
+    : null;
+
+  /*
+   * The catalogue's verdict on the quote key, for the staleness badge (C6).
+   *
+   * Read through the existing search use case and matched on the key the
+   * instrument actually carries: there is no repository method that maps a
+   * portfolio instrument straight back to its catalogue listing, and adding one
+   * belongs to the backend's file scope, not this route's. A miss simply means no
+   * badge rather than a wrong one.
+   */
+  const instrumentQuoteRef = instrument.quoteKey().ref;
+  const catalogueMatch = showMarketPanels
+    ? (await instrumentCatalog.search.execute({ query: instrument.symbol, limit: 12 })).candidates.find(
+        (candidate) =>
+          candidate.quoteKey === instrumentQuoteRef ||
+          candidate.listing.symbol.toUpperCase() === instrument.symbol.toUpperCase(),
+      ) ?? null
+    : null;
+
+  /*
+   * The split pair (C3). Both averages come from the **trade record**, which a
+   * corporate action never rewrites, so "as traded" really is as traded; the
+   * lots above it are the ones `ApplyCorporateAction` rescales, and mixing the
+   * two is how the factor lands twice.
+   */
+  const splits = loggedSplitsFrom(actions);
+  const buys = trades.filter((trade) => trade.side === "BUY");
+  const boughtQuantity = buys.reduce((total, trade) => total.plus(trade.quantity), Quantity.ZERO);
+  const boughtCost = Money.total(
+    buys.map((trade) => UnitPrice.fromMoney(trade.pricePerUnit).times(trade.quantity)),
+    instrument.currency,
+  );
+  const normalisedBuys = buys.map((trade) =>
+    normaliseTrade(
+      {
+        quantity: trade.quantity,
+        price: UnitPrice.fromMoney(trade.pricePerUnit),
+        tradeDate: trade.tradedOn,
+      },
+      splits,
+    ),
+  );
+  const normalisedQuantity = normalisedBuys.reduce(
+    (total, normalised) => total.plus(normalised.quantity),
+    Quantity.ZERO,
+  );
+  const anySplitApplies = buys.some(
+    (trade) => !isIdentity(cumulativeSplitFactorAfter(splits, trade.tradedOn)),
+  );
+
+  const returnsResult = showMarketPanels
+    ? await investing.returns.execute({ userId, asOf: today, instrumentId: id })
+    : null;
+
+  const holdingReturns: HoldingReturns | null = returnsResult?.ok
+    ? {
+        currency: instrument.currency.code,
+        quantity: open.quantity,
+        costBasis: investedValue,
+        averageBuyPriceAsTraded: boughtQuantity.isPositive
+          ? boughtQuantity.perUnit(boughtCost, "HALF_EVEN")
+          : null,
+        boughtQuantityAsTraded: boughtQuantity,
+        averageBuyPricePerCurrentShare:
+          anySplitApplies && normalisedQuantity.isPositive
+            ? normalisedQuantity.perUnit(boughtCost, "HALF_EVEN")
+            : null,
+        boughtQuantityInCurrentShares: anySplitApplies ? normalisedQuantity : null,
+        splitFactorLabel: anySplitApplies
+          ? `${splits.length} split${splits.length === 1 ? "" : "s"}`
+          : null,
+        marketValue: position?.marketValue ?? null,
+        unrealisedGain: holdingUnrealised,
+        realisedGain: position?.realisedGain ?? Money.zero(instrument.currency),
+        absoluteReturn: holdingReturn,
+        xirr: returnsResult.value.xirr,
+        pricedOn: position?.pricedOn?.toISO() ?? null,
+        isStale: position?.isStale ?? false,
+        unpricedReason: position?.unpricedReason ?? null,
+        unconverted: position?.reportingCostBasis === null,
+        asOf: today.toISO(),
+      }
+    : null;
+  const returnsError = returnsResult && !returnsResult.ok ? returnsResult.error.message : null;
+
   const latestQuote = currentQuotes[0] ?? null;
   const lastSyncedAt = latestQuote?.ingestedAt ?? null;
   const marketDateAgeDays = latestQuote ? latestQuote.asOf.daysUntil(today) : null;
@@ -627,6 +799,29 @@ export default async function Page({
             </section>
           )}
         </>
+      )}
+
+      {showMarketPanels && (
+        <section className="panel mb-6 p-5" aria-labelledby="holding-price-heading">
+          <h2 id="holding-price-heading" className="sr-only">Price history</h2>
+          <PriceHistoryChart
+            symbol={instrument.symbol}
+            currency={instrument.currency.code}
+            points={historyPoints}
+            live={livePoint}
+            gaps={historyGaps}
+            quoteKey={catalogueMatch?.quoteKey ?? instrumentQuoteRef ?? null}
+            quoteStale={catalogueMatch?.quoteStale ?? false}
+            firstTradeDate={catalogueMatch?.firstTradeDate ?? null}
+          />
+        </section>
+      )}
+
+      {showMarketPanels && holdingReturns && <ReturnsPanel returns={holdingReturns} />}
+      {showMarketPanels && returnsError && (
+        <p role="alert" className="panel mb-6 p-5 text-sm text-red-300">
+          Returns could not be computed for this holding: {returnsError}
+        </p>
       )}
 
       {!isDigitalMetal && activeView === "performance" && (

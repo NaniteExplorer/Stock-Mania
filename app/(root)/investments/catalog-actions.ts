@@ -77,11 +77,74 @@ type EntryInput = z.infer<typeof entrySchema>;
 const NEW_PLATFORM = "__new__";
 const SUGGESTED_PLATFORM = "__suggested__:";
 
+/**
+ * At most one catalogue refresh runs per process, and no keystroke ever waits
+ * for a second one.
+ *
+ * The refresh walks five public masters — the Upstox NSE and BSE dumps, AMFI,
+ * SEC — and a source with no successful fetch on record is retried on every
+ * call. Awaiting that under the cursor is what made a search sit on
+ * "Searching..." until a provider's socket timed out, and it did so once per
+ * debounce.
+ */
+let catalogRefresh: Promise<unknown> | null = null;
+
+function refreshCatalogOnce(
+  serviceBag: Awaited<ReturnType<typeof import("@/infra/container").services>>,
+): Promise<unknown> {
+  catalogRefresh ??= serviceBag.instrumentCatalog.refresh
+    .execute()
+    /* A refresh that fails leaves the cache in place; search is unaffected. */
+    .catch(() => undefined)
+    .finally(() => {
+      catalogRefresh = null;
+    });
+  return catalogRefresh;
+}
+
+/**
+ * The as-you-type search behind `/investments/new`.
+ *
+ * A server function is reachable by a direct POST, not only through the
+ * combobox, so the sign-in check is here rather than left to the page that
+ * renders it — `currentUserId` throws when there is no session.
+ *
+ * The catalogue is read first and refreshed second (C10: an ingest is never a
+ * keystroke dependency). Only a genuinely empty cache blocks, because there is
+ * nothing else to show; a merely stale one is refreshed in `after`, once the
+ * response has gone out.
+ */
 export async function searchInstrumentCatalogAction(query: string): Promise<InvestmentSearchResult> {
-  const { services } = await import("@/infra/container");
+  const { currentUserId, services } = await import("@/infra/container");
+  await currentUserId();
   const serviceBag = services();
-  await serviceBag.instrumentCatalog.refresh.execute();
-  return serviceBag.instrumentCatalog.search.execute({ query, limit: 12 });
+
+  const first = await serviceBag.instrumentCatalog.search.execute({ query, limit: 12 });
+  if (first.cache.status === "EMPTY") {
+    await refreshCatalogOnce(serviceBag);
+    return serviceBag.instrumentCatalog.search.execute({ query, limit: 12 });
+  }
+
+  const { after } = await import("next/server");
+  if (first.cache.stale) after(() => refreshCatalogOnce(serviceBag));
+
+  /*
+   * Probe the rows this search just showed, after the response.
+   *
+   * The offline sweep is budgeted at 200 listings a run against a catalogue of
+   * ~17 000, so a row nobody has swept yet reads "Not priceable" for months
+   * even though a price source would accept it today. Twelve probes, scheduled
+   * once the answer has already been sent, is not the sweep moving under the
+   * cursor — and `listingsForQuoteKeyProbe` keeps the due-ness filter, so the
+   * next keystroke over the same rows costs one query and no requests.
+   */
+  const unchecked = first.candidates
+    .filter((candidate) => !candidate.quoteChecked)
+    .map((candidate) => candidate.listing.id);
+  if (unchecked.length > 0) {
+    after(() => serviceBag.marketData.reconcileQuoteKeys.reconcileListings(unchecked).catch(() => undefined));
+  }
+  return first;
 }
 
 export async function recordInvestmentEntryAction(
@@ -184,7 +247,10 @@ export async function recordInvestmentEntryAction(
     cashPreview: preview.value.display,
     message:
       `${values.side === "BUY" ? "Bought" : "Sold"} ${values.quantity} ${identity.symbol}. ` +
-      `Cash impact: ${preview.value.display}.`,
+      `Cash impact: ${preview.value.display}.` +
+      (identity.livePriced
+        ? ""
+        : " Recorded on the manual tier: it is not live-priced, so its value is whatever you record."),
   };
 }
 
@@ -195,11 +261,21 @@ async function resolveIdentity(input: EntryInput): Promise<{
   isin: string | null;
   exchange: string | null;
   currency: "INR" | "USD";
-  quoteRef: string;
+  quoteRef: string | null;
+  livePriced: boolean;
   catalogInstrumentId: string | null;
   listingId: string | null;
 }> {
   if (input.identityMode === "MANUAL") {
+    /*
+     * The manual tier, and no quote key at all.
+     *
+     * The old code wrote `symbol.toUpperCase()` here, which is a key nobody
+     * validated against anything: "MYFLAT" went to the price ladder as a ticker
+     * and came back unpriced forever. A manual holding is priced by what the
+     * owner records, so it says so — `null` — and the entry confirmation tells
+     * him, rather than leaving him to discover it from an empty chart.
+     */
     return {
       symbol: input.symbol.toUpperCase(),
       name: input.name,
@@ -207,7 +283,8 @@ async function resolveIdentity(input: EntryInput): Promise<{
       isin: input.isin || null,
       exchange: input.exchange || null,
       currency: input.currency,
-      quoteRef: input.symbol.toUpperCase(),
+      quoteRef: null,
+      livePriced: false,
       catalogInstrumentId: null,
       listingId: null,
     };

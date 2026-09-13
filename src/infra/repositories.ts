@@ -29,7 +29,7 @@ import type {
   JournalSum,
   UnbalancedEntry,
 } from "@/app/reproducibility.usecases";
-import { Bar, BarGranularity, BarRepository, makeBar } from "@/domain/analysis";
+import { Bar, BarGranularity, BarRepository, makeBar, weekdayGaps } from "@/domain/analysis";
 import { GoldLease, GoldLeaseRepository, LeaseId, LeaseStatus, PayoutFrequency, PayoutMode } from "@/domain/leasing";
 import { Percentage, Quantity, Rate, UnitPrice } from "@/core/numeric";
 import { FxQuote, FxRateRepository, PriceDivergence, PriceSourceType, Quote, QuoteRepository, QuoteType, StoredFxRate } from "@/domain/pricing";
@@ -39,6 +39,9 @@ import {
   CatalogProviderMapping,
   CatalogSnapshot,
   InstrumentCatalogRepository,
+  MoneycontrolScIdRow,
+  QUOTE_KEY_REVALIDATION_INTERVAL_MS,
+  QuoteKeyResolution,
   normalizeCatalogText,
   verifiedIsin,
 } from "@/domain/instrument-catalog";
@@ -46,7 +49,7 @@ import { AccountBalance, AccountFlow, BalanceQuery, MonthlyFlow, Posting, Postin
 import { BudgetRepository, CategoryRuleRepository, ImportBatchRecord, ImportBatchStatus, ImportDiagnostics, ImportRepository, ImportRowStatus, ImportTrust, KeywordRule, MovementIntent, RowDirection, SelfPayeeQuery, StagedRow, StoredBudget } from "@/domain/banking";
 import { goldLeases, institutions, users as usersTable, ledgerEvents, netWorthSnapshots, projectionCache, taxSettings, priceBars, budgets, categoryRules, corporateActions, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, instrumentCatalog, instrumentCatalogFetches, instrumentCatalogLinks, instrumentCatalogListings, instrumentProviderMappings, instruments, ledgerAccounts, loanPrepayments, loanTerms, lotMatches, lots, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, trades, transactions } from "@/infra/db/schema";
 import { Database } from "@/infra/db/client";
-import { and, asc, count, desc, eq, gte, inArray, isNull, like, lt, lte, max, min, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, like, lt, lte, max, min, ne, or, sql } from "drizzle-orm";
 /* ═══ AccountMapper ═══════════════════════════════════════════════════ */
 
 type AccountRow = typeof ledgerAccounts.$inferSelect;
@@ -1725,6 +1728,85 @@ export class DrizzleBarRepository implements BarRepository {
       .update(priceBars)
       .set({ supersededBy: bySupersedingBarId })
       .where(eq(priceBars.id, supersededBarId));
+  }
+
+  /**
+   * A restatement: insert the new belief, point the old one at it, keep both.
+   *
+   * One transaction, because the half-applied state — new rows in, old rows still
+   * live — is a series with every restated day duplicated, and a chart drawn from
+   * it would show two lines. The supersede runs *after* the insert so the id it
+   * points at exists.
+   *
+   * Ids are minted here rather than read back, so the link is known without a
+   * round trip and the whole thing is a fixed number of statements regardless of
+   * how many years a newly logged split just invalidated.
+   */
+  async restate(bars: readonly Bar[]): Promise<{ appended: number; superseded: number }> {
+    if (bars.length === 0) return { appended: 0, superseded: 0 };
+
+    const rows = bars.map((bar) => {
+      const checked = makeBar(bar);
+      return {
+        id: newUuid(),
+        instrumentId: checked.instrumentId,
+        granularity: checked.granularity,
+        asOf: checked.asOf.toISO(),
+        openScaled: checked.open.toScaledNumber(),
+        highScaled: checked.high.toScaledNumber(),
+        lowScaled: checked.low.toScaledNumber(),
+        closeScaled: checked.close.toScaledNumber(),
+        volume: checked.volume === null ? null : Number(checked.volume),
+        currency: checked.currency.code,
+        providerId: checked.providerId,
+        ingestedAt: checked.ingestedAt,
+      };
+    });
+
+    let superseded = 0;
+    await this.db.transaction(async (tx) => {
+      for (let i = 0; i < rows.length; i += 200) {
+        await tx.insert(priceBars).values(rows.slice(i, i + 200)).onConflictDoNothing();
+      }
+      for (const row of rows) {
+        const result = await tx
+          .update(priceBars)
+          .set({ supersededBy: row.id })
+          .where(
+            and(
+              eq(priceBars.instrumentId, row.instrumentId),
+              eq(priceBars.granularity, row.granularity),
+              eq(priceBars.asOf, row.asOf),
+              isNull(priceBars.supersededBy),
+              // Never point a row at itself: that would erase the new belief too.
+              ne(priceBars.id, row.id),
+            ),
+          );
+        superseded += Number(result.rowsAffected ?? 0);
+      }
+    });
+
+    return { appended: rows.length, superseded };
+  }
+
+  async gaps(
+    instrumentId: string,
+    granularity: BarGranularity,
+    range: DateRange,
+  ): Promise<readonly DateRange[]> {
+    const rows = await this.db
+      .select({ asOf: priceBars.asOf })
+      .from(priceBars)
+      .where(
+        and(
+          eq(priceBars.instrumentId, instrumentId),
+          eq(priceBars.granularity, granularity),
+          gte(priceBars.asOf, range.start.toISO()),
+          lte(priceBars.asOf, range.end.toISO()),
+          isNull(priceBars.supersededBy),
+        ),
+      );
+    return weekdayGaps(range, new Set(rows.map((row) => row.asOf)), granularity);
   }
 }
 
@@ -4068,6 +4150,168 @@ export class DrizzleInstrumentCatalogRepository implements InstrumentCatalogRepo
     });
   }
 
+
+  /* ── The priceability gate (C10, C6) ─────────────────────────────── */
+
+  /**
+   * Listings due a first probe or a re-confirmation, oldest first.
+   *
+   * Nulls sort first in SQLite, so "never validated" naturally outranks "validated
+   * a while ago" without a second query — which is the order that matters, because
+   * an unvalidated row is currently unaddable and a stale-ish valid one is not.
+   * Rows already marked stale are excluded: re-probing a symbol that has died is
+   * spending the budget on the one answer we already have.
+   */
+  async listingsDueQuoteKeyCheck(limit: number, asAt: Date) {
+    const cutoff = new Date(asAt.getTime() - QUOTE_KEY_REVALIDATION_INTERVAL_MS);
+    const rows = await this.db
+      .select()
+      .from(instrumentCatalogListings)
+      .where(and(
+        eq(instrumentCatalogListings.active, true),
+        eq(instrumentCatalogListings.quoteStale, false),
+        isNull(instrumentCatalogListings.deletedAt),
+        or(
+          isNull(instrumentCatalogListings.quoteValidatedAt),
+          lt(instrumentCatalogListings.quoteValidatedAt, cutoff),
+        ),
+      ))
+      .orderBy(asc(instrumentCatalogListings.quoteValidatedAt))
+      .limit(limit);
+
+    return rows.map((listing) => ({
+      listingId: listing.id,
+      exchange: listing.exchange,
+      symbol: listing.symbol,
+      currency: listing.currency,
+      instrumentType: listing.instrumentType,
+      quoteKey: listing.quoteKey,
+      quoteProvider: listing.quoteProvider,
+      quoteValidatedAt: listing.quoteValidatedAt,
+      quoteStale: listing.quoteStale,
+      firstTradeDate: listing.firstTradeDate,
+    }));
+  }
+
+  /**
+   * The same rows as {@link listingsDueQuoteKeyCheck}, restricted to an explicit
+   * set of ids.
+   *
+   * This is what lets a search schedule a probe for the dozen rows it just
+   * showed instead of waiting for the sweep to reach them. The due-ness filter
+   * is deliberately kept: an id whose key was confirmed an hour ago comes back
+   * empty, so a caller cannot turn this into an unbounded re-probe by passing
+   * the same ids repeatedly.
+   */
+  async listingsForQuoteKeyProbe(listingIds: readonly string[], asAt: Date) {
+    if (listingIds.length === 0) return [];
+    const cutoff = new Date(asAt.getTime() - QUOTE_KEY_REVALIDATION_INTERVAL_MS);
+    const rows = await this.db
+      .select()
+      .from(instrumentCatalogListings)
+      .where(and(
+        inArray(instrumentCatalogListings.id, [...listingIds]),
+        eq(instrumentCatalogListings.active, true),
+        eq(instrumentCatalogListings.quoteStale, false),
+        isNull(instrumentCatalogListings.deletedAt),
+        or(
+          isNull(instrumentCatalogListings.quoteValidatedAt),
+          lt(instrumentCatalogListings.quoteValidatedAt, cutoff),
+        ),
+      ));
+
+    return rows.map((listing) => ({
+      listingId: listing.id,
+      exchange: listing.exchange,
+      symbol: listing.symbol,
+      currency: listing.currency,
+      instrumentType: listing.instrumentType,
+      quoteKey: listing.quoteKey,
+      quoteProvider: listing.quoteProvider,
+      quoteValidatedAt: listing.quoteValidatedAt,
+      quoteStale: listing.quoteStale,
+      firstTradeDate: listing.firstTradeDate,
+    }));
+  }
+
+  /**
+   * Writes an accepted key.
+   *
+   * `first_trade_date` is written only when the source supplied one and the row
+   * does not already have it: the inception date is a property of the instrument,
+   * not of this probe, and letting a later probe with a shorter window overwrite
+   * it would move the chart's left edge for no reason.
+   */
+  async recordQuoteKey(resolution: QuoteKeyResolution): Promise<void> {
+    const [existing] = await this.db
+      .select({ firstTradeDate: instrumentCatalogListings.firstTradeDate })
+      .from(instrumentCatalogListings)
+      .where(eq(instrumentCatalogListings.id, resolution.listingId))
+      .limit(1);
+
+    await this.db.update(instrumentCatalogListings).set({
+      quoteKey: resolution.quoteKey,
+      quoteProvider: resolution.quoteProvider,
+      quoteValidatedAt: resolution.validatedAt,
+      quoteStale: false,
+      firstTradeDate: existing?.firstTradeDate ?? resolution.firstTradeDate ?? null,
+      updatedAt: resolution.validatedAt,
+    }).where(eq(instrumentCatalogListings.id, resolution.listingId));
+  }
+
+  /**
+   * Marks a key dead. Nothing is deleted and the key itself is kept.
+   *
+   * Keeping the dead key is the point: the holding is still valued from the bars
+   * it already has, and the badge the UI shows says *which* symbol stopped
+   * resolving. Clearing it would leave a holding that is unpriced for no
+   * discoverable reason.
+   */
+  async markQuoteStale(listingId: string, at: Date, reason: string): Promise<void> {
+    await this.db.update(instrumentCatalogListings).set({
+      quoteStale: true,
+      quoteValidatedAt: at,
+      updatedAt: at,
+    }).where(eq(instrumentCatalogListings.id, listingId));
+    void reason;
+  }
+
+  async touchQuoteKey(listingId: string, at: Date): Promise<void> {
+    await this.db.update(instrumentCatalogListings).set({
+      quoteValidatedAt: at,
+      updatedAt: at,
+    }).where(eq(instrumentCatalogListings.id, listingId));
+  }
+
+  async recordMoneycontrolScIds(rows: readonly MoneycontrolScIdRow[]): Promise<number> {
+    let written = 0;
+    for (const row of rows) {
+      await this.db.update(instrumentCatalogListings)
+        .set({ moneycontrolScId: row.scId })
+        .where(eq(instrumentCatalogListings.id, row.listingId));
+      written += 1;
+    }
+    return written;
+  }
+
+  async moneycontrolScIdMap(): Promise<ReadonlyMap<string, string>> {
+    const rows = await this.db
+      .select({
+        symbol: instrumentCatalogListings.normalizedSymbol,
+        scId: instrumentCatalogListings.moneycontrolScId,
+      })
+      .from(instrumentCatalogListings)
+      .where(and(
+        eq(instrumentCatalogListings.active, true),
+        isNotNull(instrumentCatalogListings.moneycontrolScId),
+        isNull(instrumentCatalogListings.deletedAt),
+      ));
+
+    const map = new Map<string, string>();
+    for (const row of rows) if (row.scId) map.set(row.symbol, row.scId);
+    return map;
+  }
+
   private async searchRows(condition: ReturnType<typeof and>, limit?: number): Promise<CatalogCandidate[]> {
     const query = this.db.select({ identity: instrumentCatalog, listing: instrumentCatalogListings })
       .from(instrumentCatalogListings)
@@ -4108,6 +4352,10 @@ export class DrizzleInstrumentCatalogRepository implements InstrumentCatalogRepo
         instrumentType: listing.instrumentType,
         currency: listing.currency,
         active: listing.active,
+        quoteKey: listing.quoteKey,
+        quoteStale: listing.quoteStale,
+        quoteValidatedAt: listing.quoteValidatedAt,
+        firstTradeDate: listing.firstTradeDate,
         source: listing.source,
         fetchedAt: listing.fetchedAt,
         checksum: listing.checksum,
