@@ -56,6 +56,7 @@ export default function InstrumentSearch({
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-500" aria-hidden />
           <input
             id="instrumentSearch"
+            aria-label="Search the instrument catalogue"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
@@ -79,13 +80,20 @@ export default function InstrumentSearch({
             aria-controls={listboxId}
             aria-activedescendant={open ? `instrument-option-${highlighted}` : undefined}
             className="form-input pl-9"
-            placeholder="Search by symbol, ISIN or name"
+            placeholder="NSE ticker, AMFI scheme code, ISIN or US ticker"
           />
         </div>
         <button type="button" className="ghost-btn h-10 px-4 text-xs" disabled={pending} onClick={submitSearch}>
           {pending ? "Searching..." : "Search"}
         </button>
       </div>
+
+      <p className="text-xs text-gray-500">
+        Search covers Indian exchange listings, AMFI mutual funds and SEC-listed US companies. Names and ambiguous
+        matches always need your confirmation.
+      </p>
+
+      {pending && <p className="sr-only" role="status" aria-live="polite">Searching the local instrument catalogue.</p>}
 
       {result && (
         <div className="rounded-lg border border-gray-600/70 p-3">
@@ -122,7 +130,7 @@ export default function InstrumentSearch({
                     <span>
                       <span className="block font-medium text-gray-100">{candidate.listing.symbol}</span>
                       <span className="block text-xs text-gray-500">
-                        {candidate.name} · {candidate.listing.exchange} · {candidate.instrumentType}
+                        {candidate.name} · {candidate.listing.exchange} · {candidate.instrumentType} · {candidate.listing.currency}
                       </span>
                       {candidate.isin && <span className="block text-xs text-gray-600">{candidate.isin}</span>}
                     </span>
@@ -138,6 +146,9 @@ export default function InstrumentSearch({
               <p className="text-sm font-medium text-gray-100">{staged.listing.symbol} selected</p>
               <p className="text-xs text-gray-500">
                 {staged.name} · {staged.listing.exchange} · {staged.listing.currency}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">
+                Quote reference: {staged.listing.symbol}. This reference never fills the execution price.
               </p>
               <button type="button" className="btn-glow mt-3 h-10 px-4 text-xs" onClick={confirmStaged}>
                 Use this identity

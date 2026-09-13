@@ -5,8 +5,13 @@ import {
   CatalogSnapshot,
   InstrumentCatalogRepository,
 } from "@/domain/instrument-catalog";
-import { SearchInstrumentCatalog } from "@/app/instrument-catalog.usecases";
-import { UpstoxPublicInstrumentMaster, ZerodhaInstrumentCsvMapping } from "@/infra/instrument-catalog";
+import { RefreshInstrumentCatalog, SearchInstrumentCatalog } from "@/app/instrument-catalog.usecases";
+import {
+  AmfiMutualFundMaster,
+  SecCompanyTickerMaster,
+  UpstoxPublicInstrumentMaster,
+  ZerodhaInstrumentCsvMapping,
+} from "@/infra/instrument-catalog";
 import type { HttpClient, HttpResponse } from "@/infra/providers";
 import { check, checkTrue, done, section } from "./harness";
 
@@ -114,7 +119,94 @@ async function main() {
   }
   check("credentials are sent only in the request header", zerodhaHttp.requests[0].authorization, "token private:value");
 
+  const amfiBody = [
+    "Scheme Code;ISIN Growth;ISIN Reinvestment;Scheme Name;Plan;Option;Net Asset Value;Date",
+    "Open Ended Schemes(Equity Scheme)",
+    "120503;INF209K01VD8;INF209K01VE6;Test Flexi Cap Fund;Direct;Growth;84.5612;05-Sep-2026",
+    "120504;;;Broken Fund;Direct;Growth;N.A.;05-Sep-2026",
+  ].join("\n");
+  const amfi = await new AmfiMutualFundMaster(
+    new SingleResponseHttp({ status: 200, headers: {}, body: amfiBody }),
+    () => now,
+    "fixture://amfi",
+  ).fetch();
+  checkTrue("the current eight-column AMFI format parses", amfi.ok);
+  if (amfi.ok) {
+    check("AMFI NAV is not mistaken for the plan column", amfi.snapshot.instruments.length, 1);
+    check("scheme code is the quote reference", amfi.snapshot.instruments[0].listing.symbol, "120503");
+    check("plan and option remain part of the distinct scheme name", amfi.snapshot.instruments[0].name, "Test Flexi Cap Fund - Direct - Growth");
+    check("AMFI identity retains a verified ISIN", amfi.snapshot.instruments[0].verifiedIsin, "INF209K01VE6");
+  }
+
+  const secBody = JSON.stringify({
+    fields: ["cik", "name", "ticker", "exchange"],
+    data: [[320193, "Apple Inc.", "AAPL", "Nasdaq"], [789019, "Microsoft Corp", "MSFT", "Nasdaq"]],
+  });
+  const sec = await new SecCompanyTickerMaster(
+    new SingleResponseHttp({ status: 200, headers: {}, body: secBody }),
+    () => now,
+    "fixture://sec",
+  ).fetch();
+  checkTrue("the SEC listed-company fixture parses", sec.ok);
+  if (sec.ok) {
+    check("US listings retain USD currency", sec.snapshot.instruments[0].listing.currency, "USD");
+    check("US exchange identity is normalized", sec.snapshot.instruments[0].listing.exchange, "NASDAQ");
+    check("CIK is a provider mapping rather than a ticker replacement", sec.snapshot.instruments[0].providerMappings[0].providerInstrumentId, "0000320193");
+    check("the user-facing quote symbol stays the SEC ticker", sec.snapshot.instruments[0].listing.symbol, "AAPL");
+  }
+
+  section("multi-provider due gating");
+  const refreshRepository = new RefreshFixtureRepository();
+  let publicFetches = 0;
+  let supplementalFetches = 0;
+  const snapshot = (source: string): CatalogSnapshot => ({
+    source,
+    fetchedAt: now,
+    checksum: source.padEnd(64, "0").slice(0, 64),
+    instruments: [],
+    mappings: [],
+  });
+  const refresh = new RefreshInstrumentCatalog(
+    refreshRepository,
+    { source: "PUBLIC", fetch: async () => { publicFetches += 1; return { ok: true, snapshot: snapshot("PUBLIC") }; } },
+    [{ source: "AMFI", fetch: async () => { supplementalFetches += 1; return { ok: true, snapshot: snapshot("AMFI") }; } }],
+    new FixedClock(now),
+  );
+  const first = await refresh.execute();
+  check("all due providers refresh independently", first.sources.length, 2);
+  check("the combined result is refreshed", first.status, "REFRESHED");
+  const second = await refresh.execute();
+  check("a second refresh inside a day is current", second.status, "CURRENT");
+  check("public provider was fetched once", publicFetches, 1);
+  check("supplemental provider was fetched once", supplementalFetches, 1);
+
   done();
+}
+
+class RefreshFixtureRepository implements InstrumentCatalogRepository {
+  private readonly receipts = new Map<string, { source: string; fetchedAt: Date; checksum: string; rowCount: number }>();
+
+  async latestSuccessfulFetch(source?: string) {
+    if (source) return this.receipts.get(source) ?? null;
+    return [...this.receipts.values()][0] ?? null;
+  }
+  async latestFetchAttempt(source: string) {
+    const receipt = this.receipts.get(source);
+    return receipt ? { source, attemptedAt: receipt.fetchedAt, outcome: "SUCCESS" as const } : null;
+  }
+  async recordFetchFailure() {}
+  async count() { return this.receipts.size; }
+  async ingest(snapshot: CatalogSnapshot) {
+    this.receipts.set(snapshot.source, {
+      source: snapshot.source,
+      fetchedAt: snapshot.fetchedAt,
+      checksum: snapshot.checksum,
+      rowCount: snapshot.instruments.length,
+    });
+    return { instruments: snapshot.instruments.length, listings: snapshot.instruments.length, mappings: 0, unmatchedMappings: 0 };
+  }
+  async search() { return { candidates: [], exactIdentifierMatches: [] }; }
+  async linkPortfolioInstrument() { return true; }
 }
 
 main().catch((error) => {

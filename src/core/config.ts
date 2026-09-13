@@ -91,6 +91,9 @@ export const config = {
   marketData: () => ({
     /** Optional production quote feed. The token is server-only. */
     finnhubToken: read("FINNHUB_API_TOKEN"),
+    /** Optional Zerodha Connect credentials. Live/historical market data needs Connect entitlement. */
+    zerodhaApiKey: read("ZERODHA_API_KEY"),
+    zerodhaAccessToken: read("ZERODHA_ACCESS_TOKEN"),
     /** Shared secret used by the scheduled market refresh endpoint. */
     cronSecret: read("CRON_SECRET"),
   }),

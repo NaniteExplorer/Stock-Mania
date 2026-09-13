@@ -135,14 +135,14 @@ export function mfapiBody(rows: readonly { date: string; nav: string }[]): strin
 /** AMFI's `NAVAll.txt`: header lines, a scheme-type banner, then `;`-delimited rows. */
 export function amfiBody(rows: readonly { code: string; nav: string; date: string; name?: string }[]): string {
   const lines = [
-    "Scheme Code;ISIN Div Payout/ISIN Growth;ISIN Div Reinvestment;Scheme Name;Net Asset Value;Date",
+    "Scheme Code;ISIN Div Payout/ISIN Growth;ISIN Div Reinvestment;Scheme Name;Plan;Option;Net Asset Value;Date",
     "",
     "Open Ended Schemes(Equity Scheme - Flexi Cap Fund)",
     "",
   ];
   for (const row of rows) {
     lines.push(
-      `${row.code};INF209K01VD8;INF209K01VE6;${row.name ?? "Test Flexi Cap Fund - Direct - Growth"};${row.nav};${row.date}`,
+      `${row.code};INF209K01VD8;INF209K01VE6;${row.name ?? "Test Flexi Cap Fund"};Direct;Growth;${row.nav};${row.date}`,
     );
   }
   return lines.join("\n");

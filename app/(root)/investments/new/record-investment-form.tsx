@@ -63,11 +63,13 @@ export default function RecordInvestmentForm({
   const [statutoryCharges, setStatutoryCharges] = React.useState("");
   const [taxWithheld, setTaxWithheld] = React.useState("");
   const [manualKind, setManualKind] = React.useState<InstrumentKind>("LISTED_EQUITY");
+  const [manualCurrency, setManualCurrency] = React.useState<"INR" | "USD">("INR");
   const errors = state?.fieldErrors ?? {};
   const selected = selection?.candidate ?? null;
   const identityMode = selection?.mode ?? "MANUAL";
   const selectedKind = selected ? CATALOG_KIND[selected.instrumentType] : manualKind;
-  const preview = cashPreviewFromStrings({ side, quantity, unitPrice, brokerage, exchangeFees, statutoryCharges, taxWithheld });
+  const currency = selected?.listing.currency === "USD" ? "USD" : selected?.listing.currency === "INR" ? "INR" : manualCurrency;
+  const preview = cashPreviewFromStrings({ side, quantity, unitPrice, brokerage, exchangeFees, statutoryCharges, taxWithheld, currency });
 
   return (
     <form action={action} className="space-y-6">
@@ -115,7 +117,7 @@ export default function RecordInvestmentForm({
             </Field>
             <Field name="currency" label="Currency" required error={errors.currency?.[0]}>
               {(props) => (
-                <select {...props} name="currency" className="form-input" defaultValue="INR">
+                <select {...props} name="currency" className="form-input" value={manualCurrency} onChange={(event) => setManualCurrency(event.target.value as "INR" | "USD")}>
                   <option value="INR">INR</option>
                   <option value="USD">USD</option>
                 </select>
@@ -160,7 +162,7 @@ export default function RecordInvestmentForm({
         <Field name="quantity" label="Quantity" required error={errors.quantity?.[0]}>
           {(props) => <input {...props} name="quantity" className="form-input tnum" inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />}
         </Field>
-        <Field name="unitPrice" label="Execution price per unit" required error={errors.unitPrice?.[0]}>
+        <Field name="unitPrice" label={`Execution price per unit (${currency})`} hint="Enter the price from the trade or contract note. Market quotes are never copied into this field." required error={errors.unitPrice?.[0]}>
           {(props) => <input {...props} name="unitPrice" className="form-input tnum" inputMode="decimal" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} required />}
         </Field>
 
@@ -236,6 +238,7 @@ export function cashPreviewFromStrings(input: {
   exchangeFees?: string;
   statutoryCharges?: string;
   taxWithheld?: string;
+  currency?: "INR" | "USD";
 }): { ok: true; display: string } | { ok: false; message: string } {
   if (!/^\d+(\.\d{1,8})?$/.test(input.quantity) || !/^\d+(\.\d{1,2})?$/.test(input.unitPrice)) {
     return { ok: false, message: "Enter quantity and price." };
@@ -250,7 +253,7 @@ export function cashPreviewFromStrings(input: {
     rupees(input.statutoryCharges) +
     rupees(input.taxWithheld);
   const signed = input.side === "BUY" ? -(consideration + costs) : consideration - costs;
-  return { ok: true, display: `INR ${formatMinor(signed)}` };
+  return { ok: true, display: `${input.currency ?? "INR"} ${formatMinor(signed)}` };
 }
 
 function preferredProvider(mappings: readonly { provider: string; tradingSymbol: string }[]): string {

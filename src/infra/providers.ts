@@ -533,6 +533,81 @@ export class FinnhubQuoteProvider extends PriceProvider {
 
 /* ═══ 1. MFAPI — mutual fund NAV ══════════════════════════════════════ */
 
+interface ZerodhaLtpPayload {
+  status?: string;
+  data?: Record<string, { last_price?: number; instrument_token?: number }>;
+}
+
+/** Authenticated Zerodha Connect current quotes for Indian exchange-traded instruments. */
+export class ZerodhaQuoteProvider extends PriceProvider {
+  readonly id = "zerodha";
+  readonly displayName = "Zerodha Kite Connect";
+
+  constructor(
+    runtime: ProviderRuntime,
+    private readonly authorization: string,
+    options: ProviderOptions = {},
+  ) {
+    super(runtime, options);
+  }
+
+  capabilities(): ProviderCapabilities {
+    return {
+      assetClasses: EQUITY_CLASSES,
+      supportsIntraday: true,
+      supportsHistorical: false,
+      supportsCorporateActions: false,
+      supportsInstrumentSearch: true,
+      identifierTypes: ["TICKER", "MIC_TICKER"],
+      maxHistoryYears: 0,
+      quoteDelayMinutes: 0,
+      quoteTypes: ["LAST", "CLOSE"],
+    };
+  }
+
+  override rateLimit(): RateLimitBudget {
+    return { requests: 1, perMillis: 1_000, burst: 1 };
+  }
+
+  protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
+    const today = CalendarDate.fromUtcInstant(new Date(this.runtime.now()));
+    if (!request.range.contains(today)) return [];
+
+    const wanted = request.instruments
+      .filter((ref) => ref.currency.code === "INR")
+      .map((ref) => ({ ref, code: this.zerodhaCodeFor(ref) }))
+      .filter((item): item is { ref: InstrumentRef; code: string } => item.code !== null);
+    if (wanted.length === 0) return [];
+
+    const query = wanted.map((item) => `i=${encodeURIComponent(item.code)}`).join("&");
+    const payload = await this.getJson<ZerodhaLtpPayload>(
+      `https://api.kite.trade/quote/ltp?${query}`,
+      { authorization: this.authorization, "X-Kite-Version": "3" },
+    );
+
+    const quotes: Quote[] = [];
+    for (const item of wanted) {
+      const lastPrice = payload.data?.[item.code]?.last_price;
+      if (!lastPrice || lastPrice <= 0) continue;
+      quotes.push(this.quote({
+        ref: item.ref,
+        asOf: today,
+        quoteType: request.quoteType === "LAST" ? "LAST" : "CLOSE",
+        price: UnitPrice.of(lastPrice.toString(), item.ref.currency),
+      }));
+    }
+    return quotes;
+  }
+
+  private zerodhaCodeFor(ref: InstrumentRef): string | null {
+    const mapped = ref.providerRefs?.[this.id] ?? ref.providerRefs?.ZERODHA;
+    if (mapped && mapped.includes(":")) return mapped;
+    const exchange = (ref.exchange ?? "").toUpperCase();
+    if (exchange === "NSE" || exchange === "BSE") return `${exchange}:${ref.symbol}`;
+    return null;
+  }
+}
+
 interface MfApiPayload {
   meta?: { scheme_code?: string | number; scheme_name?: string };
   data?: { date: string; nav: string }[];
@@ -651,17 +726,38 @@ export class AmfiNavProvider extends PriceProvider {
     // an unknown code — and reporting both as "no data" would hide a typo forever.
     const found = new Set<string>();
 
-    for (const line of text.split("\n")) {
-      // `code;ISIN growth;ISIN reinvest;name;NAV;date`
+    const lines = text.split(/\r?\n/);
+    const header = lines
+      .find((line) => /scheme\s*code/i.test(line) && /net\s*asset\s*value/i.test(line))
+      ?.split(";")
+      .map((cell) => cell.trim().toLowerCase());
+    const headerCodeAt = header?.findIndex((cell) => /scheme\s*code/.test(cell)) ?? -1;
+    const headerNavAt = header?.findIndex((cell) => /net\s*asset\s*value/.test(cell)) ?? -1;
+    const headerDateAt = header?.findIndex((cell) => cell === "date") ?? -1;
+
+    for (const line of lines) {
       const parts = line.split(";");
       if (parts.length < 6) continue;
-      const ref = wanted.get(parts[0].trim());
-      if (!ref) continue;
-      found.add(parts[0].trim());
+      // Current NAVAll rows are eight columns; older fixtures/files used six.
+      // Prefer the header contract and retain the old offsets only as fallback.
+      const codeAt = headerCodeAt >= 0 ? headerCodeAt : 0;
+      const navAt = headerNavAt >= 0 ? headerNavAt : parts.length >= 8 ? 6 : 4;
+      const dateAt = headerDateAt >= 0 ? headerDateAt : parts.length >= 8 ? 7 : 5;
+      if (parts.length <= Math.max(codeAt, navAt, dateAt)) continue;
 
-      const asOf = AmfiNavProvider.parseAmfiDate(parts[5]);
-      const nav = parts[4].trim();
-      if (!asOf || !request.range.contains(asOf) || nav === "" || nav === "N.A.") continue;
+      const code = parts[codeAt].trim();
+      const ref = wanted.get(code);
+      if (!ref) continue;
+      found.add(code);
+
+      const asOf = AmfiNavProvider.parseAmfiDate(parts[dateAt]);
+      const nav = parts[navAt].trim();
+      if (
+        !asOf ||
+        !request.range.contains(asOf) ||
+        !/^\d+(?:\.\d+)?$/.test(nav) ||
+        Number(nav) <= 0
+      ) continue;
 
       quotes.push(
         this.quote({ ref, asOf, quoteType: "NAV", price: UnitPrice.of(nav, ref.currency) }),
@@ -1281,7 +1377,7 @@ export function shippedQuoteProviders(
   runtime: ProviderRuntime,
   manual: ReadonlyMap<string, readonly { asOf: CalendarDate; price: UnitPrice }[]> = new Map(),
   options?: ProviderOptions,
-  credentials: { finnhubToken?: string } = {},
+  credentials: { finnhubToken?: string; zerodhaAuthorization?: string } = {},
 ): readonly QuoteProviderPort[] {
   const providers: QuoteProviderPort[] = [
     // The user's own assertion outranks every feed: for an unpriceable asset it is
@@ -1290,6 +1386,9 @@ export function shippedQuoteProviders(
   ];
   if (credentials.finnhubToken) {
     providers.push(new FinnhubQuoteProvider(runtime, credentials.finnhubToken, options));
+  }
+  if (credentials.zerodhaAuthorization) {
+    providers.push(new ZerodhaQuoteProvider(runtime, credentials.zerodhaAuthorization, options));
   }
   providers.push(
     new NseQuoteProvider(runtime, options),

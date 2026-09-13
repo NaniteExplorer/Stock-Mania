@@ -162,6 +162,7 @@ export interface PriceLookup {
       assetClass: PricedAssetClass;
       currency: Currency;
       identifierType: string;
+      exchange?: string | null;
     },
     asOf: CalendarDate,
     quoteType?: QuoteType,
@@ -422,6 +423,7 @@ export abstract class MarketInstrument {
         assetClass: key.assetClass,
         currency: this.currency,
         identifierType: key.identifierType,
+        exchange: this.props.exchange ?? null,
       },
       asOf,
       key.quoteType,

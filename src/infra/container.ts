@@ -124,7 +124,10 @@ import {
   RefreshInstrumentCatalog,
   SearchInstrumentCatalog,
 } from "@/app/instrument-catalog.usecases";
+import { ViewLiveDataCenter } from "@/app/live-data.usecases";
 import {
+  AmfiMutualFundMaster,
+  SecCompanyTickerMaster,
   UpstoxPublicInstrumentMaster,
   ZerodhaInstrumentCsvMapping,
 } from "@/infra/instrument-catalog";
@@ -187,8 +190,15 @@ export const services = cache(() => {
    */
   const http = new FetchHttpClient();
   const providerRuntime = systemRuntime(http);
+  const marketDataConfig = config.marketData();
+  const zerodhaAuthorization = marketDataConfig.zerodhaApiKey && marketDataConfig.zerodhaAccessToken
+    ? `token ${marketDataConfig.zerodhaApiKey}:${marketDataConfig.zerodhaAccessToken}`
+    : undefined;
   const priceBook = new PriceBook(
-    shippedQuoteProviders(providerRuntime, new Map(), undefined, config.marketData()),
+    shippedQuoteProviders(providerRuntime, new Map(), undefined, {
+      finnhubToken: marketDataConfig.finnhubToken,
+      zerodhaAuthorization,
+    }),
     quotes,
   );
   const fxBook = new FxBook(shippedFxProviders(providerRuntime), fxRates, clock);
@@ -201,6 +211,7 @@ export const services = cache(() => {
         assetClass: PricedAssetClass;
         currency: Currency;
         identifierType: string;
+        exchange?: string | null;
       },
       asOf: CalendarDate,
       quoteType?: QuoteType,
@@ -212,6 +223,7 @@ export const services = cache(() => {
           assetClass: ref.assetClass,
           currency: ref.currency,
           identifierType: IDENTIFIER_TYPES[ref.identifierType] ?? "TICKER",
+          exchange: ref.exchange ?? null,
         },
         asOf,
         quoteType,
@@ -247,11 +259,9 @@ export const services = cache(() => {
     reverseTransaction,
   );
   const transfer = new RecordAccountTransfer(accounts, record);
-  const zerodhaApiKey = process.env.ZERODHA_API_KEY?.trim();
-  const zerodhaAccessToken = process.env.ZERODHA_ACCESS_TOKEN?.trim();
-  const zerodhaCatalog = zerodhaApiKey && zerodhaAccessToken
+  const zerodhaCatalog = zerodhaAuthorization
     ? new ZerodhaInstrumentCsvMapping(http, () => clock.now(), {
-        authorization: `token ${zerodhaApiKey}:${zerodhaAccessToken}`,
+        authorization: zerodhaAuthorization,
       })
     : null;
 
@@ -344,10 +354,20 @@ export const services = cache(() => {
       refresh: new RefreshInstrumentCatalog(
         instrumentCatalog,
         new UpstoxPublicInstrumentMaster(http, () => clock.now()),
-        zerodhaCatalog,
+        [
+          new AmfiMutualFundMaster(http, () => clock.now()),
+          new SecCompanyTickerMaster(http, () => clock.now()),
+          ...(zerodhaCatalog ? [zerodhaCatalog] : []),
+        ],
         clock,
       ),
       link: new LinkPortfolioInstrumentCatalog(instrumentCatalog, clock),
+    },
+    liveData: {
+      view: new ViewLiveDataCenter(instruments, instrumentCatalog, clock, {
+        finnhubConfigured: Boolean(marketDataConfig.finnhubToken),
+        zerodhaConfigured: Boolean(zerodhaAuthorization),
+      }),
     },
     leasing: {
       open: new OpenGoldLease(instruments, leases, lots),

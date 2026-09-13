@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, BarChart3, BriefcaseBusiness, LayoutDashboard, PlusCircle } from "lucide-react";
+import { Activity, BarChart3, BriefcaseBusiness, DatabaseZap, LayoutDashboard, PlusCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const ITEMS = [
@@ -10,6 +10,7 @@ const ITEMS = [
   { href: "/investments/holdings", label: "Holdings", icon: BriefcaseBusiness },
   { href: "/investments/performance", label: "Performance", icon: BarChart3 },
   { href: "/investments/activity", label: "Activity", icon: Activity },
+  { href: "/investments/data", label: "Live data", icon: DatabaseZap },
   { href: "/investments/new", label: "Add", icon: PlusCircle },
 ] as const;
 

@@ -8,8 +8,9 @@ import { CalendarDate } from "@/core/time";
 import { AccountId } from "@/domain/accounts";
 import { groupOfKind } from "@/domain/asset-groups";
 import { InstitutionId } from "@/domain/institutions";
-import type { CatalogInstrumentType, CatalogSearchCandidateOutput, CatalogSearchOutput } from "@/domain/instrument-catalog";
+import type { CatalogSearchCandidateOutput, CatalogSearchOutput } from "@/domain/instrument-catalog";
 import { InstrumentId, type InstrumentKind } from "@/domain/instruments";
+import { catalogPortfolioIdentity } from "./entry-identity";
 
 export interface InvestmentEntryActionState {
   ok: boolean;
@@ -73,17 +74,6 @@ const entrySchema = z.object({
 
 type EntryInput = z.infer<typeof entrySchema>;
 
-const CATALOG_KIND: Readonly<Record<CatalogInstrumentType, InstrumentKind>> = {
-  EQUITY: "LISTED_EQUITY",
-  ETF: "ETF",
-  MUTUAL_FUND: "MUTUAL_FUND",
-  BOND: "BOND",
-  GOVT_SECURITY: "GOVT_SECURITY",
-  REIT: "REIT",
-  DERIVATIVE: "FUTURE",
-  OTHER: "LISTED_EQUITY",
-};
-
 const NEW_PLATFORM = "__new__";
 const SUGGESTED_PLATFORM = "__suggested__:";
 
@@ -133,7 +123,7 @@ export async function recordInvestmentEntryAction(
     kind: identity.kind,
     isin: identity.isin || null,
     exchange: identity.exchange || null,
-    quoteRef: identity.symbol,
+    quoteRef: identity.quoteRef,
     currency,
     institutionId: platform.institutionId,
   });
@@ -205,6 +195,7 @@ async function resolveIdentity(input: EntryInput): Promise<{
   isin: string | null;
   exchange: string | null;
   currency: "INR" | "USD";
+  quoteRef: string;
   catalogInstrumentId: string | null;
   listingId: string | null;
 }> {
@@ -216,6 +207,7 @@ async function resolveIdentity(input: EntryInput): Promise<{
       isin: input.isin || null,
       exchange: input.exchange || null,
       currency: input.currency,
+      quoteRef: input.symbol.toUpperCase(),
       catalogInstrumentId: null,
       listingId: null,
     };
@@ -237,20 +229,7 @@ async function resolveIdentity(input: EntryInput): Promise<{
   if (!selected) {
     throw new Error("The selected catalogue identity no longer matches the local cache. Search again.");
   }
-  if (selected.listing.currency !== "INR" && selected.listing.currency !== "USD") {
-    throw new Error(`Unsupported trading currency ${selected.listing.currency}.`);
-  }
-
-  return {
-    symbol: selected.listing.symbol.toUpperCase(),
-    name: selected.name,
-    kind: CATALOG_KIND[selected.instrumentType],
-    isin: selected.isin,
-    exchange: selected.listing.exchange || null,
-    currency: selected.listing.currency,
-    catalogInstrumentId: selected.catalogInstrumentId,
-    listingId: selected.listing.id,
-  };
+  return catalogPortfolioIdentity(selected);
 }
 
 async function resolvePlatform(

@@ -9,6 +9,7 @@ import {
   InstrumentMasterProvider,
 } from "@/domain/instrument-catalog";
 import { check, checkTrue, done, section } from "./harness";
+import { catalogPortfolioIdentity } from "../app/(root)/investments/entry-identity";
 
 const now = new Date("2026-09-06T04:00:00.000Z");
 const tcs: CatalogCandidate = {
@@ -127,6 +128,30 @@ async function main() {
   const emptySearch = await new SearchInstrumentCatalog(emptyRepo, new FixedClock(now)).execute({ query: "UNKNOWN" });
   check("empty cache search returns manual state", emptySearch.matchState, "MANUAL");
   checkTrue("manual entry remains allowed", emptySearch.manualEntryAllowed);
+
+  section("catalogue identity maps portfolio quote references");
+  const fundIdentity = catalogPortfolioIdentity({
+    ...tcs,
+    catalogInstrumentId: "22222222-2222-4222-8222-222222222222",
+    isin: "INF209K01VE6",
+    name: "Test Flexi Cap Fund - Direct - Growth",
+    instrumentType: "MUTUAL_FUND",
+    listing: { ...tcs.listing, id: "listing-fund", exchange: "AMFI", segment: "MUTUAL_FUND_NAV", symbol: "120503" },
+    providerMappings: [{ ...tcs.providerMappings[0], provider: "AMFI", providerInstrumentId: "120503", tradingSymbol: "120503" }],
+  });
+  check("AMFI scheme code becomes the quote reference", fundIdentity.quoteRef, "120503");
+  check("AMFI catalogue rows create mutual-fund holdings", fundIdentity.kind, "MUTUAL_FUND");
+
+  const usIdentity = catalogPortfolioIdentity({
+    ...tcs,
+    catalogInstrumentId: "33333333-3333-4333-8333-333333333333",
+    isin: null,
+    name: "Apple Inc.",
+    listing: { ...tcs.listing, id: "listing-aapl", exchange: "NASDAQ", segment: "US_EQUITY", symbol: "AAPL", currency: "USD" },
+    providerMappings: [{ ...tcs.providerMappings[0], provider: "SEC", providerInstrumentId: "0000320193", tradingSymbol: "AAPL" }],
+  });
+  check("US ticker remains the market quote reference", usIdentity.quoteRef, "AAPL");
+  check("US catalogue rows retain USD", usIdentity.currency, "USD");
 
   done();
 }

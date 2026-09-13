@@ -11,6 +11,8 @@ import { groupOfKind } from "@/domain/asset-groups";
 import { InstitutionId } from "@/domain/institutions";
 import { InstrumentId, type InstrumentKind, type MarketInstrument } from "@/domain/instruments";
 import type { IdentifierType, InstrumentRef } from "@/domain/pricing";
+import { summarizePortfolioRefresh } from "@/app/price-refresh-summary.usecases";
+import type { RefreshPricesOutput } from "@/app/pricing.usecases";
 import { Split } from "@/domain/corporate";
 import { accountRef, OpeningPosition } from "@/domain/transactions";
 import { Lot } from "@/domain/lots";
@@ -20,6 +22,7 @@ import { NEW as NEW_PLATFORM, SUGGESTED as SUGGESTED_PLATFORM } from "./platform
 export interface InvestingActionState {
   ok: boolean;
   message: string;
+  code?: "PRICE_REFRESH_UNAVAILABLE";
   fieldErrors?: Record<string, string[]>;
 }
 
@@ -601,20 +604,19 @@ export async function refreshPortfolioAction(
       assetClass: key.assetClass,
       currency: instrument.currency,
       identifierType: PRICE_IDENTIFIER[key.identifierType] ?? "TICKER",
+      exchange: instrument.props.exchange ?? null,
     };
     refsByQuoteType.set(key.quoteType, [...(refsByQuoteType.get(key.quoteType) ?? []), ref]);
   }
 
-  let persisted = 0;
-  const priceWarnings: string[] = [];
+  const refreshOutputs: RefreshPricesOutput[] = [];
   for (const [quoteType, refs] of refsByQuoteType) {
     const result = await pricing.refresh.execute({
       instruments: refs,
       quoteType: quoteType as "CLOSE" | "NAV" | "MID" | "LAST",
     });
     if (!result.ok) return { ok: false, message: result.error.message };
-    persisted += result.value.persisted;
-    priceWarnings.push(...result.value.warnings);
+    refreshOutputs.push(result.value);
   }
 
   const today = CalendarDate.parse(new Date().toISOString().slice(0, 10));
@@ -634,6 +636,7 @@ export async function refreshPortfolioAction(
   }
 
   revalidatePath("/investments");
+  revalidatePath("/investments/data");
   const detailInstrumentId = formData.get("instrumentId");
   if (typeof detailInstrumentId === "string" && detailInstrumentId.length > 0) {
     revalidatePath(`/investments/${detailInstrumentId}`);
@@ -644,9 +647,7 @@ export async function refreshPortfolioAction(
    * one batch per quote type, so reporting only the final batch would have
    * undercounted a portfolio holding both shares and mutual funds.
    */
-  const warnings = [...priceWarnings, ...fxErrors];
-  return {
-    ok: true,
-    message: `Saved ${persisted} price point(s)${warnings.length ? ` · ${warnings.length} warning(s)` : ""}.`,
-  };
+  const summary = summarizePortfolioRefresh(refreshOutputs, fxErrors);
+  if (!summary.ok) return { ok: false, code: summary.code, message: summary.message };
+  return { ok: true, message: summary.message };
 }

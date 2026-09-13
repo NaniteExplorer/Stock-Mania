@@ -21,7 +21,7 @@ export class SearchInstrumentCatalog {
 
   async execute(input: { query: string; limit?: number }): Promise<CatalogSearchOutput> {
     const query = normalizeCatalogText(input.query);
-    const latest = await this.catalog.latestSuccessfulFetch(PUBLIC_SOURCE);
+    const latest = await this.catalog.latestSuccessfulFetch();
     const cache = {
       status: (latest ? "READY" : "EMPTY") as "READY" | "EMPTY",
       source: latest?.source ?? null,
@@ -75,8 +75,8 @@ export interface RefreshInstrumentCatalogOutput {
 export class RefreshInstrumentCatalog {
   constructor(
     private readonly catalog: InstrumentCatalogRepository,
-    private readonly publicMaster: InstrumentMasterProvider,
-    private readonly optionalMappings: InstrumentMasterProvider | null,
+    private readonly publicMaster: InstrumentMasterProvider | readonly InstrumentMasterProvider[],
+    private readonly optionalMappings: InstrumentMasterProvider | readonly InstrumentMasterProvider[] | null,
     private readonly clock: Clock,
   ) {}
 
@@ -85,9 +85,7 @@ export class RefreshInstrumentCatalog {
     let refreshed = false;
     let failed = false;
 
-    for (const provider of [this.publicMaster, this.optionalMappings].filter(
-      (candidate): candidate is InstrumentMasterProvider => candidate !== null,
-    )) {
+    for (const provider of [...providersOf(this.publicMaster), ...providersOf(this.optionalMappings)]) {
       const latest = await this.catalog.latestSuccessfulFetch(provider.source);
       const latestAttempt = await this.catalog.latestFetchAttempt(provider.source);
       if (!isCatalogAttemptDue(latestAttempt, this.clock)) {
@@ -146,6 +144,13 @@ export class RefreshInstrumentCatalog {
       sources,
     };
   }
+}
+
+function providersOf(
+  providers: InstrumentMasterProvider | readonly InstrumentMasterProvider[] | null,
+): readonly InstrumentMasterProvider[] {
+  if (providers === null) return [];
+  return "source" in providers ? [providers] : providers;
 }
 
 /** Persists which canonical catalogue row a user-owned instrument was created from. */

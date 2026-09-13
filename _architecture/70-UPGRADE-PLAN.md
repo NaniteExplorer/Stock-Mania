@@ -2168,3 +2168,182 @@ numbers match a hand-checked source, not when the screen renders.
 `features/transactions/categorizer.ts`, `features/trades/fifo.ts` (as the `Fifo` strategy),
 `features/tax/engine/india-fy2025.regime.ts` (as the first `TaxRegime`), and the design
 tokens in `app/globals.css`.
+# Live equities and mutual-fund intelligence research and experiment (2026-09-07)
+
+Status: DONE
+Owner: Coordinator (Astra)
+Updated: 2026-09-07
+
+## Requirement
+Research and experimentally validate a trustworthy, low-cost data architecture for Indian equity and mutual-fund discovery, current pricing, daily portfolio tracking, and stock fundamentals. Zerodha is the preferred future broker, while futures/options and automated or high-frequency execution remain outside this packet. Stop after a reviewable artifact and proposed implementation plan for user approval.
+
+## Acceptance criteria
+- [x] Verify Zerodha's current instrument, quote, historical, WebSocket, mutual-fund, pricing, entitlement, and rate-limit capabilities from primary sources.
+- [x] Compare official/free sources for Indian equity prices, identifiers, corporate/fundamentals data, and mutual-fund NAV/scheme data, including licensing and freshness limits.
+- [x] Run a bounded, reproducible spike for search-to-identity-to-price and mutual-fund search-to-NAV with explicit stale/error/provenance states; make no production changes.
+- [x] Produce a professional interactive artifact showing the proposed product experience and architecture.
+- [x] Present an implementation plan, costs, risks, and unresolved choices; wait for user approval before production implementation.
+
+## Context map
+| Need | Authoritative file/section | Why it is needed |
+|---|---|---|
+| Existing catalogue and investment UI | This plan, prior investment implementation section; `_architecture/investment-experience/` | Reuse identity, caching, metric truthfulness, and progressive disclosure decisions. |
+| Market-data boundaries | `_architecture/40-MARKET-DATA.md`; Phase 5 and Phase 8 in this plan | Preserve provenance, replayability, and execution separation. |
+| Provider facts | Official Zerodha/Kite, NSE/BSE/SEBI/AMFI and candidate-provider documentation | Verify current API behavior, rights, freshness and cost. |
+
+## Decisions and constraints
+- Chosen path: Research then experiment. Primary mode: Research; bounded Experiment follows the evidence relay.
+- India is the primary market. Zerodha is the preferred future broker; no automated or live-order implementation is authorized in this packet.
+- “Free” must be separated into free to access, free for private caching, and licensed for redistribution. A UI must never label delayed/stale/NAV data as live.
+- Astra coordinates consequential architecture and synthesis; bounded research and experiment tasks use less expensive agents where capable.
+
+## Step-by-step plan
+- [x] 1. Research Zerodha/Kite capabilities and commercial/technical constraints — Owner: Research Agent — Output: primary-source evidence baton.
+- [x] 2. Research official/free Indian equity fundamentals and mutual-fund sources — Owner: Research Agent — Output: source matrix and evidence baton.
+- [x] 3. Reconcile evidence and define falsifiable experiment contracts — Owner: Coordinator — Output: gap matrix and experiment packet.
+- [x] 4. Run isolated provider spikes against public endpoints/sample payloads — Owner: Experiment Agent — Output: scripts, captured metadata, measurements, keep/revise/discard decision.
+- [x] 5. Create and structurally verify the interactive artifact plus canonical report and claim ledger — Owner: Coordinator — Output: artifact paths and checks.
+- [x] 6. Independent research/experiment QA — Owner: Testing/QA Agent — Output: PASS_WITH_RISKS.
+- [x] 7. Present proposed implementation plan for user approval — Owner: Coordinator — Production code remains unchanged.
+
+## Handoffs
+
+### Research -> Experiment
+- Goal: prove the source hierarchy and truthful freshness states without credentials or production edits.
+- Completed: official Zerodha, AMFI, SEBI and NSE evidence reconciled; free/public candidates classified by entitlement and use.
+- Decisions: Zerodha is the authenticated live/broker lane; AMFI is the official daily NAV lane; filings feed derived fundamentals; no NSE website scraping backend.
+- Inputs: `_architecture/live-investment-data/report-source.md`; `claim-ledger.md`.
+- Changed files: research artifacts only.
+- Contract/output: `LIVE | EOD | NAV_DAILY | STALE | UNAVAILABLE` plus canonical identity/provider mapping separation.
+- Verification: primary-source review dated 2026-09-07.
+- Open risks: authenticated Zerodha behavior and deployment-specific data rights.
+- Next action: bounded public probes and fixture normalization.
+- Do not revisit: automated execution and derivatives are excluded.
+
+### Experiment -> Coordinator
+- Goal: measure public-source behavior and state normalization.
+- Completed: AMFI/MFAPI exact scheme match, Upstox identity discovery, Zerodha unauthenticated denial and all five states exercised.
+- Decisions: KEEP with revisions; never call NAV live or public identity data an authoritative price.
+- Inputs: `_architecture/live-investment-data/experiment.md`; provider spike and checks.
+- Changed files: `_architecture/live-investment-data/**`; compact result under `D:/WorkStation/Artifacts/stock-mania-live-data-20260907/data/`.
+- Contract/output: reproducible compact JSON measurement.
+- Verification: spike PASS; checks PASS, 14 assertions.
+- Open risks: credentialed Zerodha quote skipped.
+- Next action: user reviews artifact and approves or revises the plan.
+- Do not revisit: no credentials, orders, or raw bulk dumps in this packet.
+
+## QA record
+Status: PASS_WITH_RISKS
+Evidence:
+- Independent QA reran `node _architecture/live-investment-data/provider-spike.mjs` PASS and `node _architecture/live-investment-data/provider-spike-checks.mjs` PASS (14 assertions).
+- Research claims were checked against linked official sources; packet changes contain no production code, credentials, tokens, response bodies or bulk provider dumps.
+- Interactive artifact structurally contains stock/MF selection and connected/free states; browser runtime QA was unavailable.
+Residual risks:
+- Authenticated Zerodha retrieval was not exercised; the live example is an explicitly labelled documented fixture.
+- Browser visual, responsive and keyboard runtime QA was NOT_RUN. Static review found mouse-oriented search results, style-only tabs, inert side navigation and no mobile replacement for the hidden sidebar; repair these during implementation before production acceptance.
+- Provider pricing, limits and data terms are time-sensitive and must be rechecked at implementation time.
+
+# Live investment data tracking implementation (2026-09-07)
+
+Status: DONE
+Owner: Coordinator (Astra)
+Updated: 2026-09-12
+
+## Requirement
+Implement the approved live investment data tracking foundation for Indian stocks, Indian mutual funds and optional US stock holdings. The system must let a user search and record investments from a local, provenance-labelled catalogue, refresh daily/current prices where a configured provider allows it, show provider capability and freshness truthfully, and keep a stable future seam for Zerodha streaming/HFT work without adding live order placement now.
+
+## Acceptance criteria
+- [x] `/investments/data` exists as a dedicated Live Data Center reachable from the investment nav. It shows provider readiness, configured/missing credentials, quote/NAV/freshness semantics, stale/unavailable states and a refresh action without exposing secrets.
+- [x] Local search supports Indian equities from the existing public master, Indian mutual funds from AMFI daily NAV data, optional Zerodha mapping enrichment, and a manual USD stock path. Only exact symbol/ISIN/scheme-code matches may preselect; names and ambiguous matches require confirmation.
+- [x] Add investment records the correct `quoteRef`: Indian equities use their exchange symbol, mutual funds use their scheme code, and US stocks can be recorded in USD. A shown reference price is never used as the execution price unless the user enters it.
+- [x] Price refresh can update all tracked holdings grouped by quote type, including mutual-fund NAV and optional US stock quotes when `FINNHUB_API_TOKEN` is configured; missing credentials or provider failures return typed UI states and keep stored/cached/manual tracking usable.
+- [x] Provider summaries expose live vs delayed/EOD/NAV capability, authenticated Zerodha Connect requirements, configured US quote support, future streaming readiness, and the explicit no-order-placement boundary.
+- [x] Tests cover AMFI mutual-fund catalogue parsing/search, quoteRef selection for catalogue instruments, USD tracking behavior, provider-state read models, and refresh failure handling.
+- [x] No order placement, automated strategy execution, or HFT loop is introduced. Future execution remains a separate provider/streaming seam with secrets kept server-side.
+
+## Context map
+| Need | Authoritative file/section | Why it is needed |
+|---|---|---|
+| Approved research and experiment | `# Live equities and mutual-fund intelligence research and experiment`; `_architecture/live-investment-data/**` | Defines Zerodha entitlement, AMFI NAV, US/provider and stale-state constraints. |
+| Existing investment workspace | `# Investment experience redesign implementation`; `app/(root)/investments/**` | Reuse progressive disclosure, add-investment flow and route patterns. |
+| Catalogue identity boundary | `src/domain/instrument-catalog.ts`; `src/app/instrument-catalog.usecases.ts`; `src/infra/instrument-catalog.ts` | Keep canonical identity separate from provider tokens and prevent blind autofill. |
+| Price ladder and provider contracts | `src/domain/pricing.ts`; `src/app/pricing.usecases.ts`; `src/infra/providers.ts` | Store append-only quotes, typed provider errors, capability metadata and freshness states. |
+| Next.js server actions | `node_modules/next/dist/docs/01-app/02-guides/server-actions.md` | Server actions are public POST entry points; validate inputs and return shaped data only. |
+
+## Decisions and constraints
+- Chosen path: Direct implementation after user approval of the research/experiment plan. Primary mode: Implementation.
+- Zerodha is preferred for future authenticated India live data. This implementation may expose provider readiness and a quote provider only when credentials are present; it must not require paid data for manual/EOD/NAV tracking.
+- US stocks are supported as USD holdings with optional Finnhub current quotes and existing FX conversion. Broad US catalogue search is deferred unless a licensed symbol master is configured; manual USD entry remains the free baseline.
+- AMFI current NAV is the authoritative mutual-fund catalogue and daily price source. MFAPI stays a convenience/history price source in the existing price ladder.
+- NSE website scraping is not expanded here. Existing providers remain, but new UI labels must call out undocumented/delayed/fallback sources honestly.
+- HFT is a future expansion: provider capability records may name streaming readiness, but no strategy, order, worker or broker execution path is implemented now.
+- Migration/recovery: no new table is planned unless code inspection proves the existing catalogue/quote tables cannot hold AMFI/US/provider metadata. If a migration becomes necessary, add a forward-only migration with a rollback note and validate through `npm run db:check`.
+
+## Step-by-step plan
+- [x] 1. Provider/capability read model - Owner: Backend/Data Expert (Astra) - Files: `src/app/live-data.usecases.ts`, `src/domain/live-data.ts`, `src/infra/container.ts`, focused tests - Contract: primitive-only output for provider readiness, live/delayed/NAV states, configured credentials and no-order boundary - Verify: `npm test -- live-data` PASS (19 assertions).
+- [x] 2. AMFI mutual-fund and SEC US catalogue ingestion - Owner: Backend/Data Expert (Sol) - Files: `src/infra/instrument-catalog.ts`, `src/app/instrument-catalog.usecases.ts`, `src/infra/container.ts`, catalogue tests - Contract: AMFI creates scheme-code identities; SEC creates USD ticker/CIK identities; refresh remains independently due-gated and resilient - Verify: `npm test -- instrument-catalog` PASS (55 assertions).
+- [x] 3. Recording and refresh integration - Owner: Backend/Frontend relay (Sol) - Files: `app/(root)/investments/catalog-actions.ts`, `app/(root)/investments/entry-identity.ts`, `app/(root)/investments/actions.ts`, `src/domain/instruments.ts`, action tests - Contract: catalogue selections preserve scheme-code/ticker quote refs; refresh passes exchange/currency refs and supports USD holdings - Verify: `npm test -- investment-entry` PASS (28 assertions); provider conformance PASS (123 assertions).
+- [x] 4. Live Data Center UI - Owner: Frontend Expert (GPT-5.5) - Files: `app/(root)/investments/data/**`, `app/(root)/investments/investment-nav.tsx`, `app/(root)/investments/refresh-prices-button.tsx`, add-investment UI/action files, focused UI/action tests - Contract: dedicated route with provider cards, configured/missing states, quote freshness, refresh controls, India/MF/US coverage, correct catalogue quote references and explicit no execution controls - Verify: workspace UI, live-data and investment-entry tests, lint and typecheck PASS.
+- [x] 5. Independent QA and repair relay - Owner: Testing/QA Agent (Newton) - Files: changed source/tests/plan only - Contract: verify acceptance criteria, no secret exposure, no order placement, truthful provider labels, lint/type/test/build evidence - Verify: PASS_WITH_RISKS after repair and final rerun on 2026-09-12.
+
+## Handoffs
+
+### Coordinator -> Backend/Data Expert
+- Goal: implement a truthful provider/freshness read model and AMFI catalogue ingestion without live orders.
+- Completed: research approved; plan updated; existing price/catalogue tables are sufficient for first pass.
+- Decisions: AMFI creates mutual-fund catalogue rows; Finnhub remains optional US quote provider; Zerodha readiness is labelled paid/authenticated until credentials exist.
+- Inputs: this implementation section; `_architecture/live-investment-data/report-source.md`; `src/domain/pricing.ts`; `src/domain/instrument-catalog.ts`; `src/infra/instrument-catalog.ts`; `src/infra/providers.ts`.
+- Changed files: this plan section only so far.
+- Contract/output: primitive use-case output and provider catalogue ingestion with tests.
+- Verification: pending.
+- Open risks: authenticated Zerodha quote path cannot be live-tested without user credentials.
+- Next action: implement Step 1 and Step 2.
+- Do not revisit: order placement/HFT execution and NSE website scraping expansion are outside this task.
+
+### Backend/Data Expert -> Frontend Expert
+- Goal: expose the provider/readiness model and catalogue identity contract in an accessible investment workspace.
+- Completed: `services().liveData.view.execute({ userId })` returns primitive provider profiles, coverage counts, tracked instruments and automation-readiness states; AMFI and SEC catalogue rows preserve scheme-code/USD identity; grouped refresh accepts exchange metadata.
+- Decisions: render server-owned readiness data without secrets; use stored provider freshness labels verbatim; keep execution and strategy controls outside this route.
+- Inputs: `src/app/live-data.usecases.ts`; `src/domain/live-data.ts`; `src/infra/container.ts`; `app/(root)/investments/**`; focused investment UI/action tests.
+- Changed files: backend/domain/infra files and tests listed by the implementation diff; no frontend page yet.
+- Contract/output: `/investments/data` reads `LiveDataCenterOutput`; refresh continues through `refreshPortfolioAction`; catalogue entries retain listing symbol/scheme code and listing currency as their quote identity.
+- Verification: backend live-data (13 assertions), instrument-catalog (55 assertions), provider conformance (123 assertions), and typecheck passed before this relay.
+- Open risks: authenticated Zerodha and live Finnhub calls remain configuration-dependent.
+- Next action: implement Step 4 and return focused frontend verification evidence.
+- Do not revisit: provider ingestion, pricing adapters, schema and order execution are outside the frontend relay.
+
+### Backend/Data Repair -> Testing/QA Agent
+- Goal: repair the two functional defects from independent QA without widening the feature.
+- Completed: `AmfiNavProvider` now resolves code/NAV/date columns from the official header and accepts both current eight-column and older six-column rows; grouped refresh reports return `PRICE_REFRESH_UNAVAILABLE` when zero usable quotes persist, while explicitly preserving stored/manual prices.
+- Decisions: provider attempts with `OK` and zero quotes do not count as usable data; unsupported providers do not turn an unavailable refresh into success; the server action delegates aggregation to a pure summary module for deterministic testing.
+- Inputs: QA record below; `src/infra/providers.ts`; `src/domain/pricing.ts#RefreshReport`; `app/(root)/investments/actions.ts#refreshPortfolioAction`; local Next.js server-action guide.
+- Changed files: `src/infra/providers.ts`; `src/app/price-refresh-summary.ts`; `app/(root)/investments/actions.ts`; `tests/doubles.ts`; `tests/price-refresh-summary.spec.ts`; this plan. The existing `tests/providers-conformance.spec.ts` consumes the updated eight-column fixture without further logic changes.
+- Contract/output: current AMFI NAV rows produce four-decimal `NAV` quotes; an all-unavailable refresh returns `{ ok: false, code: "PRICE_REFRESH_UNAVAILABLE", message }`; successful quote groups still aggregate persisted rows and warnings.
+- Verification: `npm test -- providers-conformance` PASS (124 assertions, including current eight-column and legacy six-column AMFI rows); `npm test -- price-refresh-summary` PASS (8 assertions); `npm test -- investment-entry` PASS (28 assertions); `npm run typecheck` PASS; scoped ESLint PASS; scoped `git diff --check` PASS.
+- Open risks: authenticated provider behavior remains fixture-tested; independent full-suite/build/browser QA is pending.
+- Next action: rerun independent QA and update the QA record/status.
+- Do not revisit: stored quote persistence, catalogue identity, UI layout, order placement and HFT execution are outside this repair.
+
+### Backend/Data Naming Repair -> Testing/QA Agent
+- Goal: satisfy the enforced `src/app/*.usecases.ts` application-layer filename contract without changing refresh behavior.
+- Completed: renamed `src/app/price-refresh-summary.ts` to `src/app/price-refresh-summary.usecases.ts` and updated the server-action and focused-test imports.
+- Decisions: retain the focused spec name because the layout invariant applies only to production files under `src/app/`.
+- Inputs: `tests/layout.spec.ts`; the preceding functional repair baton; the independent QA defect below.
+- Changed files: `src/app/price-refresh-summary.usecases.ts` (renamed from `src/app/price-refresh-summary.ts`); `app/(root)/investments/actions.ts`; `tests/price-refresh-summary.spec.ts`; this plan.
+- Contract/output: identical `summarizePortfolioRefresh` API and behavior under a layout-compliant filename.
+- Verification: `npm test -- layout` PASS (50 assertions); `npm test -- price-refresh-summary` PASS (8 assertions); `npm run typecheck` PASS; scoped ESLint PASS; `git diff --check` PASS.
+- Open risks: None for this mechanical rename.
+- Next action: run layout, focused refresh, typecheck, lint and diff-check, then return to independent QA.
+- Do not revisit: AMFI parsing, refresh-state semantics and UI behavior are unchanged.
+
+## QA record
+Status: PASS_WITH_RISKS
+Evidence:
+- Final independent QA: `npm test -- layout` PASS (50 assertions) after the summary module was renamed to `src/app/price-refresh-summary.usecases.ts`; `npm test -- price-refresh-summary` PASS (8 assertions), confirming the typed all-provider outage and grouped-success contracts are unchanged.
+- `npm test` PASS (57/57 spec files). Provider conformance includes the official current eight-column AMFI layout, legacy six-column compatibility, four-decimal NAV, typed provider failures, Finnhub USD quotes and exchange-aware Zerodha quotes.
+- `npm run lint -- --quiet`, `npm run typecheck`, `npm run db:check` (15/15 migrations and 48 tables), `npm run build` (including dynamic `/investments/data`) and `git diff --check` PASS.
+- Static and focused UI checks verify navigation reachability, provider/configuration/freshness states, USD and AMFI identities, the explicit execution-price boundary, secret-free primitive outputs, and absence of order or strategy controls.
+- The local Next.js server started successfully at `http://127.0.0.1:3000`, but Browser runtime discovery returned no available browser, so interactive accessibility and responsive QA are NOT_RUN.
+Residual risks:
+- Authenticated Zerodha and live US quote calls will be fixture-tested unless credentials are supplied locally.
+- Browser interaction, keyboard accessibility and responsive visual QA remain unverified because no browser backend was available.

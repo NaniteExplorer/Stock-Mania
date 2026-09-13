@@ -33,6 +33,7 @@ import {
   NseQuoteProvider,
   PriceProvider,
   YahooQuoteProvider,
+  ZerodhaQuoteProvider,
   providersFor,
   shippedQuoteProviders,
 } from "@/infra/providers";
@@ -272,6 +273,18 @@ for (const testCase of CASES) {
   check(`${testCase.name}: quote count`, result.value.length, testCase.expectedCount);
   check(`${testCase.name}: attributes itself`, golden.providerId, testCase.name);
   check(`${testCase.name}: marks the source`, golden.sourceType, "PROVIDER");
+}
+
+{
+  const legacy = [
+    "Scheme Code;ISIN Div Payout/ISIN Growth;ISIN Div Reinvestment;Scheme Name;Net Asset Value;Date",
+    "120503;INF209K01VD8;INF209K01VE6;Test Flexi Cap Fund - Direct - Growth;84.5612;21-Aug-2026",
+  ].join("\n");
+  const provider = new AmfiNavProvider(new VirtualRuntime(new FixtureHttpClient([
+    { match: "NAVAll.txt", body: legacy },
+  ])));
+  const result = await provider.fetchQuotes({ instruments: [fundAmfi], range: WEEK, quoteType: "NAV" });
+  check("AMFI retains six-column compatibility", result.ok && result.value[0]?.price.toDecimalString(), "84.5612");
 }
 
 /* ══ 2. A typed error, never a throw ════════════════════════════════ */
@@ -594,6 +607,25 @@ section("Finnhub real-time quotes");
   });
   check("current USD quote is persisted", result.ok && result.value[0]?.price.toDecimalString(), "261.74");
   check("feed declares zero delay", provider.capabilities().quoteDelayMinutes, 0);
+}
+
+section("Zerodha authenticated current quotes");
+{
+  const http = new FixtureHttpClient([{
+    match: "api.kite.trade/quote/ltp?i=NSE%3AINFY",
+    body: JSON.stringify({ status: "success", data: { "NSE:INFY": { instrument_token: 408065, last_price: 1543.25 } } }),
+  }]);
+  const provider = new ZerodhaQuoteProvider(
+    new VirtualRuntime(http, { startMillis: Date.parse("2026-09-02T10:00:00Z") }),
+    "token fixture-key:fixture-session",
+  );
+  const result = await provider.fetchQuotes({
+    instruments: [{ ...infy, exchange: "NSE" }],
+    range: range("2026-09-01", "2026-09-02"),
+    quoteType: "LAST",
+  });
+  check("exchange-aware Zerodha quote parses", result.ok && result.value[0]?.price.toDecimalString(), "1543.25");
+  check("Zerodha declares a current feed", provider.capabilities().quoteDelayMinutes, 0);
 }
 {
   const provider = new FinnhubQuoteProvider(new VirtualRuntime(new FixtureHttpClient([])), "test-token");
