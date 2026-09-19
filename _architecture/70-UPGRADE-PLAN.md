@@ -2651,3 +2651,68 @@ Residual risks:
 - Process-local refresh state does not coordinate cooldown or in-flight deduplication across horizontally scaled application instances; use a shared store before treating this as a distributed enterprise rate limit.
 - Visual responsiveness, chart rendering and keyboard flows remain unverified because no browser backend was available.
 - Six moderate transitive dependency advisories remain in development/import tooling as documented above.
+
+### Purchase-date chart preload correction - 2026-09-19
+
+Status: DONE
+Owner: Coordinator / Planner-Implementer
+Chosen path: Direct implementation
+Primary mode: Implementation
+
+#### Requirement
+An owned non-digital holding must automatically obtain enough daily closes to draw its performance chart, beginning at the earliest recorded purchase date rather than requiring the owner to discover and press a recovery button. Digital-metal behavior remains unchanged.
+
+#### Acceptance criteria
+- [x] A sparse stock holding automatically requests its historical series once when the Performance view opens.
+- [x] The authorized server route derives the history floor from the owner-scoped trade ledger; the browser cannot choose another tenant or silently widen the range.
+- [x] A previously accepted canonical quote key is reused, while unresolved symbols still fail explicitly.
+- [x] Successful ingestion refreshes the Server Component and renders at least two closes when the provider supplies them.
+- [x] Loading, retry, empty and provider-error states remain accessible and truthful.
+- [x] Focused tests, typecheck, lint, full tests and build pass; independent QA records the result.
+
+#### Context map
+| Need | Authoritative file/section | Why it is needed |
+|---|---|---|
+| Sparse chart lifecycle | `app/(root)/investments/[instrumentId]/price-history-chart.tsx` | Owns client lifecycle and retry state. |
+| Tenant/date boundary | `app/api/instruments/[instrumentId]/backfill/route.ts` | Owns authorization, instrument lookup and ingestion request. |
+| Exact range floor | `src/app/pricing.usecases.ts` | Owns resumable daily-bar ingestion. |
+| Purchase evidence | holding trade repository used by `page.tsx` | Supplies the earliest owner-scoped acquisition date. |
+
+#### Decisions and constraints
+- Automatic loading is idempotent and only runs for a sparse series; it does not poll.
+- The acquisition date is derived server-side from non-deleted trades, never trusted from a client parameter.
+- Fetch only from the earliest purchase date because older bars do not describe this holding's performance and consume unnecessary free-provider quota.
+- Digital gold, silver and platinum branches are frozen.
+
+#### Step-by-step plan
+- [x] 1. Add an exact `from` floor to resumable bar ingestion - Owner: Backend/Financial Expert - Files: `src/app/pricing.usecases.ts`, focused tests - Verify: range and resume tests PASS.
+- [x] 2. Derive earliest purchase and resolve the canonical quote key in the authorized route - Owner: Backend Expert - Files: backfill route, focused tests - Verify: tenant/date/key cases PASS.
+- [x] 3. Auto-load once for sparse history and retain manual retry/error UX - Owner: Frontend Expert - Files: chart component, focused UI test - Verify: lifecycle assertions and typecheck PASS.
+- [x] 4. Run focused and broad verification, then independent QA - Owner: Testing/QA Agent - Files: changed diff and this record - Verify: PASS_WITH_RISKS recorded below.
+
+#### QA record
+Status: PASS_WITH_RISKS
+Evidence:
+- Prior blocker repaired - purchase-date head fill: when an explicit ledger-derived `input.from` predates existing coverage, `IngestInstrumentBars` now requests the missing head from the inclusive purchase date through the day before `covered.from`. The regression fixture verifies `2025-10-13` through `2026-09-17` with an existing `2026-09-18` close. `npm test -- pricing-reconciliation` now passes all 47 assertions.
+- Default ingestion behavior remains separate: missing-head logic activates only for an explicit `input.from`; the default twenty-year request continues to treat a later coverage start as legitimate provider inception and preserves normal tail-delta resumption. Future explicit floors are rejected.
+- Ledger and tenant boundary inspection: the route authorises before lookup, resolves the instrument through `findById(authorised.userId, ...)`, and calls `tradesFor(authorised.userId, instrument.id)`. The repository contract returns live trades only and its database implementation filters `deleted_at IS NULL`; the route selects the earliest live `BUY` date. The browser supplies neither user ID nor date floor.
+- Quote-key inspection: a persisted `key.ref` is attempted verbatim first; generated candidates receive the bare `instrument.symbol`, and `Set` deduplication prevents repeated candidates. Unresolved candidates still return an explicit 422. `npm test -- holding-history-route` passes 9 assertions, though these are source-contract assertions rather than executable route fixtures.
+- React lifecycle inspection: preload is limited to sparse, non-error data and guarded by a ref before `loadHistory()`. The Server Component refresh occurs only when `appended > 0`, preventing successful skipped/no-data responses from entering refresh-driven retry loops; loading, no-data, retry and error states remain explicit. `npm test -- holding-performance-ui` passes 15 assertions.
+- Digital-metal non-regression: the changed chart remains rendered only by the existing non-digital `showMarketPanels` branch. `npm test -- gold-analytics` passes 88 assertions and `npm test -- gold-benchmark` passes 83 assertions.
+- Independent focused rerun: pricing reconciliation PASS (47), holding performance PASS (15), and holding-history route PASS (9). Coordinator-recorded full suite 68/68, build, typecheck, lint and diff-check are accepted as passing integration evidence.
+Residual risks:
+- Route authorization/key tests and React lifecycle tests are structural, not executable request/component interaction tests.
+- Browser visual, loading, retry and accessibility behavior remains unverified because the browser runtime is unavailable.
+- Free historical providers have no enterprise SLA; explicit no-data and provider-error states remain necessary operational behavior.
+
+#### Baton: Planner/Implementer -> Testing/QA Agent
+- Goal: independently verify purchase-date automatic stock-history loading without digital-metal regression.
+- Completed: sparse charts auto-call the authorized route once; route uses earliest owner-scoped BUY date; ingestion accepts an exact inclusive floor; persisted canonical quote refs are attempted unchanged before generated fallbacks.
+- Decisions: manual control is now retry-only; no polling; browser cannot choose the history start; provider failures remain explicit.
+- Inputs: this correction section; `price-history-chart.tsx`; backfill route; `pricing.usecases.ts`; focused tests.
+- Changed files: `src/app/pricing.usecases.ts`; `app/api/instruments/[instrumentId]/backfill/route.ts`; `app/(root)/investments/[instrumentId]/price-history-chart.tsx`; `tests/pricing-reconciliation.spec.ts`; `tests/holding-performance-ui.spec.ts`; `tests/holding-history-route.spec.ts`; this plan.
+- Contract/output: `IngestInstrumentBarsInput.from?: CalendarDate`; route response includes applied `from`; sparse UI automatically refreshes after successful ingestion.
+- Verification: focused pricing reconciliation PASS (47 assertions), holding performance PASS (15), route boundary PASS (9), typecheck PASS, lint PASS, gold analytics PASS (88), gold benchmark PASS (83); full suite PASS (68/68) and production build PASS.
+- Open risks: local browser runtime unavailable; free history-provider availability is external.
+- Next action: inspect diff, run broad checks, and record PASS, PASS_WITH_RISKS or FAIL.
+- Do not revisit: digital-metal structure or truthful provider-failure behavior.

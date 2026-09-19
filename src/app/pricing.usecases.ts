@@ -288,6 +288,8 @@ export interface IngestInstrumentBarsInput {
   readonly market: MarketCode;
   /** Defaults to twenty years back, which outruns every free source here. */
   readonly years?: number;
+  /** Exact inclusive history floor. Takes precedence over `years`. */
+  readonly from?: CalendarDate;
   /** Ignores stored coverage and refetches the whole window. */
   readonly force?: boolean;
   /**
@@ -344,7 +346,10 @@ export class IngestInstrumentBars
     input: IngestInstrumentBarsInput,
   ): Promise<Result<IngestInstrumentBarsOutput, AppError>> {
     const today = CalendarDate.parse(this.clock.today());
-    const earliest = today.plusYears(-(input.years ?? 20));
+    const earliest = input.from ?? today.plusYears(-(input.years ?? 20));
+    if (earliest.isAfter(today)) {
+      return Err(new BarIngestFailedError(input.quoteKey, "The history start date is in the future."));
+    }
     const instrumentId = input.instrument.instrumentId;
 
     const covered =
@@ -370,8 +375,16 @@ export class IngestInstrumentBars
      * also pointless, and on a delta run it is the difference between one row and
      * two.
      */
-    const from = covered && covered.through.isAfter(earliest) ? covered.through.plusDays(1) : earliest;
-    if (from.isAfter(today)) {
+    // Only an explicit ledger floor proves that older coverage is missing. The
+    // default 20-year request may legitimately begin at provider inception.
+    const missingHead = input.from !== undefined && (covered?.from.isAfter(earliest) ?? false);
+    const from = missingHead
+      ? earliest
+      : covered && covered.through.isAfter(earliest)
+        ? covered.through.plusDays(1)
+        : earliest;
+    const through = missingHead ? covered!.from.plusDays(-1) : today;
+    if (from.isAfter(through)) {
       return Ok({
         range: null,
         appended: 0,
@@ -383,7 +396,7 @@ export class IngestInstrumentBars
       });
     }
 
-    const range = DateRange.of(from, today);
+    const range = DateRange.of(from, through);
     const result = await this.feed.history({
       quoteKey: input.quoteKey,
       currency: input.instrument.currency,

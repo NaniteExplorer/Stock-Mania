@@ -285,6 +285,53 @@ async function ingestion(): Promise<void> {
     feed.requests[0].range.start.toISO() < feed.requests[0].range.end.toISO(),
   );
 
+  const purchaseFeed = new FixtureFeed([["2025-10-13", "400"]]);
+  const purchaseIngest = new IngestInstrumentBars(
+    purchaseFeed,
+    new InMemoryBarRepository(),
+    clock,
+  );
+  const fromPurchase = await purchaseIngest.execute({
+    instrument: REF,
+    quoteKey: "TMPV.NS",
+    market: "IN",
+    from: on("2025-10-13"),
+  });
+  checkTrue("purchase-date ingestion succeeds", fromPurchase.ok);
+  check(
+    "the exact purchase date is the inclusive history floor",
+    purchaseFeed.requests[0].range.start.toISO(),
+    "2025-10-13",
+  );
+
+  const partialBars = new InMemoryBarRepository();
+  const partialFeed = new FixtureFeed([["2025-10-13", "400"]]);
+  await partialBars.append([
+    makeBar({
+      instrumentId: INSTRUMENT,
+      asOf: on("2026-09-18"),
+      granularity: "DAY",
+      open: UnitPrice.of("580", Currency.INR),
+      high: UnitPrice.of("590", Currency.INR),
+      low: UnitPrice.of("575", Currency.INR),
+      close: UnitPrice.of("581.85", Currency.INR),
+      volume: null,
+      currency: Currency.INR,
+      providerId: "fixture-current",
+      ingestedAt: new Date("2026-09-18T12:00:00Z"),
+    }),
+  ]);
+  const partialIngest = new IngestInstrumentBars(partialFeed, partialBars, clock);
+  const headFill = await partialIngest.execute({
+    instrument: REF,
+    quoteKey: "TMPV.NS",
+    market: "IN",
+    from: on("2025-10-13"),
+  });
+  checkTrue("a sparse current bar does not suppress older history", headFill.ok);
+  check("the missing head starts at purchase", partialFeed.requests[0].range.start.toISO(), "2025-10-13");
+  check("the missing head stops before existing coverage", partialFeed.requests[0].range.end.toISO(), "2026-09-17");
+
   const stored = await bars.findRange(
     INSTRUMENT,
     "DAY",

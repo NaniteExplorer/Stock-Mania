@@ -162,11 +162,19 @@ export default function PriceHistoryChart({
           ? `Loaded ${appended} daily price points.`
           : (body.skipped ?? "History is already current."),
       });
-      router.refresh();
+      if (appended > 0) router.refresh();
     } catch {
       setHistoryState({ status: "error", message: "Price history could not be loaded. Try again later." });
     }
   }
+
+  const shouldPreload = drawn < 2 && !error;
+  const preloadStarted = React.useRef(false);
+  React.useEffect(() => {
+    if (!shouldPreload || preloadStarted.current) return;
+    preloadStarted.current = true;
+    void loadHistory();
+  }, [shouldPreload]);
 
   const controls = (
     <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -197,7 +205,7 @@ export default function PriceHistoryChart({
         className="ghost-btn h-8 gap-2 px-3 text-xs disabled:cursor-wait disabled:opacity-60"
       >
         <DatabaseZap aria-hidden="true" className="h-3.5 w-3.5" />
-        {historyState.status === "loading" ? "Loading history" : "Load price history"}
+        {historyState.status === "loading" ? "Loading history" : "Retry price history"}
       </button>
     </div>
   );
@@ -231,8 +239,8 @@ export default function PriceHistoryChart({
     </p>
   ) : drawn < 2 ? (
     <p className="rounded-lg border border-gray-600/70 p-4 text-sm text-gray-500">
-      {drawn === 0 ? "No daily history is stored" : "Only one closing observation is stored"} for {symbol}. Load price
-      history to draw a trend; a single point cannot show performance.
+      {drawn === 0 ? "No daily history is stored" : "Only one closing observation is stored"} for {symbol}. Daily closes
+      are loading from the earliest purchase date; a single point cannot show performance.
     </p>
   ) : undefined;
 

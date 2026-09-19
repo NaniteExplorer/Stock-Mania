@@ -9,9 +9,12 @@ section("sparse history is explicit and recoverable");
 checkTrue("a single point is not treated as a performance chart", chart.includes("drawn < 2"));
 checkTrue("sparse state explains why no trend is drawn", chart.includes("a single point cannot show performance"));
 checkTrue("history load uses the authorised route", chart.includes("/api/instruments/${instrumentId}/backfill"));
+checkTrue("sparse history starts its preload automatically", chart.includes("void loadHistory()"));
+checkTrue("automatic history load runs only once per mount", chart.includes("preloadStarted.current = true"));
 checkTrue("history load reports failures", chart.includes('status: "error"'));
-checkTrue("history load refreshes server data", chart.includes("router.refresh()"));
+checkTrue("history load refreshes server data only after writes", chart.includes("if (appended > 0) router.refresh()"));
 checkTrue("stored closes are not called live", !chart.includes("Live last price"));
+checkTrue("manual control is retained as a retry", chart.includes("Retry price history"));
 
 section("open-position metrics are decision useful");
 checkTrue("summary preserves digital-metal realised behavior", page.includes('isDigitalMetal ? (\n          <Stat label="Realised"'));

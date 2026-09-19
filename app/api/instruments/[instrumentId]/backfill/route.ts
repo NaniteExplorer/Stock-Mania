@@ -78,11 +78,19 @@ export async function POST(
   const listing: QuoteKeyCandidateListing = {
     listingId: instrumentId,
     exchange: instrument.props.exchange ?? (instrument.currency.code === "INR" ? "NSE" : "NASDAQ"),
-    symbol: key.ref ?? instrument.symbol,
+    // `candidateQuoteKeys` accepts a bare exchange symbol. `key.ref` may already
+    // be canonical (`KALYANKJIL.NS`) and must never be suffixed a second time.
+    symbol: instrument.symbol,
     currency: instrument.currency.code,
     instrumentType: "EQUITY",
   };
   const market: MarketCode = instrument.currency.code === "INR" ? "IN" : "US";
+  const purchases = (await app.repositories.lots.tradesFor(authorised.userId, instrument.id))
+    .filter((trade) => trade.side === "BUY");
+  const purchasedOn = purchases.reduce(
+    (earliest, trade) => earliest === null || trade.tradedOn.isBefore(earliest) ? trade.tradedOn : earliest,
+    null as (typeof purchases)[number]["tradedOn"] | null,
+  );
 
   /*
    * Resolve the quote key by probing, not by uppercasing the symbol.
@@ -93,7 +101,10 @@ export async function POST(
    * does not resolve gets a 422 naming every candidate that was tried — which is
    * a diagnosable refusal rather than a chart that is silently empty forever.
    */
-  const candidates = candidateQuoteKeys(listing);
+  const candidates = [...new Set([
+    ...(key.ref ? [key.ref] : []),
+    ...candidateQuoteKeys(listing),
+  ])];
   const refusals: string[] = [];
   let quoteKey: string | null = null;
 
@@ -133,6 +144,7 @@ export async function POST(
     },
     quoteKey,
     market,
+    from: purchasedOn ?? undefined,
     force,
     restate,
   });
@@ -148,6 +160,7 @@ export async function POST(
     ok: true,
     instrumentId,
     quoteKey,
+    from: purchasedOn?.toISO() ?? null,
     range: result.value.range
       ? { from: result.value.range.start.toISO(), to: result.value.range.end.toISO() }
       : null,
