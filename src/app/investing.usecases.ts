@@ -28,6 +28,7 @@ import {
   MarketInstrument,
   PriceLookup,
 } from "@/domain/instruments";
+import { groupOf, type AssetGroup } from "@/domain/asset-groups";
 import {
   Disposal,
   Lot,
@@ -980,6 +981,8 @@ export interface InvestmentWorkspacePosition {
   readonly symbol: string;
   readonly name: string;
   readonly kind: InstrumentKind;
+  /** Derived from the concrete instrument, so a gold ETF is metal exposure. */
+  readonly assetFamily: AssetGroup;
   readonly quantity: string;
   readonly nativeCurrency: string;
   readonly costBasis: { readonly amount: string; readonly currency: string } | null;
@@ -1086,6 +1089,7 @@ export class InvestmentWorkspace implements UseCase<ValuePortfolioInput, Investm
           symbol: position.instrument.symbol,
           name: position.instrument.name,
           kind: position.instrument.kind,
+          assetFamily: groupOf(position.instrument),
           quantity: position.quantity.toDecimalString(),
           nativeCurrency: position.instrument.currency.code,
           costBasis: position.reportingCostBasis

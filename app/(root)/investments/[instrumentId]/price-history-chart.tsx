@@ -27,6 +27,8 @@
  */
 
 import * as React from "react";
+import { DatabaseZap } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { Chart, LineSeries, type SeriesPoint } from "@/ui/charts";
 
 export interface PriceHistoryPoint {
@@ -59,6 +61,7 @@ const SERIES = [{ id: "close", label: "Close" }] as const;
 
 export default function PriceHistoryChart({
   symbol,
+  instrumentId,
   currency,
   points,
   live,
@@ -70,6 +73,7 @@ export default function PriceHistoryChart({
   loading = false,
 }: {
   symbol: string;
+  instrumentId: string;
   currency: string;
   points: readonly PriceHistoryPoint[];
   /** The latest resolved quote, appended past the last stored bar. */
@@ -81,7 +85,12 @@ export default function PriceHistoryChart({
   error?: string | null;
   loading?: boolean;
 }) {
+  const router = useRouter();
   const [range, setRange] = React.useState<RangeId>("1Y");
+  const [historyState, setHistoryState] = React.useState<{
+    status: "idle" | "loading" | "success" | "error";
+    message: string;
+  }>({ status: "idle", message: "" });
 
   const series = React.useMemo<readonly PriceHistoryPoint[]>(() => {
     if (!live) return points;
@@ -132,9 +141,37 @@ export default function PriceHistoryChart({
     .filter(Boolean)
     .join(" · ");
 
+  async function loadHistory() {
+    setHistoryState({ status: "loading", message: "Loading daily history..." });
+    try {
+      const response = await fetch(`/api/instruments/${instrumentId}/backfill`, { method: "POST" });
+      const body = await response.json() as {
+        ok?: boolean;
+        appended?: number;
+        skipped?: string | null;
+        error?: string;
+      };
+      if (!response.ok || !body.ok) {
+        setHistoryState({ status: "error", message: body.error ?? "Price history could not be loaded." });
+        return;
+      }
+      const appended = body.appended ?? 0;
+      setHistoryState({
+        status: "success",
+        message: appended > 0
+          ? `Loaded ${appended} daily price points.`
+          : (body.skipped ?? "History is already current."),
+      });
+      router.refresh();
+    } catch {
+      setHistoryState({ status: "error", message: "Price history could not be loaded. Try again later." });
+    }
+  }
+
   const controls = (
-    <div className="mb-3 flex flex-wrap gap-1.5" role="group" aria-label="Chart range">
-      {RANGES.map((option) => {
+    <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap gap-1.5" role="group" aria-label="Chart range">
+        {RANGES.map((option) => {
         const active = option.id === range;
         return (
           <button
@@ -151,7 +188,17 @@ export default function PriceHistoryChart({
             {option.id}
           </button>
         );
-      })}
+        })}
+      </div>
+      <button
+        type="button"
+        onClick={loadHistory}
+        disabled={historyState.status === "loading"}
+        className="ghost-btn h-8 gap-2 px-3 text-xs disabled:cursor-wait disabled:opacity-60"
+      >
+        <DatabaseZap aria-hidden="true" className="h-3.5 w-3.5" />
+        {historyState.status === "loading" ? "Loading history" : "Load price history"}
+      </button>
     </div>
   );
 
@@ -164,7 +211,15 @@ export default function PriceHistoryChart({
       )}
       {live && (
         <span className="rounded border border-gray-600 px-2 py-1 text-[11px] text-gray-400">
-          Live last price {live.on}
+          Latest stored close {live.on}
+        </span>
+      )}
+      {historyState.message && (
+        <span
+          role={historyState.status === "error" ? "alert" : "status"}
+          className={historyState.status === "error" ? "text-xs text-red-300" : "text-xs text-green-400"}
+        >
+          {historyState.message}
         </span>
       )}
     </div>
@@ -174,10 +229,10 @@ export default function PriceHistoryChart({
     <p role="alert" className="rounded-lg border border-red-500/40 bg-red-500/[0.06] p-4 text-sm text-red-300">
       {error}
     </p>
-  ) : drawn === 0 ? (
+  ) : drawn < 2 ? (
     <p className="rounded-lg border border-gray-600/70 p-4 text-sm text-gray-500">
-      No daily bars are stored for {symbol} yet. Run a backfill for this holding — until then there is nothing to draw,
-      and drawing a flat line from the current price would be an invention.
+      {drawn === 0 ? "No daily history is stored" : "Only one closing observation is stored"} for {symbol}. Load price
+      history to draw a trend; a single point cannot show performance.
     </p>
   ) : undefined;
 

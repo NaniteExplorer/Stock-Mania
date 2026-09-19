@@ -22,6 +22,7 @@ const positions: readonly InvestmentWorkspacePosition[] = [
     symbol: "INFY",
     name: "Infosys Ltd",
     kind: "LISTED_EQUITY",
+    assetFamily: "EQUITY",
     quantity: "10",
     nativeCurrency: "INR",
     costBasis: amount("12000.00"),
@@ -37,6 +38,7 @@ const positions: readonly InvestmentWorkspacePosition[] = [
     symbol: "TCS",
     name: "Tata Consultancy Services",
     kind: "LISTED_EQUITY",
+    assetFamily: "EQUITY",
     quantity: "4",
     nativeCurrency: "INR",
     costBasis: amount("16000.00"),
@@ -52,6 +54,7 @@ const positions: readonly InvestmentWorkspacePosition[] = [
     symbol: "GOLD999",
     name: "Vaulted gold",
     kind: "DIGITAL_GOLD",
+    assetFamily: "DIGITAL_METALS",
     quantity: "2.5",
     nativeCurrency: "INR",
     costBasis: amount("18000.00"),
@@ -67,6 +70,7 @@ const positions: readonly InvestmentWorkspacePosition[] = [
     symbol: "VOO",
     name: "Vanguard S&P 500 ETF",
     kind: "ETF",
+    assetFamily: "EQUITY",
     quantity: "3",
     nativeCurrency: "USD",
     costBasis: null,
@@ -85,6 +89,7 @@ check("root consumes the workspace read model", rootPage.includes("investing.wor
 check("root defines one bounded metric list", rootPage.includes("const metricCards"), true);
 check("root metric list has three entries", [...rootPage.matchAll(/\"(marketValue|unrealisedPnl|realisedPnl)\"/g)].length, 3);
 check("root has one allocation chart component", (rootPage.match(/<AllocationDashboard/g) ?? []).length, 1);
+check("allocation uses concrete instrument classification", rootPage.includes("position.assetFamily"), true);
 for (const forbidden of ["AddInstrumentForm", "OpenLeaseForm", "LeaseRowActions", "InstrumentAdmin", "RecordBuy", "RecordSell"]) {
   check(`${forbidden} is absent from overview`, rootPage.includes(forbidden), false);
 }
@@ -133,6 +138,7 @@ check("holdings table links durable holding record", holdingsText.includes("/inv
 check("holdings table renders stale state", holdingsText.includes("Stale"), true);
 check("holdings table renders native unpriced state", holdingsText.includes("Native price unavailable"), true);
 check("holdings table renders FX conversion state", holdingsText.includes("FX conversion unavailable"), true);
+check("holdings table uses concrete instrument classification", holdingsText.includes("Equity"), true);
 check("FX state retains native currency context", holdingsText.includes("Native USD price observed"), true);
 check("FX state retains observation date", holdingsText.includes("2026-09-05"), true);
 check("holdings page withholds incomplete totals", holdingsPage.includes("Complete totals are unavailable"), true);

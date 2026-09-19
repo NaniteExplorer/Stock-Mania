@@ -2347,3 +2347,307 @@ Evidence:
 Residual risks:
 - Authenticated Zerodha and live US quote calls will be fixture-tested unless credentials are supplied locally.
 - Browser interaction, keyboard accessibility and responsive visual QA remain unverified because no browser backend was available.
+
+---
+
+## Investment enterprise-readiness review and isolated experiment - 2026-09-19
+
+Status: DONE
+Owner: Coordinator
+Updated: 2026-09-19
+Chosen path: Research then experiment. Primary mode: Research (followed by a bounded Experiment; no production implementation authorized).
+
+### Requirement
+Assess whether the current investment workspace is credible for enterprise-grade, zero-subscription-cost tracking of stocks, mutual funds, digital/physical gold and related assets; identify data, accounting, security, operational and UX gaps; then test a more professional asset-segregated interaction model in an isolated, reversible artifact.
+
+### Acceptance criteria
+- [x] Current production behavior is reviewed against financial correctness, price provenance/freshness, auditability, security, reliability, accessibility and operational support criteria.
+- [x] Free-data capabilities and limitations are stated per asset class without implying exchange-grade live data, redistribution rights or permanent provider availability.
+- [x] Stocks, funds, digital gold, physical gold/SGBs, deposits and other materially different products receive an evidence-based recommendation for shared versus specialized UI.
+- [x] The experiment defines a hypothesis and threshold before construction, changes no production source, and covers overview, category drill-down, holding detail and data-quality states at desktop and mobile sizes.
+- [x] An independent QA agent records PASS, PASS_WITH_RISKS or FAIL for the research and experiment artifacts.
+
+### Context map
+| Need | Authoritative file/section | Why it is needed |
+|---|---|---|
+| Existing investment implementation | `app/(root)/investments/**`, `src/app/investing.usecases.ts` | Establishes the actual route structure, metrics, and typed availability behavior. |
+| Asset and calculation semantics | `20-DOMAIN-MODEL.md`, `30-CALCULATIONS.md`, `src/domain/assets.ts`, `src/domain/portfolio.ts` | Prevents visual recommendations from flattening products with different valuation, income and tax behavior. |
+| Market-data reality | `40-MARKET-DATA.md`, `src/market-data/**`, live-data section above | Establishes provider provenance, freshness, authentication and zero-cost boundaries. |
+| Prior UX research | `investment-experience/report-source.md`, `investment-experience/experiment.md`, `investment-experience/qa.md` | Reuses settled findings and highlights previously unverified browser behavior. |
+
+### Decisions and constraints
+- This packet is review and isolated experimentation only. Production routes, domain code, database schema and provider integrations are read-only.
+- "Enterprise grade" means trustworthy calculations and provenance, explicit unavailable/stale states, audit/reconciliation support, authorization and operational controls, accessible responsive workflows, and maintainable asset-specific extension points. It does not mean free exchange-grade real-time data.
+- The experiment may use synthetic, clearly labelled values and static/local fixtures. It must not represent prototype calculations as production results.
+- Free-of-subscription tracking is evaluated as an end-of-day/NAV/manual-ledger product tier; authenticated broker data and licensed real-time feeds are separate capabilities.
+
+### Step-by-step plan
+- [x] 1. Audit the production investment workspace and supporting domain/data contracts - Owner: Coordinator - Files: named context-map inputs - Verify: focused workspace/holding/entry/gold/live-data suites passed (247 assertions total); typecheck passed; evidence-linked findings prepared. `npm audit --audit-level=high` failed with 11 advisories, including 2 high severity.
+- [x] 2. Independently research current official provider, broker and regulatory constraints - Owner: Research Agent - Files: `_architecture/investment-experience/enterprise-readiness-research-2026-09-19.md` - Verify: primary-source links, dated observations, facts separated from recommendations; Markdown diff check passed.
+- [x] 3. Define and build a reversible asset-segregation UX experiment - Owner: Experiment Agent - Files: `_architecture/investment-enterprise-review/**` only - Verify: predeclared hypothesis/threshold; `node _architecture/investment-enterprise-review/check.mjs` PASS (52/52); decision KEEP as an implementation reference.
+- [x] 4. Run the current application and experiment through desktop/mobile visual and interaction checks where browser support is available - Owner: Coordinator - Files: no production writes - Verify: local Next server reached ready state at `http://localhost:3000`; supported browser discovery returned no available browser, so visual/keyboard/responsive browser QA is explicitly NOT_RUN.
+- [x] 5. Independent research/experiment QA - Owner: Testing/QA Agent - Files: review all packet artifacts; update this QA record only - Verify: PASS_WITH_RISKS with evidence below.
+
+### Handoffs
+
+#### Coordinator -> Research Agent
+- Goal: determine the present-day zero-cost market-data and compliance ceiling for the supported investment classes.
+- Completed: execution path, scope, enterprise criteria and no-production boundary are recorded.
+- Decisions: prioritize official/primary sources; distinguish EOD/NAV/manual tracking from real-time and execution.
+- Inputs: this section; `_architecture/40-MARKET-DATA.md`; `_architecture/live-investment-data/report-source.md`; `_architecture/investment-experience/report-source.md`.
+- Changed files: `_architecture/70-UPGRADE-PLAN.md` only.
+- Contract/output: concise dated findings and a recommendation suitable for the later experiment.
+- Verification: pending.
+- Open risks: provider terms and free tiers may have changed since prior research.
+- Next action: research official sources and write the addendum.
+- Do not revisit: production implementation, order execution and automated trading remain outside scope.
+
+#### Research Agent -> Experiment Agent
+- Goal: test an asset-segregated investment UI that remains truthful under free-data constraints.
+- Completed: verified present-day data availability, freshness, authentication, licensing and product limits for Indian equities, mutual funds, digital/physical gold, SGBs and optional US equities.
+- Decisions: zero-subscription mode is EOD/NAV/manual-ledger; broker quotes are account-connected entitlements; digital gold, physical gold and SGBs require distinct models; multi-user quote redistribution is not assumed.
+- Inputs: `_architecture/investment-experience/enterprise-readiness-research-2026-09-19.md`; this plan section.
+- Changed files: `_architecture/investment-experience/enterprise-readiness-research-2026-09-19.md`.
+- Contract/output: specialized asset views with valuation source, method, as-of, freshness and lifecycle fields.
+- Verification: official primary links checked on 2026-09-19; Markdown diff check passed.
+- Open risks: AMFI/IBJA redistribution rights, digital-gold provider contracts, SGB exchange-price coverage and broker commercial onboarding remain unresolved.
+- Next action: execute the bounded experiment.
+- Do not revisit: production code, order execution, automated trading or free real-time-data claims.
+
+#### Experiment Agent -> Testing/QA Agent
+- Goal: independently verify the research and isolated asset-segregation experiment.
+- Completed: created a static responsive prototype, interaction script, predeclared experiment record and deterministic checker under `_architecture/investment-enterprise-review/`; no production source changed.
+- Decisions: KEEP as an implementation reference after 52/52 checks; every figure is synthetic and incomplete coverage is a priced subtotal.
+- Inputs: this section; the research addendum; `_architecture/investment-enterprise-review/**`; focused production test evidence above.
+- Changed files: `_architecture/investment-enterprise-review/index.html`, `styles.css`, `prototype.js`, `check.mjs`, `experiment.md`.
+- Contract/output: independent QA records PASS, PASS_WITH_RISKS or FAIL in the QA record below.
+- Verification: `node _architecture/investment-enterprise-review/check.mjs` PASS (52/52); `git diff --check` PASS.
+- Open risks: browser visual, keyboard and responsive QA are not available; production classification and dependency findings remain unremediated because implementation was not authorized.
+- Next action: inspect artifacts, rerun evidence and record QA status.
+- Do not revisit: prototype promotion or production fixes are outside this path.
+
+### QA record
+Status: PASS_WITH_RISKS
+Evidence:
+- Independent artifact review confirmed the research separates verified facts, dated observations, assumptions and recommendations; it characterizes zero-subscription tracking as EOD/NAV/manual-ledger, records authentication and redistribution limits per asset class, and distinguishes equities, mutual funds, digital gold, physical gold, SGBs, gold securities and optional US equities.
+- Production-review evidence in this section and the cited investment review was inspected against the current investment routes/use-case surfaces. It records calculation, provenance/freshness, audit/reconciliation, security/dependency, reliability, accessibility and operational limitations without claiming that the experiment remediates production.
+- `node _architecture/investment-enterprise-review/check.mjs` independently reran PASS (52/52). The checks cover overview, category drill-down, seven representative holding details, five valuation states, asset-specific lifecycle fields, priced-subtotal wording, synthetic-data disclosure, semantic/accessibility markers, the `max-width: 720px` responsive contract, and isolation from production modules/network access.
+- The hypothesis, success threshold and KEEP/REVISE/DISCARD rules are recorded before the result in `experiment.md`; all experiment files remain under `_architecture/investment-enterprise-review/` and use synthetic fixtures only.
+- `git diff --check` PASS with line-ending warnings only. `git diff --name-only` plus untracked-file inspection showed changes only to this plan, the research addendum and the isolated experiment directory; no production file was changed by this packet.
+- `npm audit --audit-level=high` independently reproduced 11 advisories (1 low, 8 moderate, 2 high), matching the packet's dependency-risk evidence.
+Residual risks:
+- Browser visual, responsive and keyboard interaction QA was NOT_RUN because no supported browser backend was available; structural checks do not prove rendered behavior.
+- Provider availability, pricing, authentication and redistribution/licensing terms are dated observations, not contractual guarantees; AMFI/IBJA reuse rights, digital-gold provider contracts, SGB exchange-price coverage and broker commercial onboarding remain unresolved.
+- The 11 dependency advisories, including two high-severity findings, remain unremediated and prevent an unqualified enterprise-readiness conclusion.
+- This approval covers research and the isolated experiment only. It does not approve production financial correctness, production accessibility, live-data licensing, or promotion of prototype code.
+
+---
+
+## Professional stock and non-digital-gold analytics implementation - 2026-09-19
+
+Status: DONE
+Owner: Planner/Implementer
+Updated: 2026-09-19
+Chosen path: Direct implementation. Primary mode: Implementation.
+
+### Holding performance correction - 2026-09-19
+
+Status: DONE
+
+#### Requirement
+Make non-digital holding performance useful when only a current valuation exists: do not render a one-point chart as meaningful history, expose an authorised history-load workflow with visible success/failure, and replace low-value realised-zero headline space with open-position unrealised P&L and return. Preserve digital-gold structure.
+
+#### Acceptance criteria
+- [x] Fewer than two historical observations renders an explicit coverage state rather than a misleading chart.
+- [x] The owner can request daily history from the Performance view and receives loading, success, failure and no-new-data feedback.
+- [x] Non-digital Summary and Performance emphasize unrealised P&L and absolute return; realised results remain available in disposal/tax history rather than occupying an open-position headline card.
+- [x] Digital-gold summary and performance structure remain unchanged.
+- [x] Focused tests, full tests, typecheck, lint and production build pass; independent QA records a verdict.
+
+#### Step-by-step plan
+- [x] 1. Correct sparse-history chart behavior and add the existing authorised backfill route as a client control - Owner: Frontend Expert - Files: `price-history-chart.tsx`, focused UI tests - Verify: sparse/recovery UI PASS.
+- [x] 2. Replace non-digital realised-zero headline metrics with unrealised P&L and return - Owner: Frontend Expert - Files: holding `page.tsx`, `returns-panel.tsx`, focused holding tests - Verify: consolidated performance UI PASS (12), holding route PASS (42), gold analytics PASS (88), gold benchmark PASS (83).
+- [x] 3. Run integration checks and independent QA - Owner: Planner/Implementer / Testing QA Agent - Integration evidence: full suite PASS (67/67 files), typecheck PASS, ESLint PASS, diff check PASS, production build PASS; independent verdict PASS_WITH_RISKS.
+
+#### Performance correction baton: Planner/Implementer -> Testing/QA Agent
+- Goal: verify that sparse chart data is represented honestly and non-digital holding performance prioritises open-position decisions.
+- Completed: one-point series now renders a coverage state with an authorised history-load control and feedback; `Live last price` was corrected to `Latest stored close`; duplicate performance metrics were consolidated; non-digital realised headline cards were replaced by unrealised P&L and absolute return while digital-metal branching stayed intact.
+- Decisions: quote refresh and OHLC history remain distinct; the UI explicitly requests history instead of fabricating a line from valuation quotes. Realised disposal analysis remains in Activity/Lots & tax rather than the open-position headline.
+- Inputs: user screenshots; holding route; existing authorised backfill route; chart and returns components.
+- Changed files: `app/(root)/investments/[instrumentId]/page.tsx`; `price-history-chart.tsx`; `returns-panel.tsx`; `tests/holding-performance-ui.spec.ts`; `tests/investment-holding-ui.spec.ts`; this plan.
+- Verification: focused correction PASS (12), holding route PASS (42), gold analytics PASS (88), gold benchmark PASS (83), full suite PASS (67/67), typecheck/ESLint/diff-check/build PASS.
+- Open risks: history availability still depends on upstream daily-history providers; browser-control backend remains unavailable.
+- Next action: independently review acceptance criteria and record PASS, PASS_WITH_RISKS or FAIL.
+- Do not revisit: digital-gold structure or the separation between valuation quotes and adjusted OHLC history.
+
+#### Performance correction QA record
+Status: PASS_WITH_RISKS
+Evidence:
+- Sparse history: `PriceHistoryChart` suppresses the plot when fewer than two closes are drawable and explicitly explains that one observation cannot show performance. The focused correction suite passes (12 assertions).
+- History request: the control posts to the existing authorised backfill route, disables itself while loading, announces loading/success/no-new-data through a status region, announces failures through an alert, and refreshes server data after success. The route derives session identity server-side and scopes instrument lookup to that user.
+- Decision-useful metrics: non-digital Summary replaces the realised-zero headline with unrealised P&L and open-cost return context. Performance contains one `ReturnsPanel`, exposing invested value, market value, unrealised P&L, absolute return, XIRR and average buy price; no duplicate realised-performance panel remains.
+- Accessibility inspection: range controls expose a labelled group and pressed state; the history command is a native button with disabled loading state; status and error messages use live-region roles; the chart retains its table representation.
+- Digital-gold preservation: the original realised Summary card remains behind `isDigitalMetal`; gold performance components remain in their prior digital-metal branch. `npm test -- gold-analytics` passes 88 assertions and `npm test -- gold-benchmark` passes 83 assertions; holding-route coverage passes 42 assertions.
+- Independent checks rerun: `npm test -- holding-performance-ui`, `npm test -- investment-holding-ui`, `npm test -- gold-analytics`, `npm test -- gold-benchmark`, and scoped `git diff --check` all PASS. Coordinator-recorded integration evidence is full suite 67/67, typecheck, ESLint, diff check and production build PASS.
+Residual risks:
+- Browser visual, responsive, focus-order and keyboard interaction QA was not available; accessibility conclusions beyond native semantics are based on code inspection.
+- Loading/success/failure/no-new-data transitions are source-contract tested rather than exercised through a rendered component test.
+- History recovery remains dependent on upstream daily-history availability and can legitimately return no new data or a provider error.
+
+#### Baton: Testing/QA Agent -> Coordinator
+- Goal: independently assess the holding performance correction without changing production code.
+- Completed: verified sparse-series truthfulness, authorised history recovery states, consolidated non-digital metrics, accessibility basics, duplicate removal and digital-gold preservation.
+- Decision: PASS_WITH_RISKS; all acceptance criteria are met, with browser and rendered-interaction coverage limitations recorded.
+- Inputs: correction subsection and baton; holding `page.tsx`; `price-history-chart.tsx`; `returns-panel.tsx`; focused holding tests; authorised backfill route for boundary verification.
+- Changed files: `_architecture/70-UPGRADE-PLAN.md` only.
+- Verification: focused correction PASS (12), holding route PASS (42), gold analytics PASS (88), gold benchmark PASS (83), scoped diff check PASS; recorded integration gates PASS.
+- Open risks: no browser-backed UI run; client feedback states lack rendered interaction tests; upstream history providers may be unavailable.
+- Next action: release the correction or schedule browser/component interaction coverage as follow-up hardening.
+- Do not revisit: digital-gold structure, valuation/history separation, or removal of realised P&L from open-position headline metrics unless new evidence appears.
+
+### Requirement
+Deliver a professional, enterprise-oriented investment experience for listed stocks, ETFs, mutual funds, SGBs and fixed-income instruments while preserving the current visual theme and leaving the working digital-gold structure unchanged. Add advanced analysis and a dynamic market tracker using existing exact domain calculations and the strongest available provider lane, with truthful real-time, delayed, EOD, NAV, stale, manual and unavailable states.
+
+### Acceptance criteria
+- [x] Digital-gold analytics, lease, lots, tax and holding-route structure remain behaviorally unchanged and their focused tests continue to pass.
+- [x] Gold ETFs are classified as metal exposure from instrument semantics rather than generic ETF kind; portfolio allocation and holding filters cannot silently file them under equity.
+- [x] A server-owned analysis read model exposes price trend, SMA/EMA, RSI, MACD, Bollinger position, ATR, realised volatility, maximum drawdown, return and data sufficiency for eligible non-digital instruments; unavailable metrics carry reasons rather than zeroes.
+- [x] A professional Analysis route supports asset-family and instrument selection, range selection, provenance/as-of context, risk metrics, technical indicators and chart/table representations without presenting indicators as investment advice.
+- [x] A Market Tracker route shows each tracked non-digital instrument's last value, observation time, ingestion time, source/freshness state, day/period movement where supported, data gaps and corrective action. `LIVE` is shown only for an entitled/configured lane with a current usable observation; configuration alone is not health.
+- [x] Stocks/ETFs, mutual funds and fixed-income holdings receive distinct labels, summary fields and lifecycle/data-quality guidance; digital gold retains its existing specialized experience.
+- [x] No paid provider is required. Account-connected real-time is used only when configured and entitled; all fallback states are explicit and no redistribution right or universal real-time SLA is implied.
+- [x] New behavior has focused tests; lint, typecheck, relevant suites, full test and production build pass; independent QA records PASS or PASS_WITH_RISKS.
+
+### Context map
+| Need | Authoritative file/section | Why it is needed |
+|---|---|---|
+| Approved evidence and concept | Previous review section; `investment-experience/enterprise-readiness-research-2026-09-19.md`; `investment-enterprise-review/**` | Defines the truthful data ceiling and accepted asset-segregation model. |
+| Analysis formulas | `src/domain/analysis.ts`, `src/domain/portfolio.ts` | Reuse tested SMA/EMA/RSI/MACD/Bollinger/ATR/volatility and portfolio-risk formulas. |
+| Bars, quotes and provenance | `src/domain/analysis.ts#BarRepository`, pricing repositories/use cases, `src/app/live-data.usecases.ts` | Supplies historical and current observations without client-side provider access. |
+| Investment routes | `app/(root)/investments/**`, `src/app/investing.usecases.ts` | Preserves server-first route composition and typed availability semantics. |
+| Digital-gold boundary | `app/(root)/investments/[instrumentId]/**`, `src/app/gold-analytics.usecases.ts` | Existing behavior is frozen except shared-shell compatibility. |
+| Next 16 conventions | local server/client, forms, instant-navigation and search-params guides | Keeps pages server-first, client islands narrow and URL state durable. |
+
+### Decisions and constraints
+- The literal request for universally free true real-time data is infeasible and conflicts with verified provider/licensing facts. This implementation intentionally provides truthful account-connected real-time where available and labelled delayed/EOD/NAV/manual fallback elsewhere.
+- Analysis is descriptive, not predictive advice. Metrics state lookback, sample sufficiency and provenance; the UI will not emit buy/sell recommendations or profitability claims.
+- Existing theme tokens, panels, typography, chart primitives and icon system remain authoritative. The prototype informs hierarchy and content, not a visual replacement.
+- Digital-gold route branches and specialized components are outside implementation ownership. Shared read-model fields and navigation may evolve only if gold behavior and focused tests remain unchanged.
+- The first production slice uses stored bars and quotes. Streaming transport or broker order execution is not added; dynamic tracking refreshes the server-owned current-data lane and reports provider health honestly.
+- Existing research/experiment artifacts and user changes are preserved.
+- Security gate: the tracker reads stored observations by default. Any explicit portfolio refresh must enforce a per-user cooldown, concurrent-request deduplication and a bounded instrument budget before this slice can ship.
+- Dependency gate: run non-force `npm audit fix` for compatible `nodemailer`/`browserslist` updates; never accept the breaking `--force` downgrades proposed for Drizzle Kit or ExcelJS.
+
+### Step-by-step plan
+- [x] 1. Correct asset-family classification and define primitive analysis/tracker contracts - Owner: Backend/Financial Expert - Files: `src/app/investing.usecases.ts`, `src/app/investment-analysis.usecases.ts`, `src/infra/container.ts`, `tests/investment-analysis.spec.ts` - Verify: analysis PASS (20 assertions), investing integration PASS (88), instruments PASS (73), typecheck and scoped ESLint PASS.
+- [x] 2. Build professional Analysis and Market Tracker routes in the current theme - Owner: Frontend Expert after Step 1 - Files: `app/(root)/investments/analysis/**`, `app/(root)/investments/tracker/**`, `investment-nav.tsx`, focused UI tests - Verify: analysis UI PASS (17 assertions), tracker UI PASS (26), typecheck and scoped ESLint PASS.
+- [x] 3. Upgrade non-digital holding characterization without altering digital-gold branches - Owner: Frontend Expert after Step 1 - Files: `app/(root)/investments/[instrumentId]/page.tsx`, `app/(root)/investments/[instrumentId]/non-digital-holding-profile.tsx`, `tests/non-digital-holding-ui.spec.ts` - Verify: focused non-digital UI PASS (13 assertions), holding UI PASS (42), gold analytics PASS (88), gold benchmark PASS (83), typecheck, scoped ESLint and scoped diff-check PASS.
+- [x] 4. Harden refresh and dependency boundaries - Owner: Backend/Security relay - Files: `app/(root)/investments/actions.ts`, `src/app/portfolio-refresh-guard.usecases.ts`, `tests/portfolio-refresh-guard.spec.ts`, `package-lock.json` - Verify: guard PASS (7 assertions), refresh-summary PASS (8), investment-entry PASS (50), typecheck/scoped ESLint PASS; compatible audit updates remove all high advisories (`npm audit --audit-level=high` exits cleanly, 6 moderate transitive advisories remain because fixes require rejected breaking downgrades).
+- [x] 5. Integrate, run focused and full verification, and repair defects - Owner: Planner/Implementer - Files: changed implementation/test files and this plan - Verify: concrete-instrument allocation/holding classification wired and regression-tested; focused suites PASS; full suite PASS (65/65 files); typecheck PASS; ESLint PASS; production build PASS; audit has no high/critical findings.
+- [x] 6. Independent QA - Owner: Testing/QA Agent - Files: inspect all changed files; write this QA record only - Verify: PASS_WITH_RISKS after repair; false `LIVE` classification is eliminated and focused regressions pass.
+
+### Handoffs
+
+#### Planner/Implementer -> Backend/Financial Expert
+- Goal: deliver truthful, serialisable analysis and tracker contracts plus corrected asset-family classification.
+- Completed: direct-implementation path, user priorities, evidence, scope and Next 16 constraints are recorded.
+- Decisions: reuse domain formulas; no client-side financial calculations; configuration is not provider health; digital-gold behavior is frozen.
+- Inputs: this section; `src/domain/analysis.ts`; `src/domain/portfolio.ts`; `src/app/investing.usecases.ts`; `src/app/live-data.usecases.ts`; bar/quote repository contracts; focused tests.
+- Changed files: this implementation plan only so far.
+- Contract/output: primitive outputs suitable for server pages, discriminated availability reasons, asset group derived from the real instrument, and focused tests.
+- Verification: pending.
+- Open risks: sparse bars and absent entitled providers must produce unavailable/delayed states rather than approximations.
+- Next action: implement Step 1 and return the exact route-facing contract.
+- Do not revisit: digital-gold structure, live order execution, paid-provider requirements or universal real-time claims.
+
+#### Backend/Financial Expert -> Frontend Expert
+- Goal: render truthful asset classification, advanced analysis and tracker health from server-owned primitive contracts.
+- Completed: gold ETFs now classify from actual instrument semantics; stored-bar analysis and stored-quote tracker services are wired under `services().investing` with ownership checks and explicit unavailable/freshness states.
+- Decisions: `LIVE` requires entitlement, current observation and recent ingestion; stored quote dates are calendar observations, not exchange timestamps; provider IDs are sanitized.
+- Inputs: `src/app/investment-analysis.usecases.ts`; `src/app/investing.usecases.ts`; `src/infra/container.ts`; `tests/investment-analysis.spec.ts`.
+- Changed files: `src/app/investing.usecases.ts`; `src/app/investment-analysis.usecases.ts`; `src/infra/container.ts`; `tests/investment-analysis.spec.ts`.
+- Contract/output: `services().investing.analysis.execute({ userId, from, through, instrumentId? })` and `services().investing.tracker.execute({ userId, asOf })`; exported primitive types named in the file.
+- Verification: focused analysis/integration/instrument suites, typecheck, scoped ESLint and diff-check PASS.
+- Open risks: refresh throttling remains Step 4; provider entitlement/licensing is deployment-specific.
+- Next action: build Steps 2 and 3 without accepting a browser-supplied user ID or relabelling observation dates as exchange timestamps.
+- Do not revisit: digital-gold behavior, formula implementations, provider execution or universal real-time claims.
+
+#### Security Expert -> Planner/Implementer
+- Goal: prevent the new dynamic tracker from widening provider-abuse, tenant-isolation or dependency risk.
+- Completed: read-only review of refresh actions, provider boundaries, tenant identity flow and dependency audit.
+- Decisions: stored observations are the default tracker input; explicit refresh is blocked from release until cooldown, deduplication and request budget exist; non-force audit remediation is safe.
+- Inputs: `app/(root)/investments/actions.ts`; `src/infra/providers.ts`; `app/api/cron/market-data/route.ts`; `package.json`; `SECURITY.md`.
+- Changed files: None.
+- Contract/output: Step 4 security gate and tests.
+- Verification: `npm audit --audit-level=high` reproduced 11 advisories (2 high); `npm audit fix --dry-run` offered compatible updates including `nodemailer 9.1.1` and `browserslist 4.29.0`.
+- Open risks: process-local controls are not a distributed production rate limiter; cron response redaction and remote gzip size limits remain follow-up hardening unless touched by this tracker.
+- Next action: implement the focused refresh guard and non-force dependency updates, then rerun security checks.
+- Do not revisit: `npm audit fix --force` is rejected because it proposes breaking Drizzle Kit and ExcelJS downgrades.
+
+#### Frontend Expert -> Coordinator / Testing QA Agent (Step 3)
+- Goal: give non-digital holdings professional, asset-specific characterization while preserving every digital-metal branch.
+- Completed: equities/ETFs, funds and fixed-income/SGB holdings now receive distinct identity summaries, truthful valuation-quality context and recorded lifecycle panels using facts already loaded by the server route.
+- Decisions: the page remains a Server Component; no new provider requests or client calculations were added; absent coupon, distribution or maturity facts remain explicitly unestimated; digital gold, silver and platinum retain their prior specialized branches.
+- Inputs: this requirement section; Backend/Financial Step 1 baton; local Next 16 page and Server Component guides; holding route; domain instrument terms and asset labels.
+- Changed files: `app/(root)/investments/[instrumentId]/page.tsx`; `app/(root)/investments/[instrumentId]/non-digital-holding-profile.tsx`; `tests/non-digital-holding-ui.spec.ts`; this plan record.
+- Contract/output: responsive current-theme panels for `EQUITY`, `FUND` and `FIXED_INCOME`; valuation states distinguish available, stale and unavailable and expose observation date, native currency and price reference; bond/SGB terms render only when present.
+- Verification: `npm test -- non-digital-holding-ui` PASS (13); `npm test -- investment-holding-ui` PASS (42); `npm test -- gold-analytics` PASS (88); `npm test -- gold-benchmark` PASS (83); `npm run typecheck` PASS; scoped ESLint PASS; scoped `git diff --check` PASS.
+- Open risks: browser visual/keyboard QA and full integration verification remain for Steps 5-6; fund folio, distribution history and generic government-security terms are not present in the current domain contract and are therefore not displayed.
+- Next action: Coordinator integrates Step 3 with Steps 2 and 4, runs full verification, then sends the complete slice to independent QA.
+- Do not revisit: digital-gold components, lease behavior, gold analytics, provider execution, financial formulas or unsupported income projections.
+
+#### Frontend Expert -> Coordinator / Testing QA Agent (Step 2)
+- Goal: expose professional analysis and market-tracker workflows from the server-owned contracts without changing the current theme.
+- Completed: added URL-addressable Analysis and Market Tracker routes, shared navigation entries, responsive evidence tables, chart/table views, freshness labels and data-quality guidance.
+- Decisions: route inputs are bounded filters only; tenant identity remains server-derived; tracker is read-only and never promotes delayed/EOD/NAV/manual observations to live.
+- Inputs: backend contract baton; local Next 16 page/search-params guidance; existing chart and primitive components.
+- Changed files: `app/(root)/investments/analysis/**`; `app/(root)/investments/tracker/**`; `app/(root)/investments/investment-nav.tsx`; `tests/investment-analysis-ui.spec.ts`; `tests/investment-tracker-ui.spec.ts`.
+- Contract/output: `/investments/analysis` and `/investments/tracker` in the current application shell.
+- Verification: analysis UI PASS (17); tracker UI PASS (26); typecheck and scoped ESLint PASS.
+- Open risks: visual browser QA depends on an available browser-control backend; account-connected live entitlement remains deployment-specific.
+- Next action: independent QA reviews the integrated slice and records the final gate.
+- Do not revisit: digital-gold structure, financial formulas, paid-provider assumptions or universal real-time claims.
+
+#### Planner/Implementer -> Testing/QA Agent (Step 5)
+- Goal: independently verify the integrated professional stock and non-digital investment slice against every acceptance criterion.
+- Completed: repaired overview classification consumers and refresh-guard schema-rule compatibility; all focused and broad checks are green.
+- Decisions: `assetFamily` is required on workspace positions; residual moderate transitive advisories are documented instead of applying npm's breaking `--force` downgrades.
+- Inputs: this requirement section and all changed implementation/test files in `git status --short`.
+- Changed files: `app/(root)/investments/page.tsx`; `app/(root)/investments/holdings/holdings-table.tsx`; `src/app/investing.usecases.ts`; `src/app/portfolio-refresh-guard.usecases.ts`; `tests/investment-workspace-ui.spec.ts`; plus files in prior batons.
+- Contract/output: integrated routes and server-owned read models ready for release gating.
+- Verification: `npm test` PASS (65/65 files); `npm run typecheck` PASS; `npm run lint -- --quiet` PASS; `npm run build` PASS; `npm audit --audit-level=high` exits 0 with six moderate transitive advisories.
+- Open risks: browser backend was unavailable during the prior experiment; process-local refresh control does not coordinate across horizontally scaled instances.
+- Next action: inspect the diff, rerun proportionate checks, attempt browser verification where supported, and record PASS, PASS_WITH_RISKS or FAIL below.
+- Do not revisit: the accepted truthful data ceiling or frozen digital-gold structure unless a regression is found.
+
+#### Backend/Financial Expert -> Testing/QA Agent (QA repair)
+- Goal: remove the false-positive `LIVE` state and restore an Indian close when Yahoo throttles the correctly mapped symbol.
+- Completed: stored `CLOSE` observations can no longer become `LIVE` from recent ingestion or entitlement alone; an entitled recent close now remains `DELAYED`. Added a keyless Moneycontrol close fallback that resolves an `sc_id`, validates the returned NSE/BSE symbol exactly, uses current price only after market close, otherwise uses the published previous close, and retains provider/trading-date provenance.
+- Decisions: the current quote schema has no exchange event timestamp, so it cannot prove realtime semantics and will not emit `LIVE`; Moneycontrol is a close fallback, not a realtime entitlement claim. Official NSE/BSE bhavcopy remains in the background history engine rather than the interactive path because its file-per-day requests can be slow.
+- Inputs: QA failure record; `src/domain/pricing.ts`; `src/infra/providers.ts`; observed Yahoo HTTP 429; observed Moneycontrol response for `KALYANKJIL` with matching `NSEID`, closed-market state and source timestamp.
+- Changed files: `src/app/investment-analysis.usecases.ts`; `src/infra/providers.ts`; `tests/investment-analysis.spec.ts`; `tests/moneycontrol-close-provider.spec.ts`; this plan.
+- Contract/output: truthful delayed/EOD tracker state and a validated Indian closing-price fallback for valuation.
+- Verification: focused tracker/analysis PASS (20 assertions); Moneycontrol fallback PASS (6 assertions); typecheck and ESLint PASS. Live probe: Yahoo returned 429; Moneycontrol returned a matching `KALYANKJIL` response.
+- Open risks: the keyless fallback is an unofficial endpoint without an enterprise SLA; true live still requires an entitled provider plus a persisted exchange timestamp; browser QA remains unavailable.
+- Next action: rerun full tests/build, then independent QA verifies the repair.
+- Do not revisit: no `LIVE` label may be derived from ingestion time, and no unmatched autosuggest result may be accepted.
+
+### QA record
+Status: PASS_WITH_RISKS
+Evidence:
+- Prior FAIL repaired - truthful `LIVE` state: `quoteFreshness` no longer derives `LIVE` from entitlement or ingestion time. Because persisted quotes contain a trading date rather than an exchange event timestamp, current listed-equity/ETF/REIT observations remain `DELAYED`; older observations become `EOD`. `npm test -- investment-analysis` PASS (2/2 files, 37 assertions), including the negative entitled-and-recent `CLOSE` case.
+- Indian close fallback: `MoneycontrolCloseProvider` is explicitly non-intraday (`quoteDelayMinutes: 1440`, `quoteTypes: ["CLOSE"]`), validates the returned exchange-specific `NSEID`/`BSEID` exactly against the requested symbol, uses `pricecurrent` and `lastupd` only for a closed market, otherwise uses `priceprevclose` and `PREVDATE`, preserves the source trading date, and attributes the provider. `npm test -- moneycontrol-close-provider` PASS (1/1 file, 6 assertions); `npm test -- providers-conformance` PASS (1/1 file, 124 assertions).
+- Tenant boundary: analysis rejects a foreign instrument before reading bars, tracker enumerates only the authenticated user's instruments before reading quotes, and route identity comes from `currentUserId()`. Focused ownership tests pass.
+- Classification: workspace allocation and holdings consume concrete `assetFamily`; `groupOf(instrument)` classifies the gold-ETF fixture as `DIGITAL_METALS`. Relevant focused tests pass.
+- Digital-gold non-regression: new holding profiles are gated by `!isDigitalMetal`; `npm test -- gold-analytics` PASS (88 assertions), `npm test -- gold-benchmark` PASS (83), and `npm test -- investment-holding-ui` PASS (42).
+- Refresh guard: `npm test -- portfolio-refresh-guard` PASS (1/1 file, 7 assertions), covering per-user in-flight exclusion, cooldown, tenant independence, idempotent release and the 250-instrument production budget contract. The action releases in `finally`.
+- UI/read-model regression: tracker UI PASS (26 assertions), workspace UI PASS (50), non-digital holding UI PASS (13), and investment holding UI PASS (42).
+- Regression/tooling: repaired integration run records `npm test` PASS (66/66 spec files) and `npm run build` PASS. Independent re-QA reran `npm run typecheck`, `npm run lint -- --quiet`, and `git diff --check`; all PASS.
+- Dependency check: `npm audit --audit-level=high` exits 0 with six moderate transitive advisories; available fixes require the intentionally rejected breaking `--force` changes.
+- Browser check: attempted the supported browser-control runtime for `http://127.0.0.1:3000/investments`; browser inventory was empty, so visual, responsive and keyboard interaction checks were not run.
+Residual risks:
+- The Moneycontrol fallback is an unofficial keyless endpoint without an availability, schema-stability or redistribution SLA. Its focused test covers the closed-market path; open-market previous-close selection and mismatched-symbol rejection are verified by code inspection but do not yet have dedicated negative fixtures.
+- The persisted quote model still lacks an exchange event timestamp, so this release correctly emits no `LIVE` tracker state. True live display requires an entitled provider contract and persisted exchange timestamp in a future schema change.
+- Process-local refresh state does not coordinate cooldown or in-flight deduplication across horizontally scaled application instances; use a shared store before treating this as a distributed enterprise rate limit.
+- Visual responsiveness, chart rendering and keyboard flows remain unverified because no browser backend was available.
+- Six moderate transitive dependency advisories remain in development/import tooling as documented above.

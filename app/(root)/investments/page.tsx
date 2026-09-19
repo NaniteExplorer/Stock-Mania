@@ -4,7 +4,7 @@ import { AlertTriangle, BarChart3, BriefcaseBusiness, LineChart, PlusCircle } fr
 import { connection } from "next/server";
 import { CalendarDate } from "@/core/time";
 import { Currency, Money } from "@/core/money";
-import { groupLabel, groupOfKind } from "@/domain/asset-groups";
+import { groupLabel } from "@/domain/asset-groups";
 import type { InvestmentMetric, InvestmentWorkspaceOutput } from "@/app/investing.usecases";
 import { Card, EmptyState, PageHeader, Pill, Stat } from "@/ui/primitives";
 import { formatMoney, formatMoneyCompact } from "@/ui/format";
@@ -175,7 +175,7 @@ function allocationSlices(workspace: InvestmentWorkspaceOutput): AllocationSlice
   const byGroup = new Map<string, { label: string; minor: bigint }>();
   for (const position of workspace.positions) {
     if (!position.marketValue) continue;
-    const group = groupOfKind(position.kind);
+    const group = position.assetFamily;
     const money = Money.fromRupees(position.marketValue.amount, Currency.of(position.marketValue.currency));
     const existing = byGroup.get(group);
     byGroup.set(group, {

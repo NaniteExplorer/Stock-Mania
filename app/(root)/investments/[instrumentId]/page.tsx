@@ -6,7 +6,8 @@ import { Money } from "@/core/money";
 import { Percentage, Quantity, UnitPrice } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
 import { DateRange } from "@/core/time";
-import { InstrumentId } from "@/domain/instruments";
+import { Bond, InstrumentId, SovereignGoldBond } from "@/domain/instruments";
+import { kindLabel } from "@/domain/asset-groups";
 import type { StoredCorporateAction } from "@/domain/corporate";
 import {
   cumulativeSplitFactorAfter,
@@ -37,6 +38,7 @@ import GoldTaxStatement from "./gold-tax-statement";
 import HoldingNav, { normalizeHoldingView, type HoldingViewSearchParams } from "./holding-nav";
 import PriceHistoryChart, { type PriceHistoryGap, type PriceHistoryPoint } from "./price-history-chart";
 import ReturnsPanel, { type HoldingReturns } from "./returns-panel";
+import NonDigitalHoldingProfile, { type NonDigitalHoldingFamily } from "./non-digital-holding-profile";
 
 export const metadata: Metadata = { title: "Holding" };
 
@@ -268,6 +270,32 @@ export default async function Page({
   const holdingReturn = holdingUnrealised && investedValue.isPositive
     ? Percentage.ratio(holdingUnrealised, investedValue)
     : null;
+  const nonDigitalFamily: NonDigitalHoldingFamily = [
+    "INDEX_FUND",
+    "MUTUAL_FUND",
+    "LIQUID_FUND",
+    "DEBT_FUND",
+    "ELSS_FUND",
+  ].includes(instrument.kind)
+    ? "FUND"
+    : ["BOND", "GOVT_SECURITY", "SOVEREIGN_GOLD_BOND"].includes(instrument.kind)
+      ? "FIXED_INCOME"
+      : "EQUITY";
+  const holdingPlatform = platformRows.find((platform) => platform.id.equals(instrument.institutionId))?.name ?? null;
+  const lifecycleFacts = instrument instanceof Bond && instrument.terms
+    ? [
+        { label: "Face value", value: instrument.terms.faceValue.toDecimalString() },
+        { label: "Coupon rate", value: `${instrument.terms.couponRate.toFixed(2)}% p.a.` },
+        { label: "Maturity", value: instrument.terms.maturesOn.toISO() },
+      ]
+    : instrument instanceof SovereignGoldBond && instrument.terms
+      ? [
+          { label: "Issued", value: instrument.terms.issuedOn.toISO() },
+          { label: "Maturity", value: instrument.terms.maturesOn.toISO() },
+          { label: "Interest", value: "2.50% p.a.; taxable as recorded income" },
+          { label: "Maturity treatment", value: "Capital-gain exemption applies to eligible maturity redemption" },
+        ]
+      : [];
 
   /*
    * Two different facts, and conflating them is what makes a working feed look
@@ -395,7 +423,6 @@ export default async function Page({
           : null,
         marketValue: position?.marketValue ?? null,
         unrealisedGain: holdingUnrealised,
-        realisedGain: position?.realisedGain ?? Money.zero(instrument.currency),
         absoluteReturn: holdingReturn,
         xirr: returnsResult.value.xirr,
         pricedOn: position?.pricedOn?.toISO() ?? null,
@@ -458,8 +485,36 @@ export default async function Page({
               : (position?.unpricedReason ?? "No price")
           }
         />
-        <Stat label="Realised" value={position?.realisedGain ?? Money.zero()} hint="Gains already taken" />
+        {isDigitalMetal ? (
+          <Stat label="Realised" value={position?.realisedGain ?? Money.zero()} hint="Gains already taken" />
+        ) : (
+          <Stat
+            label="Unrealised gain / loss"
+            value={holdingUnrealised}
+            hint={holdingReturn ? `${formatPercent(holdingReturn)} on open cost` : "Needs a priced open position"}
+          />
+        )}
       </div>}
+
+      {!isDigitalMetal && activeView === "summary" && (
+        <NonDigitalHoldingProfile
+          family={nonDigitalFamily}
+          kindLabel={kindLabel(instrument.kind, instrument.currency.code)}
+          currency={instrument.currency.code}
+          exchange={instrument.props.exchange ?? null}
+          isin={instrument.props.isin ?? null}
+          quoteRef={instrument.quoteKey().ref ?? null}
+          platform={holdingPlatform}
+          openLots={openLots.length}
+          tradeCount={trades.length}
+          corporateActionCount={actions.length}
+          pricedOn={position?.pricedOn?.toISO() ?? null}
+          isStale={position?.isStale ?? false}
+          unpricedReason={position?.unpricedReason ?? null}
+          lifecycle={lifecycleFacts}
+          view="summary"
+        />
+      )}
 
       {isDigitalMetal && (
         <>
@@ -806,6 +861,7 @@ export default async function Page({
           <h2 id="holding-price-heading" className="sr-only">Price history</h2>
           <PriceHistoryChart
             symbol={instrument.symbol}
+            instrumentId={instrumentId}
             currency={instrument.currency.code}
             points={historyPoints}
             live={livePoint}
@@ -825,48 +881,46 @@ export default async function Page({
       )}
 
       {!isDigitalMetal && activeView === "performance" && (
-        <section className="panel mb-6 p-5" aria-labelledby="holding-performance-heading">
-          <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 id="holding-performance-heading" className="text-sm font-semibold text-gray-100">
-                Holding performance
-              </h2>
-              <p className="mt-1 max-w-2xl text-xs text-gray-500">
-                Valuation, unrealised gain and realised gain for this holding, from the current
-                lots and price-book contract.
-              </p>
-            </div>
-            <Pill tone="neutral">
-              {position?.pricedOn ? `Priced ${position.pricedOn.toISO()}` : "Unpriced"}
-            </Pill>
-          </div>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Invested" value={investedValue} hint="Open-lot cost plus charges" />
-            <Stat
-              label="Market value"
-              value={holdingMarketValue}
-              hint={position?.unpricedReason ?? "Latest resolved holding valuation"}
-            />
-            <Stat
-              label="Unrealised gain / loss"
-              value={holdingUnrealised}
-              hint={holdingReturn ? `${formatPercent(holdingReturn)} on open cost` : "Needs a priced open position"}
-            />
-            <Stat
-              label="Realised gain / loss"
-              value={position?.realisedGain ?? Money.zero(instrument.currency)}
-              hint="Disposals recorded for this holding"
-            />
-          </div>
-          <p className="mt-4 rounded-lg border border-gray-600 px-3 py-2 text-xs text-gray-500">
-            Holding-level XIRR and TWR are unavailable in this route contract today; the
-            portfolio Performance route owns those metrics and shows typed unavailable reasons
-            where boundary inputs are missing.
-          </p>
-        </section>
+        <NonDigitalHoldingProfile
+          family={nonDigitalFamily}
+          kindLabel={kindLabel(instrument.kind, instrument.currency.code)}
+          currency={instrument.currency.code}
+          exchange={instrument.props.exchange ?? null}
+          isin={instrument.props.isin ?? null}
+          quoteRef={instrument.quoteKey().ref ?? null}
+          platform={holdingPlatform}
+          openLots={openLots.length}
+          tradeCount={trades.length}
+          corporateActionCount={actions.length}
+          pricedOn={position?.pricedOn?.toISO() ?? null}
+          isStale={position?.isStale ?? false}
+          unpricedReason={position?.unpricedReason ?? null}
+          lifecycle={lifecycleFacts}
+          view="performance"
+        />
       )}
 
-      {activeView === "income-leases" && instrument.kind !== "DIGITAL_GOLD" && (
+      {!isDigitalMetal && activeView === "income-leases" && (
+        <NonDigitalHoldingProfile
+          family={nonDigitalFamily}
+          kindLabel={kindLabel(instrument.kind, instrument.currency.code)}
+          currency={instrument.currency.code}
+          exchange={instrument.props.exchange ?? null}
+          isin={instrument.props.isin ?? null}
+          quoteRef={instrument.quoteKey().ref ?? null}
+          platform={holdingPlatform}
+          openLots={openLots.length}
+          tradeCount={trades.length}
+          corporateActionCount={actions.length}
+          pricedOn={position?.pricedOn?.toISO() ?? null}
+          isStale={position?.isStale ?? false}
+          unpricedReason={position?.unpricedReason ?? null}
+          lifecycle={lifecycleFacts}
+          view="income-leases"
+        />
+      )}
+
+      {activeView === "income-leases" && instrument.kind !== "DIGITAL_GOLD" && isDigitalMetal && (
         <section className="panel mb-6 p-5" aria-labelledby="holding-income-heading">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>

@@ -1050,6 +1050,94 @@ export class NseQuoteProvider extends PriceProvider {
   }
 }
 
+interface MoneycontrolSuggestion {
+  sc_id?: string;
+  link_src?: string;
+  pdt_dis_nm?: string;
+}
+
+interface MoneycontrolClosePayload {
+  code?: string;
+  data?: {
+    NSEID?: string;
+    BSEID?: string;
+    pricecurrent?: string;
+    priceprevclose?: string;
+    market_state?: string;
+    lastupd?: string;
+    PREVDATE?: string;
+  };
+}
+
+/** Keyless Indian close fallback with exact exchange-symbol validation. */
+export class MoneycontrolCloseProvider extends PriceProvider {
+  readonly id = "moneycontrol-close";
+  readonly displayName = "Moneycontrol Indian close";
+  private readonly scIds = new Map<string, string>();
+
+  capabilities(): ProviderCapabilities {
+    return {
+      assetClasses: EQUITY_CLASSES,
+      supportsIntraday: false,
+      supportsHistorical: false,
+      supportsCorporateActions: false,
+      supportsInstrumentSearch: false,
+      identifierTypes: ["TICKER", "MIC_TICKER"],
+      maxHistoryYears: 0,
+      quoteDelayMinutes: 24 * 60,
+      quoteTypes: ["CLOSE"],
+    };
+  }
+
+  override rateLimit(): RateLimitBudget {
+    return { requests: 30, perMillis: 60_000, burst: 5 };
+  }
+
+  protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
+    const quotes: Quote[] = [];
+    for (const ref of request.instruments) {
+      if (ref.currency.code !== "INR") continue;
+      const bare = ref.symbol.replace(/\.(NS|BO)$/i, "").toUpperCase();
+      const scId = await this.resolveScId(bare);
+      if (!scId) continue;
+      const preferred = (ref.exchange ?? (ref.symbol.endsWith(".BO") ? "BSE" : "NSE")).toUpperCase();
+      const exchangePath = preferred === "BSE" ? "bse" : "nse";
+      const payload = await this.getJson<MoneycontrolClosePayload>(
+        `https://priceapi.moneycontrol.com/pricefeed/${exchangePath}/equitycash/${encodeURIComponent(scId)}`,
+      );
+      const data = payload.data;
+      const returnedSymbol = preferred === "BSE" ? data?.BSEID : data?.NSEID;
+      if (!data || returnedSymbol?.toUpperCase() !== bare) continue;
+
+      const closed = data.market_state?.toUpperCase() === "CLOSED";
+      const value = closed ? data.pricecurrent : data.priceprevclose;
+      const dateText = closed ? data.lastupd?.slice(0, 10) : data.PREVDATE;
+      if (!value || !dateText || !/^\d{4}-\d{2}-\d{2}$/.test(dateText)) continue;
+      const asOf = CalendarDate.parse(dateText);
+      if (!request.range.contains(asOf)) continue;
+      quotes.push(this.quote({ ref, asOf, quoteType: "CLOSE", price: UnitPrice.of(value, ref.currency) }));
+    }
+    return quotes;
+  }
+
+  private async resolveScId(symbol: string): Promise<string | null> {
+    const cached = this.scIds.get(symbol);
+    if (cached) return cached;
+    const suggestions = await this.getJson<MoneycontrolSuggestion[]>(
+      `https://www.moneycontrol.com/mccode/common/autosuggestion_solr.php?classic=true&query=${encodeURIComponent(symbol)}&type=1&format=json`,
+    );
+    const match = suggestions.find((row) => {
+      const visible = (row.pdt_dis_nm ?? "").replace(/<[^>]*>/g, " ").toUpperCase();
+      return new RegExp(`(^|[^A-Z0-9])${symbol}([^A-Z0-9]|$)`).test(visible);
+    });
+    const id = match?.sc_id?.trim() || match?.link_src?.split("/").filter(Boolean).at(-1) || "";
+    if (!/^[A-Za-z0-9]{1,16}$/.test(id)) return null;
+    const normalized = id.toUpperCase();
+    this.scIds.set(symbol, normalized);
+    return normalized;
+  }
+}
+
 /* ═══ 5. IBJA — Indian bullion ════════════════════════════════════════ */
 
 interface IbjaPayload {
@@ -1479,6 +1567,7 @@ export function shippedQuoteProviders(
     new AmfiNavProvider(runtime, options),
     new IbjaMetalProvider(runtime, options),
     new CoinGeckoProvider(runtime, options),
+    new MoneycontrolCloseProvider(runtime, options),
     new YahooQuoteProvider(runtime, options),
   );
   return providers;

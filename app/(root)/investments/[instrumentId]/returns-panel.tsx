@@ -48,7 +48,6 @@ export interface HoldingReturns {
   /** `null` means no price resolved — not zero. */
   readonly marketValue: Money | null;
   readonly unrealisedGain: Money | null;
-  readonly realisedGain: Money;
   readonly absoluteReturn: Percentage | null;
   readonly xirr: Xirr;
   readonly pricedOn: string | null;
@@ -108,7 +107,11 @@ export default function ReturnsPanel({ returns }: { returns: HoldingReturns }) {
           value={returns.unrealisedGain}
           hint={returns.absoluteReturn ? `${formatPercent(returns.absoluteReturn)} on open cost` : "Needs a priced open position"}
         />
-        <Stat label="Realised gain / loss" value={returns.realisedGain} hint="Disposals already recorded" />
+        <Stat
+          label="Absolute return"
+          value={returns.absoluteReturn ? <span className="tnum">{formatPercent(returns.absoluteReturn)}</span> : null}
+          hint="Unrealised gain divided by open-position cost"
+        />
       </div>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">

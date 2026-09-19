@@ -46,7 +46,7 @@ checkTrue("performance owns the gold profit chart", pageSource.includes('activeV
 checkTrue("performance owns the gold benchmark comparison", pageSource.includes('activeView === "performance" && instrument.kind === "DIGITAL_GOLD"'));
 checkTrue("performance has non-digital content", pageSource.includes('!isDigitalMetal && activeView === "performance"'));
 checkTrue("non-digital performance renders existing position valuation", pageSource.includes("const holdingMarketValue = isDigitalMetal ? metalValue : (position?.marketValue ?? null)"));
-checkTrue("non-digital performance names unavailable holding returns", pageSource.includes("Holding-level XIRR and TWR are unavailable"));
+checkTrue("non-digital performance uses the consolidated returns panel", pageSource.includes("<ReturnsPanel returns={holdingReturns}"));
 
 checkTrue("lots and tax owns the non-metal lots table", pageSource.includes('!isDigitalMetal && activeView === "lots-tax" && <section'));
 checkTrue("lots and tax owns the method comparison", pageSource.includes('activeView === "lots-tax" && comparison?.ok'));

@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Northstar Investment Ledger - UX Experiment</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#workspace">Skip to investment workspace</a>
+  <header class="topbar">
+    <div class="brand-block">
+      <span class="brand-mark" aria-hidden="true">NS</span>
+      <div><strong>Northstar</strong><span>Investment ledger</span></div>
+    </div>
+    <div class="environment"><span class="dot"></span> Private workspace</div>
+    <button class="icon-button" type="button" aria-label="Open account menu" title="Account menu">DR</button>
+  </header>
+
+  <div class="app-frame">
+    <nav class="side-nav" aria-label="Primary navigation">
+      <a class="active" href="#overview" aria-current="page">Overview</a>
+      <a href="#categories">Holdings</a>
+      <a href="#activity">Activity</a>
+      <a href="#quality">Data center <span class="nav-count">3</span></a>
+      <a href="#documents">Documents</a>
+      <div class="nav-bottom">
+        <span>Valuation policy</span>
+        <strong>EOD + manual</strong>
+      </div>
+    </nav>
+
+    <main id="workspace">
+      <div class="synthetic-banner" role="note">
+        <strong>UX experiment</strong>
+        All people, holdings, quantities, dates, prices, returns, and monetary figures shown here are synthetic display fixtures. No production calculations or live data are used.
+      </div>
+
+      <section class="page-heading" id="overview" aria-labelledby="page-title">
+        <div>
+          <p class="eyebrow">Family portfolio / Consolidated</p>
+          <h1 id="page-title">Investment overview</h1>
+          <p>Valuation snapshot as of 18 Sep 2026, 16:05 IST</p>
+        </div>
+        <div class="heading-actions">
+          <button class="secondary-button" type="button">Review imports</button>
+          <button class="primary-button" type="button">Add investment</button>
+        </div>
+      </section>
+
+      <section class="quality-strip" aria-label="Portfolio valuation coverage">
+        <div>
+          <span class="status status-daily">Daily</span>
+          <strong>92.4% valuation coverage</strong>
+          <span>3 holdings need attention</span>
+        </div>
+        <a href="#quality">Review data quality</a>
+      </section>
+
+      <section class="metrics" aria-label="Portfolio summary">
+        <article><span>Priced subtotal</span><strong>Rs 48,72,640</strong><small>Excludes unavailable holding</small></article>
+        <article><span>Amount invested</span><strong>Rs 41,18,200</strong><small>Recorded cost basis</small></article>
+        <article><span>Unrealized gain</span><strong class="positive">Rs 7,54,440</strong><small>+18.32% on priced holdings</small></article>
+      </section>
+
+      <section class="overview-grid" aria-label="Portfolio allocation and attention">
+        <div class="allocation-panel">
+          <div class="section-heading"><div><p class="eyebrow">Allocation</p><h2>Across asset families</h2></div><span>Priced holdings only</span></div>
+          <div class="allocation-layout">
+            <div class="donut" role="img" aria-label="Synthetic allocation: equities 44 percent, mutual funds 27 percent, gold 18 percent, fixed income 11 percent"><span><strong>4</strong>families</span></div>
+            <ul class="legend" aria-label="Allocation legend">
+              <li><i class="swatch equity"></i><span>Equities</span><strong>44%</strong></li>
+              <li><i class="swatch funds"></i><span>Mutual funds</span><strong>27%</strong></li>
+              <li><i class="swatch gold"></i><span>Gold</span><strong>18%</strong></li>
+              <li><i class="swatch fixed"></i><span>Fixed income</span><strong>11%</strong></li>
+            </ul>
+          </div>
+        </div>
+        <div class="attention-panel">
+          <div class="section-heading"><div><p class="eyebrow">Control queue</p><h2>Needs attention</h2></div><span>3 open</span></div>
+          <ol class="attention-list">
+            <li><span class="status status-unavailable">Unavailable</span><div><strong>Digital gold provider balance</strong><p>Connection expired; excluded from priced subtotal.</p></div><button type="button">Reconnect</button></li>
+            <li><span class="status status-stale">Stale</span><div><strong>ABC Ltd quote</strong><p>Last price is 3 market days old.</p></div><button type="button">Review</button></li>
+            <li><span class="status status-manual">Manual</span><div><strong>Physical gold valuation</strong><p>Owner estimate due for confirmation.</p></div><button type="button">Update</button></li>
+          </ol>
+        </div>
+      </section>
+
+      <section id="categories" class="category-workspace" aria-labelledby="categories-title">
+        <div class="section-heading category-title"><div><p class="eyebrow">Holdings</p><h2 id="categories-title">Asset workspaces</h2></div><p>Fields and controls change with the asset.</p></div>
+        <div class="tabs" role="tablist" aria-label="Investment categories">
+          <button id="tab-equities" role="tab" aria-selected="true" aria-controls="panel-equities" data-panel="panel-equities" type="button">Equities</button>
+          <button id="tab-funds" role="tab" aria-selected="false" aria-controls="panel-funds" data-panel="panel-funds" type="button">Mutual Funds</button>
+          <button id="tab-gold" role="tab" aria-selected="false" aria-controls="panel-gold" data-panel="panel-gold" type="button">Gold</button>
+          <button id="tab-fixed" role="tab" aria-selected="false" aria-controls="panel-fixed" data-panel="panel-fixed" type="button">Fixed Income</button>
+        </div>
+
+        <div id="panel-equities" class="tab-panel" role="tabpanel" aria-labelledby="tab-equities" data-category="Equities">
+          <div class="category-summary"><div><span>Listed value</span><strong>Rs 21,44,000</strong></div><div><span>Day movement</span><strong class="positive">+0.64%</strong></div><div><span>Reconciliation</span><strong>1 exception</strong></div></div>
+          <div class="table-wrap" tabindex="0" aria-label="Equity holdings table, horizontally scrollable">
+            <table><caption>Equity holdings with exchange identity and quote entitlement</caption><thead><tr><th scope="col">Security</th><th scope="col">Exchange / account</th><th scope="col">Units</th><th scope="col">Avg cost</th><th scope="col">Last price</th><th scope="col">Value</th><th scope="col">Data</th></tr></thead>
+            <tbody><tr><th scope="row"><button class="link-button holding-trigger" data-detail="detail-equity" type="button">ABC Industries</button><small>INE000A01001</small></th><td>NSE / Primary demat</td><td>320</td><td>Rs 1,440.20</td><td>Rs 1,612.50</td><td>Rs 5,16,000</td><td><span class="status status-stale">Stale</span><small>15 Sep, 15:30 IST</small></td></tr><tr><th scope="row">North Bank<small>INE000B01002</small></th><td>BSE / Joint demat</td><td>1,200</td><td>Rs 802.10</td><td>Rs 824.00</td><td>Rs 9,88,800</td><td><span class="status status-current">Current</span><small>18 Sep, 15:30 IST</small></td></tr></tbody></table>
+          </div>
+        </div>
+
+        <div id="panel-funds" class="tab-panel" role="tabpanel" aria-labelledby="tab-funds" data-category="Mutual Funds" hidden>
+          <div class="category-summary"><div><span>NAV value</span><strong>Rs 13,15,400</strong></div><div><span>Active SIPs</span><strong>3</strong></div><div><span>CAS status</span><strong>Matched</strong></div></div>
+          <div class="table-wrap" tabindex="0" aria-label="Mutual fund holdings table, horizontally scrollable"><table><caption>Mutual fund holdings with scheme identity and NAV dates</caption><thead><tr><th scope="col">Scheme / plan</th><th scope="col">Folio</th><th scope="col">Units</th><th scope="col">Avg NAV</th><th scope="col">Latest NAV</th><th scope="col">Value</th><th scope="col">Data</th></tr></thead><tbody><tr><th scope="row"><button class="link-button holding-trigger" data-detail="detail-fund" type="button">Meridian Flexi Cap</button><small>Direct / Growth / INF000X01001</small></th><td>2048 / 77</td><td>4,110.382</td><td>Rs 148.22</td><td>Rs 181.40</td><td>Rs 7,45,610</td><td><span class="status status-daily">Daily NAV</span><small>17 Sep 2026</small></td></tr></tbody></table></div>
+        </div>
+
+        <div id="panel-gold" class="tab-panel" role="tabpanel" aria-labelledby="tab-gold" data-category="Gold" hidden>
+          <div class="subtype-nav" aria-label="Gold forms"><span>Digital</span><span>Physical</span><span>SGB</span><span>ETF</span></div>
+          <div class="gold-grid">
+            <article><header><span class="status status-unavailable">Unavailable</span><strong>Digital gold</strong></header><p>Provider-held grams with custody, spread, and redemption terms.</p><dl><div><dt>Provider</dt><dd>Aurum Vault</dd></div><div><dt>Holding</dt><dd>18.240 g / 24K</dd></div><div><dt>Valuation</dt><dd>Provider balance unavailable</dd></div></dl><button class="secondary-button holding-trigger" data-detail="detail-digital" type="button">Open digital gold</button></article>
+            <article><header><span class="status status-manual">Manual</span><strong>Physical gold</strong></header><p>Owned inventory with purity, evidence, and resale deductions.</p><dl><div><dt>Net weight</dt><dd>72.600 g</dd></div><div><dt>Purity</dt><dd>22K hallmarked</dd></div><div><dt>Valuation</dt><dd>Owner estimate</dd></div></dl><button class="secondary-button holding-trigger" data-detail="detail-physical" type="button">Open physical gold</button></article>
+            <article><header><span class="status status-daily">Daily</span><strong>Sovereign Gold Bond</strong></header><p>Government security with coupon, series, and redemption windows.</p><dl><div><dt>Series</dt><dd>SGB 2021-22 VI</dd></div><div><dt>Holding</dt><dd>25 units</dd></div><div><dt>Valuation</dt><dd>RBI reference</dd></div></dl><button class="secondary-button holding-trigger" data-detail="detail-sgb" type="button">Open SGB</button></article>
+            <article><header><span class="status status-current">Current</span><strong>Gold ETF</strong></header><p>Exchange-listed security with demat units and market quote.</p><dl><div><dt>Exchange</dt><dd>NSE</dd></div><div><dt>Units</dt><dd>410</dd></div><div><dt>Valuation</dt><dd>Account quote</dd></div></dl><button class="secondary-button holding-trigger" data-detail="detail-etf" type="button">Open gold ETF</button></article>
+          </div>
+        </div>
+
+        <div id="panel-fixed" class="tab-panel" role="tabpanel" aria-labelledby="tab-fixed" data-category="Fixed Income" hidden>
+          <div class="category-summary"><div><span>Principal tracked</span><strong>Rs 5,40,000</strong></div><div><span>Accrued interest</span><strong>Rs 18,420</strong></div><div><span>Next maturity</span><strong>14 Jan 2027</strong></div></div>
+          <div class="table-wrap" tabindex="0" aria-label="Fixed income holdings table, horizontally scrollable"><table><caption>Fixed income holdings with issuer, maturity, and valuation method</caption><thead><tr><th scope="col">Instrument</th><th scope="col">Issuer / rating</th><th scope="col">Principal</th><th scope="col">Coupon</th><th scope="col">Maturity</th><th scope="col">Valuation</th><th scope="col">Data</th></tr></thead><tbody><tr><th scope="row"><button class="link-button holding-trigger" data-detail="detail-fixed" type="button">Summit Bank FD</button><small>Receipt FD-01942</small></th><td>Summit Bank / CRISIL AA+</td><td>Rs 3,00,000</td><td>7.10%</td><td>14 Jan 2027</td><td>Accrued principal</td><td><span class="status status-manual">Manual</span><small>Statement, 31 Aug</small></td></tr></tbody></table></div>
+        </div>
+      </section>
+
+      <section id="holding-detail" class="detail-workspace" aria-labelledby="detail-title">
+        <div class="section-heading"><div><p class="eyebrow">Holding record</p><h2 id="detail-title">Asset-specific detail</h2></div><span>Select a holding above</span></div>
+        <article id="detail-equity" class="holding-detail active-detail" data-asset="Equity" data-source="Broker quote" data-as-of="15 Sep 2026">
+          <div class="detail-identity"><div><span class="asset-code">EQ</span><div><h3>ABC Industries</h3><p>Equity / NSE / INE000A01001</p></div></div><span class="status status-stale">Stale - 3 market days</span></div>
+          <dl class="detail-facts"><div><dt>Valuation method</dt><dd>Last known broker quote</dd></div><div><dt>As of</dt><dd>15 Sep 2026, 15:30 IST</dd></div><div><dt>Lifecycle field</dt><dd>Corporate action review pending</dd></div><div><dt>Account</dt><dd>Primary demat</dd></div></dl>
+          <div class="state-action"><strong>Quote is stale</strong><p>The last known value remains dated and is not presented as live.</p><button type="button">Refresh connection</button></div>
+        </article>
+        <article id="detail-fund" class="holding-detail" data-asset="Mutual Fund" data-source="AMFI NAV" data-as-of="17 Sep 2026" hidden><div class="detail-identity"><div><span class="asset-code">MF</span><div><h3>Meridian Flexi Cap</h3><p>Mutual Fund / Direct / Growth</p></div></div><span class="status status-daily">Daily NAV</span></div><dl class="detail-facts"><div><dt>Valuation method</dt><dd>Official end-of-day NAV</dd></div><div><dt>As of</dt><dd>17 Sep 2026</dd></div><div><dt>Lifecycle field</dt><dd>Monthly SIP on day 7</dd></div><div><dt>Reconciliation</dt><dd>CAS matched 31 Aug 2026</dd></div></dl></article>
+        <article id="detail-digital" class="holding-detail" data-asset="Digital Gold" data-source="Provider statement" data-as-of="Unavailable" hidden><div class="detail-identity"><div><span class="asset-code">DG</span><div><h3>Aurum Vault balance</h3><p>Digital Gold / 24K / Provider custody</p></div></div><span class="status status-unavailable">Unavailable</span></div><dl class="detail-facts"><div><dt>Valuation method</dt><dd>Provider balance and sell quote</dd></div><div><dt>As of</dt><dd>Unavailable - connection expired</dd></div><div><dt>Lifecycle field</dt><dd>Redemption minimum 1 gram</dd></div><div><dt>Custody evidence</dt><dd>Statement last received 31 Aug 2026</dd></div></dl><div class="state-action"><strong>Excluded from priced subtotal</strong><p>No benchmark estimate is substituted for the missing provider claim.</p><button type="button">Reconnect provider</button></div></article>
+        <article id="detail-physical" class="holding-detail" data-asset="Physical Gold" data-source="Owner estimate" data-as-of="12 Sep 2026" hidden><div class="detail-identity"><div><span class="asset-code">PG</span><div><h3>Family jewellery inventory</h3><p>Physical Gold / 22K hallmarked</p></div></div><span class="status status-manual">Manual</span></div><dl class="detail-facts"><div><dt>Valuation method</dt><dd>Owner estimate after resale deduction</dd></div><div><dt>As of</dt><dd>12 Sep 2026</dd></div><div><dt>Lifecycle field</dt><dd>Appraisal due 12 Mar 2027</dd></div><div><dt>Evidence</dt><dd>Invoice and hallmark record</dd></div></dl><div class="state-action"><strong>Manual valuation</strong><p>Benchmark, purity, and deduction assumptions remain separately recorded.</p><button type="button">Update valuation</button></div></article>
+        <article id="detail-sgb" class="holding-detail" data-asset="SGB" data-source="RBI reference" data-as-of="18 Sep 2026" hidden><div class="detail-identity"><div><span class="asset-code">GB</span><div><h3>SGB 2021-22 Series VI</h3><p>SGB / IN0020210152 / 25 units</p></div></div><span class="status status-daily">Daily reference</span></div><dl class="detail-facts"><div><dt>Valuation method</dt><dd>RBI redemption reference</dd></div><div><dt>As of</dt><dd>18 Sep 2026</dd></div><div><dt>Lifecycle field</dt><dd>Coupon 2.50%; maturity 2029</dd></div><div><dt>Next event</dt><dd>Coupon expected Feb 2027</dd></div></dl></article>
+        <article id="detail-etf" class="holding-detail" data-asset="Gold ETF" data-source="Account quote" data-as-of="18 Sep 2026" hidden><div class="detail-identity"><div><span class="asset-code">GE</span><div><h3>Meridian Gold ETF</h3><p>Gold ETF / NSE / INF000G01001</p></div></div><span class="status status-current">Current</span></div><dl class="detail-facts"><div><dt>Valuation method</dt><dd>Authenticated account quote</dd></div><div><dt>As of</dt><dd>18 Sep 2026, 15:30 IST</dd></div><div><dt>Lifecycle field</dt><dd>Demat reconciliation complete</dd></div><div><dt>Account</dt><dd>Primary demat</dd></div></dl></article>
+        <article id="detail-fixed" class="holding-detail" data-asset="Fixed Income" data-source="Bank statement" data-as-of="31 Aug 2026" hidden><div class="detail-identity"><div><span class="asset-code">FI</span><div><h3>Summit Bank fixed deposit</h3><p>Fixed Income / Receipt FD-01942</p></div></div><span class="status status-manual">Manual</span></div><dl class="detail-facts"><div><dt>Valuation method</dt><dd>Principal plus recorded accrual</dd></div><div><dt>As of</dt><dd>31 Aug 2026</dd></div><div><dt>Lifecycle field</dt><dd>Matures 14 Jan 2027</dd></div><div><dt>Nomination</dt><dd>Recorded and verified</dd></div></dl><div class="state-action"><strong>Statement-driven value</strong><p>Update after the next bank statement or maturity event.</p><button type="button">Attach statement</button></div></article>
+      </section>
+
+      <section id="quality" class="quality-workspace" aria-labelledby="quality-title">
+        <div class="section-heading"><div><p class="eyebrow">Data center</p><h2 id="quality-title">Valuation state language</h2></div><p>State is always expressed with text, time, and consequence.</p></div>
+        <div class="state-grid">
+          <article data-state="current"><span class="status status-current">Current</span><h3>Account quote</h3><p>Latest expected session value is available.</p><strong>Action: none</strong></article>
+          <article data-state="daily"><span class="status status-daily">Daily</span><h3>NAV or reference</h3><p>Expected end-of-day publication cadence.</p><strong>Action: check after publish time</strong></article>
+          <article data-state="stale"><span class="status status-stale">Stale</span><h3>Last known value</h3><p>Value is retained with its age and reason.</p><strong>Action: refresh connection</strong></article>
+          <article data-state="manual"><span class="status status-manual">Manual</span><h3>Owner-supplied value</h3><p>Method and evidence remain visible.</p><strong>Action: confirm assumptions</strong></article>
+          <article data-state="unavailable"><span class="status status-unavailable">Unavailable</span><h3>No defensible value</h3><p>Holding is excluded, never treated as zero.</p><strong>Action: reconnect or add evidence</strong></article>
+        </div>
+      </section>
+
+      <footer><span>Synthetic local prototype</span><span>No market-data connection</span><span>No production financial logic</span></footer>
+    </main>
+  </div>
+  <script src="prototype.js"></script>
+</body>
+</html>

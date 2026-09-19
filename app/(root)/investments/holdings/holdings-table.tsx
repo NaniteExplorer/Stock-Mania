@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Search } from "lucide-react";
 import { Currency, Money } from "@/core/money";
-import { groupLabel, groupOfKind, kindLabel } from "@/domain/asset-groups";
+import { groupLabel, kindLabel } from "@/domain/asset-groups";
 import type { InstrumentKind } from "@/domain/instruments";
 import type { InvestmentWorkspacePosition } from "@/app/investing.usecases";
 import { formatMoney } from "@/ui/format";
@@ -118,7 +118,7 @@ export default function HoldingsTable({
                     <span className="rounded-lg border border-gray-600 px-2 py-1 text-xs text-gray-300">
                       {kindLabel(position.kind, position.nativeCurrency)}
                     </span>
-                    <p className="mt-1 text-xs text-gray-500">{groupLabel(groupOfKind(position.kind))}</p>
+                    <p className="mt-1 text-xs text-gray-500">{groupLabel(position.assetFamily)}</p>
                   </td>
                   <td className="tnum px-4 py-3 text-right text-gray-300">{position.quantity}</td>
                   <td className="px-4 py-3 text-right">{formatAmount(position.costBasis)}</td>

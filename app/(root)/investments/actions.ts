@@ -12,6 +12,7 @@ import { InstitutionId } from "@/domain/institutions";
 import { InstrumentId, type InstrumentKind, type MarketInstrument } from "@/domain/instruments";
 import type { IdentifierType, InstrumentRef } from "@/domain/pricing";
 import { summarizePortfolioRefresh } from "@/app/price-refresh-summary.usecases";
+import { portfolioRefreshGuard } from "@/app/portfolio-refresh-guard.usecases";
 import type { RefreshPricesOutput } from "@/app/pricing.usecases";
 import { Split } from "@/domain/corporate";
 import { accountRef, OpeningPosition } from "@/domain/transactions";
@@ -22,7 +23,7 @@ import { NEW as NEW_PLATFORM, SUGGESTED as SUGGESTED_PLATFORM } from "./platform
 export interface InvestingActionState {
   ok: boolean;
   message: string;
-  code?: "PRICE_REFRESH_UNAVAILABLE";
+  code?: "PRICE_REFRESH_UNAVAILABLE" | "REFRESH_RATE_LIMITED" | "REFRESH_IN_PROGRESS" | "REFRESH_BUDGET_EXCEEDED";
   fieldErrors?: Record<string, string[]>;
 }
 
@@ -595,59 +596,83 @@ export async function refreshPortfolioAction(
   const instruments = await repositories.instruments.list(userId, { includeClosed: false });
   if (instruments.length === 0) return { ok: false, message: "Add an instrument first." };
 
-  const refsByQuoteType = new Map<string, InstrumentRef[]>();
-  for (const instrument of instruments) {
-    const key = instrument.quoteKey();
-    const ref: InstrumentRef = {
-      instrumentId: instrument.id.value,
-      symbol: key.ref ?? instrument.symbol,
-      assetClass: key.assetClass,
-      currency: instrument.currency,
-      identifierType: PRICE_IDENTIFIER[key.identifierType] ?? "TICKER",
-      exchange: instrument.props.exchange ?? null,
+  const guard = portfolioRefreshGuard.acquire(userId.value, instruments.length);
+  if (!guard.ok) {
+    if (guard.reason === "COOLDOWN") {
+      return {
+        ok: false,
+        code: "REFRESH_RATE_LIMITED",
+        message: `Prices were refreshed recently. Try again in ${guard.retryAfterSeconds ?? 1} second(s).`,
+      };
+    }
+    if (guard.reason === "IN_PROGRESS") {
+      return { ok: false, code: "REFRESH_IN_PROGRESS", message: "A price refresh is already running for this portfolio." };
+    }
+    return {
+      ok: false,
+      code: "REFRESH_BUDGET_EXCEEDED",
+      message: "This portfolio is too large for an interactive refresh. Use the scheduled market-data job.",
     };
-    refsByQuoteType.set(key.quoteType, [...(refsByQuoteType.get(key.quoteType) ?? []), ref]);
   }
 
-  const refreshOutputs: RefreshPricesOutput[] = [];
-  for (const [quoteType, refs] of refsByQuoteType) {
-    const result = await pricing.refresh.execute({
-      instruments: refs,
-      quoteType: quoteType as "CLOSE" | "NAV" | "MID" | "LAST",
-    });
-    if (!result.ok) return { ok: false, message: result.error.message };
-    refreshOutputs.push(result.value);
-  }
+  try {
+    const refsByQuoteType = new Map<string, InstrumentRef[]>();
+    for (const instrument of instruments) {
+      const key = instrument.quoteKey();
+      const ref: InstrumentRef = {
+        instrumentId: instrument.id.value,
+        symbol: key.ref ?? instrument.symbol,
+        assetClass: key.assetClass,
+        currency: instrument.currency,
+        identifierType: PRICE_IDENTIFIER[key.identifierType] ?? "TICKER",
+        exchange: instrument.props.exchange ?? null,
+      };
+      refsByQuoteType.set(key.quoteType, [...(refsByQuoteType.get(key.quoteType) ?? []), ref]);
+    }
 
-  const today = CalendarDate.parse(new Date().toISOString().slice(0, 10));
-  const foreignCurrencies = [...new Set(
-    instruments
-      .map((instrument) => instrument.currency.code)
-      .filter((currency) => currency !== Currency.reporting.code),
-  )];
-  const fxErrors: string[] = [];
-  for (const currency of foreignCurrencies) {
-    const refreshed = await pricing.fx.refresh(
-      currency,
-      [Currency.reporting.code],
-      DateRange.of(today.plusDays(-7), today),
-    );
-    fxErrors.push(...refreshed.errors);
-  }
+    const refreshOutputs: RefreshPricesOutput[] = [];
+    for (const [quoteType, refs] of refsByQuoteType) {
+      const result = await pricing.refresh.execute({
+        instruments: refs,
+        quoteType: quoteType as "CLOSE" | "NAV" | "MID" | "LAST",
+      });
+      if (!result.ok) return { ok: false, message: result.error.message };
+      refreshOutputs.push(result.value);
+    }
 
-  revalidatePath("/investments");
-  revalidatePath("/investments/data");
-  const detailInstrumentId = formData.get("instrumentId");
-  if (typeof detailInstrumentId === "string" && detailInstrumentId.length > 0) {
-    revalidatePath(`/investments/${detailInstrumentId}`);
-  }
-  revalidatePath("/dashboard");
+    const today = CalendarDate.parse(new Date().toISOString().slice(0, 10));
+    const foreignCurrencies = [...new Set(
+      instruments
+        .map((instrument) => instrument.currency.code)
+        .filter((currency) => currency !== Currency.reporting.code),
+    )];
+    const fxErrors: string[] = [];
+    for (const currency of foreignCurrencies) {
+      const refreshed = await pricing.fx.refresh(
+        currency,
+        [Currency.reporting.code],
+        DateRange.of(today.plusDays(-7), today),
+      );
+      fxErrors.push(...refreshed.errors);
+    }
+
+    revalidatePath("/investments");
+    revalidatePath("/investments/data");
+    revalidatePath("/investments/tracker");
+    const detailInstrumentId = formData.get("instrumentId");
+    if (typeof detailInstrumentId === "string" && detailInstrumentId.length > 0) {
+      revalidatePath(`/investments/${detailInstrumentId}`);
+    }
+    revalidatePath("/dashboard");
   /*
    * The accumulators, not the last loop iteration's result: quotes are fetched
    * one batch per quote type, so reporting only the final batch would have
    * undercounted a portfolio holding both shares and mutual funds.
    */
-  const summary = summarizePortfolioRefresh(refreshOutputs, fxErrors);
-  if (!summary.ok) return { ok: false, code: summary.code, message: summary.message };
-  return { ok: true, message: summary.message };
+    const summary = summarizePortfolioRefresh(refreshOutputs, fxErrors);
+    if (!summary.ok) return { ok: false, code: summary.code, message: summary.message };
+    return { ok: true, message: summary.message };
+  } finally {
+    guard.release();
+  }
 }

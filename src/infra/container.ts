@@ -131,6 +131,7 @@ import {
   SearchInstrumentCatalog,
 } from "@/app/instrument-catalog.usecases";
 import { ViewLiveDataCenter } from "@/app/live-data.usecases";
+import { ViewInvestmentAnalysis, ViewInvestmentTracker } from "@/app/investment-analysis.usecases";
 import {
   AmfiMutualFundMaster,
   InstrumentQuoteKeyReconciler,
@@ -288,6 +289,10 @@ export const services = cache(() => {
   const recordSell = new RecordSell(accounts, instruments, journal, lots);
   const valuePortfolio = new ValuePortfolio(instruments, lots, prices, fxBook);
   const portfolioReturns = new PortfolioReturns(accounts, instruments, journal, valuePortfolio);
+  const entitledQuoteProviders = [
+    ...(zerodhaAuthorization && marketDataConfig.allowPaidQuoteProviders ? ["zerodha"] : []),
+    ...(marketDataConfig.finnhubToken ? ["finnhub"] : []),
+  ];
   const voidTrade = new VoidTrade(
     journal,
     lots,
@@ -341,6 +346,10 @@ export const services = cache(() => {
       compareMethods: new CompareDisposalMethods(instruments, lots),
       valuePortfolio,
       workspace: new InvestmentWorkspace(valuePortfolio, portfolioReturns),
+      analysis: new ViewInvestmentAnalysis(instruments, bars, clock),
+      tracker: new ViewInvestmentTracker(instruments, quotes, clock, {
+        providerIds: entitledQuoteProviders,
+      }),
       realisedGains: new RealisedGains(lots),
       realisedHistory: new RealisedGainsHistory(lots, instruments, platforms),
       goldAnalytics: new GoldHoldingAnalytics(instruments, lots, leases, quotes, platforms),
