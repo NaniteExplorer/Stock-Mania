@@ -245,6 +245,11 @@ async function main() {
     withLease.value.marketValue?.minus(withLease.value.investedCost).toDecimalString(),
     "34100.00",
   );
+  check(
+    "the chart keeps lease credits out of invested cash",
+    withLease.value.history[withLease.value.history.length - 1]?.investedCost.toDecimalString(),
+    withLease.value.investedCost.toDecimalString(),
+  );
   checkTrue(
     "the lease lots reconcile with what the leases say they credited",
     withLease.value.leaseGramsReconcile === null,

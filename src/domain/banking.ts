@@ -1288,6 +1288,17 @@ export interface ImportRepository {
 
   /** Hides an import batch and its staged rows after it has been undone. */
   softDeleteBatch(userId: UserId, batchId: string, at: Date): Promise<void>;
+
+  /**
+   * Hides every batch staged against one account, with its rows. Returns how many.
+   *
+   * Deleting an account and leaving its imports behind is not a tidiness problem:
+   * the orphaned batches keep counting towards the review queue shown on the
+   * accounts page, and their file hashes keep rejecting the same statement as an
+   * already-seen duplicate — so the account cannot be rebuilt from the file it was
+   * built from in the first place.
+   */
+  softDeleteBatchesForAccount(userId: UserId, accountId: AccountId, at: Date): Promise<number>;
 }
 
 export interface CategoryRuleRepository {

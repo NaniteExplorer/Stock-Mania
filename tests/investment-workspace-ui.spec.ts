@@ -21,6 +21,7 @@ const positions: readonly InvestmentWorkspacePosition[] = [
     instrumentId: "ins_infy",
     symbol: "INFY",
     name: "Infosys Ltd",
+    platformName: "Zerodha",
     kind: "LISTED_EQUITY",
     assetFamily: "EQUITY",
     quantity: "10",
@@ -37,6 +38,7 @@ const positions: readonly InvestmentWorkspacePosition[] = [
     instrumentId: "ins_tcs",
     symbol: "TCS",
     name: "Tata Consultancy Services",
+    platformName: null,
     kind: "LISTED_EQUITY",
     assetFamily: "EQUITY",
     quantity: "4",
@@ -53,6 +55,7 @@ const positions: readonly InvestmentWorkspacePosition[] = [
     instrumentId: "ins_gold",
     symbol: "GOLD999",
     name: "Vaulted gold",
+    platformName: "SafeGold",
     kind: "DIGITAL_GOLD",
     assetFamily: "DIGITAL_METALS",
     quantity: "2.5",
@@ -69,6 +72,7 @@ const positions: readonly InvestmentWorkspacePosition[] = [
     instrumentId: "ins_us",
     symbol: "VOO",
     name: "Vanguard S&P 500 ETF",
+    platformName: null,
     kind: "ETF",
     assetFamily: "EQUITY",
     quantity: "3",
@@ -112,6 +116,11 @@ checkDeep(
   ["INFY"],
 );
 checkDeep(
+  "search narrows by platform",
+  filterHoldings(positions, { query: "safegold", status: "", kind: "" }).map((row) => row.symbol),
+  ["GOLD999"],
+);
+checkDeep(
   "kind filter keeps gold separate",
   filterHoldings(positions, { query: "", status: "", kind: "DIGITAL_GOLD" }).map((row) => row.symbol),
   ["GOLD999"],
@@ -139,6 +148,8 @@ check("holdings table renders stale state", holdingsText.includes("Stale"), true
 check("holdings table renders native unpriced state", holdingsText.includes("Native price unavailable"), true);
 check("holdings table renders FX conversion state", holdingsText.includes("FX conversion unavailable"), true);
 check("holdings table uses concrete instrument classification", holdingsText.includes("Equity"), true);
+check("holdings table renders the platform", holdingsText.includes("SafeGold"), true);
+check("holdings table renders an em dash for an unassigned platform", holdingsText.includes("—"), true);
 check("FX state retains native currency context", holdingsText.includes("Native USD price observed"), true);
 check("FX state retains observation date", holdingsText.includes("2026-09-05"), true);
 check("holdings page withholds incomplete totals", holdingsPage.includes("Complete totals are unavailable"), true);

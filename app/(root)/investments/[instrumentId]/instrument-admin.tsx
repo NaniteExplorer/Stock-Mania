@@ -64,7 +64,6 @@ export default function InstrumentAdmin({
   >(deleteInstrumentAction, null);
 
   const errors = updateState?.fieldErrors ?? {};
-  const state = updateState ?? closeState ?? deleteState;
 
   return (
     <div className="space-y-4">
@@ -138,6 +137,14 @@ export default function InstrumentAdmin({
           <button type="submit" className="primary-btn h-10 px-5 text-sm" disabled={updating}>
             {updating ? "Saving…" : "Save changes"}
           </button>
+          {updateState && (
+            <p
+              className={updateState.ok ? "mt-3 text-sm text-green-500" : "mt-3 text-sm text-red-500"}
+              role="status"
+            >
+              {updateState.message}
+            </p>
+          )}
         </div>
       </form>
 
@@ -153,6 +160,14 @@ export default function InstrumentAdmin({
           Closing keeps every trade and hides it from the pickers. It is the right control for a
           position you have exited.
         </p>
+        {closeState && (
+          <p
+            className={closeState.ok ? "text-sm text-green-500" : "text-sm text-red-500"}
+            role="status"
+          >
+            {closeState.message}
+          </p>
+        )}
       </div>
 
       {canDelete && (
@@ -170,13 +185,15 @@ export default function InstrumentAdmin({
           <p className="text-xs text-gray-500">
             Only offered because nothing has been traded here — this is the registration typo case.
           </p>
+          {deleteState && (
+            <p
+              className={deleteState.ok ? "text-sm text-green-500" : "text-sm text-red-500"}
+              role="status"
+            >
+              {deleteState.message}
+            </p>
+          )}
         </div>
-      )}
-
-      {state && (
-        <p className={state.ok ? "text-sm text-green-500" : "text-sm text-red-500"} role="status">
-          {state.message}
-        </p>
       )}
     </div>
   );

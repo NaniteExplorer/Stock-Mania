@@ -44,7 +44,7 @@ export default async function Page({
     <>
       <PageHeader
         title="Holdings"
-        subtitle="Search positions by symbol or name, then open the durable holding record."
+        subtitle="Search positions by symbol, name or platform, then open the durable holding record."
         badge={<Pill tone={workspace.dataQuality.status === "COMPLETE" ? "brand" : "neutral"}>{workspace.dataQuality.status.toLowerCase()}</Pill>}
       />
 

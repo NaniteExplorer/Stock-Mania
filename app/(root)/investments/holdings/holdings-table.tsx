@@ -56,7 +56,7 @@ export default function HoldingsTable({
               type="search"
               defaultValue={query}
               className="form-input h-10 w-full pl-9 text-xs"
-              placeholder="Search symbol, name or currency"
+              placeholder="Search symbol, name, platform or currency"
             />
           </label>
           <label>
@@ -98,6 +98,7 @@ export default function HoldingsTable({
               <tr className="border-b border-gray-600">
                 <th scope="col" className="metric-label px-4 py-3 text-left">Holding</th>
                 <th scope="col" className="metric-label px-4 py-3 text-left">Type</th>
+                <th scope="col" className="metric-label px-4 py-3 text-left">Platform</th>
                 <th scope="col" className="metric-label px-4 py-3 text-right">Units</th>
                 <th scope="col" className="metric-label px-4 py-3 text-right">Invested</th>
                 <th scope="col" className="metric-label px-4 py-3 text-right">Market value</th>
@@ -120,6 +121,7 @@ export default function HoldingsTable({
                     </span>
                     <p className="mt-1 text-xs text-gray-500">{groupLabel(position.assetFamily)}</p>
                   </td>
+                  <td className="px-4 py-3 text-gray-300">{position.platformName ?? "—"}</td>
                   <td className="tnum px-4 py-3 text-right text-gray-300">{position.quantity}</td>
                   <td className="px-4 py-3 text-right">{formatAmount(position.costBasis)}</td>
                   <td className="px-4 py-3 text-right">{formatAmount(position.marketValue)}</td>
@@ -145,7 +147,8 @@ export function filterHoldings(
   return positions.filter((position) => {
     const matchesQuery =
       query.length === 0 ||
-      [position.symbol, position.name, position.nativeCurrency].some((value) =>
+      [position.symbol, position.name, position.platformName, position.nativeCurrency].some((value) =>
+        value !== null &&
         value.toLowerCase().includes(query),
       );
     const matchesKind = !filters.kind || position.kind === filters.kind;

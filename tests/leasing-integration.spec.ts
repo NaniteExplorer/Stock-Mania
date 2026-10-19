@@ -40,6 +40,7 @@ import {
   DrizzleBalanceQuery,
   DrizzleGoldLeaseRepository,
   DrizzleInstrumentRepository,
+  DrizzleInvestmentActivityQuery,
   DrizzleLotRepository,
   DrizzleTransactionRepository,
 } from "@/infra/repositories";
@@ -98,6 +99,7 @@ async function main() {
   const accounts = new DrizzleAccountRepository(db);
   const journal = new DrizzleTransactionRepository(db);
   const balances = new DrizzleBalanceQuery(db);
+  const activity = new DrizzleInvestmentActivityQuery(db);
   const instruments = new DrizzleInstrumentRepository(db);
   const lots = new DrizzleLotRepository(db);
   const leaseRepo = new DrizzleGoldLeaseRepository(db);
@@ -226,6 +228,13 @@ async function main() {
   check("gross income recognised", first.value.grossValue.toDecimalString(), "1683.31");
   check("TDS booked as an asset", first.value.tdsValue.toDecimalString(), "168.33");
   check("and the net reached the holding", first.value.netValue.toDecimalString(), "1514.98");
+  const eventsAfterAccrual = await activity.forInstrument(userId, goldId);
+  const leaseCreditEvent = eventsAfterAccrual.find(
+    (event) => event.transactionId === first.value.transactionId,
+  );
+  check("the accrual is shown as income, not a buy", leaseCreditEvent?.kind ?? "", "INCOME");
+  check("but the credited grams stay visible", leaseCreditEvent?.quantity?.toDecimalString() ?? "", "0.0923769");
+  check("and the valuation is retained for audit", leaseCreditEvent?.netToHolding.toDecimalString() ?? "", "1514.98");
   checkTrue(
     "the reason names the price it was valued at",
     first.value.because.includes("16400"),

@@ -22,6 +22,7 @@ import { InstrumentId, InstrumentKind, InstrumentProps, InstrumentRepository, Ma
 import { Institution, InstitutionId, InstitutionKind, InstitutionRepository, normaliseInstitutionName } from "@/domain/institutions";
 import { Disposal, Lot, LotId, LotRepository, StoredLotMatch, TradeVoidPlan, TradeRecord } from "@/domain/lots";
 import { CorporateActionRepository, StoredCorporateAction } from "@/domain/corporate";
+import type { InvestmentActivityQuery, InvestmentEvent } from "@/domain/investment-activity";
 import { StoredTaxSettings, TaxSettingsRepository } from "@/domain/tax";
 import type {
   CachedProjection,
@@ -583,18 +584,44 @@ export class DrizzleTransactionRepository implements TransactionRepository {
       .from(postings)
       .where(and(eq(postings.accountId, accountId.value), isNull(postings.deletedAt)));
 
-    const updated = await this.db
-      .update(transactions)
-      .set({ deletedAt: at })
-      .where(
-        and(
-          eq(transactions.userId, userId.value),
-          isNull(transactions.deletedAt),
-          inArray(transactions.id, transactionIds),
-        ),
-      )
-      .returning({ id: transactions.id });
-    return updated.length;
+    return this.db.transaction(async (tx) => {
+      const updated = await tx
+        .update(transactions)
+        .set({ deletedAt: at })
+        .where(
+          and(
+            eq(transactions.userId, userId.value),
+            isNull(transactions.deletedAt),
+            inArray(transactions.id, transactionIds),
+          ),
+        )
+        .returning({ id: transactions.id });
+
+      /*
+       * The legs, tombstoned with the entry that owns them.
+       *
+       * Tombstoning the transaction alone leaves its postings live, and every
+       * read then depends on remembering to join `transactions` and filter both.
+       * Most do; two comments in this file record what happened the two times one
+       * did not. Deleting both sides removes the trap rather than documenting it,
+       * and it costs one statement inside the transaction that was already open.
+       */
+      if (updated.length > 0) {
+        await tx
+          .update(postings)
+          .set({ deletedAt: at })
+          .where(
+            and(
+              inArray(
+                postings.transactionId,
+                updated.map((row) => row.id),
+              ),
+              isNull(postings.deletedAt),
+            ),
+          );
+      }
+      return updated.length;
+    });
   }
 
   /**
@@ -2182,6 +2209,43 @@ export class DrizzleImportRepository implements ImportRepository {
       .where(and(eq(importBatches.userId, userId.value), eq(importBatches.id, batchId)));
   }
 
+  async softDeleteBatchesForAccount(
+    userId: UserId,
+    accountId: AccountId,
+    at: Date,
+  ): Promise<number> {
+    return this.db.transaction(async (tx) => {
+      const batchIds = await tx
+        .select({ id: importBatches.id })
+        .from(importBatches)
+        .where(
+          and(
+            eq(importBatches.userId, userId.value),
+            eq(importBatches.accountId, accountId.value),
+            isNull(importBatches.deletedAt),
+          ),
+        );
+      if (batchIds.length === 0) return 0;
+
+      const ids = batchIds.map((row) => row.id);
+      await tx
+        .update(importRows)
+        .set({ deletedAt: at, updatedAt: at })
+        .where(
+          and(
+            eq(importRows.userId, userId.value),
+            inArray(importRows.batchId, ids),
+            isNull(importRows.deletedAt),
+          ),
+        );
+      await tx
+        .update(importBatches)
+        .set({ deletedAt: at })
+        .where(and(eq(importBatches.userId, userId.value), inArray(importBatches.id, ids)));
+      return ids.length;
+    });
+  }
+
   async softDeleteBatch(userId: UserId, batchId: string, at: Date): Promise<void> {
     await this.db.transaction(async (tx) => {
       await tx
@@ -3716,9 +3780,11 @@ export const LotMapper = {
       acquiredOn: CalendarDate.parse(row.acquiredOn),
       originalQuantity,
       remainingQuantity: Quantity.fromScaled(row.remainingQuantity),
-      // Stored per unit, so the total is reconstructed rather than stored twice —
-      // two columns for one fact is how a lot ends up disagreeing with itself.
-      cost: originalQuantity.valueAt(Money.fromMinor(row.costPerUnitMinor, currency), "HALF_EVEN"),
+      // New rows retain the authoritative total. Legacy rows fall back to the
+      // historical per-unit reconstruction until they are rewritten.
+      cost: row.costMinor === null
+        ? originalQuantity.valueAt(Money.fromMinor(row.costPerUnitMinor, currency), "HALF_EVEN")
+        : Money.fromMinor(row.costMinor, currency),
       buyCharges: Money.fromMinor(row.buyChargesMinor, currency),
       openedByTransactionId: row.buyTradeId,
     });
@@ -3734,6 +3800,7 @@ export const LotMapper = {
       originalQuantity: lot.props.originalQuantity.toScaledNumber(),
       remainingQuantity: lot.props.remainingQuantity.toScaledNumber(),
       costPerUnitMinor: lot.costPerUnit.toMinorNumber(),
+      costMinor: lot.props.cost.toMinorNumber(),
       buyChargesMinor: lot.props.buyCharges.toMinorNumber(),
       currency: lot.currency.code,
     };
@@ -4376,4 +4443,190 @@ export class DrizzleInstrumentCatalogRepository implements InstrumentCatalogRepo
     fetchedAt: mapping.fetchedAt,
     checksum: mapping.checksum,
   });
+}
+
+/* ═══ Investment activity ═════════════════════════════════════════════ */
+
+/** The eight charge columns, in the order a contract note prints them. */
+const CHARGE_COLUMNS = [
+  ["Brokerage", "brokerageMinor"],
+  ["STT", "sttMinor"],
+  ["Exchange transaction", "exchangeTxnChargeMinor"],
+  ["SEBI turnover", "sebiTurnoverFeeMinor"],
+  ["Stamp duty", "stampDutyMinor"],
+  ["GST", "gstMinor"],
+  ["DP charges", "dpChargesMinor"],
+  ["Other", "otherChargesMinor"],
+] as const satisfies readonly (readonly [string, keyof TradeRow])[];
+
+/**
+ * Everything recorded against one holding, for the screen that shows it.
+ *
+ * Driven from the instrument's own asset account and from `postings.instrument_id`,
+ * not from `trades`. That is the whole reason it works for every kind of
+ * investment at once: a dividend, a gold lease payout, a TDS deduction and a
+ * deposit's interest credit write no trade row, and all of them post here.
+ */
+export class DrizzleInvestmentActivityQuery implements InvestmentActivityQuery {
+  constructor(private readonly db: Database) {}
+
+  async forInstrument(
+    userId: UserId,
+    instrumentId: InstrumentId,
+  ): Promise<readonly InvestmentEvent[]> {
+    const [instrument] = await this.db
+      .select({ assetAccountId: instruments.assetAccountId, currency: instruments.currency })
+      .from(instruments)
+      .where(and(eq(instruments.userId, userId.value), eq(instruments.id, instrumentId.value)))
+      .limit(1);
+    if (!instrument) return [];
+
+    const currency = Currency.of(instrument.currency);
+    const money = (minor: number) => Money.fromMinor(minor, currency);
+
+    /*
+     * Two ways a posting can belong to a holding, and both are needed. The
+     * instrument tag is the precise one and is what a dividend credited straight
+     * to a bank account carries; the asset account catches everything written by
+     * a path that posts to the account without naming the instrument on the leg.
+     */
+    const touched = await this.db
+      .selectDistinct({ transactionId: postings.transactionId })
+      .from(postings)
+      .innerJoin(transactions, eq(postings.transactionId, transactions.id))
+      .where(
+        and(
+          eq(transactions.userId, userId.value),
+          isNull(transactions.deletedAt),
+          isNull(postings.deletedAt),
+          or(
+            eq(postings.instrumentId, instrumentId.value),
+            eq(postings.accountId, instrument.assetAccountId),
+          ),
+        ),
+      );
+    const transactionIds = touched.map((row) => row.transactionId);
+    if (transactionIds.length === 0) return [];
+
+    const [headers, legs, tradeRows] = await Promise.all([
+      this.db
+        .select({
+          id: transactions.id,
+          txnDate: transactions.txnDate,
+          description: transactions.description,
+          source: transactions.source,
+          reference: transactions.reference,
+          importBatchId: transactions.importBatchId,
+        })
+        .from(transactions)
+        .where(inArray(transactions.id, transactionIds)),
+      this.db
+        .select({
+          transactionId: postings.transactionId,
+          accountId: postings.accountId,
+          code: ledgerAccounts.code,
+          name: ledgerAccounts.name,
+          type: ledgerAccounts.type,
+          direction: postings.direction,
+          amountMinor: postings.amountMinor,
+          postingCurrency: postings.currency,
+          memo: postings.memo,
+          seq: postings.seq,
+        })
+        .from(postings)
+        .innerJoin(ledgerAccounts, eq(postings.accountId, ledgerAccounts.id))
+        .where(and(inArray(postings.transactionId, transactionIds), isNull(postings.deletedAt)))
+        .orderBy(asc(postings.seq)),
+      this.db
+        .select()
+        .from(trades)
+        .where(
+          and(
+            eq(trades.userId, userId.value),
+            isNull(trades.deletedAt),
+            eq(trades.instrumentId, instrumentId.value),
+          ),
+        ),
+    ]);
+
+    type Leg = (typeof legs)[number];
+    const legsByTransaction = new Map<string, Leg[]>();
+    for (const leg of legs) {
+      const list = legsByTransaction.get(leg.transactionId) ?? [];
+      list.push(leg);
+      legsByTransaction.set(leg.transactionId, list);
+    }
+    // `transactionId` falls back to the trade's own id for the same reason
+    // `TradeMapper` does: the two are written as one value.
+    const tradeByTransaction = new Map(
+      tradeRows.map((row) => [row.transactionId ?? row.id, row] as const),
+    );
+
+    const events = headers.map((header): InvestmentEvent => {
+      const rows = legsByTransaction.get(header.id) ?? [];
+      const trade = tradeByTransaction.get(header.id) ?? null;
+
+      const postingLines = rows.map((row) => ({
+        accountCode: row.code,
+        accountName: row.name,
+        direction: row.direction as "DEBIT" | "CREDIT",
+        amount: Money.fromMinor(row.amountMinor, Currency.of(row.postingCurrency)),
+        memo: row.memo,
+      }));
+
+      const charges = trade
+        ? CHARGE_COLUMNS.filter(([, column]) => Number(trade[column]) !== 0).map(([label, column]) => ({
+            label,
+            amount: money(Number(trade[column])),
+          }))
+        : [];
+      const chargeTotal = charges.reduce((sum, line) => sum.plus(line.amount), money(0));
+
+      const quantity = trade ? Quantity.fromScaled(trade.quantity) : null;
+      const pricePerUnit = trade ? money(trade.pricePerUnitMinor) : null;
+
+      /*
+       * What the holding itself moved by, and the fallback matters. A dividend
+       * paid in cash never touches the asset account — it is tagged with the
+       * instrument and credited to a bank — so an asset-only reading would show
+       * it as zero, which is the one number it certainly is not.
+       */
+      const signedOf = (subset: readonly Leg[]) =>
+        subset.reduce(
+          (sum, row) =>
+            row.direction === "DEBIT"
+              ? sum.plus(money(row.amountMinor))
+              : sum.minus(money(row.amountMinor)),
+          money(0),
+        );
+      const onHolding = rows.filter((row) => row.accountId === instrument.assetAccountId);
+      const income = rows.filter((row) => row.type === "INCOME");
+      const netToHolding = onHolding.length > 0 ? signedOf(onHolding) : signedOf(income).negated();
+
+      return {
+        kind: income.length > 0 ? "INCOME" : trade ? "TRADE" : "OTHER",
+        transactionId: header.id,
+        tradeId: trade?.id ?? null,
+        on: CalendarDate.parse(header.txnDate),
+        description: header.description,
+        side: trade ? (trade.side as "BUY" | "SELL") : null,
+        quantity,
+        pricePerUnit,
+        consideration: quantity && pricePerUnit ? quantity.valueAt(pricePerUnit, "HALF_EVEN") : null,
+        charges,
+        chargeTotal,
+        netToHolding,
+        postings: postingLines,
+        origin: {
+          source: header.source,
+          reference: header.reference,
+          importBatchId: header.importBatchId,
+        },
+      };
+    });
+
+    return events.sort(
+      (a, b) => a.on.compareTo(b.on) || a.transactionId.localeCompare(b.transactionId),
+    );
+  }
 }

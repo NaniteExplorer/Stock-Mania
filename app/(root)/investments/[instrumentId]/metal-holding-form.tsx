@@ -35,15 +35,22 @@ export default function MetalHoldingForm({
     recordMetalHoldingAction,
     null,
   );
+  const errors = state?.fieldErrors ?? {};
 
   return (
     <form action={action} className="grid gap-4 md:grid-cols-3">
       <input type="hidden" name="instrumentId" value={instrumentId} />
+      {errors.instrumentId?.[0] && (
+        <p className="text-sm text-red-500 md:col-span-3" role="alert">
+          {errors.instrumentId[0]}
+        </p>
+      )}
       <Field
         name="grams"
         label="Grams acquired"
         required
         hint="Full current grams for first setup; only new grams for a later purchase."
+        error={errors.grams?.[0]}
       >
         {(props) => (
           <input
@@ -51,7 +58,7 @@ export default function MetalHoldingForm({
             name="grams"
             className="form-input tnum"
             inputMode="decimal"
-            placeholder="5.2500"
+            placeholder="e.g. 5.2500"
             required
           />
         )}
@@ -61,6 +68,7 @@ export default function MetalHoldingForm({
         label="Amount invested"
         required
         hint="The total that actually left your account, GST included."
+        error={errors.invested?.[0]}
       >
         {(props) => (
           <input
@@ -68,7 +76,7 @@ export default function MetalHoldingForm({
             name="invested"
             className="form-input tnum"
             inputMode="decimal"
-            placeholder="35000.00"
+            placeholder="e.g. 35000.00"
             required
           />
         )}
@@ -76,6 +84,7 @@ export default function MetalHoldingForm({
       <Field
         name="charges"
         label="Of which GST and fees"
+        error={errors.charges?.[0]}
         hint="Optional. Taken out of the amount above, not added to it — so a gram's real rate stays visible."
       >
         {(props) => (
@@ -84,7 +93,7 @@ export default function MetalHoldingForm({
             name="charges"
             className="form-input tnum"
             inputMode="decimal"
-            placeholder="1050.00"
+            placeholder="e.g. 1050.00"
           />
         )}
       </Field>
@@ -92,6 +101,7 @@ export default function MetalHoldingForm({
         name="fundingAccountId"
         label="Paid from"
         required
+        error={errors.fundingAccountId?.[0]}
         hint="The account the money left. Buying gold does not change your net worth — it moves it."
       >
         {(props) => (
@@ -111,7 +121,7 @@ export default function MetalHoldingForm({
           </select>
         )}
       </Field>
-      <Field name="recordedOn" label="As of" required>
+      <Field name="recordedOn" label="As of" required error={errors.recordedOn?.[0]}>
         {(props) => (
           <input
             {...props}

@@ -21,6 +21,8 @@
 
 import { gunzipSync } from "node:zlib";
 
+import { extractPdfLines } from "@/infra/pdf-statements";
+
 import type {
   BenchmarkSeriesFeed,
   BenchmarkSeriesKey,
@@ -81,6 +83,23 @@ export interface HttpClient {
     url: string,
     init?: { headers?: Record<string, string>; timeoutMs?: number },
   ): Promise<HttpResponse>;
+
+  /**
+   * A GET whose body stays **bytes**.
+   *
+   * `get` and `getDecoded` both end in `toString("utf8")`, which is lossy for
+   * anything that is not text: a PDF round-tripped through a JS string loses the
+   * bytes its xref table points at, and the parser then reports a corrupt file
+   * rather than a network problem. IBJA's 30-day rate sheet is a PDF, so reading
+   * it needs the bytes themselves.
+   *
+   * Optional for the same reason as `getDecoded`: the fixture clients in
+   * `tests/doubles.ts` stay small, and a caller that needs it checks first.
+   */
+  getBytes?(
+    url: string,
+    init?: { headers?: Record<string, string>; timeoutMs?: number },
+  ): Promise<{ status: number; bytes: Uint8Array; headers: Record<string, string> }>;
 }
 
 /** The real one. `AbortController` gives the timeout its teeth. */
@@ -152,6 +171,36 @@ export class FetchHttpClient implements HttpClient {
       const gzipped = bytes.length > 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
       const body = gzipped ? gunzipSync(bytes).toString("utf8") : bytes.toString("utf8");
       return { status: response.status, body, headers };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /** As `get`, with the body left as bytes. Same headers, for the same reason. */
+  async getBytes(
+    url: string,
+    init?: { headers?: Record<string, string>; timeoutMs?: number },
+  ): Promise<{ status: number; bytes: Uint8Array; headers: Record<string, string> }> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), init?.timeoutMs ?? this.defaultTimeoutMs);
+    try {
+      const response = await fetch(url, {
+        headers: {
+          "user-agent": "Mozilla/5.0 (compatible; StockMania/1.0)",
+          accept: "application/pdf,application/octet-stream,*/*",
+          ...init?.headers,
+        },
+        signal: controller.signal,
+      });
+      const headers: Record<string, string> = {};
+      response.headers.forEach((value, key) => {
+        headers[key] = value;
+      });
+      return {
+        status: response.status,
+        bytes: new Uint8Array(await response.arrayBuffer()),
+        headers,
+      };
     } finally {
       clearTimeout(timer);
     }
@@ -1160,11 +1209,19 @@ export class IbjaMetalProvider extends PriceProvider {
     return {
       assetClasses: ["COMMODITY"],
       supportsIntraday: false,
-      supportsHistorical: true,
+      /*
+       * Not historical, and saying otherwise was a lie a range-aware caller
+       * believed. IBJA's free surface is the homepage table, which carries four
+       * dates — not thirty, and nowhere near the five years this used to claim.
+       * Their actual history is a paid subscription (their own FAQ says so), so
+       * there is no free path to it and no honest way to keep the old flag.
+       * `MetalHistoryProvider` supplies the long series instead, as estimates.
+       */
+      supportsHistorical: false,
       supportsCorporateActions: false,
       supportsInstrumentSearch: false,
       identifierTypes: ["METAL"],
-      maxHistoryYears: 5,
+      maxHistoryYears: 0,
       quoteDelayMinutes: 24 * 60,
       quoteTypes: ["CLOSE"],
     };
@@ -1181,22 +1238,17 @@ export class IbjaMetalProvider extends PriceProvider {
     const wanted = new Map(request.instruments.map((ref) => [normaliseMetalCode(this.codeFor(ref)), ref]));
     const quotes: Quote[] = [];
 
-    // Keep the JSON branch for compatible mirrors and deterministic provider
-    // conformance fixtures; production currently takes the HTML branch.
-    const jsonRows = text.trimStart().startsWith("{")
-      ? (JSON.parse(text) as IbjaPayload).rates ?? []
-      : null;
-    const rows = jsonRows ?? parseIbjaRatesPage(text) ?? [];
-    for (const row of rows) {
-      const key = normaliseMetalCode(row.purity ? `${row.metal}${row.purity}` : row.metal);
-      const ref = wanted.get(key) ?? wanted.get(normaliseMetalCode(row.metal));
+    for (const row of ibjaPerGramRows(text)) {
+      const ref = wanted.get(row.code) ?? wanted.get(row.bareCode);
       if (!ref) continue;
-      const asOf = CalendarDate.parse(row.date);
-      if (!request.range.contains(asOf)) continue;
-      const divisor = key.startsWith("SILVER") ? 1000 : 10;
-      const perGram = jsonRows ? row.rate : row.rate / divisor;
+      if (!request.range.contains(row.on)) continue;
       quotes.push(
-        this.quote({ ref, asOf, quoteType: "CLOSE", price: UnitPrice.of(perGram.toFixed(2), ref.currency) }),
+        this.quote({
+          ref,
+          asOf: row.on,
+          quoteType: "CLOSE",
+          price: UnitPrice.of(row.perGram.toFixed(2), ref.currency),
+        }),
       );
     }
 
@@ -1205,6 +1257,34 @@ export class IbjaMetalProvider extends PriceProvider {
     }
     return quotes;
   }
+}
+
+/**
+ * IBJA's published rates reduced to one shape: a metal code and a price per gram.
+ *
+ * Both callers need exactly this, and when they each did it themselves the two
+ * drifted — the units are the trap. IBJA quotes gold per 10g and silver per kilo
+ * on the HTML page, while the JSON mirror is already per gram, so the divisor
+ * applies to one branch and not the other. Getting that wrong is a silent factor
+ * of 10 or 1000 in a ledger, not a crash, which is why it lives in one place.
+ */
+function ibjaPerGramRows(
+  text: string,
+): { code: string; bareCode: string; on: CalendarDate; perGram: number }[] {
+  // Keep the JSON branch for compatible mirrors and deterministic provider
+  // conformance fixtures; production currently takes the HTML branch.
+  const jsonRows = text.trimStart().startsWith("{")
+    ? (JSON.parse(text) as IbjaPayload).rates ?? []
+    : null;
+  const rows = jsonRows ?? parseIbjaRatesPage(text) ?? [];
+  const out: { code: string; bareCode: string; on: CalendarDate; perGram: number }[] = [];
+  for (const row of rows) {
+    const code = normaliseMetalCode(row.purity ? `${row.metal}${row.purity}` : row.metal);
+    const perGram = jsonRows ? row.rate : row.rate / (code.startsWith("SILVER") ? 1000 : 10);
+    if (!Number.isFinite(perGram) || perGram <= 0) continue;
+    out.push({ code, bareCode: normaliseMetalCode(row.metal), on: CalendarDate.parse(row.date), perGram });
+  }
+  return out;
 }
 
 function normaliseMetalCode(value: string): string {
@@ -1231,6 +1311,411 @@ function parseIbjaRatesPage(html: string): IbjaPayload["rates"] {
     }
   }
   return [...byDateAndMetal.values()];
+}
+
+/* ═══ 5b. Metal history — ETF-derived, IBJA-calibrated ═══════════════ */
+
+/**
+ * The long gram-rate series IBJA cannot give us.
+ *
+ * IBJA is the right number in the wrong shape: it is what Indian jewellers
+ * actually quote, but its free surface is a four-date table on the homepage, and
+ * its real history is a paid subscription. So a chart of "what was gold worth
+ * each month since I bought it" has nothing to draw from — which is exactly the
+ * empty plot this provider exists to fill.
+ *
+ * The fix is a *domestic* proxy, and the choice of proxy is the whole argument.
+ * The obvious route — international spot times USD/INR — was measured and
+ * rejected: it runs a ~12% India premium that is not a constant. It stepped about
+ * ten percentage points in July 2024 when the import duty went 15% to 6%, so a
+ * single factor fitted today would put 2023 roughly 10% wrong. Indian gold is not
+ * international gold in rupees; it is international gold plus a duty and a local
+ * premium, and both of those move.
+ *
+ * `GOLDBEES.NS` does not have that problem, because it is priced in India and
+ * absorbed that duty change itself. Measured against IBJA on the three days where
+ * both are known, the ratio held 122.07 / 121.98 / 122.04 — stable to 0.07%,
+ * against 0.8pp of drift in three days for the synthetic. So: take the ETF's
+ * daily closes and scale them by the IBJA/ETF ratio on the most recent day where
+ * both are known.
+ *
+ * Every quote this emits is `DERIVED`, never `PROVIDER`. It is an estimate, it is
+ * stored as one, and the UI says so. Two consequences are deliberate:
+ * `IbjaMetalProvider` sits *earlier* in the chain, so a real published rate always
+ * beats an estimate on any day IBJA still covers; and `price_quotes` is
+ * bitemporal, so as the daily IBJA harvest accumulates true pairs, a better-fitted
+ * factor can supersede this history instead of overwriting it.
+ */
+/*
+ * Matched by prefix, first match wins — which is unambiguous only while no key is
+ * a prefix of another. `GOLD` and `SILVER` are disjoint; adding something like
+ * `GOLDM` later would make key order decide silently, so it would need an exact
+ * purity map instead.
+ */
+const METAL_ETF: Readonly<Record<string, string>> = {
+  GOLD: "GOLDBEES.NS",
+  SILVER: "SILVERBEES.NS",
+};
+
+const YAHOO_METAL_CHART = "https://query2.finance.yahoo.com/v8/finance/chart";
+
+interface YahooMetalChart {
+  chart?: {
+    result?: {
+      timestamp?: number[];
+      indicators?: { quote?: { close?: (number | null)[] }[] };
+    }[];
+    error?: { code?: string; description?: string } | null;
+  };
+}
+
+/** One day on which both the published rate and the proxy are known. */
+interface CalibrationPair {
+  readonly on: CalendarDate;
+  readonly perGram: number;
+}
+
+export class MetalHistoryProvider extends PriceProvider {
+  readonly id = "metal-history";
+  readonly displayName = "Indian metal history (ETF-derived, IBJA-calibrated)";
+
+  capabilities(): ProviderCapabilities {
+    return {
+      assetClasses: ["COMMODITY"],
+      supportsIntraday: false,
+      supportsHistorical: true,
+      supportsCorporateActions: false,
+      supportsInstrumentSearch: false,
+      identifierTypes: ["METAL"],
+      // GOLDBEES lists from 2009; SILVERBEES only from 2022-02, and a silver month
+      // older than that stays unpriced rather than invented.
+      maxHistoryYears: 17,
+      quoteDelayMinutes: 24 * 60,
+      quoteTypes: ["CLOSE"],
+    };
+  }
+
+  override rateLimit(): RateLimitBudget {
+    return { requests: 20, perMillis: 60_000, burst: 4 };
+  }
+
+  protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
+    const wanted = new Map(
+      request.instruments.map((ref) => [normaliseMetalCode(this.codeFor(ref)), ref] as const),
+    );
+
+    const calibration = await this.calibrationPairs();
+    const seriesByFamily = new Map<string, Map<string, number>>();
+    const quotes: Quote[] = [];
+
+    for (const [code, ref] of wanted) {
+      /*
+       * Resolved by explicit prefix, never by "not silver, therefore gold".
+       * IBJA publishes platinum too, so a defaulting branch would hand platinum a
+       * real platinum anchor scaled onto GOLDBEES' *movement* — a complete daily
+       * series for a metal with no proxy, plausible enough to go unnoticed. A
+       * metal with no ETF gets no history, which is the honest answer.
+       */
+      const family = Object.keys(METAL_ETF).find((candidate) => code.startsWith(candidate));
+      const symbol = family ? METAL_ETF[family] : undefined;
+      const pairs = calibration.get(code);
+      /*
+       * No published rate for this purity means no factor, and a factor borrowed
+       * from a different purity would be a number with no basis under it. Skip:
+       * a blank month is recoverable, a wrong gram rate in the ledger is not.
+       */
+      if (!family || !symbol || !pairs || pairs.length === 0) continue;
+
+      let series = seriesByFamily.get(family);
+      if (!series) {
+        const from = CalendarDate.min(request.range.start, pairs[pairs.length - 1].on);
+        const to = CalendarDate.max(request.range.end, pairs[0].on);
+        series = await this.closes(symbol, from, to);
+        seriesByFamily.set(family, series);
+      }
+
+      // The most recent day on which both the published rate and the proxy exist.
+      const anchor = pairs.find((pair) => series.has(pair.on.toISO()));
+      const anchorClose = anchor ? series.get(anchor.on.toISO()) : undefined;
+      if (!anchor || anchorClose === undefined || anchorClose <= 0) continue;
+      const factor = anchor.perGram / anchorClose;
+
+      /*
+       * Days IBJA actually published are not estimated at all.
+       *
+       * Ordering this provider after the real ones is not by itself enough: the
+       * quote repository returns rows by `(asOf, ingestedAt)`, so on a day that
+       * held both, the later *ingest* would win rather than the better source.
+       * Not emitting the day is what makes "a published rate wins" true, instead
+       * of merely intended.
+       */
+      const published = new Set(pairs.map((pair) => pair.on.toISO()));
+
+      for (const [iso, close] of series) {
+        const asOf = CalendarDate.parse(iso);
+        if (!request.range.contains(asOf) || published.has(iso)) continue;
+        quotes.push({
+          instrumentId: ref.instrumentId,
+          asOf,
+          quoteType: "CLOSE",
+          price: UnitPrice.of((close * factor).toFixed(2), ref.currency),
+          providerId: this.id,
+          // Not a published rate. Never claim otherwise.
+          sourceType: "DERIVED",
+          ingestedAt: new Date(this.runtime.now()),
+        });
+      }
+    }
+
+    if (quotes.length === 0) {
+      throw ProviderError.unknownSymbol(this.id, [...wanted.keys()].join(", "));
+    }
+    return quotes;
+  }
+
+  /**
+   * Real IBJA rates per gram, newest first, keyed by metal code.
+   *
+   * These anchors are what the whole estimate hangs off, so they come from IBJA
+   * itself and never from anything already derived.
+   */
+  private async calibrationPairs(): Promise<Map<string, CalibrationPair[]>> {
+    const byCode = new Map<string, CalibrationPair[]>();
+    for (const row of ibjaPerGramRows(await this.getText("https://www.ibjarates.com/"))) {
+      const list = byCode.get(row.code) ?? [];
+      list.push({ on: row.on, perGram: row.perGram });
+      byCode.set(row.code, list);
+      /*
+       * An instrument coded plainly "GOLD" resolves to the 999 benchmark, and to
+       * nothing else. Aliasing the bare code to whichever purity happened to be
+       * parsed first would anchor the factor on 916 or 585 at random and quietly
+       * misprice the entire back-history by the purity ratio.
+       */
+      if (row.code === `${row.bareCode}999`) byCode.set(row.bareCode, [...list]);
+    }
+    for (const list of byCode.values()) list.sort((a, b) => b.on.compareTo(a.on));
+    return byCode;
+  }
+
+  /** Daily ETF closes as `ISO -> close`. */
+  private async closes(
+    symbol: string,
+    from: CalendarDate,
+    to: CalendarDate,
+  ): Promise<Map<string, number>> {
+    /*
+     * `period1`/`period2` always, never `range=max`: Yahoo answers `range=max`
+     * with HTTP 200 and silently *monthly* rows, which would quietly turn a daily
+     * series into a dozen points without a single error to notice.
+     */
+    const period1 = Math.floor(from.toUtcInstant().getTime() / 1000);
+    // `period2` is exclusive, so ask for the day after the one we want included.
+    const period2 = Math.floor(to.plusDays(1).toUtcInstant().getTime() / 1000);
+    const body = await this.getText(
+      `${YAHOO_METAL_CHART}/${encodeURIComponent(symbol)}` +
+        `?period1=${period1}&period2=${period2}&interval=1d`,
+    );
+
+    let payload: YahooMetalChart;
+    try {
+      payload = JSON.parse(body) as YahooMetalChart;
+    } catch {
+      throw new ProviderError("UPSTREAM", this.id, `${this.id} got non-JSON for ${symbol}.`, true);
+    }
+    if (payload.chart?.error) throw ProviderError.unknownSymbol(this.id, symbol);
+    const result = payload.chart?.result?.[0];
+    const stamps = result?.timestamp ?? [];
+    const closeRow = result?.indicators?.quote?.[0]?.close ?? [];
+
+    const series = new Map<string, number>();
+    for (let index = 0; index < stamps.length; index += 1) {
+      const close = closeRow[index];
+      // A market holiday inside the range comes back as a row of nulls.
+      if (close === null || close === undefined || !Number.isFinite(close) || close <= 0) continue;
+      series.set(CalendarDate.fromUtcInstant(new Date(stamps[index] * 1000)).toISO(), close);
+    }
+    return series;
+  }
+}
+
+/* ═══ 5c. IBJA 30-day sheet — real rates, one month at a time ═══════ */
+
+/**
+ * IBJA's own 30-day rate sheet, which is the only free history they publish.
+ *
+ * The homepage table carries four days. This PDF carries thirty, of real
+ * published rates, and it matters for two reasons: it is thirty days the
+ * estimate does not have to cover, and — more importantly — every day in it is a
+ * day on which both a true IBJA rate and an ETF close are known. Run daily, it
+ * accumulates the calibration pairs that let the derived history be re-fitted
+ * later instead of trusting a factor measured once.
+ *
+ * It cannot backfill further than a month, so it complements
+ * {@link MetalHistoryProvider} rather than replacing it, and it sits ahead of it
+ * in the chain because a published rate should always win.
+ *
+ * The file's URL is not addressable: it carries a server-side timestamp token
+ * (`Pdf_2394_20260918133943635_...`) that cannot be constructed, so the link is
+ * discovered from the homepage on each run and the token is never cached.
+ */
+const IBJA_HOME = "https://www.ibjarates.com/";
+
+/**
+ * The sheet's twelve numeric columns, in order, as published.
+ *
+ * Each metal is quoted twice, AM and PM. The **PM** figure is the day's closing
+ * rate and the one the rest of the app values against — the homepage's PM row is
+ * where today's displayed gram rate comes from — so the AM columns are parsed
+ * only to keep the offsets honest and are then dropped.
+ */
+const IBJA_PDF_COLUMNS: readonly { code: string; session: "AM" | "PM" }[] = [
+  { code: "GOLD999", session: "AM" },
+  { code: "GOLD999", session: "PM" },
+  { code: "GOLD995", session: "AM" },
+  { code: "GOLD995", session: "PM" },
+  { code: "GOLD916", session: "AM" },
+  { code: "GOLD916", session: "PM" },
+  { code: "GOLD750", session: "AM" },
+  { code: "GOLD750", session: "PM" },
+  { code: "GOLD585", session: "AM" },
+  { code: "GOLD585", session: "PM" },
+  { code: "SILVER999", session: "AM" },
+  { code: "SILVER999", session: "PM" },
+];
+
+const PDF_MONTHS: Readonly<Record<string, number>> = {
+  JAN: 1, FEB: 2, MAR: 3, APR: 4, MAY: 5, JUN: 6,
+  JUL: 7, AUG: 8, SEP: 9, OCT: 10, NOV: 11, DEC: 12,
+};
+
+/**
+ * One row of the sheet, per gram.
+ *
+ * Exported for the spec: the row shapes worth pinning are the ones that are not
+ * numbers at all — `SAT`, `SUN` and `Market Holiday` all appear where prices
+ * otherwise sit, and a parser that coerced those would write zero-rupee gold.
+ */
+export function parseIbjaRateSheet(
+  lines: readonly string[],
+): { code: string; on: CalendarDate; perGram: number }[] {
+  const out: { code: string; on: CalendarDate; perGram: number }[] = [];
+  for (const line of lines) {
+    const match = /^(\d{2})-([A-Za-z]{3})-(\d{2})\s+(.+)$/.exec(line.trim());
+    if (!match) continue;
+    const month = PDF_MONTHS[match[2].toUpperCase()];
+    if (!month) continue;
+
+    /*
+     * A non-trading day prints `SAT`, `SUN` or `Market Holiday` across the row.
+     * Requiring all twelve columns to be numeric is what keeps those out: a
+     * partial row is a layout change, and half a row of prices is not something
+     * to guess at.
+     */
+    const cells = match[4].trim().split(/\s+/);
+    if (cells.length !== IBJA_PDF_COLUMNS.length) continue;
+    const values = cells.map((cell) => Number(cell.replace(/,/g, "")));
+    if (values.some((value) => !Number.isFinite(value) || value <= 0)) continue;
+
+    const on = CalendarDate.of(2000 + Number(match[3]), month, Number(match[1]));
+    values.forEach((value, index) => {
+      const column = IBJA_PDF_COLUMNS[index];
+      if (column.session !== "PM") return;
+      // Gold is quoted per 10g and silver per kilo; the ledger holds grams.
+      out.push({
+        code: column.code,
+        on,
+        perGram: value / (column.code.startsWith("SILVER") ? 1000 : 10),
+      });
+    });
+  }
+  return out;
+}
+
+export class IbjaPdfHistoryProvider extends PriceProvider {
+  readonly id = "ibja-pdf";
+  readonly displayName = "IBJA 30-day rate sheet";
+
+  capabilities(): ProviderCapabilities {
+    return {
+      assetClasses: ["COMMODITY"],
+      supportsIntraday: false,
+      supportsHistorical: true,
+      supportsCorporateActions: false,
+      supportsInstrumentSearch: false,
+      identifierTypes: ["METAL"],
+      // A month, and the declaration says a month. Roughly 30/365.
+      maxHistoryYears: 0.08,
+      quoteDelayMinutes: 24 * 60,
+      quoteTypes: ["CLOSE"],
+    };
+  }
+
+  override rateLimit(): RateLimitBudget {
+    // The sheet is ~700 KB and changes once a day. Asking often is pure waste.
+    return { requests: 4, perMillis: 60_000, burst: 1 };
+  }
+
+  protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
+    const fetchBytes = this.runtime.http.getBytes?.bind(this.runtime.http);
+    if (!fetchBytes) {
+      throw new ProviderError(
+        "UPSTREAM",
+        this.id,
+        `${this.id} needs an HTTP client that can read bytes; this one cannot.`,
+        false,
+      );
+    }
+
+    const home = await this.getText(IBJA_HOME);
+    const href = /href="([^"]*30DaysPdf[^"]*\.pdf)"/i.exec(home)?.[1];
+    if (!href) {
+      // The link is gone or renamed: a typed failure, so the chain moves on to the
+      // derived history instead of this looking like "no rates exist".
+      throw new ProviderError("UPSTREAM", this.id, `${this.id} found no rate sheet link.`, true);
+    }
+
+    const response = await fetchBytes(new URL(href, IBJA_HOME).toString(), {
+      timeoutMs: 30_000,
+    });
+    if (response.status !== 200) {
+      throw new ProviderError(
+        "UPSTREAM",
+        this.id,
+        `${this.id} could not read the rate sheet (${response.status}).`,
+        response.status >= 500,
+      );
+    }
+
+    let rows: { code: string; on: CalendarDate; perGram: number }[];
+    try {
+      rows = parseIbjaRateSheet(await extractPdfLines(response.bytes));
+    } catch {
+      throw new ProviderError("MALFORMED_RESPONSE", this.id, `${this.id} could not read the PDF.`, false);
+    }
+
+    const wanted = new Map(
+      request.instruments.map((ref) => [normaliseMetalCode(this.codeFor(ref)), ref] as const),
+    );
+    const quotes: Quote[] = [];
+    for (const row of rows) {
+      const ref = wanted.get(row.code) ?? (row.code === "GOLD999" ? wanted.get("GOLD") : undefined);
+      if (!ref) continue;
+      if (!request.range.contains(row.on)) continue;
+      quotes.push(
+        this.quote({
+          ref,
+          asOf: row.on,
+          quoteType: "CLOSE",
+          price: UnitPrice.of(row.perGram.toFixed(2), ref.currency),
+        }),
+      );
+    }
+
+    if (quotes.length === 0) {
+      throw ProviderError.unknownSymbol(this.id, [...wanted.keys()].join(", "));
+    }
+    return quotes;
+  }
 }
 
 /* ═══ 6. CoinGecko — crypto ═══════════════════════════════════════════ */
@@ -1566,6 +2051,15 @@ export function shippedQuoteProviders(
     new MfApiNavProvider(runtime, options),
     new AmfiNavProvider(runtime, options),
     new IbjaMetalProvider(runtime, options),
+    // Real published rates too, just a month at a time, so it also outranks the
+    // estimate — and each day it returns is a true calibration pair.
+    new IbjaPdfHistoryProvider(runtime, options),
+    // Last, and it skips the days on IBJA's homepage table, so it does not
+    // compete with those. It can still overlap the PDF sheet's 30 days, where
+    // the later *ingest* wins rather than the better source — sub-1%, since the
+    // factor is fitted to reproduce IBJA, but not zero. Closing that would mean
+    // reading the PDF here too, which is a 700 KB fetch per calibration.
+    new MetalHistoryProvider(runtime, options),
     new CoinGeckoProvider(runtime, options),
     new MoneycontrolCloseProvider(runtime, options),
     new YahooQuoteProvider(runtime, options),

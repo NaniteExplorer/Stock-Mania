@@ -6,16 +6,33 @@ import { CalendarDate } from "@/core/time";
 import { CashAsset } from "@/domain/assets";
 import { Card, PageHeader, Pill } from "@/ui/primitives";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
+import EntryLaneNav, {
+  entryLane,
+  normalizeEntryLane,
+  type EntryLaneSearchParams,
+} from "./entry-lane-nav";
 import RecordInvestmentForm from "./record-investment-form";
+import RecordMetalForm from "./record-metal-form";
 
 export const metadata: Metadata = { title: "Add investment" };
 
-export default async function NewInvestmentPage() {
+const CARD_TITLE = {
+  market: "Record a trade",
+  metal: "Record a metal purchase",
+  manual: "Record a manual holding",
+} as const;
+
+export default async function NewInvestmentPage({
+  searchParams,
+}: {
+  searchParams: Promise<EntryLaneSearchParams>;
+}) {
   await connection();
 
   const userId = await currentUserId();
   await ensureSeeded(userId);
 
+  const lane = normalizeEntryLane((await searchParams).lane);
   const today = CalendarDate.parse(new Date().toISOString().slice(0, 10));
   const { repositories } = services();
   const [accounts, platformRows] = await Promise.all([
@@ -36,8 +53,8 @@ export default async function NewInvestmentPage() {
     <>
       <PageHeader
         title="Add investment"
-        subtitle="Search the local instrument catalogue first, then record the trade from the contract note."
-        badge={<Pill tone="brand">Search first</Pill>}
+        subtitle="Pick what you are adding first — each asset family is identified differently and carries different charges."
+        badge={<Pill tone="brand">{entryLane(lane).label}</Pill>}
         action={
           <Link href="/investments" className="ghost-btn h-10 px-4 text-xs">
             <ArrowLeft className="size-4" aria-hidden />
@@ -46,15 +63,23 @@ export default async function NewInvestmentPage() {
         }
       />
 
-      <Card
-        title="Record a trade"
-        subtitle="Zerodha is offered as a preferred platform when available, but the holding can sit with any broker, bank, wallet or vault."
-      >
-        <RecordInvestmentForm
-          accounts={cashAccounts}
-          platforms={platforms}
-          defaultDate={today.toISO()}
-        />
+      <EntryLaneNav activeLane={lane} />
+
+      <Card title={CARD_TITLE[lane]} subtitle={entryLane(lane).hint}>
+        {lane === "metal" ? (
+          <RecordMetalForm
+            accounts={cashAccounts}
+            platforms={platforms}
+            defaultDate={today.toISO()}
+          />
+        ) : (
+          <RecordInvestmentForm
+            lane={lane}
+            accounts={cashAccounts}
+            platforms={platforms}
+            defaultDate={today.toISO()}
+          />
+        )}
       </Card>
     </>
   );

@@ -1554,7 +1554,7 @@ export function describeBreaks(verdict: StatementVerdict, limit = 3): string {
 }
 
 /** Best first, so two candidate parses of one file can be compared. */
-const TRUST_ORDER: Readonly<Record<StatementTrust, number>> = {
+export const TRUST_ORDER: Readonly<Record<StatementTrust, number>> = {
   RECONCILED: 2,
   UNVERIFIED: 1,
   BROKEN: 0,

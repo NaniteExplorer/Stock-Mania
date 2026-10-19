@@ -943,6 +943,8 @@ export const lots = sqliteTable(
     /** Decremented as sells consume it; zero means fully realized. */
     remainingQuantity: quantityScaled("remaining_quantity").notNull(),
     costPerUnitMinor: moneyMinor("cost_per_unit_minor").notNull(),
+    /** Exact original consideration; nullable only for lots written before migration 0016. */
+    costMinor: moneyMinor("cost_minor"),
     /** Buy charges apportioned to this lot, on the original quantity. */
     buyChargesMinor: moneyMinor("buy_charges_minor").notNull().default(0),
     currency: currencyCode(),

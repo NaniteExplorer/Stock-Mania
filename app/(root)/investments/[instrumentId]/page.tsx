@@ -35,6 +35,7 @@ import GoldReturnsPanel from "./gold-returns-panel";
 import GoldLotLadder from "./gold-lot-ladder";
 import GoldBenchmarkTable from "./gold-benchmark-table";
 import GoldTaxStatement from "./gold-tax-statement";
+import InvestmentActivity from "./investment-activity";
 import HoldingNav, { normalizeHoldingView, type HoldingViewSearchParams } from "./holding-nav";
 import PriceHistoryChart, { type PriceHistoryGap, type PriceHistoryPoint } from "./price-history-chart";
 import ReturnsPanel, { type HoldingReturns } from "./returns-panel";
@@ -146,14 +147,18 @@ export default async function Page({
   if (!instrument) notFound();
   const isDigitalMetal = instrument.kind === "DIGITAL_GOLD" || instrument.kind === "DIGITAL_SILVER" || instrument.kind === "DIGITAL_PLATINUM";
 
-  const [lots, portfolio, actions, accounts, trades, platformRows] = await Promise.all([
-    repositories.lots.allLots(userId, id),
-    investing.valuePortfolio.execute({ userId, asOf: today }),
-    investing.corporateActions(userId).listFor(id),
-    repositories.accounts.list(userId),
-    repositories.lots.tradesFor(userId, id),
-    repositories.platforms.list(userId),
-  ]);
+  const [lots, portfolio, actions, accounts, trades, platformRows, ledgerEvents] =
+    await Promise.all([
+      repositories.lots.allLots(userId, id),
+      investing.valuePortfolio.execute({ userId, asOf: today }),
+      investing.corporateActions(userId).listFor(id),
+      repositories.accounts.list(userId),
+      repositories.lots.tradesFor(userId, id),
+      repositories.platforms.list(userId),
+      // Every kind of holding gets the same read: it is keyed on the instrument's
+      // own account, so it needs no per-kind branch here.
+      repositories.investmentActivity.forInstrument(userId, id),
+    ]);
   if (!portfolio.ok) throw new Error(portfolio.error.message);
 
   const position = portfolio.value.valued.find((row) => row.instrumentId.equals(id));
@@ -261,14 +266,18 @@ export default async function Page({
   const hasSpread = analytics ? !analytics.sellSpread.isZero : false;
   const metalRate = analytics?.pricePerGram?.toMoney() ?? currentRate;
   const metalValue = analytics?.marketValue ?? currentValue;
-  const metalUnrealised = metalValue ? metalValue.minus(investedValue) : unrealisedValue;
-  const metalReturn = metalUnrealised && investedValue.isPositive
-    ? Percentage.ratio(metalUnrealised, investedValue)
+  const cashInvestedValue = isDigitalMetal ? (analytics?.investedCost ?? investedValue) : investedValue;
+  const cashAverageBuyRate = isDigitalMetal
+    ? (analytics?.effectiveCostPerGram?.toMoney() ?? null)
+    : averageBuyRate;
+  const metalUnrealised = metalValue ? metalValue.minus(cashInvestedValue) : unrealisedValue;
+  const metalReturn = metalUnrealised && cashInvestedValue.isPositive
+    ? Percentage.ratio(metalUnrealised, cashInvestedValue)
     : absoluteReturn;
   const holdingMarketValue = isDigitalMetal ? metalValue : (position?.marketValue ?? null);
-  const holdingUnrealised = holdingMarketValue ? holdingMarketValue.minus(investedValue) : null;
-  const holdingReturn = holdingUnrealised && investedValue.isPositive
-    ? Percentage.ratio(holdingUnrealised, investedValue)
+  const holdingUnrealised = holdingMarketValue ? holdingMarketValue.minus(cashInvestedValue) : null;
+  const holdingReturn = holdingUnrealised && cashInvestedValue.isPositive
+    ? Percentage.ratio(holdingUnrealised, cashInvestedValue)
     : null;
   const nonDigitalFamily: NonDigitalHoldingFamily = [
     "INDEX_FUND",
@@ -282,6 +291,7 @@ export default async function Page({
       ? "FIXED_INCOME"
       : "EQUITY";
   const holdingPlatform = platformRows.find((platform) => platform.id.equals(instrument.institutionId))?.name ?? null;
+  const cashSettledTrades = trades.filter((trade) => trade.settlementAccountId !== null);
   const lifecycleFacts = instrument instanceof Bond && instrument.terms
     ? [
         { label: "Face value", value: instrument.terms.faceValue.toDecimalString() },
@@ -475,7 +485,7 @@ export default async function Page({
           value={<span className="tnum">{open.quantity.toDecimalString()}</span>}
           hint={isDigitalMetal ? "Current recorded platform balance" : `${openLots.length} open lot(s)`}
         />
-        <Stat label="Invested" value={open.cost.plus(open.charges)} hint="Price plus charges" />
+        <Stat label="Invested" value={cashInvestedValue} hint={isDigitalMetal ? "Cash paid; lease credits excluded" : "Price plus charges"} />
         <Stat
           label="Market value"
           value={position?.marketValue ?? null}
@@ -519,7 +529,7 @@ export default async function Page({
       {isDigitalMetal && (
         <>
           {activeView === "summary" && <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Average buy rate / gram" value={averageBuyRate} hint="Total invested ÷ grams held" />
+            <Stat label="Average buy rate / gram" value={cashAverageBuyRate} hint="Cash paid ÷ bought grams" />
             <Stat
               label={hasSpread ? "Buy-back rate / gram" : "Current gold price / gram"}
               value={metalRate}
@@ -762,7 +772,7 @@ export default async function Page({
 
               {activeView === "performance" && <GoldReturnsPanel analytics={analytics} />}
 
-              {activeView === "performance" && <GoldProfitChart points={profitPoints} currency={instrument.currency.code} />}
+              {activeView === "performance" && <GoldProfitChart points={profitPoints} currency={instrument.currency.code} instrumentId={instrumentId} />}
 
               {activeView === "lots-tax" && <GoldLotLadder analytics={analytics} unit={isDigitalMetal ? "Grams" : "Units"} />}
 
@@ -795,12 +805,12 @@ export default async function Page({
           {activeView === "activity" && <section className="panel mb-6 p-0">
             <div className="flex items-center justify-between border-b border-gray-600 px-5 py-4">
               <div><h2 className="text-sm font-semibold text-gray-100">Investment transactions</h2><p className="mt-1 text-xs text-gray-500">Every monthly investment is retained separately and drives the holding totals above.</p></div>
-              <Pill tone="neutral">{trades.length} entries</Pill>
+              <Pill tone="neutral">{cashSettledTrades.length} entries</Pill>
             </div>
-            {trades.length === 0 ? <p className="px-5 py-6 text-sm text-gray-500">No investments recorded yet.</p> : <div className="table-scroll"><table className="w-full text-sm">
+            {cashSettledTrades.length === 0 ? <p className="px-5 py-6 text-sm text-gray-500">No cash investments recorded yet.</p> : <div className="table-scroll"><table className="w-full text-sm">
               <caption className="sr-only">Digital-metal investment transactions</caption>
               <thead><tr className="border-b border-gray-600"><th className="metric-label px-4 py-3 text-left">Date</th><th className="metric-label px-4 py-3 text-right">Grams</th><th className="metric-label px-4 py-3 text-right">Invested</th><th className="metric-label px-4 py-3 text-right">Buy rate / gram</th><th className="metric-label px-4 py-3 text-right">Actions</th></tr></thead>
-              <tbody>{trades.map((trade) => {
+              <tbody>{cashSettledTrades.map((trade) => {
                 const invested = trade.quantity.valueAt(trade.pricePerUnit, "HALF_EVEN").plus(trade.charges);
                 return <tr key={trade.id} className="border-b border-gray-600/50 align-top last:border-0">
                   <td className="tnum px-4 py-3 text-gray-400">{trade.tradedOn.toISO()}</td>
@@ -812,6 +822,9 @@ export default async function Page({
               })}</tbody>
             </table></div>}
           </section>}
+          {activeView === "activity" && (
+            <InvestmentActivity events={ledgerEvents} unit="g" />
+          )}
           {activeView === "activity" && <Card title="Add investment transaction" subtitle="Record each monthly investment separately with its grams, invested amount and acquisition date. The average buy rate and all portfolio totals are recalculated automatically." className="mb-6">
             <MetalHoldingForm instrumentId={instrumentId} defaultDate={today.toISO()} accounts={settlementAccounts} />
           </Card>}
@@ -1111,6 +1124,8 @@ export default async function Page({
           </p>
         </Card>
       )}
+
+      {!isDigitalMetal && activeView === "activity" && <InvestmentActivity events={ledgerEvents} />}
 
       {!isDigitalMetal && activeView === "activity" && actions.length > 0 && (
         <Card title="Corporate actions" subtitle="Applied as events, so each one can be undone." className="mb-6">

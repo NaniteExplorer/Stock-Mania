@@ -8,6 +8,7 @@ import { check, checkDeep, checkTrue, done, section } from "./harness";
 
 const pageSource = readFileSync("app/(root)/investments/[instrumentId]/page.tsx", "utf8");
 const navSource = readFileSync("app/(root)/investments/[instrumentId]/holding-nav.tsx", "utf8");
+const adminSource = readFileSync("app/(root)/investments/[instrumentId]/instrument-admin.tsx", "utf8");
 
 section("view selection");
 
@@ -40,6 +41,10 @@ section("branch source contracts");
 
 checkTrue("summary shows the headline holding metrics", pageSource.includes('activeView === "summary" && <div className="mb-6 grid grid-cols-2'));
 checkTrue("summary keeps the gold advisory out of other branches", pageSource.includes('activeView === "summary" && instrument.kind === "DIGITAL_GOLD" && <GoldAdvisoryNote'));
+checkTrue("digital-metal summary uses cash invested from gold analytics", pageSource.includes("const cashInvestedValue = isDigitalMetal ? (analytics?.investedCost ?? investedValue) : investedValue"));
+checkTrue("digital-metal average buy rate excludes lease credits", pageSource.includes("analytics?.effectiveCostPerGram?.toMoney() ?? null"));
+checkTrue("investment transaction table excludes account-free lease credits", pageSource.includes("const cashSettledTrades = trades.filter((trade) => trade.settlementAccountId !== null)"));
+checkTrue("editable metal transactions are cash-settled only", pageSource.includes("cashSettledTrades.map((trade)"));
 
 checkTrue("performance owns the gold return panel", pageSource.includes('activeView === "performance" && <GoldReturnsPanel'));
 checkTrue("performance owns the gold profit chart", pageSource.includes('activeView === "performance" && <GoldProfitChart'));
@@ -61,6 +66,13 @@ checkTrue("activity owns corporate actions", pageSource.includes('!isDigitalMeta
 
 checkTrue("settings owns holding administration", pageSource.includes('activeView === "settings" && <Card'));
 checkTrue("settings contains the existing admin component", pageSource.includes("<InstrumentAdmin"));
+checkTrue("close feedback renders from the close action state", adminSource.includes("{closeState.message}"));
+checkTrue("update feedback renders from the update action state", adminSource.includes("{updateState.message}"));
+checkTrue("delete feedback renders from the delete action state", adminSource.includes("{deleteState.message}"));
+checkTrue(
+  "one stale action result cannot mask another action result",
+  !adminSource.includes("updateState ?? closeState") && !adminSource.includes("const state ="),
+);
 
 section("non-leasable branches are nonblank");
 

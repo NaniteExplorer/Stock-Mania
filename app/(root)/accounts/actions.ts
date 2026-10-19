@@ -364,9 +364,24 @@ export async function deleteEmptyCashAccountAction(
     );
   }
 
-  await services().repositories.accounts.softDelete(userId, accountId, new Date());
+  const at = new Date();
+  /*
+   * An account with no postings can still own staged rows: an import that was
+   * uploaded and never reviewed posts nothing. Left behind they keep counting
+   * towards the review queue on the accounts page, for an account that is gone.
+   */
+  const staged = await services().repositories.imports.softDeleteBatchesForAccount(
+    userId,
+    accountId,
+    at,
+  );
+  await services().repositories.accounts.softDelete(userId, accountId, at);
   revalidateAccountSurfaces();
-  return ok(`${account.displayName} deleted.`);
+  return ok(
+    staged > 0
+      ? `${account.displayName} deleted, with ${staged} unposted import(s).`
+      : `${account.displayName} deleted.`,
+  );
 }
 
 /**
@@ -394,8 +409,21 @@ export async function deleteCashAccountHistoryAction(
 
   const at = new Date();
   const reversed = await services().repositories.journal.softDeleteByAccount(userId, accountId, at);
+  /*
+   * The imports go with the transactions they wrote. Keeping them would leave the
+   * statement's file hash on record, and the next attempt to import that same
+   * statement — the obvious way to rebuild the account — would be turned away as a
+   * duplicate of an import belonging to an account that no longer exists.
+   */
+  const batches = await services().repositories.imports.softDeleteBatchesForAccount(
+    userId,
+    accountId,
+    at,
+  );
   await services().repositories.accounts.softDelete(userId, accountId, at);
-  const message = `${account.displayName} and its ${reversed} transaction(s) deleted.`;
+  const message =
+    `${account.displayName} and its ${reversed} transaction(s) deleted` +
+    (batches > 0 ? `, along with ${batches} import(s).` : ".");
   revalidateAccountSurfaces();
 
   // The user is most likely standing on this account's own page, which no longer

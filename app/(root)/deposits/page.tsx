@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { PiggyBank } from "lucide-react";
 import { connection } from "next/server";
 import { Money } from "@/core/money";
@@ -106,6 +107,7 @@ export default async function Page() {
                   <th scope="col" className="metric-label px-4 py-3 text-right">Value today</th>
                   <th scope="col" className="metric-label px-4 py-3 text-right">In the journal</th>
                   <th scope="col" className="metric-label px-4 py-3 text-right">Accrued</th>
+                  <th scope="col" className="metric-label px-4 py-3 text-right">Manage</th>
                 </tr>
               </thead>
               <tbody>
@@ -129,6 +131,11 @@ export default async function Page() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <MoneyText value={position.unbooked} />
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Link className="ghost-btn inline-flex h-8 items-center px-3 text-xs" href={`/accounts/${position.deposit.account.id.value}`}>
+                        Close or correct
+                      </Link>
                     </td>
                   </tr>
                 ))}
@@ -154,7 +161,7 @@ export default async function Page() {
 
       <Card
         title="Add a deposit"
-        subtitle="The terms are the whole record: a maturity value computed from them matches the bank's certificate, and there is nowhere for a stale balance to live."
+        subtitle="Enter your bank's own ROI for an FD or RD. EPF uses financial-year rates; NPS uses scheme units × NAV, not an assumed ROI. The terms are the record, so computed maturity can match the certificate."
       >
         <AddDepositForm />
       </Card>

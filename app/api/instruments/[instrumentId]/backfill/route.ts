@@ -32,6 +32,7 @@
  */
 
 import { config } from "@/core/config";
+import { CalendarDate } from "@/core/time";
 import { UserId } from "@/core/kernel";
 import { InstrumentId } from "@/domain/instruments";
 import {
@@ -91,6 +92,69 @@ export async function POST(
     (earliest, trade) => earliest === null || trade.tradedOn.isBefore(earliest) ? trade.tradedOn : earliest,
     null as (typeof purchases)[number]["tradedOn"] | null,
   );
+
+  /*
+   * Metals leave here, through the other half of the backfill.
+   *
+   * Everything below this point is the equity path: it probes a *ticker* against
+   * the market-data engine and fills `price_bars`. A metal has no ticker to probe
+   * — `GOLD999` resolves nowhere — so it would 422 on a holding that is perfectly
+   * priceable, and even if it resolved it would fill the wrong table. The gold
+   * charts read `price_quotes`, which is what `pricing.backfill` writes through
+   * the quote ladder.
+   *
+   * The window is measured from the first purchase rather than a flat twenty
+   * years: months before the owner held anything teach nothing, and each extra
+   * year is another range asked of a keyless endpoint.
+   */
+  if (key.assetClass === "COMMODITY") {
+    // The source's own code, never the platform-qualified symbol:
+    // `GOLD999.SAFEGOLD` is this app's holding key, `GOLD999` is IBJA's. This is
+    // a *quote* code, not the bare listing symbol the equity candidates below
+    // are built from — the two must not be confused.
+    const metalCode = key.ref ?? instrument.symbol;
+    const today = CalendarDate.fromUtcInstant(new Date());
+    const years = purchasedOn
+      ? Math.max(1, Math.ceil(purchasedOn.daysUntil(today) / 365) + 1)
+      : 1;
+    const backfilled = await app.pricing.backfill.execute({
+      instrument: {
+        instrumentId,
+        symbol: metalCode,
+        assetClass: key.assetClass,
+        currency: instrument.currency,
+        // `QuoteKey` says "SLUG"; the pricing ports call the same thing "METAL".
+        identifierType: "METAL",
+      },
+      years,
+      force,
+    });
+
+    if (!backfilled.ok) {
+      return Response.json(
+        { ok: false, error: backfilled.error.message, code: backfilled.error.code },
+        { status: 502 },
+      );
+    }
+
+    return Response.json({
+      ok: true,
+      instrumentId,
+      quoteKey: metalCode,
+      from: purchasedOn?.toISO() ?? null,
+      range: backfilled.value.range
+        ? { from: backfilled.value.range.start.toISO(), to: backfilled.value.range.end.toISO() }
+        : null,
+      appended: backfilled.value.persisted,
+      skipped: backfilled.value.skippedReason,
+      /*
+       * Said plainly, because the number it produces is an estimate: there is no
+       * free source of historical IBJA rates, so anything older than IBJA's own
+       * four-day window is an ETF proxy calibrated to the last published rate.
+       */
+      estimated: true,
+    });
+  }
 
   /*
    * Resolve the quote key by probing, not by uppercasing the symbol.

@@ -276,10 +276,10 @@ export async function recordBuyAction(
 const OPENING_FUNDING = "OPENING";
 
 const metalHoldingSchema = z.object({
-  instrumentId: z.string().uuid(),
+  instrumentId: z.string().trim().min(1, "Investment holding not found."),
   grams: UNITS,
   invested: AMOUNT,
-  recordedOn: z.string().trim().min(1),
+  recordedOn: z.string().trim().pipe(z.iso.date("Choose a valid date.")),
   fundingAccountId: z.string().trim().min(1).default(OPENING_FUNDING),
   /** GST and platform fees inside `invested`, kept separate rather than added on. */
   charges: AMOUNT.optional().or(z.literal("")),
@@ -308,7 +308,13 @@ export async function recordMetalHoldingAction(
   formData: FormData,
 ): Promise<InvestingActionState> {
   const parsed = metalHoldingSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return { ok: false, message: "Check the grams, values and date." };
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message: "Check the grams, values and date.",
+      fieldErrors: z.flattenError(parsed.error).fieldErrors as Record<string, string[]>,
+    };
+  }
 
   const userId = await currentUserId();
   const { repositories } = services();
@@ -359,6 +365,7 @@ export async function recordMetalHoldingAction(
       fromAccountId: AccountId.from(parsed.data.fundingAccountId),
       quantity: grams,
       pricePerUnit: grams.perUnit(metalCost),
+      consideration: metalCost,
       tradedOn: recordedOn,
       charges: charges.isPositive ? charges : undefined,
       narration: `Bought ${parsed.data.grams}g of ${instrument.name}`,

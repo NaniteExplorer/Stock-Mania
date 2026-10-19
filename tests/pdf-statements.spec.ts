@@ -21,11 +21,11 @@
  */
 
 import { Currency } from "@/core/money";
-import { __test__ } from "@/infra/pdf-statements";
+import { __test__, parsePdfStatement } from "@/infra/pdf-statements";
 import { checkBalanceContinuity, parseStatementRows, readDate } from "@/infra/statements";
-import { check, checkDeep, checkTrue, done, section } from "./harness";
+import { check, checkDeep, checkTrue, done, section, throwsAsync } from "./harness";
 
-const { toRecords, toRow, takeTail, withoutMachineIds, whyThereIsNoText, readProvenance, passwordProblem } =
+const { geometryBeats, toRecords, toRow, takeTail, withoutMachineIds, whyThereIsNoText, readProvenance, passwordProblem } =
   __test__;
 
 /* ═══ Fixtures ════════════════════════════════════════════════════════ */
@@ -366,6 +366,74 @@ section("a locked file is told apart from a wrong password");
   check("a corrupt file is not a locked one", passwordProblem(new Error("Invalid PDF structure")), null);
   check("a non-error is not a locked one", passwordProblem("boom"), null);
 }
+
+section("a file pdf.js refuses to open fails with this module's own error");
+
+/**
+ * The guard on the geometry reader, from the outside.
+ *
+ * `parsePdfStatement` hands the file to the column reader first, so that reader
+ * - not `extractPdfLines` - is where pdf.js first refuses to open a file, and
+ * its failures used to escape the parse raw. An import then reported an
+ * `InvalidPDFException` from inside pdf.js, and, worse, a password-protected
+ * statement never became a `StatementLockedError`, so the upload form had
+ * nothing to raise its password prompt on.
+ *
+ * Bytes that are not a PDF are the reachable half of that: they must come back
+ * as the message written for an unreadable file, which is only true if the
+ * column reader declined instead of throwing. The password half is covered by
+ * `passwordProblem` above, which is the translation this path now performs.
+ */
+await throwsAsync(
+  "an unopenable file gets the message written for it",
+  () => parsePdfStatement(new TextEncoder().encode("this is not a PDF at all"), Currency.reporting),
+  "That PDF could not be read",
+);
+
+/* ═══ Which reading of a PDF wins ═════════════════════════════════════ */
+
+/**
+ * The regression this exists for.
+ *
+ * Two SBI statements were imported with the geometry reader's mapping, which put
+ * `credit` on the description column and found no debit column at all: 1,509 of
+ * 1,510 rows and 44 of 61 rows were dropped as "no amount in any amount column".
+ * Because the handful it kept carried nothing to check a balance chain against,
+ * that reading scored UNVERIFIED — and the old gate returned any reading that was
+ * merely not BROKEN, so the text reader that handles these files never ran. The
+ * Accounts page then showed a bank balance summed from 18 postings.
+ *
+ * `checked === 0` means "I could not check this", which is not a reason to stop
+ * looking. Among two unchecked readings the one that kept more rows wins.
+ */
+section("a geometry reading that dropped most of the file loses to the text reading");
+
+const reading = (trust: "RECONCILED" | "UNVERIFIED" | "BROKEN", rows: number) =>
+  ({
+    rows: Array.from({ length: rows }),
+    verdict: { trust },
+  }) as unknown as Parameters<typeof geometryBeats>[0];
+
+checkTrue(
+  "unverified and short loses to unverified and complete",
+  !geometryBeats(reading("UNVERIFIED", 17), reading("UNVERIFIED", 61)),
+);
+checkTrue(
+  "unverified loses to a reading that reconciles",
+  !geometryBeats(reading("UNVERIFIED", 1695), reading("RECONCILED", 61)),
+);
+checkTrue(
+  "a reading that reconciles is not given up for a longer unverified one",
+  geometryBeats(reading("RECONCILED", 61), reading("UNVERIFIED", 1695)),
+);
+checkTrue(
+  "among equals the longer geometry reading is still kept",
+  geometryBeats(reading("UNVERIFIED", 61), reading("UNVERIFIED", 17)),
+);
+checkTrue(
+  "a broken geometry reading never wins over a readable one",
+  !geometryBeats(reading("BROKEN", 1695), reading("UNVERIFIED", 1)),
+);
 
 section("recorded: both real statements reconcile to the printed totals");
 checkTrue("verified end-to-end against the source PDFs", true);

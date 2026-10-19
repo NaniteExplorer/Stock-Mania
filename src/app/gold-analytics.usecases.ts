@@ -806,10 +806,13 @@ export class GoldHoldingAnalytics implements UseCase<GoldAnalyticsInput, GoldAna
         const trade = ordered[cursor];
         cursor += 1;
         if (trade.side === "BUY") {
-          const paid = trade.quantity.valueAt(trade.pricePerUnit, "HALF_EVEN").plus(trade.charges);
+          const isLeaseCredit = leaseTxnIds.has(trade.transactionId);
+          const paid = isLeaseCredit
+            ? zero
+            : trade.quantity.valueAt(trade.pricePerUnit, "HALF_EVEN").plus(trade.charges);
           grams = grams.plus(trade.quantity);
           cost = cost.plus(paid);
-          if (leaseTxnIds.has(trade.transactionId)) {
+          if (isLeaseCredit) {
             leaseGrams = leaseGrams.plus(trade.quantity);
           }
         } else {

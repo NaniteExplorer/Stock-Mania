@@ -17,6 +17,7 @@ import {
   DrizzleImportRepository,
   DrizzleInstrumentRepository,
   DrizzleInstrumentCatalogRepository,
+  DrizzleInvestmentActivityQuery,
   DrizzleLotRepository,
   DrizzleCorporateActionRepository,
   DrizzleBarRepository,
@@ -182,6 +183,8 @@ export const services = cache(() => {
   const lending = new DrizzleDepositRepository(db);
   const instruments = new DrizzleInstrumentRepository(db);
   const lots = new DrizzleLotRepository(db);
+  // A read model, not a repository: it only ever answers the holding screen.
+  const investmentActivity = new DrizzleInvestmentActivityQuery(db);
   const quotes = new DrizzleQuoteRepository(db);
   const bars = new DrizzleBarRepository(db);
   const leases = new DrizzleGoldLeaseRepository(db);
@@ -308,7 +311,7 @@ export const services = cache(() => {
 
   return {
     clock,
-    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms, lending, instruments, instrumentCatalog, lots, quotes, bars, taxSettings, leases, platforms },
+    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms, lending, instruments, instrumentCatalog, investmentActivity, lots, quotes, bars, taxSettings, leases, platforms },
     ledger: {
       seedChart: new SeedChartOfAccounts(accounts),
       openAccount,
@@ -321,7 +324,16 @@ export const services = cache(() => {
       recordSpend: new RecordSpend(accounts, record),
       recordReceipt: new RecordReceipt(accounts, record),
       recordTransfer: transfer,
-      stageImport: new StageStatementImport(accounts, journal, imports, rules, selfPayees),
+      stageImport: new StageStatementImport(
+        accounts,
+        journal,
+        imports,
+        rules,
+        selfPayees,
+        undefined,
+        undefined,
+        balances,
+      ),
       confirmUnmatched: new ConfirmUnmatchedRows(imports),
       smartReview: new SmartReviewImport(imports, accounts, rules, selfPayees),
       reviewRow: new ReviewImportRow(imports, accounts),
@@ -345,7 +357,7 @@ export const services = cache(() => {
       recordSell,
       compareMethods: new CompareDisposalMethods(instruments, lots),
       valuePortfolio,
-      workspace: new InvestmentWorkspace(valuePortfolio, portfolioReturns),
+      workspace: new InvestmentWorkspace(valuePortfolio, portfolioReturns, platforms),
       analysis: new ViewInvestmentAnalysis(instruments, bars, clock),
       tracker: new ViewInvestmentTracker(instruments, quotes, clock, {
         providerIds: entitledQuoteProviders,

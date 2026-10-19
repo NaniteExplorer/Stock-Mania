@@ -39,6 +39,7 @@ import {
   SelfPayeeQuery,
   StagedRow,
   StatementInput,
+  StatementMovement,
   fingerprintOf,
   normalizeNarration,
   reconcile,
@@ -394,7 +395,55 @@ export class StageStatementImport
     private readonly selfPayees: SelfPayeeQuery,
     private readonly categoriser: Categoriser = new Categoriser(),
     private readonly matcher: DuplicateMatcher = new DuplicateMatcher(),
+    /*
+     * Optional, and deliberately last: without it the opening-balance check below
+     * is skipped and everything else stages exactly as before, so no existing
+     * caller has to be changed to keep working.
+     */
+    private readonly balances?: BalanceQuery,
   ) {}
+
+  /**
+   * Does this statement start where the ledger left off?
+   *
+   * A statement that begins mid-life carries an opening balance it never prints
+   * as a row: the first row's running balance, less that row's own movement. Post
+   * the rows without it and the account lands exactly that opening short — which
+   * is not a parse failure, so nothing else here would notice. One real SBI
+   * account read ₹10,596.08 against a bank showing ₹1,00,905.39, and the
+   * difference was precisely the opening balance of a period whose predecessor
+   * had never been imported.
+   *
+   * A warning, not a refusal, and for the same reason as everything else in
+   * `withHistory`: the user may be importing the statements out of order, and the
+   * next file may be the one that closes the gap.
+   */
+  private async openingBalanceWarning(
+    userId: UserId,
+    accountId: AccountId,
+    rows: readonly StatementMovement[],
+  ): Promise<string | null> {
+    if (!this.balances) return null;
+    const first = rows.find((row) => row.balanceAfter !== null);
+    if (!first?.balanceAfter) return null;
+
+    const implied =
+      first.direction === "CREDIT"
+        ? first.balanceAfter.minus(first.amount)
+        : first.balanceAfter.plus(first.amount);
+    // The day before the statement starts: the balance this file assumes it
+    // inherits.
+    const ledger = await this.balances.balanceOf(userId, accountId, first.date.plusDays(-1));
+    if (ledger.equals(implied)) return null;
+
+    const short = implied.minus(ledger);
+    return (
+      `This statement starts from ${implied.toDecimalString()} on ${first.date.toISO()}, ` +
+      `but the ledger has ${ledger.toDecimalString()} on that date — a difference of ` +
+      `${short.toDecimalString()}. Posting these rows will leave the account off by that ` +
+      "amount until the statements covering the earlier period are imported."
+    );
+  }
 
   /**
    * The diagnostics, with everything only this layer can know added to them.
@@ -413,8 +462,12 @@ export class StageStatementImport
     diagnostics: ImportDiagnostics,
     accountSuffix: string | null,
     history: readonly ImportBatchRecord[],
+    openingGap: string | null = null,
   ): ImportDiagnostics {
     const warnings = [...diagnostics.warnings];
+    // First in the list because it is the one with a number attached: the others
+    // say something may be wrong, this one says by how much.
+    if (openingGap) warnings.unshift(openingGap);
 
     /*
      * Layout drift. Two batches with the same fingerprint came from the same
@@ -623,6 +676,11 @@ export class StageStatementImport
     });
 
     const unreadable = input.statement.problems.length;
+    const openingGap = await this.openingBalanceWarning(
+      input.userId,
+      input.accountId,
+      input.statement.rows,
+    );
     const batch: ImportBatchRecord = {
       id: batchId,
       kind: "BANK_STATEMENT",
@@ -659,6 +717,7 @@ export class StageStatementImport
         },
         account.accountNumberSuffix,
         history,
+        openingGap,
       ),
     };
 

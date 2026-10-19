@@ -147,8 +147,14 @@ export class AddInstrument implements UseCase<AddInstrumentInput, AddInstrumentO
      * Tanishq lot. Same symbol, same platform is still the same instrument, which
      * is what keeps a re-submitted form from opening a second account.
      */
-    const existing = await this.instruments.findBySymbol(input.userId, input.symbol);
-    if (existing && sameInstitution(existing.institutionId, input.institutionId)) {
+    const resolved = await this.resolveSymbol(
+      input.userId,
+      input.symbol,
+      institution,
+      input.institutionId ?? null,
+    );
+    const existing = resolved.existing;
+    if (existing) {
       if (existing.isClosed) {
         await this.instruments.save(input.userId, existing.kind, {
           ...existing.props,
@@ -171,13 +177,7 @@ export class AddInstrument implements UseCase<AddInstrumentInput, AddInstrumentO
      * qualified equity symbol would go to NSE as "INFY.GROWW" and come back
      * unpriced.
      */
-    // Soft-deleted rows are hidden from findBySymbol but still participate in
-    // the database unique key. Check the same reservation set as SQLite before
-    // choosing the unqualified symbol.
-    const symbolReserved = await this.instruments.isSymbolReserved(input.userId, input.symbol);
-    const symbol = symbolReserved
-      ? await this.freeSymbol(input.userId, input.symbol, institution)
-      : input.symbol;
+    const symbol = resolved.symbol;
     const quoteRef = input.quoteRef ?? (symbol === input.symbol ? null : input.symbol);
 
     const parentId = institution
@@ -266,21 +266,50 @@ export class AddInstrument implements UseCase<AddInstrumentInput, AddInstrumentO
     return Ok(opened.value.accountId);
   }
 
-  /** `INFY`, then `INFY.GROWW`, then `INFY.GROWW.2`, … until one is free. */
-  private async freeSymbol(
+  /**
+   * Finds this platform's row for a symbol, or the next free symbol for it.
+   *
+   * The ladder is `INFY`, `INFY.GROWW`, `INFY.GROWW.2`, … and it is walked in
+   * that order for **both** questions at once, which is the whole point.
+   * Looking the bare symbol up alone was wrong on every platform but the one
+   * that got there first: `findBySymbol("GOLD999")` returns SafeGold's row, the
+   * institutions differ, and the code minted `GOLD999.TANISHQ`, then
+   * `GOLD999.TANISHQ.2`, then `.3` — a fresh holding per buy, each with its own
+   * cost base, and a sell that reported "there are no units of
+   * GOLD999.TANISHQ.2 to sell" for grams sitting on the screen.
+   *
+   * Allocation is dense from the front, so the first candidate that is neither
+   * taken nor reserved is the end of the ladder: a matching platform row, if
+   * there is one, is always found before it.
+   *
+   * `isSymbolReserved` is consulted separately because soft-deleted rows are
+   * hidden from `findBySymbol` while still holding the database unique key.
+   */
+  private async resolveSymbol(
     userId: UserId,
     symbol: string,
     institution: Institution | null | undefined,
-  ): Promise<string> {
+    institutionId: InstitutionId | null,
+  ): Promise<
+    { existing: MarketInstrument; symbol: string } | { existing: null; symbol: string }
+  > {
     const suffix = (institution?.accountSegment ?? "ALT")
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, "")
       .slice(0, 12);
     const base = `${symbol}.${suffix || "ALT"}`;
-    if (!(await this.instruments.isSymbolReserved(userId, base))) return base;
-    for (let n = 2; n < 50; n += 1) {
-      const candidate = `${base}.${n}`;
-      if (!(await this.instruments.isSymbolReserved(userId, candidate))) return candidate;
+
+    for (let step = 0; step < 50; step += 1) {
+      const candidate = step === 0 ? symbol : step === 1 ? base : `${base}.${step}`;
+      const row = await this.instruments.findBySymbol(userId, candidate);
+      if (row) {
+        if (sameInstitution(row.institutionId, institutionId)) {
+          return { existing: row, symbol: candidate };
+        }
+        continue;
+      }
+      if (await this.instruments.isSymbolReserved(userId, candidate)) continue;
+      return { existing: null, symbol: candidate };
     }
     throw new Error(`Could not find a free symbol based on "${symbol}"`);
   }
@@ -351,6 +380,8 @@ export interface RecordBuyInput {
   fromAccountId: AccountId;
   quantity: Quantity;
   pricePerUnit: Money;
+  /** Exact trade consideration when a rounded display price cannot reconstruct it. */
+  consideration?: Money;
   tradedOn: CalendarDate;
   charges?: Money;
   /** Charges are capitalised into the basis by default — §5.3. */
@@ -396,7 +427,7 @@ export class RecordBuy implements UseCase<RecordBuyInput, RecordBuyOutput> {
     if (!holding) return Err(new NotFoundError("Holding account", instrument.assetAccountId.value));
     if (!funding) return Err(new NotFoundError("Funding account", input.fromAccountId.value));
 
-    const consideration = input.quantity.valueAt(input.pricePerUnit, "HALF_UP");
+    const consideration = input.consideration ?? input.quantity.valueAt(input.pricePerUnit, "HALF_UP");
     const charges = input.charges ?? Money.zero(instrument.currency);
 
     const buy = Buy.record(
@@ -980,6 +1011,7 @@ export interface InvestmentWorkspacePosition {
   readonly instrumentId: string;
   readonly symbol: string;
   readonly name: string;
+  readonly platformName: string | null;
   readonly kind: InstrumentKind;
   /** Derived from the concrete instrument, so a gold ETF is metal exposure. */
   readonly assetFamily: AssetGroup;
@@ -1025,13 +1057,18 @@ export class InvestmentWorkspace implements UseCase<ValuePortfolioInput, Investm
   constructor(
     private readonly valuation: ValuePortfolio,
     private readonly returns: PortfolioReturns,
+    private readonly institutions: InstitutionRepository,
   ) {}
 
   async execute(input: ValuePortfolioInput): Promise<Result<InvestmentWorkspaceOutput, AppError>> {
-    const valuation = await this.valuation.execute(input);
+    const [valuation, returns, institutions] = await Promise.all([
+      this.valuation.execute(input),
+      this.returns.execute(input),
+      this.institutions.list(input.userId, { includeArchived: true }),
+    ]);
     if (!valuation.ok) return valuation;
-    const returns = await this.returns.execute(input);
     if (!returns.ok) return returns;
+    const platformNames = new Map(institutions.map((institution) => [institution.id.value, institution.name]));
 
     const asOf = input.asOf.toISO();
     const context = (provenance: readonly string[]): InvestmentMetricContext => ({
@@ -1088,6 +1125,9 @@ export class InvestmentWorkspace implements UseCase<ValuePortfolioInput, Investm
           instrumentId: position.instrumentId.value,
           symbol: position.instrument.symbol,
           name: position.instrument.name,
+          platformName: position.instrument.institutionId
+            ? platformNames.get(position.instrument.institutionId.value) ?? null
+            : null,
           kind: position.instrument.kind,
           assetFamily: groupOf(position.instrument),
           quantity: position.quantity.toDecimalString(),

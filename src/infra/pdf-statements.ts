@@ -28,6 +28,7 @@ import {
   type RawRow,
   StatementLockedError,
   StatementParseError,
+  TRUST_ORDER,
   describeBreaks,
   parseStatementRows,
   readAmount,
@@ -397,7 +398,30 @@ export async function parsePdfStatement(
    * pdf.js detaches the array it is given, so each reader gets its own copy.
    */
   const { readColumnStatement } = await import("./pdf-columns");
-  const byColumn = await readColumnStatement(Uint8Array.from(bytes), password);
+
+  let byColumn: Awaited<ReturnType<typeof readColumnStatement>>;
+  try {
+    byColumn = await readColumnStatement(Uint8Array.from(bytes), password);
+  } catch (cause) {
+    /*
+     * This reader is the first to hand the file to pdf.js, so every failure to
+     * *open* it - an encrypted statement, a wrong password, a file that is not a
+     * PDF at all - happens here, not in `extractPdfLines` where the answers for
+     * those were written. Unguarded, the raw pdf.js exception escaped the whole
+     * parse: the import form never saw a `StatementLockedError`, so a
+     * password-protected SBI e-statement - the ordinary case, not an edge one -
+     * could never reach its password prompt.
+     *
+     * A password problem is the file's verdict rather than this reader's, so it
+     * is translated and thrown; the text path would only fail the same way. Any
+     * other failure is this reader declining, which is what `null` already
+     * means here, and the text path runs and gets to fail with the message
+     * written for it.
+     */
+    const locked = passwordProblem(cause);
+    if (locked !== null) throw new StatementLockedError(locked === INCORRECT_PASSWORD, { cause });
+    byColumn = null;
+  }
 
   /*
    * A geometry reading that does not reconcile is a candidate, not an answer.
@@ -430,7 +454,23 @@ export async function parsePdfStatement(
         ),
       ),
     );
-    if (geometry.verdict.trust !== "BROKEN") return geometry;
+    /*
+     * Only a reconciled geometry reading ends the parse here.
+     *
+     * It used to be "anything but BROKEN", and that gate had no opinion about how
+     * much the reader threw away. A geometry reading whose surviving rows carry no
+     * checkable balance chain scores UNVERIFIED with `checked === 0` — the same
+     * verdict a short, honestly unverifiable statement gets — so two SBI files
+     * that it mis-columned passed it while dropping 1,509 of 1,510 and 44 of 61
+     * rows. The text reader below would have read both; it never ran, and the
+     * account balance that reached the Accounts page was the sum of 18 postings
+     * presented as a bank balance.
+     *
+     * Unverified now means what it says: not checked, therefore not decisive. The
+     * text reading is built too and the two compete, which is the rule
+     * `parseStatementRows` already applies to its own candidates.
+     */
+    if (geometry.verdict.trust === "RECONCILED") return geometry;
   }
 
   /*
@@ -455,7 +495,9 @@ export async function parsePdfStatement(
   }
 
   if (rows.length === 1) {
-    if (geometry) return refuse(geometry);
+    // Text recovery found nothing, so the geometry reading is all there is. It is
+    // refused only if it is broken; an unverified one is still the best answer.
+    if (geometry) return geometry.verdict.trust === "BROKEN" ? refuse(geometry) : geometry;
     throw new StatementParseError(
       lines.length === 0 ? whyThereIsNoText(source) : NO_TRANSACTIONS,
     );
@@ -468,6 +510,9 @@ export async function parsePdfStatement(
     header.printedTotals,
   );
 
+  if (geometry && geometryBeats(geometry, parsed)) {
+    return geometry.verdict.trust === "BROKEN" ? refuse(geometry) : geometry;
+  }
   // Both readings are broken: report the one that at least found the columns.
   if (geometry && parsed.verdict.trust === "BROKEN") return refuse(geometry);
 
@@ -483,6 +528,22 @@ export async function parsePdfStatement(
    * claim of identity is dropped.
    */
   return describedBy(header, withoutMachineIds(parsed));
+}
+
+/**
+ * Which of the two readings of one PDF to keep.
+ *
+ * Trust first, rows kept second — the ranking `parseStatementRows` already
+ * applies to two column mappings of one CSV. The tie-break is the half that
+ * matters here: when neither reader can be checked against a balance chain both
+ * are UNVERIFIED, and the one that dropped fewer rows is the one that actually
+ * read the statement. Without it a geometry reading that kept 17 of 61 rows was
+ * indistinguishable from one that kept all of them.
+ */
+function geometryBeats(geometry: ParsedStatement, text: ParsedStatement): boolean {
+  const byTrust = TRUST_ORDER[geometry.verdict.trust] - TRUST_ORDER[text.verdict.trust];
+  if (byTrust !== 0) return byTrust > 0;
+  return geometry.rows.length > text.rows.length;
 }
 
 /** The parse, carrying what the statement said about itself. */
@@ -532,4 +593,4 @@ function withoutMachineIds(parsed: ParsedStatement): ParsedStatement {
 }
 
 /** Internals, exposed for the spec — not part of the module's contract. */
-export const __test__ = { toRecords, toRow, takeTail, isFurniture, withoutMachineIds, whyThereIsNoText, readProvenance, passwordProblem };
+export const __test__ = { geometryBeats, toRecords, toRow, takeTail, isFurniture, withoutMachineIds, whyThereIsNoText, readProvenance, passwordProblem };

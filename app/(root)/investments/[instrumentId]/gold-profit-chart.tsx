@@ -15,6 +15,7 @@
  */
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { Chart, LineSeries, type SeriesPoint } from "@/ui/charts";
 
 export interface GoldProfitPoint {
@@ -47,11 +48,18 @@ const PROFIT_SERIES = [
 export default function GoldProfitChart({
   points,
   currency = "INR",
+  instrumentId,
 }: {
   points: readonly GoldProfitPoint[];
   currency?: string;
+  /** Omitted, the chart still draws — it just cannot fetch its own history. */
+  instrumentId?: string;
 }) {
+  const router = useRouter();
   const [range, setRange] = React.useState<(typeof RANGES)[number]["id"]>("3Y");
+  const [historyState, setHistoryState] = React.useState<
+    { status: "idle" | "loading" | "error" | "success"; message: string }
+  >({ status: "idle", message: "" });
   const months = RANGES.find((one) => one.id === range)?.months ?? 36;
   const shown = React.useMemo(
     () => (points.length > months ? points.slice(points.length - months) : points),
@@ -94,6 +102,59 @@ export default function GoldProfitChart({
       ))}
     </div>
   );
+
+  /*
+   * The months are drawn from stored gram quotes, and until this runs there are
+   * only the few days the live IBJA feed has fetched — which is why this chart
+   * rendered with correct axes and no line at all. IBJA publishes no free
+   * history, so the backfill behind this call derives it from a domestic ETF for
+   * the same metal, calibrated to the last published IBJA rate. That is an estimate, and the note
+   * under the chart says so rather than letting it pass as a published rate.
+   */
+  const rated = rateData.filter((point) => point.rate !== undefined).length;
+
+  async function loadHistory(id: string) {
+    setHistoryState({ status: "loading", message: "Loading gram-rate history..." });
+    try {
+      const response = await fetch(`/api/instruments/${id}/backfill`, { method: "POST" });
+      const body = (await response.json()) as {
+        ok?: boolean;
+        appended?: number;
+        skipped?: string | null;
+        error?: string;
+      };
+      if (!response.ok || !body.ok) {
+        setHistoryState({
+          status: "error",
+          message: body.error ?? "Gram-rate history could not be loaded.",
+        });
+        return;
+      }
+      const appended = body.appended ?? 0;
+      setHistoryState({
+        status: "success",
+        message:
+          appended > 0
+            ? `Loaded ${appended} estimated daily gram rates.`
+            : (body.skipped ?? "History is already current."),
+      });
+      if (appended > 0) router.refresh();
+    } catch {
+      setHistoryState({
+        status: "error",
+        message: "Gram-rate history could not be loaded. Try again later.",
+      });
+    }
+  }
+
+  // One attempt per mount. A failed fetch leaves the message, not a retry loop.
+  const shouldPreload = Boolean(instrumentId) && points.length > 0 && rated < 2;
+  const preloadStarted = React.useRef(false);
+  React.useEffect(() => {
+    if (!shouldPreload || preloadStarted.current || !instrumentId) return;
+    preloadStarted.current = true;
+    void loadHistory(instrumentId);
+  }, [shouldPreload, instrumentId]);
 
   const empty =
     points.length === 0 ? (
@@ -189,6 +250,34 @@ export default function GoldProfitChart({
               area
             />
           </Chart>
+
+          {/*
+            * Said once, under the plot it qualifies. Anything older than IBJA's
+            * own few published days is an ETF proxy scaled to the last real rate,
+            * and a chart that looked identical to published data would be the one
+            * dishonest thing in this view.
+            */}
+          {rated > 0 && (
+            <p className="px-1 text-xs text-gray-500">
+              History before the latest published rates is <strong className="font-medium text-gray-400">estimated</strong>:
+              IBJA publishes no free rate history, so earlier months are derived from a domestic
+              exchange-traded fund for the same metal, calibrated to the most recent published IBJA
+              rate. Today&rsquo;s valuation always uses the published rate itself.
+            </p>
+          )}
+
+          {historyState.status !== "idle" && (
+            <p
+              role="status"
+              className={
+                historyState.status === "error"
+                  ? "px-1 text-xs text-rose-400"
+                  : "px-1 text-xs text-gray-500"
+              }
+            >
+              {historyState.message}
+            </p>
+          )}
         </>
       )}
     </div>

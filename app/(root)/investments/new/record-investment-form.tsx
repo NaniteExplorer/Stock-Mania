@@ -10,6 +10,8 @@ import { PlatformSelect, type PlatformOption } from "../platform-select";
 import { recordInvestmentEntryAction, type InvestmentEntryActionState } from "../catalog-actions";
 import { addableReference } from "../entry-identity";
 import InstrumentSearch, { type ConfirmedInstrument } from "./instrument-search";
+import type { EntryLane } from "./entry-lane-nav";
+import { estimateInvestmentCharges, formatChargeMinor } from "./investment-charge-estimate";
 
 export interface AccountOption {
   id: string;
@@ -42,11 +44,23 @@ const MANUAL_KINDS: readonly InstrumentKind[] = [
   "CRYPTO",
 ];
 
+/**
+ * The listed and manual lanes.
+ *
+ * `lane` decides how identity is established, and nothing else. In `market` the
+ * combobox is the only way in and a catalogue row carries the quote key; in
+ * `manual` the search is gone and the identity fields stand on their own,
+ * because a holding the catalogue cannot name should not have to fail a search
+ * first to be recorded. Digital metals are neither — they have their own form,
+ * since their quote key is a purity slug rather than anything searchable.
+ */
 export default function RecordInvestmentForm({
+  lane = "market",
   accounts,
   platforms,
   defaultDate,
 }: {
+  lane?: Exclude<EntryLane, "metal">;
   accounts: readonly AccountOption[];
   platforms: readonly PlatformOption[];
   defaultDate: string;
@@ -55,14 +69,20 @@ export default function RecordInvestmentForm({
     recordInvestmentEntryAction,
     null,
   );
-  const [selection, setSelection] = React.useState<ConfirmedInstrument | null>(null);
+  const [selection, setSelection] = React.useState<ConfirmedInstrument | null>(
+    lane === "manual" ? { candidate: null, query: "", mode: "MANUAL" } : null,
+  );
   const [side, setSide] = React.useState<"BUY" | "SELL">("BUY");
+  const [tradedOn, setTradedOn] = React.useState(defaultDate);
   const [quantity, setQuantity] = React.useState("");
   const [unitPrice, setUnitPrice] = React.useState("");
   const [brokerage, setBrokerage] = React.useState("");
   const [exchangeFees, setExchangeFees] = React.useState("");
   const [statutoryCharges, setStatutoryCharges] = React.useState("");
   const [taxWithheld, setTaxWithheld] = React.useState("");
+  const [segment, setSegment] = React.useState<"EQ_DELIVERY" | "EQ_INTRADAY">("EQ_DELIVERY");
+  const [platformName, setPlatformName] = React.useState("");
+  const [manualExchange, setManualExchange] = React.useState("");
   const [manualKind, setManualKind] = React.useState<InstrumentKind>("LISTED_EQUITY");
   const [manualCurrency, setManualCurrency] = React.useState<"INR" | "USD">("INR");
   const errors = state?.fieldErrors ?? {};
@@ -77,13 +97,24 @@ export default function RecordInvestmentForm({
   const reference = selected ? addableReference(selected) : null;
   const addable = selection !== null && (reference === null || reference.ok);
   const currency = selected?.listing.currency === "USD" ? "USD" : selected?.listing.currency === "INR" ? "INR" : manualCurrency;
+  const exchange = selected?.listing.exchange ?? manualExchange;
+  const estimate = currency === "INR" ? estimateInvestmentCharges({
+    kind: selectedKind,
+    side,
+    segment,
+    exchange,
+    platformName,
+    tradedOn,
+    quantity,
+    unitPrice,
+  }) : null;
   const preview = cashPreviewFromStrings({ side, quantity, unitPrice, brokerage, exchangeFees, statutoryCharges, taxWithheld, currency });
 
   return (
     <form action={action} className="space-y-6">
       <section aria-labelledby="instrument-identity-title" className="space-y-4">
         <h2 id="instrument-identity-title" className="text-base font-semibold text-gray-100">Instrument identity</h2>
-        <InstrumentSearch onConfirm={setSelection} />
+        {lane === "market" && <InstrumentSearch onConfirm={setSelection} />}
 
         <input type="hidden" name="identityMode" value={identityMode} />
         <input type="hidden" name="selectionConfirmed" value={selection ? "yes" : ""} />
@@ -114,7 +145,8 @@ export default function RecordInvestmentForm({
           <div className="space-y-4">
             <p className="rounded-lg border border-amber-500/30 bg-amber-500/[0.05] p-3 text-xs text-amber-300">
               Manual entry is not live-priced. No quote key is stored for it, so its value stays whatever you record —
-              use it for holdings the catalogue genuinely cannot identify.
+              use it for holdings the catalogue genuinely cannot identify. Digital gold, silver and
+              platinum are live-priced and belong in their own lane above, not here.
             </p>
             <div className="grid gap-4 md:grid-cols-3">
             <Field name="symbol" label="Symbol" required error={errors.symbol?.[0]}>
@@ -134,7 +166,7 @@ export default function RecordInvestmentForm({
               {(props) => <input {...props} name="isin" className="form-input" maxLength={12} placeholder="INE009A01021" />}
             </Field>
             <Field name="exchange" label="Exchange" error={errors.exchange?.[0]}>
-              {(props) => <input {...props} name="exchange" className="form-input" maxLength={16} placeholder="NSE" />}
+              {(props) => <input {...props} name="exchange" className="form-input" maxLength={16} placeholder="NSE" value={manualExchange} onChange={(event) => setManualExchange(event.target.value)} />}
             </Field>
             <Field name="currency" label="Currency" required error={errors.currency?.[0]}>
               {(props) => (
@@ -179,7 +211,7 @@ export default function RecordInvestmentForm({
           )}
         </Field>
         <Field name="tradedOn" label="Trade date" required error={errors.tradedOn?.[0]}>
-          {(props) => <input {...props} name="tradedOn" type="date" className="form-input" defaultValue={defaultDate} required />}
+          {(props) => <input {...props} name="tradedOn" type="date" className="form-input" value={tradedOn} onChange={(event) => setTradedOn(event.target.value)} required />}
         </Field>
         <Field name="quantity" label="Quantity" required error={errors.quantity?.[0]}>
           {(props) => <input {...props} name="quantity" className="form-input tnum" inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />}
@@ -196,7 +228,18 @@ export default function RecordInvestmentForm({
             </select>
           )}
         </Field>
-        <PlatformSelect platforms={platforms} instrumentKind={selectedKind} error={errors.institutionId?.[0] ?? errors.newPlatformName?.[0]} />
+        <PlatformSelect platforms={platforms} instrumentKind={selectedKind} error={errors.institutionId?.[0] ?? errors.newPlatformName?.[0]} onPlatformNameChange={setPlatformName} />
+
+        {(selectedKind === "LISTED_EQUITY" || selectedKind === "ETF") && (
+          <Field name="segment" label="Product" hint="Delivery and intraday have different STT, stamp and brokerage rules.">
+            {(props) => (
+              <select {...props} name="segment" className="form-input" value={segment} onChange={(event) => setSegment(event.target.value as typeof segment)}>
+                <option value="EQ_DELIVERY">Delivery</option>
+                <option value="EQ_INTRADAY">Intraday</option>
+              </select>
+            )}
+          </Field>
+        )}
 
         <Field name="brokerage" label="Brokerage" error={errors.brokerage?.[0]}>
           {(props) => <input {...props} name="brokerage" className="form-input tnum" inputMode="decimal" placeholder="0.00" value={brokerage} onChange={(event) => setBrokerage(event.target.value)} />}
@@ -210,6 +253,47 @@ export default function RecordInvestmentForm({
         <Field name="taxWithheld" label="Tax withheld" error={errors.taxWithheld?.[0]}>
           {(props) => <input {...props} name="taxWithheld" className="form-input tnum" inputMode="decimal" placeholder="0.00" value={taxWithheld} onChange={(event) => setTaxWithheld(event.target.value)} />}
         </Field>
+
+        {estimate && (
+          <div className="rounded-lg border border-gray-600/70 p-4 md:col-span-4" aria-live="polite">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="metric-label">Estimated purchase / sale costs</p>
+                <p className="mt-1 text-xs text-gray-400">{estimate.note}</p>
+              </div>
+              {estimate.supported && (
+                <button
+                  type="button"
+                  className="ghost-btn h-9 px-3 text-xs"
+                  onClick={() => {
+                    setBrokerage(formatChargeMinor(estimate.brokerageMinor));
+                    setExchangeFees(formatChargeMinor(estimate.exchangeFeesMinor));
+                    setStatutoryCharges(formatChargeMinor(estimate.statutoryMinor));
+                  }}
+                >
+                  Use estimate
+                </button>
+              )}
+            </div>
+            {estimate.lines.length > 0 && (
+              <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
+                {estimate.lines.map((item, index) => (
+                  <div key={`${item.key}-${index}`} className="flex justify-between gap-3">
+                    <dt className="text-gray-500">{item.label}</dt>
+                    <dd className="tnum text-gray-200">INR {formatChargeMinor(item.minor)}</dd>
+                  </div>
+                ))}
+                <div className="flex justify-between gap-3 font-medium">
+                  <dt className="text-gray-300">Gross cash {side === "BUY" ? "debit" : "credit"}</dt>
+                  <dd className="tnum text-gray-100">INR {formatChargeMinor(estimate.grossCashMinor)}</dd>
+                </div>
+              </dl>
+            )}
+            <p className="mt-3 text-xs text-amber-300">
+              Estimate only. Editable fields above are the actual contract-note values saved. Capital-gains income tax is calculated separately on sale, never added here.
+            </p>
+          </div>
+        )}
 
         {side === "SELL" && (
           <>

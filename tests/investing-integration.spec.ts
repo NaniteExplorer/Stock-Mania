@@ -28,6 +28,7 @@ import { CalendarDate, FinancialYear } from "@/core/time";
 import { AccountCode, AccountId } from "@/domain/accounts";
 import { BalanceCalculator } from "@/domain/transactions";
 import { InstrumentId, ListedEquity, type InstrumentRepository, type PriceLookup } from "@/domain/instruments";
+import type { InstitutionRepository } from "@/domain/institutions";
 import { Lot, LotBook, type LotRepository } from "@/domain/lots";
 import { Split } from "@/domain/corporate";
 import {
@@ -479,10 +480,12 @@ async function main() {
   const workspace = new InvestmentWorkspace(
     closedHoldingValuation,
     new PortfolioReturns(accountRepo, instrumentRepo, txnRepo, closedHoldingValuation),
+    { list: async () => [] } as unknown as InstitutionRepository,
   );
   const workspaceResult = await workspace.execute({ userId, asOf: on("2025-09-01") });
   if (!workspaceResult.ok) throw new Error("workspace read failed");
   check("workspace output is JSON serialisable", JSON.parse(JSON.stringify(workspaceResult.value)).asOf, "2025-09-01");
+  check("workspace uses null when no platform is assigned", workspaceResult.value.positions[0].platformName, null);
   check("realised P&L is available", workspaceResult.value.metrics.realisedPnl.status, "AVAILABLE");
   check(
     "workspace realised P&L includes closed TCS",
@@ -551,7 +554,11 @@ async function main() {
       },
     }),
   } as unknown as PortfolioReturns;
-  const foreignWorkspace = await new InvestmentWorkspace(foreignValuation, noReturnInputs).execute({
+  const foreignWorkspace = await new InvestmentWorkspace(
+    foreignValuation,
+    noReturnInputs,
+    { list: async () => [] } as unknown as InstitutionRepository,
+  ).execute({
     userId,
     asOf: on("2025-09-01"),
   });

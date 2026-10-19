@@ -1267,7 +1267,7 @@ Two notes for later:
 
 ## Investment experience implementation — 2026-09-06
 
-Status: DONE
+Status: IN_PROGRESS
 Owner: Planner/Implementer
 Chosen path: Direct implementation. Primary mode: Implementation. The completed predecessor used Research then experiment and is retained below as evidence.
 
@@ -2716,3 +2716,402 @@ Residual risks:
 - Open risks: local browser runtime unavailable; free history-provider availability is external.
 - Next action: inspect diff, run broad checks, and record PASS, PASS_WITH_RISKS or FAIL.
 - Do not revisit: digital-metal structure or truthful provider-failure behavior.
+
+## Investment costs, correction controls, and savings products — 2026-09-19
+
+Status: DONE
+Owner: Coordinator
+Updated: 2026-09-19
+Chosen path: Research then implementation. Primary mode: Implementation.
+
+### Requirement
+Make investment removal/correction discoverable, estimate the cash needed for an Indian stock or mutual-fund purchase from units, price/NAV, date, venue, product and supported platform, retain contract-note figures as authoritative overrides, and clearly expose the existing FD/RD, NPS and EPF capabilities without creating a second savings model.
+
+### Acceptance criteria
+- [x] Equity entry shows an itemised estimate and gross cash debit/credit for verified Zerodha/Groww rules; every other platform is explicitly Generic/manual.
+- [x] Actual contract-note charges remain editable and are distinguished from estimates; capital-gains tax is not included in purchase charges.
+- [x] Mutual-fund entry explains that NAV is already net of TER and applies only supported purchase-cost semantics; unsupported exit load/platform charges remain manual.
+- [x] Existing trade undo/delete and holding close/remove controls are discoverable and preserve reversal/soft-delete invariants.
+- [x] `/deposits` remains the sole FD/RD/PPF/EPF/NPS surface, clearly labels customizable FD/RD ROI and NAV-based NPS valuation, and provides a safe lifecycle route rather than hard deletion.
+- [x] Focused tests, typecheck and lint pass before independent QA.
+
+### Context map
+| Need | Authoritative file/section | Why it is needed |
+|---|---|---|
+| Charge arithmetic | `src/domain/charges.ts`, `src/infra/db/seeds.ts` | Effective-dated itemisation, rounding and verified Zerodha/Groww rules. |
+| Purchase workflow | `app/(root)/investments/new/record-investment-form.tsx`, `catalog-actions.ts` | Existing actual-charge inputs, signed cash preview and persistence boundary. |
+| Correction/removal | holding `instrument-admin.tsx`, `trade-row-actions.tsx`, `trade-corrections.usecases.ts` | Existing close, soft delete, reversal and never-happened semantics. |
+| Savings products | `src/domain/deposits.ts`, `src/app/lending.usecases.ts`, `/deposits` | Existing custom FD/RD rates, EPF split and NPS units × NAV behavior. |
+
+### Decisions and constraints
+- Capital-gains income tax remains in `TaxEngine`; it is not a purchase charge or an assumed deduction from cash invested.
+- Gross buy debit is turnover plus charges; sell cash is turnover less charges. Contract-note actuals override estimates.
+- Built-in broker estimation is limited to verified Zerodha and Groww rules. BSE variability, DP day aggregation and every other broker remain Generic/manual.
+- Mutual-fund NAV is already net of TER. Subscription stamp duty may be estimated; scheme-specific exit load and unsupported platform fees require actual input.
+- Deposits and retirement products are not duplicated under investments. FD/RD rates are user-entered; NPS is NAV-priced, and EPF uses statutory FY rates and split contributions.
+
+### Research baton
+- Verified official sources: NSE charges, Zerodha charges, Groww pricing, AMFI TER/NAV and mutual-fund tax guidance, Income Tax Department capital-gains guidance, and RBI deposit directions.
+- Existing behavior: holding removal is already guarded; trade correction supports reversal and soft delete; deposits lack an equally obvious lifecycle control.
+- Open risks: broker-plan changes, BSE/scrip-group rates, DP aggregation and scheme-specific exit loads make a universal percentage unsafe.
+
+### Step-by-step plan
+- [x] 1. Record research, scope, contracts and acceptance criteria here before production changes.
+- [x] 2. Add an itemised, provenance-labelled estimate to the existing entry form while preserving actual override inputs — Owner: Frontend/Financial implementer — Files: investment entry form and focused tests.
+- [x] 3. Clarify mutual-fund NAV/TER/stamp semantics and Generic/manual fallback in the same flow — Owner: Frontend/Financial implementer — Files: investment entry form and focused tests.
+- [x] 4. Improve discoverability of existing removal/correction and savings-product behavior; add only safe lifecycle behavior supported by current account invariants — Owner: Planner/Implementer — Files: holding/deposit UI and focused tests.
+- [x] 5. Run focused checks and hand the diff to an independent Testing/QA Agent.
+
+### QA record
+Status: PASS_WITH_RISKS
+Evidence:
+- Independent QA reran `npm test -- investment-charge-estimate`: PASS (13 assertions), `npm test -- charges`: PASS (43 assertions), `npm test -- investment-entry`: PASS (50 assertions), and `npm test -- deposits`: PASS (78 assertions).
+- Independent QA reran `npm run typecheck`: PASS; `npm run lint -- --quiet`: PASS; `npm run build`: PASS (35 routes); `git diff --check`: PASS with CRLF conversion warnings only.
+- Exact-money spot check: the estimator's Zerodha NSE delivery buy at INR 10,000 totals INR 12.37 and follows the same integer half-up, whole-rupee STT/stamp, GST-base, and gross-debit rules as `src/domain/charges.ts` and the seeded FY2025-26 rows.
+- Scope checks passed: only Zerodha/Groww NSE equity estimates are supported; unknown brokers and BSE return zero invented charges with manual guidance; mutual-fund NAV/TER guidance and purchase-stamp-only behavior are explicit; contract-note fields stay editable; capital-gains tax stays separate; deposit rows route to the existing account lifecycle; existing holding removal and trade undo controls retain soft-delete/reversal semantics; no duplicate deposit model was added.
+- Failed criterion: the requested/effective-dated estimate does not use the entered trade date. `record-investment-form.tsx` renders `tradedOn` as an uncontrolled input, but does not pass it to `estimateInvestmentCharges`; the estimator has no date parameter and unconditionally applies the rows described as effective 2025-04-01. Reproduction: enter an NSE Zerodha trade dated before 2025-04-01 with positive quantity and price; the UI still reports a supported 2025-04-01 estimate, while the authoritative `ChargeRateTable` correctly returns no FY2025-26 rows for an earlier date (`tests/charges.spec.ts`). Expected: select the effective schedule for the entered date or return an explicit manual/unsupported state. Actual: a later schedule is presented as the estimate.
+Residual risks:
+- Minimal defect owner: Frontend/Financial implementer (`record-investment-form.tsx`, `investment-charge-estimate.ts`, and focused tests). Add controlled trade-date input and effective-date gating/selection, including a pre-effective-date regression test; then return to independent QA.
+- Browser interaction was not run. Changing external charge schedules, BSE variability, mutual-fund stamp settlement details, and per-day DP aggregation remain explicit maintenance/statement-actual risks.
+
+#### QA defect repair — 2026-09-19
+- Repaired the failed effective-date criterion: `tradedOn` is now controlled and passed into the estimator. Equity trades before the verified 2025-04-01 schedule and mutual-fund purchases before the verified 2020-07-01 subscription-stamp schedule return explicit Generic/manual guidance with zero invented charges; missing/malformed dates are unavailable.
+- Regression evidence: `npm test -- investment-charge-estimate` PASS (16 assertions), including a 2025-03-31 Zerodha equity purchase that remains manual with zero charges; `npm test -- investment-entry` PASS (50); `npm run typecheck` PASS; `npm run lint -- --quiet` PASS.
+- Status returned to QA for independent re-review; the earlier FAIL above is retained as audit history.
+
+#### Independent QA re-review — 2026-09-19
+- Status: **PASS WITH RISKS**. The earlier FAIL and its reproduction remain above as audit history; inspection confirms the original defect is repaired because the controlled `tradedOn` value now reaches the estimator.
+- Boundary inspection confirms equity dates before 2025-04-01 and mutual-fund purchase dates before 2020-07-01 return unsupported/manual estimates with zero invented charges. The 2025-03-31 equity regression passes; the mutual-fund boundary is implemented but does not yet have its own automated assertion.
+- Independent rerun: `npm test -- investment-charge-estimate` PASS (16 assertions); `npm test -- investment-entry` PASS (50 assertions); `npm run typecheck` PASS; `npm run lint -- --quiet` PASS; `npm run build` PASS (35 routes); `git diff --check` PASS with CRLF conversion warnings only.
+- Residual risk: date validation checks the `YYYY-MM-DD` shape rather than calendar validity. The browser `type=date` control prevents ordinary UI entry of impossible dates, but a direct call such as `2025-99-99` can still be treated as a supported date by the pure estimator. Add strict calendar-date validation and focused malformed-date plus mutual-fund-boundary assertions in follow-up hardening.
+
+### Baton: Planner/Implementer -> Testing/QA Agent
+- Goal: independently verify investment-cost estimation, actual override semantics, and safe correction/removal discoverability.
+- Completed: added pure INR estimate logic for supported Zerodha/Groww NSE equity delivery/intraday cases, mutual-fund buy stamp/NAV-net-of-TER guidance, Generic/manual fallbacks, itemized UI with gross cash debit/credit and a deliberate “Use estimate” action; linked deposits to the existing account close/correct workflow and clarified FD/RD/NPS/EPF behavior.
+- Decisions: estimates never silently replace user actuals; capital-gains tax remains separate; BSE, unknown brokers, fund sale exit load/STT and platform fees remain manual; no new deposit or retirement domain was introduced.
+- Inputs: this requirement section; `src/domain/charges.ts`; `src/infra/db/seeds.ts`; investment entry, holding-admin/trade-action, and deposit files named in the context map.
+- Changed files: `_architecture/70-UPGRADE-PLAN.md`; `app/(root)/investments/new/investment-charge-estimate.ts`; `app/(root)/investments/new/record-investment-form.tsx`; `app/(root)/deposits/page.tsx`; `tests/investment-charge-estimate.spec.ts`.
+- Contract/output: `estimateInvestmentCharges(...)` returns support state, itemized charge lines, grouped form amounts, total and gross cash movement; unsupported states return zero invented charges plus a manual-entry reason.
+- Verification: focused estimator PASS (16 assertions, including pre-effective-date behavior); existing investment entry PASS (50); deposits PASS (78); typecheck PASS; lint PASS; diff-check PASS before the focused repair.
+- Open risks: no browser interaction run; the preview mirrors the currently seeded 2025-04-01 rules in client-safe integer arithmetic and will need coordinated maintenance when effective-dated rows change; actual persistence remains the existing aggregate charge contract.
+- Next action: inspect the diff, rerun focused checks, assess arithmetic parity and UI accessibility, then record PASS, PASS_WITH_RISKS or FAIL.
+- Do not revisit: capital-gains tax separation, Generic/manual fallback, NAV already net of TER, or the existing reversal/soft-delete invariants without new evidence.
+
+## Digital-metal investment upload validation — 2026-09-20
+
+Status: DONE
+Owner: Coordinator
+Updated: 2026-09-20
+Chosen path: Research then implementation. Primary mode: Implementation.
+
+### Requirement
+Allow the existing holding activity form to record a digital-metal investment when the holding uses a valid legacy/non-UUID instrument ID, and show the specific invalid field when submission validation fails.
+
+### Acceptance criteria
+- [x] A trimmed, nonblank instrument ID accepted by the domain is accepted by the metal-holding action; a blank ID is rejected.
+- [x] Schema-invalid grams, invested amount, charges, date, funding account, or instrument ID return field-level validation errors.
+- [x] The existing form renders the relevant field errors without changing the separate `/investments/new` entry lane.
+- [x] Focused regression coverage and type checking pass before independent QA.
+
+### Context map
+| Need | Authoritative file/section | Why it is needed |
+|---|---|---|
+| Instrument identity invariant | `src/domain/instruments.ts`, `InstrumentId.from` | Defines an ID as trimmed and nonblank, not necessarily a UUID. |
+| Server validation | `app/(root)/investments/actions.ts`, `metalHoldingSchema` | Currently rejects legacy IDs with a UUID-only edge rule and discards Zod field details. |
+| Form feedback | `app/(root)/investments/[instrumentId]/metal-holding-form.tsx` | Owns the submitted fields and currently shows only the generic action message. |
+| Framework contract | `node_modules/next/dist/docs/01-app/02-guides/forms.md` | Recommends returning flattened server validation errors and displaying them through `useActionState`. |
+
+### Decisions and constraints
+- Match the action edge to `InstrumentId.from`: trim and require a nonblank string. Repository lookup remains the authorization/ownership boundary.
+- Preserve the generic summary message while also returning Zod's flattened field errors for accessible, actionable feedback.
+- Do not touch `/investments/new`, persistence, pricing, or financial calculations.
+- 2026-09-20 correction: the exact-consideration follow-up intentionally supersedes the earlier no-persistence constraint for one additive nullable lot-cost column; storing only paise per unit cannot preserve every exact metal consideration after reload.
+
+### Research baton
+- The screenshot values match the decimal regexes, and a native date input submits ISO format. Placeholders are examples rather than entered values, but required browser controls normally catch empty required fields.
+- The reproducible structural mismatch is `z.string().uuid()` in `metalHoldingSchema` versus the domain's trimmed nonblank `InstrumentId.from` contract; legacy IDs can render but are rejected at submission.
+- The failure branch returns only a generic message, obscuring which field failed.
+
+### Step-by-step plan
+- [x] 1. Record the selected path, diagnosis, scope, and acceptance checks before production edits.
+- [x] 2. Align the action schema with the domain ID invariant and return flattened field errors — Owner: Planner/Implementer — Files: `app/(root)/investments/actions.ts` — Verify: focused regression test.
+- [x] 3. Render field errors beside the existing inputs — Owner: Planner/Implementer — Files: `app/(root)/investments/[instrumentId]/metal-holding-form.tsx` — Verify: focused source/UI contract test.
+- [x] 4. Run focused tests and type checking, then hand the result to independent QA.
+
+### QA record
+Status: PASS_WITH_RISKS
+Evidence:
+- Implementer: `npm test -- metal-holding-validation` PASS (11 assertions); `npm test -- investment-holding-ui` PASS (42 assertions); `npm run typecheck` PASS; focused ESLint PASS; `git diff --check` PASS with CRLF conversion warnings only.
+- Independent QA (2026-09-20): inspected the production diff and confirmed the action now matches `InstrumentId.from`'s trimmed, nonblank contract while retaining the user-scoped repository lookup as the existence/ownership boundary.
+- Independent QA: confirmed `z.flattenError(...).fieldErrors` covers every schema field and the form renders each submitted field's first error; visible controls inherit `aria-invalid` and `aria-describedby` from `Field`, while the hidden instrument error is announced with `role="alert"`.
+- Independent QA: `npm test -- metal-holding-validation` PASS (11/11); `npm test -- investment-holding-ui` PASS (42/42); `npm run typecheck` PASS; focused ESLint on the action, form, and validation spec PASS; focused `git diff --check` PASS with CRLF conversion warnings only.
+Residual risks:
+- No authenticated browser/server-action submission was run. The focused validation spec asserts the schema and UI source contract rather than exercising persistence end to end; repository ownership, financial mutation behavior, and `/investments/new` were unchanged by this fix.
+
+### Baton: Planner/Implementer -> Testing/QA Agent
+- Goal: independently verify that existing digital-metal holdings with non-UUID IDs can submit and that invalid form fields receive actionable feedback.
+- Completed: aligned `metalHoldingSchema.instrumentId` with the domain's trimmed nonblank invariant, added strict ISO calendar-date validation, returned flattened Zod field errors, and rendered every submitted field's error in the existing activity form.
+- Decisions: repository lookup remains the ownership/existence boundary; the generic form summary remains alongside field errors; `/investments/new` and financial behavior were left untouched.
+- Inputs: this requirement section; `src/domain/instruments.ts` (`InstrumentId.from`); local Next.js forms guide; the action, form, and focused spec named below.
+- Changed files: `_architecture/70-UPGRADE-PLAN.md`; `app/(root)/investments/actions.ts`; `app/(root)/investments/[instrumentId]/metal-holding-form.tsx`; `tests/metal-holding-validation.spec.ts`.
+- Contract/output: a trimmed nonblank `instrumentId` reaches `InstrumentId.from` and repository lookup; schema failures return `InvestingActionState.fieldErrors`; the form binds those errors to `Field` components and exposes a hidden-ID error as an alert.
+- Verification: focused validation spec PASS (11 assertions); holding UI regression PASS (42 assertions); typecheck PASS; focused ESLint PASS; diff-check PASS with line-ending warnings only.
+- Open risks: no browser submission was run; the focused test protects the validation/UI source contract rather than invoking authenticated persistence.
+- Next action: inspect the changed files, rerun the focused checks, and record PASS, PASS_WITH_RISKS, or FAIL in this QA record.
+- Do not revisit: `/investments/new`, pricing refresh, or money/lot calculations unless new evidence connects them to this defect.
+
+### Exact digital-metal consideration follow-up — 2026-09-20
+
+Research found that `charges` already accepts omitted, empty, and `1050.00` values. The remaining failure is a precision mismatch: the metal action derives a rounded per-gram price from the exact amount excluding charges, then `RecordBuy` multiplies that rounded price back by grams. For 5.25g, INR 35,000 invested, and INR 1,050 charges, this reconstructs INR 33,950.02 instead of the exact INR 33,950 consideration.
+
+#### Follow-up acceptance criteria
+- [x] The metal purchase debits exactly INR 35,000, opens price cost INR 33,950 plus INR 1,050 buy charges, and reports INR 35,000 cost basis/total invested.
+- [x] `RecordBuy` accepts an optional exact consideration while retaining quantity-times-price as the default for every existing caller.
+- [x] Blank charges and `1050.00` remain valid; the three numeric placeholders are clearly labelled as examples without changing fee semantics.
+- [x] Focused behavioral tests, type checking, and lint pass before independent QA.
+
+#### Follow-up plan
+- [x] 1. Record the precision diagnosis and exact-money contract before production edits.
+- [x] 2. Add an optional exact consideration to `RecordBuyInput`, defaulting to the existing quantity-times-price calculation — Owner: Planner/Implementer — Files: `src/app/investing.usecases.ts` — Verify: existing and new integration assertions.
+- [x] 3. Pass the exact metal cost from the action while retaining the rounded per-unit trade price, and persist the exact lot total alongside the legacy per-unit value — Owner: Planner/Implementer — Files: action, lot schema/migration/mapper — Verify: reload-based metal purchase integration assertions.
+- [x] 4. Clarify numeric placeholders as examples and cover empty/entered charges validation — Owner: Planner/Implementer — Files: metal holding form and focused tests.
+- [x] 5. Run focused verification and hand the follow-up to independent QA.
+
+#### Follow-up QA record
+Status: PASS_WITH_RISKS
+Evidence:
+- Implementer: `npm test -- metal-holding-validation` PASS (16 assertions); `npm test -- metal-platform-holdings` PASS (26 assertions); `npm test -- investing-integration` PASS (88 assertions); `npm run typecheck` PASS; focused ESLint has zero errors and four pre-existing unused-import warnings in `investing.usecases.ts`.
+- Reload-based integration proves INR 35,000 cash paid/cost basis, INR 33,950 lot price cost, INR 1,050 buy charges, and INR 35,000 lot total invested. A separate assertion proves an ordinary caller with no consideration override still computes 10 × INR 7,200 = INR 72,000.
+- Independent QA (2026-09-20): inspected migration 0016, its journal entry, snapshot, schema, and mapper. Journal indices/tags are unique through 0016; the snapshot and Drizzle schema both define `lots.cost_minor` as nullable integer; SQL contains exactly one additive `ALTER TABLE` and no `DROP`, `DELETE`, `UPDATE`, `INSERT`, table rewrite, or backfill statement.
+- Independent QA: `npm run db:migrate` PASS and `npm run db:check` PASS (17/17 migrations, 48/48 tables, reference data in step), confirming the workspace-local runtime schema discovers and contains migration 0016.
+- Independent QA: `npm test -- metal-holding-validation` PASS (16/16), including blank/entered charges and example placeholders; `npm test -- metal-platform-holdings` PASS (26/26), including reload-exact INR 35,000 total, INR 1,050 charges, INR 33,950 price cost, and INR 72,000 default `RecordBuy`; `npm test -- investing-integration` PASS (88/88); `npm run typecheck` PASS; focused `git diff --check` PASS with CRLF warnings only.
+- Independent QA: nullable legacy rows retain the previous quantity-times-per-unit reconstruction, while every newly saved or rewritten lot persists authoritative `costMinor`; no destructive conversion or forced backfill is required.
+Residual risks:
+- No authenticated browser/server-action submission was run. Production and other developer databases must apply migration 0016 before deploying code that reads `lots.cost_minor`; existing unrewritten legacy lots intentionally retain their prior reconstructed totals.
+
+#### Follow-up baton: Planner/Implementer -> Testing/QA Agent
+- Goal: independently verify that metal purchases preserve the user's exact all-in amount without changing default `RecordBuy` behavior or fee semantics.
+- Completed: added optional exact consideration to `RecordBuy`; the metal action passes amount minus charges; added an additive nullable exact lot-cost column and mapper fallback for legacy rows; clarified placeholders; added reload-based exact-money assertions.
+- Decisions: per-unit price remains the rounded trade/display value; exact consideration is authoritative for ledger and lot cost; charges remain separate and included in cost basis; legacy rows remain readable without backfill.
+- Inputs: this follow-up section; `RecordBuy` in `src/app/investing.usecases.ts`; metal action/form; lot schema and mapper; focused validation and platform integration specs.
+- Changed files: `_architecture/70-UPGRADE-PLAN.md`; `src/app/investing.usecases.ts`; `app/(root)/investments/actions.ts`; `app/(root)/investments/[instrumentId]/metal-holding-form.tsx`; `src/infra/db/schema.ts`; `src/infra/db/migrations/0016_exact_lot_cost.sql`; `src/infra/repositories.ts`; `tests/metal-holding-validation.spec.ts`; `tests/metal-platform-holdings.spec.ts`.
+- Contract/output: `RecordBuyInput.consideration?: Money` defaults to quantity × price; new lots persist `costMinor`; legacy null `costMinor` falls back to historical per-unit reconstruction.
+- Verification: validation PASS (16); metal platform integration PASS (26); investing integration PASS (88); typecheck PASS; focused lint zero errors with four unrelated/pre-existing warnings.
+- Open risks: no authenticated browser action run; existing legacy lots are not backfilled and retain their prior reconstructed totals.
+- Next action: inspect migration compatibility and money invariants, rerun focused checks, then record PASS, PASS_WITH_RISKS, or FAIL.
+- Do not revisit: the user's fee-is-inside-total semantics or `/investments/new` without new evidence.
+
+#### Migration packaging repair — 2026-09-20
+- Runtime defect: `0016_exact_lot_cost.sql` existed, but `meta/_journal.json` ended at 0015, so `npm run db:migrate` could not discover it and runtime reads failed with missing `lots.cost_minor`.
+- Repaired artifact: ran the repository's `npm run db:generate -- --name exact_lot_cost` workflow to produce the 0016 journal entry and current snapshot. Because snapshots had previously stopped at 0006 while hand-maintained migrations continued through 0015, the generated SQL repeated already-applied history; it was reduced to the intended additive `ALTER TABLE lots ADD cost_minor integer` while retaining the generated journal and full current snapshot.
+- Safety decision: configuration was inspected without printing `DATABASE_URL`; it resolved to an existing local file inside the workspace, not a remote or ambiguous database. The additive migration was therefore applied locally with `npm run db:migrate`; no destructive database command was used.
+- Verification: `npm run db:migrate` PASS; `npm run db:check` PASS with 17/17 migrations, all 48 tables, and reference data in step; direct `PRAGMA table_info(lots)` reports `cost_minor` present as nullable `INTEGER`; metal platform integration PASS (26 assertions); metal validation PASS (16 assertions); focused diff-check PASS with line-ending warnings only.
+
+#### Migration repair baton: Planner/Implementer -> Testing/QA Agent
+- Goal: independently verify that migration 0016 is discoverable, safely additive, and applied to the configured local database.
+- Completed: generated and retained `meta/0016_snapshot.json`, added the 0016 journal entry, kept SQL limited to one nullable column, applied it to the workspace-local database, and verified runtime schema presence.
+- Decisions: no backfill is required because legacy rows deliberately use the mapper's null fallback; no remote database was touched.
+- Inputs: `src/infra/db/migrations/0016_exact_lot_cost.sql`; `src/infra/db/migrations/meta/_journal.json`; `src/infra/db/migrations/meta/0016_snapshot.json`; lot schema/mapper.
+- Changed files: the three migration artifacts above plus this plan update. Earlier exact-consideration implementation files remain as listed in the preceding baton.
+- Contract/output: `npm run db:migrate` discovers 0016; after application, `lots.cost_minor` exists as nullable `INTEGER`.
+- Verification: migrate PASS; db-check PASS (17/17, 48/48); direct schema query PASS; focused tests PASS (26 and 16 assertions).
+- Open risks: production or other developer databases still require `npm run db:migrate`; this task applied only the confirmed workspace-local database.
+- Next action: rerun migration/schema checks independently and record QA status.
+- Do not revisit: exact consideration or fee semantics unless migration verification exposes a new defect.
+
+## Holdings platform visibility — 2026-09-20
+
+Status: DONE
+Owner: Planner/Implementer
+Updated: 2026-09-20
+Chosen path: Research then implementation. Primary mode: Implementation.
+
+### Requirement
+Show each holding's registered platform as its own column on `/investments/holdings`, make that platform searchable, and render an honest em dash when no platform is assigned.
+
+### Acceptance criteria
+- [x] `InvestmentWorkspacePosition` exposes nullable `platformName` resolved from the instrument's `institutionId`.
+- [x] Workspace construction loads institutions once and maps names without per-position repository queries.
+- [x] Holdings render a distinct Platform column, an em dash fallback, and platform-aware search.
+- [x] Focused integration/UI tests cover SafeGold, Tanishq, platform search, and null fallback.
+- [x] Focused tests, type checking, and lint pass before independent QA.
+
+### Research baton
+- Instruments already carry nullable `institutionId`; `InstitutionRepository.list(userId)` supplies the user-scoped platform set.
+- The workspace read model is the stable contract consumed by holdings UI, so platform resolution belongs there rather than in the route or client component.
+- The holdings table already owns client filtering and can include nullable `platformName` without adding a fetch or client-side repository access.
+
+### Step-by-step plan
+- [x] 1. Record path, scope, acceptance criteria, and research baton before production edits.
+- [x] 2. Extend the workspace position and resolve platform names from one institution-list load — Owner: Planner/Implementer — Files: `src/app/investing.usecases.ts`, constructor wiring — Verify: integration assertions.
+- [x] 3. Add Platform column/fallback and platform search — Owner: Planner/Implementer — Files: holdings route/table — Verify: focused UI assertions.
+- [x] 4. Run focused checks and hand the result to independent QA.
+
+### QA record
+Status: PASS_WITH_RISKS
+Evidence:
+- Implementer: `npm test -- investment-workspace-ui` PASS (53 assertions); `npm test -- investing-integration` PASS (89 assertions); `npm test -- metal-platform-holdings` PASS (29 assertions); `npm run typecheck` PASS; focused ESLint reported zero errors and six pre-existing unused-symbol warnings.
+- Integration evidence resolves real persisted SafeGold and Tanishq institutions through the workspace repository dependency; separate coverage proves a missing assignment stays `null`, search matches `SafeGold`, and the table renders an em dash fallback.
+- Independent QA (2026-09-20): verified `InvestmentWorkspace` performs one institution-list request alongside valuation/returns, passes `input.userId`, maps by institution ID, and adds no per-position lookup. `DrizzleInstitutionRepository.list` enforces the same user ID and excludes deleted rows.
+- Independent QA: verified the table has matching Platform header/body cells, case-insensitive platform search, a null-only em dash fallback, and unchanged URL-driven filters.
+- Independent QA: `npm test -- investment-workspace-ui` PASS (53/53); `npm test -- investing-integration` PASS (89/89); `npm test -- metal-platform-holdings` PASS (29/29); `npm run typecheck` PASS; focused ESLint completed with zero errors and six existing unused-symbol warnings.
+- Defect: `InvestmentWorkspace` calls `institutions.list(input.userId)` without `{ includeArchived: true }`. The repository therefore omits an archived institution even when an instrument still has that institution ID, `platformNames.get(...)` returns `undefined`, and the holding renders an em dash as though no platform were assigned. Expected: an assigned archived platform retains its registered name on the historical holding. Actual: `platformName` becomes `null`. Smallest owner: Planner/Implementer in `src/app/investing.usecases.ts` plus an integration assertion for an archived assigned institution.
+- Independent re-QA (2026-09-20): confirmed the defect is repaired by the single call `institutions.list(input.userId, { includeArchived: true })`; the same authenticated user ID is propagated, no per-position lookup exists, and `DrizzleInstitutionRepository.list` continues to exclude soft-deleted rows. Treating a deliberately soft-deleted/unresolvable institution as unavailable while retaining archived historical names is acceptable.
+- Independent re-QA: the real repository integration archives the assigned Tanishq institution before the workspace read and still resolves `platformName: "Tanishq"`; SafeGold, genuine-null fallback, Platform column layout, and platform search remain covered.
+- Independent re-QA: `npm test -- metal-platform-holdings` PASS (29/29); `npm test -- investment-workspace-ui` PASS (53/53); `npm test -- investing-integration` PASS (89/89); `npm run typecheck` PASS; focused ESLint completed with zero errors and four existing unused-import warnings.
+Residual risks:
+- No browser interaction was run. Archived behavior is covered through the real repository, while the exactly-once lookup and user argument are confirmed by code inspection rather than a dedicated spy assertion.
+
+### QA defect repair plan — archived assigned platforms
+- [x] Load the same user's archived institutions in the workspace's single list call so historical assignments retain their name.
+- [x] Add an integration regression that archives assigned Tanishq before the workspace read and still expects `platformName: "Tanishq"`.
+- [x] Rerun focused integration/UI checks, type checking, and lint; return to independent QA.
+
+### QA defect repair evidence — 2026-09-20
+- `InvestmentWorkspace` now makes the same single user-scoped call with `{ includeArchived: true }`; deleted institutions remain excluded by the repository.
+- The integration fixture archives the assigned Tanishq institution before executing the workspace and still receives `platformName: "Tanishq"`.
+- `npm test -- metal-platform-holdings` PASS (29 assertions); `npm test -- investment-workspace-ui` PASS (53 assertions); `npm test -- investing-integration` PASS (89 assertions); `npm run typecheck` PASS; focused ESLint zero errors with four pre-existing unused-import warnings; focused diff-check PASS with line-ending warnings only.
+- Status returned to QA; the prior FAIL is retained above as audit history.
+
+### Repair baton: Planner/Implementer -> Testing/QA Agent
+- Goal: verify archived-but-assigned platform names remain visible without adding extra or cross-user lookups.
+- Completed: changed the workspace's one institution list call to include archived rows and added a real repository integration regression that archives Tanishq before the read.
+- Decisions: soft-deleted institutions remain excluded; unassigned/unresolved IDs remain null; UI behavior is unchanged.
+- Inputs: `src/app/investing.usecases.ts`; `tests/metal-platform-holdings.spec.ts`; prior FAIL in this QA record.
+- Changed files: `_architecture/70-UPGRADE-PLAN.md`; `src/app/investing.usecases.ts`; `tests/metal-platform-holdings.spec.ts`.
+- Contract/output: `institutions.list(input.userId, { includeArchived: true })` is still exactly one user-scoped lookup.
+- Verification: metal platform PASS (29); workspace UI PASS (53); investing integration PASS (89); typecheck PASS; focused lint zero errors/four existing warnings; diff-check PASS with line-ending warnings only.
+- Open risks: no browser interaction run.
+- Next action: independently rerun the focused suites and record PASS, PASS_WITH_RISKS, or FAIL.
+- Do not revisit: table rendering, search, or other holding behavior unless this regression exposes new evidence.
+
+### Baton: Planner/Implementer -> Testing/QA Agent
+- Goal: independently verify platform names are resolved once in the workspace and remain visible/searchable in holdings.
+- Completed: added nullable `platformName`, injected `InstitutionRepository`, loaded institutions once alongside valuation/returns, mapped names by ID, added a Platform column and em dash fallback, and included platform names in search.
+
+- Decisions: unresolved or unassigned platforms remain `null`; the UI owns the em dash presentation; no per-position repository lookup or new route fetch was added.
+- Inputs: this requirement section; workspace use case; container wiring; holdings page/table; focused workspace and metal integration specs.
+- Changed files: `_architecture/70-UPGRADE-PLAN.md`; `src/app/investing.usecases.ts`; `src/infra/container.ts`; `app/(root)/investments/holdings/page.tsx`; `app/(root)/investments/holdings/holdings-table.tsx`; `tests/investment-workspace-ui.spec.ts`; `tests/investing-integration.spec.ts`; `tests/metal-platform-holdings.spec.ts`.
+- Contract/output: every workspace position has `platformName: string | null`; `InvestmentWorkspace` requires an `InstitutionRepository`; holdings search includes platform names.
+- Verification: workspace UI PASS (53); investing integration PASS (89); metal platform integration PASS (29); typecheck PASS; focused lint zero errors with six existing warnings.
+- Open risks: no browser interaction run.
+- Next action: inspect the diff, rerun focused checks, and record PASS, PASS_WITH_RISKS, or FAIL.
+- Do not revisit: instrument identity, fee semantics, or exact consideration without new evidence.
+
+## Digital-metal invested principal excludes lease credits -- 2026-09-20
+
+Status: DONE
+Owner: Planner/Implementer
+Updated: 2026-09-20
+Chosen path: Research then implementation. Primary mode: Implementation.
+
+### Requirement
+On a digital-gold holding detail page, the summary Invested amount, average buy rate, and unrealised gain should reflect cash actually paid by the user. Lease-earned grams should increase grams/current value and keep their tax/book basis, but must not inflate invested principal.
+
+### Acceptance criteria
+- [x] Digital-metal summary uses `GoldHoldingAnalytics.investedCost` for the cash-invested headline and return math.
+- [x] Lease-origin lots remain included in book/tax basis and activity/audit rows.
+- [x] The summary can show cash purchases plus a lease credit as grams held above purchased grams while invested principal remains only the purchases.
+- [x] Focused UI/source, gold analytics, leasing integration, and type checks pass.
+
+### Research baton
+- Existing gold analytics already separates purchased lots from lease-origin lots using BUY trades with `settlementAccountId: null`.
+- `AccrueLeaseInterest` records in-kind income as a BUY trade and opens a lot with book cost basis so later sale is not taxed twice.
+- The holding page summary still read `open.cost.plus(open.charges)` for the Invested card and related digital-metal return math, which included lease-credit book basis.
+
+### Step-by-step plan
+- [x] 1. Record selected path, scope, acceptance criteria, and research evidence before production edits.
+- [x] 2. Wire digital-metal summary cash-invested figures to `analytics.investedCost` while leaving non-digital and tax/book basis behavior unchanged.
+- [x] 3. Add focused assertions for source contract and existing analytics lease-credit semantics.
+- [x] 4. Run focused tests and type checking, then send to independent QA.
+
+### QA record
+Status: PASS_WITH_RISKS
+Evidence:
+- Implementer: `npm test -- investment-holding-ui` PASS (50 assertions); `npm test -- gold-analytics` PASS (89 assertions); `npm test -- leasing-integration` PASS (71 assertions); `npm run typecheck` PASS.
+- Independent QA: inspected all named diffs and data paths; `npm test -- investment-holding-ui` PASS (50/50); `npm test -- gold-analytics` PASS (89/89); `npm test -- leasing-integration` PASS (71/71); `npm run typecheck` PASS; focused ESLint completed with zero errors and one existing unused-import warning in `investment-holding-ui.spec.ts`.
+- Independent QA confirmed digital-metal summary invested/average/return use `GoldHoldingAnalytics` cash basis; history zeroes lease-credit paid cost; lease lots remain in all-lot book/tax basis and lot ladder; account-free lease trace trades are excluded from the editable cash-investment table but remain in `InvestmentActivity`; income-bearing lease accruals classify as `INCOME` before `TRADE`.
+Residual risks:
+- No browser interaction was run. Page wiring is covered by source-contract tests; monetary, history, and activity invariants are covered by behavioral integration tests.
+
+### Baton: Planner/Implementer -> Testing/QA Agent
+- Goal: independently verify digital-metal lease credits increase grams/value without inflating invested principal or editable purchase rows.
+- Completed: summary cash-invested metrics now use gold analytics for digital metals; history invested cost ignores lease-credit trace trades; activity classifies income-bearing in-kind interest as income; editable metal purchase table shows only cash-settled trades.
+- Decisions: leave lease lot book/tax basis and account-free trade trace intact for audit and disposal tax correctness.
+- Inputs: `app/(root)/investments/[instrumentId]/page.tsx`; `src/app/gold-analytics.usecases.ts`; `src/infra/repositories.ts`; focused tests listed above.
+- Changed files: `_architecture/70-UPGRADE-PLAN.md`; `app/(root)/investments/[instrumentId]/page.tsx`; `src/app/gold-analytics.usecases.ts`; `src/infra/repositories.ts`; `tests/gold-analytics.spec.ts`; `tests/investment-holding-ui.spec.ts`; `tests/leasing-integration.spec.ts`.
+- Contract/output: digital-metal visible invested principal is cash paid only; lease credits remain visible as income/activity and taxable book basis.
+- Verification: holding UI PASS (50); gold analytics PASS (89); leasing integration PASS (71); typecheck PASS.
+- Open risks: no browser interaction run.
+- Next action: independently inspect and rerun focused checks; record PASS, PASS_WITH_RISKS, or FAIL.
+- Do not revisit: lease booking/tax basis, migration 0016, platform column, or close-holding behavior unless this task exposes new evidence.
+
+## Holding close feedback repair — 2026-09-20
+
+Status: DONE
+Owner: Planner/Implementer
+Updated: 2026-09-20
+Chosen path: Direct implementation. Primary mode: Implementation.
+
+### Requirement
+Make the Settings close-holding control report its own result so a user can understand and resolve a rejected close, without weakening the invariant that a holding with remaining units cannot be hidden.
+
+### Acceptance criteria
+- [x] Submitting Close holding after a previous settings update displays the close action's current success or failure message, not the stale update message.
+- [x] A holding with remaining units stays open and explains that the position must be sold first.
+- [x] A holding with no remaining units still closes and redirects through the existing server action.
+- [x] Focused UI/use-case regression coverage, type checking, and lint pass before independent QA.
+
+### Context map
+| Need | Authoritative file/section | Why it is needed |
+|---|---|---|
+| Close form state | `app/(root)/investments/[instrumentId]/instrument-admin.tsx` | Three independent `useActionState` values are collapsed with stale update state taking precedence. |
+| Close action | `app/(root)/investments/admin-actions.ts`, `closeInstrumentAction` | Authenticates, invokes the close use case, revalidates, and redirects after a successful close. |
+| Domain/application invariant | `src/app/instrument-admin.usecases.ts`, `CloseInstrument` | Refuses to hide a holding while a nonzero lot remains and supplies the actionable error currently obscured by the UI. |
+| Framework contract | `node_modules/next/dist/docs/01-app/02-guides/forms.md` | Each server-action form result is exposed through its own `useActionState` state value. |
+
+### Decisions and constraints
+- Preserve the existing live-position safeguard: closing is archival, not a substitute for recording a sale.
+- Render each independent action result beside its owning control so stale results from another form cannot mask it.
+- Do not change persistence, lot arithmetic, sale behavior, or close/reopen semantics.
+
+### Step-by-step plan
+- [x] 1. Trace the close control, server action, use case, and repository persistence; read the local Next.js forms guide.
+- [x] 2. Separate update, close, and delete result rendering — Owner: Planner/Implementer — Files: `instrument-admin.tsx` — Verify: focused UI contract test.
+- [x] 3. Add regression coverage for stale-state masking and retain the existing close-use-case semantics — Owner: Planner/Implementer — Files: `tests/investment-holding-ui.spec.ts`; existing `CloseInstrument` implementation — Verify: focused UI test and code inspection.
+- [x] 4. Run focused tests, type checking, and lint; update status to QA and hand off for independent review.
+
+### QA record
+Status: PASS_WITH_RISKS
+Evidence:
+- Implementer: `npm test -- investment-holding-ui` PASS (46 assertions); `npm run typecheck` PASS; focused ESLint PASS with one pre-existing unused type-import warning in the test; focused `git diff --check` PASS with line-ending warnings only.
+- Inspection confirms the server action still authenticates, calls `CloseInstrument`, revalidates all investment surfaces, and redirects to `/investments` after a successful close. `CloseInstrument` still rejects a nonzero open lot with an actionable sell-first message before persistence.
+- Independent QA: `npm test -- investment-holding-ui` PASS (46 assertions); `npm run typecheck` PASS; `npx eslint 'app/(root)/investments/[instrumentId]/instrument-admin.tsx' 'tests/investment-holding-ui.spec.ts'` PASS with zero errors and one pre-existing unused type-import warning; focused `git diff --check` PASS with CRLF conversion warnings only.
+- Independent diff review confirms update, close, and delete results render from their own `useActionState` values beside their owning controls with `role="status"`; the removed precedence expression can no longer let stale update state mask the close result.
+- Independent path review confirms `closeInstrumentAction` still returns use-case rejection text, revalidates investment surfaces, and redirects to `/investments` after a successful close; `CloseInstrument` still refuses archival when any lot has nonzero remaining units and instructs the user to sell first.
+Residual risks:
+- No authenticated browser fixture or direct `CloseInstrument` regression test is present, so close-after-update interaction and persistence were verified through focused source-contract coverage and code inspection rather than an end-to-end submission.
+
+### Baton: Planner/Implementer -> Testing/QA Agent
+- Goal: independently verify that Close holding reports its own current outcome and retains the live-position safeguard.
+- Completed: replaced the single precedence-based status selection with update, close, and delete messages rendered beside their owning forms; added focused source-contract assertions against stale-state masking.
+- Decisions: closing remains archival and is still refused while any lot has remaining units; no persistence or financial behavior changed.
+- Inputs: this requirement section; `app/(root)/investments/[instrumentId]/instrument-admin.tsx`; `app/(root)/investments/admin-actions.ts`; `src/app/instrument-admin.usecases.ts`; `tests/investment-holding-ui.spec.ts`.
+- Changed files: `_architecture/70-UPGRADE-PLAN.md`; `app/(root)/investments/[instrumentId]/instrument-admin.tsx`; `tests/investment-holding-ui.spec.ts`.
+- Contract/output: each `useActionState` result is announced independently with `role="status"`; a failed close can no longer be masked by a prior successful update.
+- Verification: holding UI PASS (46 assertions); typecheck PASS; focused lint zero errors with one pre-existing test warning; diff-check PASS with CRLF warnings only.
+- Open risks: no authenticated browser interaction; the UI regression is source-contract coverage, while close persistence/refusal semantics are unchanged and verified by inspection.
+- Next action: inspect the focused diff, rerun the focused checks, exercise close-after-update if an authenticated browser fixture is available, then record PASS, PASS_WITH_RISKS, or FAIL.
+- Do not revisit: the rule requiring all remaining units to be sold before archival unless new product requirements explicitly supersede it.
+
+### Baton: Testing/QA Agent -> Coordinator
+- Goal: independently verify the close-holding feedback repair and retained live-position safeguard.
+- Completed: reviewed the focused production/test diff, inspected the server action and use case, and reran focused UI, type, lint, and diff checks.
+- Decisions: PASS_WITH_RISKS; every acceptance criterion is supported, with browser-level submission coverage explicitly absent.
+- Inputs: this requirement section; `app/(root)/investments/[instrumentId]/instrument-admin.tsx`; `app/(root)/investments/admin-actions.ts`; `src/app/instrument-admin.usecases.ts`; `tests/investment-holding-ui.spec.ts`.
+- Changed files: `_architecture/70-UPGRADE-PLAN.md` only (QA record).
+- Contract/output: stale update feedback no longer masks close feedback; close rejection remains visible and live positions remain unclosable; successful close redirect semantics are unchanged.
+- Verification: holding UI PASS (46 assertions); typecheck PASS; focused ESLint zero errors/one pre-existing warning; focused diff-check PASS with line-ending warnings only.
+- Open risks: no authenticated browser fixture or direct close-use-case regression test.
+- Next action: coordinator reports the completed fix and QA qualification to the user.
+- Do not revisit: persistence, lot arithmetic, and close/reopen semantics unless browser evidence exposes a new defect.

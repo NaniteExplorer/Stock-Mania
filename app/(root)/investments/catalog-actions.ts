@@ -5,12 +5,15 @@ import { z } from "zod";
 import { Currency, Money } from "@/core/money";
 import { Quantity } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
-import { AccountId } from "@/domain/accounts";
+import { AccountCode, AccountId, SystemAccountCodes, type Account } from "@/domain/accounts";
+import { Lot } from "@/domain/lots";
+import { accountRef, OpeningPosition } from "@/domain/transactions";
 import { groupOfKind } from "@/domain/asset-groups";
 import { InstitutionId } from "@/domain/institutions";
 import type { CatalogSearchCandidateOutput, CatalogSearchOutput } from "@/domain/instrument-catalog";
 import { InstrumentId, type InstrumentKind } from "@/domain/instruments";
 import { catalogPortfolioIdentity } from "./entry-identity";
+import { isPurityOf, metalDisplayName, metalPricing, type MetalKind } from "./new/metal-identity";
 
 export interface InvestmentEntryActionState {
   ok: boolean;
@@ -23,9 +26,30 @@ export interface InvestmentEntryActionState {
 export type InvestmentSearchResult = CatalogSearchOutput;
 export type InvestmentSearchCandidate = CatalogSearchCandidateOutput;
 
-const MONEY = z.string().trim().regex(/^\d+(\.\d{1,2})?$/, "Enter rupees and paise.");
-const OPTIONAL_MONEY = z.string().trim().regex(/^(\d+(\.\d{1,2})?)?$/, "Enter rupees and paise.");
-const QUANTITY = z.string().trim().regex(/^\d+(\.\d{1,8})?$/, "Enter up to eight decimals.");
+/**
+ * What a pasted figure is allowed to look like before it has to be a number.
+ *
+ * A receipt is copied, not retyped: "1,23,456.78", "₹ 5,000", "0.3481 g" all
+ * arrive with punctuation that means nothing to the value. Rejecting those made
+ * the form look broken for input that was never ambiguous, so the noise is
+ * stripped first and only the digits are judged. Nothing here changes a value:
+ * a decimal point is still a decimal point, and a figure with too many places
+ * is still refused, because rounding someone's money silently is worse than
+ * asking.
+ */
+const tidy = (value: unknown): unknown =>
+  typeof value === "string" ? value.replace(/[\s,₹]/g, "").replace(/g$/i, "") : value;
+
+const OPTIONAL_MONEY = z.preprocess(
+  tidy,
+  z
+    .string()
+    .regex(/^(\d+(\.\d{1,2})?)?$/, "Amounts are rupees and paise — at most two decimal places."),
+);
+const QUANTITY = z.preprocess(
+  tidy,
+  z.string().regex(/^\d+(\.\d{1,8})?$/, "Enter the quantity — up to eight decimal places."),
+);
 
 const KIND_VALUES = [
   "LISTED_EQUITY",
@@ -46,7 +70,7 @@ const KIND_VALUES = [
 ] as const satisfies readonly InstrumentKind[];
 
 const entrySchema = z.object({
-  identityMode: z.enum(["CATALOG", "MANUAL"]),
+  identityMode: z.enum(["CATALOG", "MANUAL", "METAL"]),
   selectionConfirmed: z.literal("yes", { error: "Confirm the instrument identity first." }),
   catalogQuery: z.string().trim().max(160).optional().or(z.literal("")),
   catalogInstrumentId: z.string().trim().optional().or(z.literal("")),
@@ -57,11 +81,15 @@ const entrySchema = z.object({
   isin: z.string().trim().length(12).optional().or(z.literal("")),
   exchange: z.string().trim().max(16).optional().or(z.literal("")),
   currency: z.enum(["INR", "USD"]),
+  /* Metal lane only. Whitelisted below against the metal it arrived with. */
+  quoteRef: z.string().trim().max(16).optional().or(z.literal("")),
   side: z.enum(["BUY", "SELL"]),
   tradedOn: z.string().trim().min(1, "Trade date is required."),
   quantity: QUANTITY,
-  unitPrice: MONEY,
-  settlementAccountId: z.string().uuid("Choose the cash account."),
+  unitPrice: OPTIONAL_MONEY.optional().or(z.literal("")),
+  /* Metals lane only: the receipt total, from which the rate is derived. */
+  totalAmount: OPTIONAL_MONEY.optional().or(z.literal("")),
+  settlementAccountId: z.string().uuid("Choose the cash account.").optional().or(z.literal("")),
   institutionId: z.string().trim().optional().or(z.literal("")),
   newPlatformName: z.string().trim().max(120).optional().or(z.literal("")),
   brokerage: OPTIONAL_MONEY.optional().or(z.literal("")),
@@ -167,7 +195,10 @@ export async function recordInvestmentEntryAction(
   } catch (error) {
     return { ok: false, message: (error as Error).message };
   }
-  const preview = cashPreview({ ...values, currency: identity.currency });
+  const currency = Currency.of(identity.currency);
+  const pricing = resolvePricing(values, currency);
+  if (!pricing.ok) return pricing.state;
+  const preview = cashPreview(values, pricing.quantity, pricing.pricePerUnit, currency);
   if (!preview.ok) return { ok: false, message: preview.message };
 
   const { currentUserId, ensureSeeded, services } = await import("@/infra/container");
@@ -178,7 +209,9 @@ export async function recordInvestmentEntryAction(
   const platform = await resolvePlatform(userId, values, identity.kind);
   if (!platform.ok) return platform.state;
 
-  const currency = Currency.of(identity.currency);
+  const settlement = await resolveSettlement(userId, values, identity.kind);
+  if (!settlement.ok) return settlement.state;
+
   const added = await serviceBag.investing.addInstrument.execute({
     userId,
     symbol: identity.symbol,
@@ -205,15 +238,89 @@ export async function recordInvestmentEntryAction(
     .plus(money(values.exchangeFees, currency))
     .plus(money(values.statutoryCharges, currency))
     .plus(money(values.taxWithheld, currency));
-  const quantity = Quantity.fromString(values.quantity);
-  const pricePerUnit = Money.fromRupees(values.unitPrice, currency);
+  const { quantity, pricePerUnit } = pricing;
   const tradedOn = CalendarDate.parse(values.tradedOn);
+
+  /*
+   * Metal bought with no funding account is an **opening position**, not a buy.
+   *
+   * A purchase moves cash out of an account into a holding, and the ledger's
+   * legality matrix enforces that literally: `BUY` from `EQUITY_OPENING` is not
+   * a row in it (L06), so booking one that way was refused outright. It should
+   * be. "Cash left my bank" and "these grams entered the books from outside
+   * them" are different events, and only the second one is true here.
+   *
+   * So this takes the path the holding page's own metal form already uses: an
+   * OPENING_BALANCE journal from Equity: Opening Balances into the holding
+   * account, with the lot opened by hand at the same cost and charges a buy
+   * would have given it. The position, the cost basis and the lot are identical;
+   * what differs is the honest claim about where the money came from.
+   */
+  if (settlement.opening) {
+    const total = Money.fromRupees(values.totalAmount ?? "0", currency);
+    const holding = await serviceBag.repositories.accounts.findById(userId, added.value.accountId);
+    if (!holding) return { ok: false, message: "The holding account is unavailable." };
+
+    const position = OpeningPosition.record(
+      {
+        userId,
+        txnDate: tradedOn,
+        description: `Opening position: ${values.quantity}g held on ${identity.name}`,
+        source: accountRef(settlement.openingAccount),
+        destination: accountRef(holding),
+      },
+      {
+        instrumentId: added.value.instrumentId.value,
+        quantity,
+        amount: total,
+        holding: accountRef(holding),
+      },
+    );
+    await serviceBag.repositories.journal.save(position);
+    await serviceBag.repositories.lots.recordTrade(userId, {
+      id: position.id.value,
+      instrumentId: added.value.instrumentId,
+      side: "BUY",
+      tradedOn,
+      quantity,
+      pricePerUnit,
+      charges: totalCharges,
+      transactionId: position.id.value,
+      settlementAccountId: settlement.openingAccount.id.value,
+    });
+    await serviceBag.repositories.lots.saveLots(userId, [
+      Lot.open({
+        instrumentId: added.value.instrumentId,
+        acquiredOn: tradedOn,
+        originalQuantity: quantity,
+        cost: total.minus(totalCharges),
+        buyCharges: totalCharges,
+        openedByTransactionId: position.id.value,
+      }),
+    ]);
+
+    revalidatePath("/investments");
+    revalidatePath(`/investments/${added.value.instrumentId.value}`);
+    revalidatePath("/accounts");
+    revalidatePath("/transactions");
+    revalidatePath("/dashboard");
+
+    return {
+      ok: true,
+      instrumentId: added.value.instrumentId.value,
+      cashPreview: preview.value.display,
+      message:
+        `Recorded ${values.quantity}g of ${identity.name} at ${pricePerUnit.toString()} per gram. ` +
+        `No account was debited — it is an opening position, so record the payment separately ` +
+        `if the money left an account you track.`,
+    };
+  }
 
   const result = values.side === "BUY"
     ? await serviceBag.investing.recordBuy.execute({
         userId,
         instrumentId: added.value.instrumentId,
-        fromAccountId: AccountId.from(values.settlementAccountId),
+        fromAccountId: settlement.accountId,
         quantity,
         pricePerUnit,
         tradedOn,
@@ -222,7 +329,7 @@ export async function recordInvestmentEntryAction(
     : await serviceBag.investing.recordSell.execute({
         userId,
         instrumentId: added.value.instrumentId,
-        toAccountId: AccountId.from(values.settlementAccountId),
+        toAccountId: settlement.accountId,
         quantity,
         pricePerUnit,
         tradedOn,
@@ -276,6 +383,22 @@ async function resolveIdentity(input: EntryInput): Promise<{
      * owner records, so it says so — `null` — and the entry confirmation tells
      * him, rather than leaving him to discover it from an empty chart.
      */
+    /*
+     * A digital metal is never manual. It has a real quote key — its purity
+     * slug — so letting it through here would store `quoteRef: null` and leave
+     * the grams permanently unpriced: exactly the failure the manual tier is
+     * honest about, applied to an asset that did not need it. The lane picker
+     * already steers metals elsewhere; this is the same refusal for a POST that
+     * skipped it.
+     */
+    if (
+      input.kind === "DIGITAL_GOLD" ||
+      input.kind === "DIGITAL_SILVER" ||
+      input.kind === "DIGITAL_PLATINUM"
+    ) {
+      throw new Error("Record digital metals in the metals lane — they are live-priced by purity.");
+    }
+
     return {
       symbol: input.symbol.toUpperCase(),
       name: input.name,
@@ -285,6 +408,46 @@ async function resolveIdentity(input: EntryInput): Promise<{
       currency: input.currency,
       quoteRef: null,
       livePriced: false,
+      catalogInstrumentId: null,
+      listingId: null,
+    };
+  }
+
+  if (input.identityMode === "METAL") {
+    /*
+     * The digital-metal tier: derived identity, and the one place a quote key
+     * arrives from the client.
+     *
+     * It is whitelisted against the metal it was submitted with rather than
+     * trusted, because `quoteRef` is what the price ladder asks a source for —
+     * an unchecked string here is the same failure the manual tier exists to
+     * avoid, only with a live-priced badge on it. Purity is part of the
+     * identity, not a note: 999 and 995 fine are different grams at different
+     * prices.
+     *
+     * The symbol is the bare slug. `AddInstrument` qualifies it per platform,
+     * which is what makes the same metal at two vaults two holdings.
+     */
+    const kind = input.kind as MetalKind;
+    if (kind !== "DIGITAL_GOLD" && kind !== "DIGITAL_SILVER" && kind !== "DIGITAL_PLATINUM") {
+      throw new Error("Choose gold, silver or platinum.");
+    }
+    const purity = (input.quoteRef ?? "").toUpperCase();
+    if (!isPurityOf(kind, purity)) {
+      throw new Error("Choose a purity that belongs to the metal.");
+    }
+    if (input.currency !== "INR") {
+      throw new Error("Digital metals are recorded in INR.");
+    }
+    return {
+      symbol: purity,
+      name: input.name.trim() || metalDisplayName(kind, ""),
+      kind,
+      isin: null,
+      exchange: null,
+      currency: "INR",
+      quoteRef: purity,
+      livePriced: true,
       catalogInstrumentId: null,
       listingId: null,
     };
@@ -307,6 +470,81 @@ async function resolveIdentity(input: EntryInput): Promise<{
     throw new Error("The selected catalogue identity no longer matches the local cache. Search again.");
   }
   return catalogPortfolioIdentity(selected);
+}
+
+/**
+ * Which account the cash leg posts against.
+ *
+ * Digital metal is bought outside the tracked accounts more often than not —
+ * a UPI tap in a bullion app, from money that was never a row here — so the
+ * metals lane does not ask for a funding account at all. The leg still has to
+ * exist, because a holding that appears with nothing on the other side is a
+ * ledger that no longer balances and a net worth that quietly grows by every
+ * purchase. It posts to **Equity: Opening Balances** instead, which is the same
+ * counter-account the holding page's opening-position form already uses and
+ * means exactly what happened: these grams entered the books from outside them.
+ *
+ * The consequence, stated plainly because it is a real one: a metal purchase no
+ * longer reduces any cash balance. If the rupees did leave a tracked account,
+ * that outflow has to be recorded as its own transaction, or the same money is
+ * counted twice — once as cash, once as gold.
+ *
+ * Every other lane still requires the account. A share bought through a broker
+ * was paid for from somewhere the user is tracking, and guessing otherwise
+ * would hide a real cash movement.
+ */
+async function resolveSettlement(
+  userId: Awaited<ReturnType<typeof import("@/infra/container").currentUserId>>,
+  data: Pick<EntryInput, "settlementAccountId" | "side">,
+  kind: InstrumentKind,
+): Promise<
+  | { ok: true; opening: false; accountId: AccountId }
+  | { ok: true; opening: true; openingAccount: Account }
+  | { ok: false; state: InvestmentEntryActionState }
+> {
+  const chosen = data.settlementAccountId ?? "";
+  if (chosen !== "") return { ok: true, opening: false, accountId: AccountId.from(chosen) };
+
+  /*
+   * A sale is the asymmetric case: proceeds have to land somewhere real. There
+   * is no inverse of an opening position — "these grams left the books into
+   * nowhere" is not a thing that happens — so the account stays required when
+   * metal is sold, even though buying it does not ask.
+   */
+  if (data.side === "SELL") {
+    return {
+      ok: false,
+      state: {
+        ok: false,
+        message: "Check the investment entry.",
+        fieldErrors: { settlementAccountId: ["Choose the account the sale proceeds land in."] },
+      },
+    };
+  }
+
+  if (groupOfKind(kind) !== "DIGITAL_METALS") {
+    return {
+      ok: false,
+      state: {
+        ok: false,
+        message: "Check the investment entry.",
+        fieldErrors: { settlementAccountId: ["Choose the cash account."] },
+      },
+    };
+  }
+
+  const { services } = await import("@/infra/container");
+  const opening = await services().repositories.accounts.findByCode(
+    userId,
+    AccountCode.parse(SystemAccountCodes.openingBalances),
+  );
+  if (!opening) {
+    return {
+      ok: false,
+      state: { ok: false, message: "Opening-balances account is unavailable." },
+    };
+  }
+  return { ok: true, opening: true, openingAccount: opening };
 }
 
 async function resolvePlatform(
@@ -346,14 +584,18 @@ async function resolvePlatform(
   return { ok: true, institutionId: registered.value.institutionId };
 }
 
-function cashPreview(input: Pick<
-  EntryInput,
-  "side" | "quantity" | "unitPrice" | "brokerage" | "exchangeFees" | "statutoryCharges" | "taxWithheld" | "currency"
->): { ok: true; value: { signed: Money; display: string } } | { ok: false; message: string } {
+/**
+ * The signed cash movement, computed from the same quantity and price the trade
+ * will actually be booked with — never re-parsed from the raw fields, so the
+ * number shown to the user and the number posted to the ledger cannot drift.
+ */
+function cashPreview(
+  input: Pick<EntryInput, "side" | "brokerage" | "exchangeFees" | "statutoryCharges" | "taxWithheld">,
+  quantity: Quantity,
+  unitPrice: Money,
+  currency: Currency,
+): { ok: true; value: { signed: Money; display: string } } | { ok: false; message: string } {
   try {
-    const currency = Currency.of(input.currency);
-    const quantity = Quantity.fromString(input.quantity);
-    const unitPrice = Money.fromRupees(input.unitPrice, currency);
     if (!quantity.isPositive || !unitPrice.isPositive) {
       return { ok: false, message: "Quantity and execution price must be positive." };
     }
@@ -369,6 +611,58 @@ function cashPreview(input: Pick<
   } catch (error) {
     return { ok: false, message: (error as Error).message };
   }
+}
+
+/**
+ * The quantity and unit price a trade is booked at.
+ *
+ * Every lane but the metals one takes the price straight from the contract
+ * note. The metals lane cannot: a bullion receipt states a rupee total and the
+ * grams it bought, and the rate between them routinely runs to three or more
+ * decimals — 0.3481g for ₹5,000 is ₹13,932.777 per gram — while a trade price
+ * is `Money`, which is paise. Asking for the rate therefore rejected real
+ * receipts outright. So the amount is what is asked for and the rate is derived
+ * from it, with the charges moved to the side that makes the cash impact equal
+ * the number on the receipt. See `metalPricing` for the arithmetic.
+ */
+function resolvePricing(
+  input: EntryInput,
+  currency: Currency,
+): { ok: true; quantity: Quantity; pricePerUnit: Money } | { ok: false; state: InvestmentEntryActionState } {
+  const invalid = (field: string, message: string): { ok: false; state: InvestmentEntryActionState } => ({
+    ok: false,
+    state: { ok: false, message: "Check the investment entry.", fieldErrors: { [field]: [message] } },
+  });
+
+  const quantity = Quantity.fromString(input.quantity);
+  if (!quantity.isPositive) return invalid("quantity", "Enter a positive quantity.");
+
+  if (input.identityMode !== "METAL") {
+    if (!input.unitPrice) return invalid("unitPrice", "Enter the execution price.");
+    return { ok: true, quantity, pricePerUnit: Money.fromRupees(input.unitPrice, currency) };
+  }
+
+  if (!input.totalAmount) {
+    return invalid("totalAmount", "Enter the total rupee amount shown on the receipt.");
+  }
+  const priced = metalPricing({
+    side: input.side,
+    grams: input.quantity,
+    total: input.totalAmount,
+    charges: [
+      input.brokerage ?? "",
+      input.exchangeFees ?? "",
+      input.statutoryCharges ?? "",
+      input.taxWithheld ?? "",
+    ],
+  });
+  if (!priced.ok) return invalid("totalAmount", priced.message);
+
+  return {
+    ok: true,
+    quantity,
+    pricePerUnit: Money.fromMinor(Number(priced.value.ratePerGramMinor), currency),
+  };
 }
 
 function money(value: string | undefined, currency: Currency): Money {
