@@ -359,3 +359,95 @@ NSE public quotes for equities, a public metals feed for digital gold) behind on
 `QuoteGateway` port with per-source adapters. No API keys, no scheduler, no
 background jobs — you press refresh. A failed source degrades to the last known
 price with its timestamp shown, never to a silent zero.
+
+---
+
+## 10. Mutation classes (added 2026-10-22)
+
+**Status correction (2026-10-24):** this section specifies the target mutation model,
+not verified shipped capability. TASKS.md P2 tracks implementation. Its D1–D7 decisions
+remain pending; in particular §10.3 is the recommended redo design subject to D3,
+retention is subject to D2, bulk atomicity to D1 and unfiltered bulk-removal refusal to
+D5. No automatic or optional header-restatement flow is authorised before D4 is settled.
+
+Full CRUD verbs — edit, undo, redo, remove one, remove all — sit over an append-only
+ledger without weakening it, because the verbs are a *presentation* over three different
+storage disciplines. Every table belongs to exactly one class, declared in a typed
+registry (`src/domain/mutation-classes.ts`), and a new table without a class does not
+compile.
+
+| Class | Storage discipline | Verbs compile to | Examples |
+|---|---|---|---|
+| **A — ledger** | append-only | post / reverse / tombstone / restore | `transactions`, `postings`, `trades`, `lots`, `lot_matches`, `corporate_actions`, `import_batches`, `import_rows`, `deposit_contributions`, `instrument_incomes` |
+| **B — reference** | mutable in place | `UPDATE` + tombstone | `category_rules`, `budgets`, `instruments`, `deposit_terms`, `loan_terms`, `credit_card_terms`, `tax_settings`, `institutions`, `counterparties`, `documents`, and the four new domains |
+| **C — system** | derived or ingested | no user verbs at all | `price_quotes`, `fx_rates`, `price_bars`, `audit_events`, `ledger_events`, `tax_rules`, `cost_inflation_index`, `net_worth_snapshots`, `projection_cache` |
+
+**The straddling rule.** A class B header that *generates* postings stays B; its postings
+are A. Editing a loan's interest rate is effective-dated, never a retroactive rewrite of
+the postings already made from it.
+
+### 10.1 Undo
+
+Undo is **tombstone and restore, never reverse-a-reversal**. Reversing a reversal stays
+blocked — it makes the current state unreadable — but a reversal is itself a row, and a
+row can be tombstoned. Undoing an edit tombstones the reversal *and* the replacement: the
+original returns to every balance and the evidence remains behind a filter.
+
+This requires exactly **one** new repository primitive: `restore()`, the inverse of
+`softDelete`. Nothing about append-only is weakened.
+
+### 10.2 The undo unit
+
+`audit_events.request_id` — which already "groups every event from one request, so a
+multi-aggregate change is one story" — **is** the batch identity. One row edited, fifteen
+removed, or a whole import undone are the same unit. No new table.
+
+### 10.3 Redo
+
+Subject to owner decision D3, the recommendation gives class A a **one-step cursor**, not a stack: session- and user-scoped, invalidated the
+instant any newer mutation touches an entity in the undone batch, and disabled *with a
+reason* rather than hidden. Class B gets an ordinary bounded stack, depth 20.
+
+A true multi-step ledger redo stack is **rejected**: it requires a command log that does
+not exist, and it would become a second source of truth beside the ledger.
+
+---
+
+## 11. The four manual domains (added 2026-10-22)
+
+Insurance, recurring commitments, physical assets and income streams. All class B, all
+manually entered — statement parsing stays bank-account only.
+
+They share one new value type, `recurrence` (`src/core/recurrence.ts`), carrying cadence,
+next-due, cancel-by and price-change-at-renewal. Today cadence exists only *inside* credit
+products (`loan_terms`, `deposit_terms`, gold-lease payout); this generalises it.
+
+**One constraint shapes the expense-to-asset link.** A posting may carry a `categoryId` or
+an `instrumentId`, never both — CHECK `postings_no_category_on_commodity`, invariant L12.
+So a major spend that acquires an asset is linked through a **side table**, never a second
+column on the posting.
+
+**`counterparties.normalisedName`, unique per user, is the stable key** that recurrence
+detection needs, and it already exists.
+
+**`net_worth_snapshots` already stores assets, liabilities, net worth, investments, income
+and expense per month** — the whole spine of the lifetime chart. What is missing is only a
+date of birth; the `user` table is Better-Auth shaped and has none.
+
+---
+
+## 12. Document map (added 2026-10-22)
+
+This file is the mechanism contract. Four companions carry what does not belong here:
+
+| Document | Holds | Wins when |
+|---|---|---|
+| [`PRODUCT-REQUIREMENT.md`](PRODUCT-REQUIREMENT.md) | What the product is for; the domains, the rating system, the refusals and their reasons | It and the code disagree about **intent** |
+| **`ARCHITECTURE.md`** (this file) | Layer boundaries, the ledger model, mutation classes, contracts between modules | It and the code disagree about **mechanism** |
+| [`RULES.md`](RULES.md) | The invariants both agents are bound by, and the anti-collision rules | Always — a rule there is not open to interpretation |
+| [`DESIGN.md`](DESIGN.md) | Tokens, component contracts, state coverage, accessibility floors | Any question of visual or interaction detail |
+| [`TASKS.md`](TASKS.md) | The board: owner, file scope, acceptance check, dependencies | Deciding what to do next |
+| [`MEMORY.md`](MEMORY.md) | Decisions already settled, with their reasons | Someone is about to reopen a settled question |
+
+Reasoning and evidence live in `_architecture/requirements/`. Published mockups are
+indexed in [`artifacts.md`](artifacts.md).

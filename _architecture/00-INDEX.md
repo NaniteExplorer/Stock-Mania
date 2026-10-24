@@ -9,10 +9,16 @@
 
 ## How to read this
 
-**Start at [`70-UPGRADE-PLAN.md`](70-UPGRADE-PLAN.md).** It is the plan of record: the only file that
-says what is already done, and the only place progress is tracked. Read the progress table, find the
-first unticked box in the earliest incomplete phase, and confirm that phase's gate before writing
-anything.
+**Start at [`70-UPGRADE-PLAN.md`](70-UPGRADE-PLAN.md) for architecture rebuild work.**
+It owns that rebuild's progress and historical QA. **Clarified 2026-10-24:**
+[`../TASKS.md`](../TASKS.md) owns the newer UI foundation and financial-health phases
+F/P0–P6; their reasoning is in `requirements/financial-health-scoring.md`. Read the
+applicable board and owner gates before choosing a task. Neither record duplicates the
+other programme's completion status.
+
+Historical references below (including broker connectivity and LLM-assisted ingestion)
+are not current feature permission. The current product scope and binding RULES.md
+take precedence; no AI categorisation, broker integration or paid dependency is authorised.
 
 The other three files are **reference, not instructions**. Open them when a plan item needs the
 reasoning behind it:

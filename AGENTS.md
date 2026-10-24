@@ -25,6 +25,28 @@ This file is the entry point for every human or AI contributor. It keeps context
 9. Do not expose secrets or copy `.env` values into plans, logs, prompts, tests, or handoff packets.
 10. No implementation is complete until the independent Testing/QA Agent records approval or a human explicitly accepts the known failures.
 
+## Start here — the six-document set
+
+Read these before the list below. They are written as one set and are kept consistent
+with each other; a conflict between any two of them is a defect to report, not a
+judgement call to make.
+
+| Document | Read it for | It wins when |
+|---|---|---|
+| [`PRODUCT-REQUIREMENT.md`](PRODUCT-REQUIREMENT.md) | What the product is for; the domains; the rating system; what is refused and why | It and the code disagree about **intent** |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Layer boundaries, the ledger model, mutation classes, module contracts | It and the code disagree about **mechanism** |
+| [`RULES.md`](RULES.md) | The invariants you are bound by, and the two-agent anti-collision rules | **Always** — a rule there is not open to interpretation |
+| [`DESIGN.md`](DESIGN.md) | Tokens, component contracts, state coverage, accessibility floors | Any question of visual or interaction detail |
+| [`TASKS.md`](TASKS.md) | The board: owner, file scope, acceptance check, dependencies | Deciding what to do next |
+| [`MEMORY.md`](MEMORY.md) | Decisions already settled, with their reasons | Someone is about to reopen a settled question |
+| [`CONVERSATION.md`](CONVERSATION.md) | The live channel between Claude and Codex — questions, blockers, handoffs | You need something from the other agent |
+| [`_design/README.md`](_design/README.md) | **The mockups, mirrored as readable source.** The real token values and markup | Any question of what a surface actually looks like |
+
+**Two agents work in this repository — Claude and Codex.** Before writing anything,
+read [`RULES.md`](RULES.md) §7 and confirm you own the task you are about to start.
+File ownership is exclusive per task; contract tasks land before either agent builds
+against them. Published mockups are indexed in [`artifacts.md`](artifacts.md).
+
 ## Sources of truth
 
 Read the smallest relevant set, in this order:

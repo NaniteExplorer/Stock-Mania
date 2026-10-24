@@ -1,0 +1,2294 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Stock-Mania Statement Intake</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/* Layout concept: an intake line. A sticky stage switcher over one column; each stage is a
+   panel pair — controls on the left, the document or the parsed result on the right — so a
+   mapping decision and its consequence are never on separate screens. Tokens, scales and
+   component classes are lifted unchanged from the Stock-Mania Control Bench. */
+
+:root{
+  --n-0:#FFFFFF; --n-25:#FBFCFD; --n-50:#F6F8FA; --n-100:#EFF2F5; --n-150:#E4E8ED;
+  --n-200:#D6DCE3; --n-300:#B9C2CC; --n-400:#8C98A6; --n-450:#808C9A; --n-500:#64707E;
+  --n-600:#49545F; --n-700:#343C45; --n-775:#2A323A; --n-800:#232A31; --n-850:#1A2026;
+  --n-900:#13181D; --n-950:#0C1014;
+
+  --h-xs:24px; --h-sm:28px; --h-md:32px; --h-lg:36px; --h-xl:40px;
+  --r-1:2px; --r-2:3px; --r-3:4px; --r-4:6px; --r-5:8px; --r-pill:999px;
+  --t-fast:90ms; --t:110ms; --ease:cubic-bezier(.2,0,.38,1);
+
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --gl:max(16px,env(safe-area-inset-left,0px));
+  --gr:max(16px,env(safe-area-inset-right,0px));
+}
+
+:root{
+  --bg-canvas:#F6F8FA; --bg-surface:#FFFFFF; --bg-raised:#FFFFFF; --bg-sunken:#F2F5F8;
+  --bg-subtle:#F2F5F8; --bg-hover:#F6F8FA; --bg-active:#EFF2F5; --bg-selected:#EEF2FF;
+  --border-subtle:#E4E8ED; --border:#D6DCE3; --border-control:#808C9A;
+  --border-hover:#64707E; --border-active:#49545F;
+  --fg:#13181D; --fg-secondary:#49545F; --fg-muted:#64707E; --fg-disabled:#7C8896;
+  --accent:#4F62D8; --accent-hover:#3F50BE; --accent-active:#36459F; --accent-on:#FFFFFF;
+  --accent-soft:#EEF2FF; --accent-soft-hover:#E0E7FF; --accent-line:#A5B4FC;
+  --gain:#0E7C66; --gain-bg:#E6F5F1; --gain-line:#8FD3C4;
+  --loss:#C0392B; --loss-bg:#FBEAE7; --loss-line:#EAA69E; --loss-on:#FFFFFF;
+  --flat:#64707E;
+  --warn:#B45309; --warn-bg:#FDF4E6; --warn-line:#E8C58A;
+  --info:#1D6FA5; --info-bg:#E9F3FA; --info-line:#9CC6E2;
+  --inner-hl:inset 0 -1px 0 rgb(19 24 29 / .07);
+  --inner-hl-2:inset 0 -1px 0 rgb(19 24 29 / .13);
+  --shadow-pop:0 4px 12px rgb(19 24 29 / .10), 0 0 0 1px rgb(19 24 29 / .04);
+  --shadow-modal:0 16px 48px rgb(19 24 29 / .20), 0 0 0 1px rgb(19 24 29 / .06);
+  --skel-a:#EFF2F5; --skel-b:#E0E5EA;
+  --tip-bg:#13181D; --tip-fg:#F6F8FA;
+  --paper:#FFFFFF; --paper-ink:#1F262D; --paper-rule:#D6DCE3; --paper-edge:#C7CFD8;
+  --c1:#5468D6; --c2:#1F94A8; --c3:#B5801F; --c4:#A14C9E; --c5:#4E7A3A; --c-other:#8C98A6;
+  --grid:#E4E8ED;
+  color-scheme:light;
+}
+
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg-canvas:#0C1014; --bg-surface:#13181D; --bg-raised:#1A2026; --bg-sunken:#0C1014;
+  --bg-subtle:#1A2026; --bg-hover:#232A31; --bg-active:#2A323A; --bg-selected:#1B2340;
+  --border-subtle:#232A31; --border:#343C45; --border-control:#64707E;
+  --border-hover:#8C98A6; --border-active:#B9C2CC;
+  --fg:#F6F8FA; --fg-secondary:#B9C2CC; --fg-muted:#8C98A6; --fg-disabled:#5C6875;
+  --accent:#7D8CEA; --accent-hover:#9AA6F0; --accent-active:#B2BBF5; --accent-on:#0C1014;
+  --accent-soft:#1B2340; --accent-soft-hover:#232C4E; --accent-line:#4F62D8;
+  --gain:#3FC9A6; --gain-bg:#0E2F29; --gain-line:#1F6B5B;
+  --loss:#FF7A6B; --loss-bg:#3A1A16; --loss-line:#8A3C33; --loss-on:#0C1014;
+  --flat:#8C98A6;
+  --warn:#F0B429; --warn-bg:#2E2411; --warn-line:#7A5E1B;
+  --info:#5BB0E8; --info-bg:#11252F; --info-line:#2E6888;
+  --inner-hl:inset 0 1px 0 rgb(255 255 255 / .055);
+  --inner-hl-2:inset 0 1px 0 rgb(255 255 255 / .10);
+  --shadow-pop:0 4px 12px rgb(0 0 0 / .45), 0 0 0 1px rgb(255 255 255 / .06);
+  --shadow-modal:0 16px 48px rgb(0 0 0 / .60), 0 0 0 1px rgb(255 255 255 / .08);
+  --skel-a:#1A2026; --skel-b:#272F37;
+  --tip-bg:#E4E8ED; --tip-fg:#13181D;
+  --paper:#E8EBEE; --paper-ink:#1A2026; --paper-rule:#B9C2CC; --paper-edge:#8C98A6;
+  --c1:#8A7FE8; --c2:#2FA3BA; --c3:#B68530; --c4:#C76BA0; --c5:#6FA14E; --c-other:#64707E;
+  --grid:#232A31;
+  color-scheme:dark;
+}}
+
+:root[data-theme="dark"]{
+  --bg-canvas:#0C1014; --bg-surface:#13181D; --bg-raised:#1A2026; --bg-sunken:#0C1014;
+  --bg-subtle:#1A2026; --bg-hover:#232A31; --bg-active:#2A323A; --bg-selected:#1B2340;
+  --border-subtle:#232A31; --border:#343C45; --border-control:#64707E;
+  --border-hover:#8C98A6; --border-active:#B9C2CC;
+  --fg:#F6F8FA; --fg-secondary:#B9C2CC; --fg-muted:#8C98A6; --fg-disabled:#5C6875;
+  --accent:#7D8CEA; --accent-hover:#9AA6F0; --accent-active:#B2BBF5; --accent-on:#0C1014;
+  --accent-soft:#1B2340; --accent-soft-hover:#232C4E; --accent-line:#4F62D8;
+  --gain:#3FC9A6; --gain-bg:#0E2F29; --gain-line:#1F6B5B;
+  --loss:#FF7A6B; --loss-bg:#3A1A16; --loss-line:#8A3C33; --loss-on:#0C1014;
+  --flat:#8C98A6;
+  --warn:#F0B429; --warn-bg:#2E2411; --warn-line:#7A5E1B;
+  --info:#5BB0E8; --info-bg:#11252F; --info-line:#2E6888;
+  --inner-hl:inset 0 1px 0 rgb(255 255 255 / .055);
+  --inner-hl-2:inset 0 1px 0 rgb(255 255 255 / .10);
+  --shadow-pop:0 4px 12px rgb(0 0 0 / .45), 0 0 0 1px rgb(255 255 255 / .06);
+  --shadow-modal:0 16px 48px rgb(0 0 0 / .60), 0 0 0 1px rgb(255 255 255 / .08);
+  --skel-a:#1A2026; --skel-b:#272F37;
+  --tip-bg:#E4E8ED; --tip-fg:#13181D;
+  --paper:#E8EBEE; --paper-ink:#1A2026; --paper-rule:#B9C2CC; --paper-edge:#8C98A6;
+  --c1:#8A7FE8; --c2:#2FA3BA; --c3:#B68530; --c4:#C76BA0; --c5:#6FA14E; --c-other:#64707E;
+  --grid:#232A31;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg-canvas);color:var(--fg);font-family:var(--sans);
+  font-size:14px;line-height:20px;font-feature-settings:"tnum" 1,"cv05" 1;-webkit-font-smoothing:antialiased}
+@media (prefers-reduced-motion:reduce){*{transition-duration:1ms!important;animation-duration:1ms!important}}
+h1,h2,h3,h4{margin:0;font-weight:600;text-wrap:balance}
+p{margin:0}
+a{color:var(--accent)}
+button,input,select,textarea{font:inherit;color:inherit;margin:0}
+.tnum{font-variant-numeric:tabular-nums}
+code,.mono{font-family:var(--mono);font-variant-numeric:slashed-zero tabular-nums}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.muted{color:var(--fg-muted)}
+.gain{color:var(--gain)}.loss{color:var(--loss)}.warnc{color:var(--warn)}
+
+/* ───────── chrome ───────── */
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:60;background:var(--bg-surface)}
+.chrome{position:sticky;top:env(safe-area-inset-top,0px);z-index:50;background:var(--bg-surface);
+  border-bottom:1px solid var(--border);padding-block:9px;padding-left:var(--gl);padding-right:var(--gr);
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;white-space:nowrap;letter-spacing:-.005em}
+.mark{width:20px;height:20px;border:1.5px solid var(--accent);border-radius:var(--r-2);flex:none;position:relative}
+.mark::after{content:"";position:absolute;left:2.5px;right:2.5px;bottom:2.5px;height:6px;
+  background:linear-gradient(to right,var(--accent) 0 2px,transparent 2px 4px,var(--accent) 4px 7px,transparent 7px 9px,var(--accent) 9px 13px)}
+.secnav{display:flex;gap:1px;flex-wrap:wrap;flex:1;min-width:0}
+.secnav button{height:var(--h-sm);padding:0 9px;border:1px solid transparent;border-radius:var(--r-2);
+  background:none;font-size:12px;font-weight:500;color:var(--fg-muted);cursor:pointer;white-space:nowrap;
+  display:inline-flex;align-items:center;gap:6px;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.secnav button:hover{background:var(--bg-hover);color:var(--fg)}
+.secnav button[aria-current="true"]{color:var(--accent);background:var(--accent-soft);font-weight:600}
+.secnav .sx{font-family:var(--mono);font-size:10px;opacity:.72}
+.chrome-r{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ───────── page frame ───────── */
+.page{padding-left:var(--gl);padding-right:var(--gr);padding-block:20px 72px;max-width:1240px;margin:0 auto;
+  display:flex;flex-direction:column;gap:16px}
+.phead{display:flex;flex-direction:column;gap:7px}
+.phead .eye{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:11px;font-weight:600;
+  letter-spacing:.07em;text-transform:uppercase;color:var(--fg-muted)}
+.phead h1{font-size:22px;line-height:28px;letter-spacing:-.012em}
+.phead p{font-size:13px;line-height:20px;color:var(--fg-secondary);max-width:76ch}
+.panel{border:1px solid var(--border);border-radius:var(--r-4);background:var(--bg-surface);overflow:hidden;min-width:0}
+.panel-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 14px;
+  border-bottom:1px solid var(--border-subtle);background:var(--bg-subtle);min-width:0}
+.panel-h h3{font-size:13px;line-height:18px;font-weight:600}
+.panel-h .nt{font-size:11px;line-height:16px;color:var(--fg-muted);flex:1;min-width:120px}
+.panel-b{padding:14px;display:flex;flex-direction:column;gap:13px;min-width:0}
+.panel-b.flush{padding:0}
+.panel-f{display:flex;align-items:center;gap:8px;padding:10px 14px;border-top:1px solid var(--border-subtle);
+  background:var(--bg-subtle);flex-wrap:wrap}
+.panel-f .sp{flex:1;min-width:0}
+.split2{display:grid;gap:14px;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}
+.split-ctl{display:grid;gap:14px;grid-template-columns:minmax(0,330px) minmax(0,1fr);align-items:start}
+.split-wide{display:grid;gap:14px;grid-template-columns:minmax(0,1fr) minmax(0,1.45fr);align-items:start}
+@media(max-width:900px){.split2,.split-ctl,.split-wide{grid-template-columns:minmax(0,1fr)}}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;min-width:0}
+.row.vtop{align-items:flex-start}
+.col{display:flex;flex-direction:column;gap:8px;min-width:0}
+.lbl{font-size:11px;line-height:16px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--fg-muted)}
+.hr{height:1px;background:var(--border-subtle);border:0;margin:0}
+.why{font-size:12px;line-height:18px;color:var(--fg-secondary);max-width:82ch;
+  border-left:2px solid var(--accent-line);padding-left:10px}
+.why b{font-weight:600;color:var(--fg)}
+.ann{font-family:var(--mono);font-size:10.5px;line-height:16px;color:var(--fg-muted);font-variant-numeric:slashed-zero}
+.ann b{color:var(--fg-secondary);font-weight:500}
+
+/* ───────── buttons (Control Bench) ───────── */
+.btn{--bh:var(--h-md);--bp:12px;--bf:13px;--br:var(--r-2);
+  position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:var(--bh);padding:0 var(--bp);font-size:var(--bf);font-weight:500;line-height:1;
+  letter-spacing:.004em;border:1px solid var(--border-control);border-radius:var(--br);
+  background:var(--bg-surface);color:var(--fg);box-shadow:var(--inner-hl);
+  cursor:pointer;white-space:nowrap;user-select:none;-webkit-tap-highlight-color:transparent;
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease),
+             color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.btn > *{transition:transform var(--t-fast) var(--ease)}
+.btn:hover{background:var(--bg-hover);border-color:var(--border-hover)}
+.btn:active{background:var(--bg-active);border-color:var(--border-active);box-shadow:none}
+.btn:active > *{transform:translateY(.5px)}
+.btn[disabled],.btn[aria-disabled="true"]{background:var(--bg-subtle);border-color:var(--border);
+  color:var(--fg-disabled);box-shadow:none;cursor:not-allowed}
+.btn[disabled]:active > *{transform:none}
+.btn-sm{--bh:var(--h-sm);--bp:10px;--bf:12px}
+.btn-lg{--bh:var(--h-lg);--bp:16px;--bf:14px;--br:var(--r-3)}
+.btn.only{width:var(--bh);padding:0;gap:0}
+.btn svg{flex:none;display:block}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-on);box-shadow:var(--inner-hl-2)}
+.btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-primary:active{background:var(--accent-active);border-color:var(--accent-active);box-shadow:none}
+.btn-primary[disabled]{background:var(--bg-subtle);border-color:var(--border);color:var(--fg-disabled);box-shadow:none}
+.btn-ghost{background:transparent;border-color:transparent;box-shadow:none;color:var(--fg-secondary)}
+.btn-ghost:hover{background:var(--bg-hover);border-color:transparent;color:var(--fg)}
+.btn-ghost:active{background:var(--bg-active);border-color:transparent}
+.btn-danger-quiet{background:var(--bg-surface);border-color:var(--loss-line);color:var(--loss)}
+.btn-danger-quiet:hover{background:var(--loss-bg);border-color:var(--loss)}
+.btn-link{height:auto;padding:0;border:0;background:none;box-shadow:none;color:var(--accent);
+  text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:1px;text-decoration-color:var(--accent-line)}
+.btn-link:hover{background:none;text-decoration-color:currentColor}
+.btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent);box-shadow:none}
+
+.segf{display:inline-flex;height:var(--h-md);border:1px solid var(--border-control);
+  border-radius:var(--r-2);overflow:hidden;background:var(--bg-surface);max-width:100%;flex-wrap:nowrap}
+.segf button{height:100%;padding:0 11px;border:0;background:none;font-size:12px;font-weight:500;
+  color:var(--fg-secondary);cursor:pointer;white-space:nowrap;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.segf button + button{box-shadow:inset 1px 0 0 var(--border)}
+.segf button:hover{background:var(--bg-hover);color:var(--fg)}
+.segf button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.segf button[aria-pressed="true"],.segf button[aria-pressed="true"] + button{box-shadow:none}
+.segf button:focus-visible{outline-offset:-2px}
+.segf-sm{height:var(--h-sm)}
+.segf-sm button{padding:0 9px;font-size:11.5px}
+
+/* ───────── form controls ───────── */
+.fld{display:flex;flex-direction:column;gap:5px;min-width:0}
+.fld > label,.fld > .lab{font-size:12px;line-height:16px;font-weight:500;color:var(--fg-secondary);
+  display:flex;align-items:center;gap:5px}
+.hint{font-size:11px;line-height:16px;color:var(--fg-muted)}
+.errtxt{font-size:11px;line-height:16px;color:var(--loss);display:flex;gap:5px;align-items:flex-start}
+.inw{--ih:var(--h-lg);display:flex;align-items:center;height:var(--ih);
+  background:var(--bg-surface);border:1px solid var(--border-control);border-radius:var(--r-3);
+  box-shadow:var(--inner-hl);min-width:0;
+  transition:border-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+.inw:hover{border-color:var(--border-hover)}
+.inw:focus-within{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px;box-shadow:none}
+.inw input{flex:1;min-width:0;height:100%;border:0;background:none;padding:0 10px;
+  font-size:13px;color:var(--fg);outline:none}
+.inw input::placeholder{color:var(--fg-disabled)}
+.inw.md{--ih:var(--h-md);border-radius:var(--r-2)}
+.inw.md input{font-size:12.5px;padding:0 9px}
+.inw.sm{--ih:var(--h-sm);border-radius:var(--r-2)}
+.inw.sm input{font-size:12px;padding:0 8px}
+.inw .ico{display:inline-flex;align-items:center;justify-content:center;width:30px;height:100%;color:var(--fg-muted);flex:none}
+.inw .ico + input{padding-left:0}
+.inw.err{border-color:var(--loss);background:var(--loss-bg)}
+.inw.ro{background:var(--bg-subtle);border-color:var(--border);border-style:dashed;box-shadow:none}
+.inw.ro input{color:var(--fg-secondary);cursor:default}
+select.sel{height:var(--h-md);padding:0 28px 0 9px;font-size:12.5px;background-color:var(--bg-surface);
+  color:var(--fg);border:1px solid var(--border-control);border-radius:var(--r-2);box-shadow:var(--inner-hl);
+  cursor:pointer;appearance:none;min-width:0;max-width:100%;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 14px) calc(50% + 1px),calc(100% - 10px) calc(50% + 1px);
+  background-size:4px 4px,4px 4px;background-repeat:no-repeat;
+  transition:border-color var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+select.sel:hover{border-color:var(--border-hover);background-color:var(--bg-hover)}
+select.sel:focus-visible{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px}
+select.sel.unset{color:var(--fg-muted);border-style:dashed}
+select.sel.lg{height:var(--h-lg);border-radius:var(--r-3);font-size:13px}
+.ctl{display:inline-flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;line-height:18px;min-width:0}
+.ctl input{position:absolute;opacity:0;width:0;height:0}
+.ctl .bx{width:16px;height:16px;flex:none;margin-top:1px;border:1px solid var(--border-control);
+  border-radius:var(--r-1);background:var(--bg-surface);box-shadow:var(--inner-hl);
+  display:grid;place-items:center;color:var(--accent-on);
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.ctl .bx > *{opacity:0;grid-area:1/1;transition:opacity var(--t-fast) var(--ease)}
+.ctl:hover .bx{border-color:var(--border-hover)}
+.ctl input:checked + .bx{background:var(--accent);border-color:var(--accent);box-shadow:var(--inner-hl-2)}
+.ctl input:checked + .bx .ck{opacity:1}
+.ctl input:focus-visible + .bx{outline:2px solid var(--accent);outline-offset:2px}
+.ctl input:disabled + .bx{background:var(--bg-subtle);border-color:var(--border);box-shadow:none}
+.ctl input:disabled ~ .tx{color:var(--fg-disabled)}
+.ctl .rd{border-radius:var(--r-pill)}
+.ctl .rd::after{content:"";width:6px;height:6px;border-radius:var(--r-pill);background:var(--accent-on);
+  transform:scale(0);transition:transform var(--t-fast) var(--ease)}
+.ctl input:checked + .rd::after{transform:scale(1)}
+.ctl .tx{min-width:0}
+.ctl .tx b{display:block;font-weight:500}
+.ctl .tx span{display:block;font-size:11.5px;line-height:16px;color:var(--fg-muted)}
+.sw{position:relative;width:32px;height:18px;flex:none;margin-top:1px;border-radius:var(--r-pill);
+  background:var(--bg-sunken);border:1px solid var(--border-control);box-shadow:var(--inner-hl);
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease)}
+.sw::after{content:"";position:absolute;top:1px;left:1px;width:14px;height:14px;border-radius:var(--r-pill);
+  background:var(--bg-surface);border:1px solid var(--border-control);
+  box-shadow:0 1px 1px rgb(19 24 29 / .18), inset 0 1px 0 rgb(255 255 255 / .5);
+  transition:transform var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease)}
+.ctl:hover .sw{border-color:var(--border-hover)}
+.ctl input:checked + .sw{background:var(--accent);border-color:var(--accent)}
+.ctl input:checked + .sw::after{transform:translateX(14px);border-color:var(--accent-active)}
+.ctl input:focus-visible + .sw{outline:2px solid var(--accent);outline-offset:2px}
+
+.drop{display:flex;flex-direction:column;align-items:center;gap:7px;padding:26px 16px;text-align:center;
+  border:1px dashed var(--border-control);border-radius:var(--r-4);background:var(--bg-sunken);cursor:pointer;
+  transition:border-color var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+.drop:hover{border-color:var(--border-hover);background:var(--bg-hover)}
+.drop.over{border-color:var(--accent);background:var(--accent-soft);border-style:solid}
+.drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.drop b{font-size:14px;font-weight:600}
+.drop span{font-size:11.5px;color:var(--fg-muted);line-height:16px;max-width:52ch}
+.drop svg{color:var(--fg-muted)}
+.drop.over svg,.drop.over b{color:var(--accent)}
+.fmtrow{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-top:3px}
+
+/* ───────── badges, alerts ───────── */
+.bdg{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:var(--r-2);
+  font-size:11px;font-weight:500;line-height:1;letter-spacing:.008em;white-space:nowrap;
+  border:1px solid transparent;background:var(--bg-subtle);color:var(--fg-secondary)}
+.bdg.sm{height:18px;padding:0 6px;font-size:10.5px}
+.bdg .dot{width:5px;height:5px;border-radius:var(--r-pill);background:currentColor;flex:none;opacity:.85}
+.bdg.sub-gain{background:var(--gain-bg);color:var(--gain)}
+.bdg.sub-loss{background:var(--loss-bg);color:var(--loss)}
+.bdg.sub-warn{background:var(--warn-bg);color:var(--warn)}
+.bdg.sub-info{background:var(--info-bg);color:var(--info)}
+.bdg.sub-acc{background:var(--accent-soft);color:var(--accent)}
+.bdg.sol-acc{background:var(--accent);color:var(--accent-on)}
+.bdg.out-gain{background:none;border-color:var(--gain-line);color:var(--gain)}
+.bdg.out-loss{background:none;border-color:var(--loss-line);color:var(--loss)}
+.bdg.out-warn{background:none;border-color:var(--warn-line);color:var(--warn)}
+.bdg.out-acc{background:none;border-color:var(--accent-line);color:var(--accent)}
+.bdg.out-n{background:none;border-color:var(--border);color:var(--fg-secondary)}
+.bdg.mono{font-family:var(--mono);font-size:10px;letter-spacing:0}
+.bdg.dash{background:none;border-style:dashed;border-color:var(--border-control);color:var(--fg-muted);
+  letter-spacing:.06em;font-size:10px;font-weight:600}
+.alrt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-left-width:2px;
+  border-radius:var(--r-3);padding:11px 13px;min-width:0}
+.alrt.i{border-left-color:var(--info);background:var(--info-bg)}
+.alrt.w{border-left-color:var(--warn);background:var(--warn-bg)}
+.alrt.e{border-left-color:var(--loss);background:var(--loss-bg)}
+.alrt.s{border-left-color:var(--accent);background:var(--accent-soft)}
+.alrt .ai{flex:none;margin-top:1px}
+.alrt.i .ai{color:var(--info)}.alrt.w .ai{color:var(--warn)}.alrt.e .ai{color:var(--loss)}.alrt.s .ai{color:var(--accent)}
+.alrt .ab{flex:1;min-width:0;display:flex;flex-direction:column;gap:4px}
+.alrt b{font-size:12.5px;font-weight:600;color:var(--fg)}
+.alrt p{font-size:12px;line-height:17px;color:var(--fg-secondary)}
+.alrt .aa{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px}
+
+/* ───────── tables ───────── */
+.tscroll{overflow-x:auto;border-top:1px solid var(--border-subtle);background:var(--bg-surface)}
+table.dt{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+table.dt th,table.dt td{padding:6px 12px;border-bottom:1px solid var(--border-subtle);white-space:nowrap;
+  height:32px;text-align:left;vertical-align:middle}
+table.dt thead th{background:var(--bg-surface);font-size:12px;font-weight:500;
+  letter-spacing:.015em;color:var(--fg-muted);box-shadow:inset 0 -1px 0 var(--border);border-bottom:0}
+table.dt .num{text-align:right}
+table.dt tbody tr{transition:background-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+table.dt tbody tr:hover{background:var(--bg-hover)}
+table.dt tbody tr.bad{background:var(--loss-bg);box-shadow:inset 3px 0 0 var(--loss)}
+table.dt tbody tr.skip{color:var(--fg-disabled);background:var(--bg-subtle)}
+table.dt tbody tr.wrapln{color:var(--fg-muted);background:var(--bg-subtle)}
+table.dt tfoot td{background:var(--bg-subtle);font-weight:600;border-bottom:0;border-top:1px solid var(--border)}
+.dash-cell{color:var(--fg-muted);text-decoration:underline dotted;text-underline-offset:3px;cursor:help;border-radius:var(--r-1)}
+.dash-cell:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+dl.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0;margin:0;font-size:12.5px;min-width:0}
+dl.kv dt{color:var(--fg-muted);padding:6px 16px 6px 0;border-bottom:1px solid var(--border-subtle);white-space:nowrap}
+dl.kv dd{margin:0;padding:6px 0;border-bottom:1px solid var(--border-subtle);text-align:right;
+  font-variant-numeric:tabular-nums;min-width:0;overflow:hidden;text-overflow:ellipsis}
+dl.kv dt:last-of-type,dl.kv dd:last-of-type{border-bottom:0}
+
+/* ───────── stepper ───────── */
+.stepr{display:flex;align-items:flex-start;gap:0;min-width:0;overflow-x:auto;padding-bottom:2px}
+.stepr .st{display:flex;align-items:flex-start;gap:8px;padding-right:14px;min-width:0;flex:none;
+  border:0;background:none;cursor:pointer;text-align:left;border-radius:var(--r-2)}
+.stepr .sn{width:20px;height:20px;border-radius:var(--r-pill);flex:none;display:grid;place-items:center;
+  font-size:10.5px;font-weight:600;background:var(--bg-sunken);color:var(--fg-muted);
+  box-shadow:inset 0 0 0 1px var(--border-control);font-variant-numeric:tabular-nums}
+.stepr .st.on .sn{background:var(--accent);color:var(--accent-on);box-shadow:none}
+.stepr .st.ok .sn{background:var(--gain-bg);color:var(--gain);box-shadow:inset 0 0 0 1px var(--gain-line)}
+.stepr .sx{display:flex;flex-direction:column;gap:1px;min-width:0}
+.stepr .sx b{font-size:12.5px;font-weight:500;color:var(--fg-muted);white-space:nowrap}
+.stepr .st.on .sx b{color:var(--fg);font-weight:600}
+.stepr .st.ok .sx b{color:var(--fg-secondary)}
+.stepr .sx span{font-size:11px;color:var(--fg-muted);white-space:nowrap}
+.stepr .bar{height:1px;background:var(--border);flex:1;min-width:20px;margin:10px 14px 0 0}
+.stepr .bar.ok{background:var(--gain-line)}
+
+/* ───────── KPI ───────── */
+.kpirow{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
+.kpi{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border:1px solid var(--border);
+  border-radius:var(--r-4);background:var(--bg-surface);text-align:left;min-width:0}
+.kpi .kl{display:flex;align-items:center;gap:5px;font-size:12px;line-height:16px;font-weight:500;color:var(--fg-muted)}
+.kpi .kv2{font-size:24px;line-height:30px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.016em;color:var(--fg)}
+.kpi .kv2 .u{font-size:11px;font-weight:500;color:var(--fg-muted);margin-left:2px;letter-spacing:0}
+.kpi .kd{font-size:11px;line-height:15px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--fg-muted)}
+.kpi.ok{box-shadow:inset 2px 0 0 var(--gain)}
+.kpi.warnk{box-shadow:inset 2px 0 0 var(--warn)}
+.kpi.badk{box-shadow:inset 2px 0 0 var(--loss)}
+
+/* ───────── file queue ───────── */
+.q{display:flex;flex-direction:column;min-width:0}
+.qr{display:flex;align-items:flex-start;gap:11px;padding:11px 14px;border-bottom:1px solid var(--border-subtle);min-width:0;
+  transition:background-color var(--t-fast) var(--ease)}
+.qr:last-child{border-bottom:0}
+.qr:hover{background:var(--bg-hover)}
+.qr.isbad{box-shadow:inset 3px 0 0 var(--loss);background:var(--loss-bg)}
+.qr.iswarn{box-shadow:inset 3px 0 0 var(--warn);background:var(--warn-bg)}
+.qr.islock{box-shadow:inset 3px 0 0 var(--info)}
+.ftype{width:30px;height:36px;flex:none;border:1px solid var(--border-control);border-radius:var(--r-2);
+  background:var(--bg-surface);display:grid;place-items:center;font-family:var(--mono);font-size:8.5px;
+  font-weight:500;color:var(--fg-secondary);letter-spacing:.02em;position:relative;overflow:hidden}
+.ftype::before{content:"";position:absolute;top:0;right:0;border-width:0 7px 7px 0;border-style:solid;
+  border-color:var(--bg-canvas) var(--bg-canvas) var(--border-control) var(--border-control)}
+.qb{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.qn{font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.qm{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--fg-muted);font-variant-numeric:tabular-nums}
+.qm .sep{opacity:.5}
+.qmsg{font-size:11.5px;line-height:17px;color:var(--fg-secondary);max-width:74ch}
+.qa{display:flex;gap:6px;align-items:center;flex:none;flex-wrap:wrap}
+.unlock{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-top:5px;padding-top:9px;border-top:1px dashed var(--border)}
+
+/* ───────── paper (PDF page preview) ───────── */
+.paperwrap{background:var(--bg-sunken);padding:14px;display:flex;justify-content:center;min-width:0;overflow-x:auto}
+.paper{background:var(--paper);color:var(--paper-ink);width:430px;min-width:430px;border:1px solid var(--paper-edge);
+  box-shadow:0 1px 3px rgb(19 24 29 / .12);padding:14px 16px;font-size:8px;line-height:11px;position:relative;
+  font-family:var(--sans)}
+.paper .pln{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.paper .plogo{font-size:11px;font-weight:600;letter-spacing:-.01em}
+.paper .psub{font-size:7px;color:#5A6671}
+.paper .prule{height:1px;background:var(--paper-rule);margin:5px 0}
+.paper .pth{display:grid;font-size:7px;font-weight:600;border-top:1px solid var(--paper-ink);
+  border-bottom:1px solid var(--paper-ink);padding:3px 0;gap:3px}
+.paper .ptr{display:grid;font-size:7px;padding:2.5px 0;border-bottom:1px solid var(--paper-rule);gap:3px}
+.paper .ptr.cont{color:#5A6671}
+.pgrid{grid-template-columns:34px 1fr 46px 34px 40px 40px 46px}
+.paper .r{text-align:right;font-variant-numeric:tabular-nums}
+.paper .pfoot{font-size:6.5px;color:#5A6671;text-align:center;margin-top:7px}
+.zone{position:absolute;left:0;right:0;pointer-events:none;border-radius:2px}
+.zone.hdr{background:rgb(79 98 216 / .13);box-shadow:inset 0 0 0 1px rgb(79 98 216 / .5)}
+.zone.ftr{background:rgb(180 83 9 / .13);box-shadow:inset 0 0 0 1px rgb(180 83 9 / .55)}
+.zone.bal{background:rgb(14 124 102 / .14);box-shadow:inset 0 0 0 1px rgb(14 124 102 / .6)}
+.zone.tbl{box-shadow:inset 0 0 0 1px rgb(79 98 216 / .45);background:rgb(79 98 216 / .05)}
+.zlab{position:absolute;top:-1px;right:3px;font-size:6px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;padding:0 3px;border-radius:0 0 2px 2px}
+.zone.hdr .zlab{background:#4F62D8;color:#fff}
+.zone.ftr .zlab{background:#B45309;color:#fff}
+.zone.bal .zlab{background:#0E7C66;color:#fff}
+.zone.tbl .zlab{background:#4F62D8;color:#fff;top:auto;bottom:-1px;border-radius:2px 2px 0 0}
+.thumbs{display:flex;gap:8px;flex-wrap:wrap;min-width:0}
+.thumb{width:62px;flex:none;border:1px solid var(--border-control);border-radius:var(--r-2);background:var(--paper);
+  padding:4px;cursor:pointer;display:flex;flex-direction:column;gap:3px;position:relative;
+  transition:border-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease),opacity var(--t-fast) var(--ease)}
+.thumb:hover{border-color:var(--border-hover)}
+.thumb[aria-pressed="true"]{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent-soft)}
+.thumb.off{opacity:.42}
+.thumb .tl{height:1.5px;background:var(--paper-rule);border-radius:1px}
+.thumb .tl.w70{width:70%}.thumb .tl.w40{width:40%}.thumb .tl.w90{width:90%}
+.thumb .tcap{font-size:9px;color:var(--fg-muted);text-align:center;font-variant-numeric:tabular-nums;
+  background:var(--bg-surface);margin:2px -4px -4px;padding:2px 0;border-top:1px solid var(--border-subtle);
+  border-radius:0 0 var(--r-1) var(--r-1)}
+.thumb[aria-pressed="true"] .tcap{color:var(--accent);font-weight:600}
+.thumb .tbadge{position:absolute;top:-5px;right:-5px;height:14px;padding:0 4px;border-radius:var(--r-1);
+  font-size:8.5px;font-weight:600;display:grid;place-items:center;line-height:1}
+.thumb .tbadge.inc{background:var(--accent);color:var(--accent-on)}
+.thumb .tbadge.exc{background:var(--bg-subtle);color:var(--fg-muted);box-shadow:inset 0 0 0 1px var(--border)}
+
+/* ───────── mapping ───────── */
+.maprow{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1.25fr);gap:8px;align-items:center;min-width:0}
+.maprow .mf{font-size:12.5px;font-weight:500;display:flex;flex-direction:column;gap:1px;min-width:0}
+.maprow .mf code{font-size:10.5px;color:var(--fg-muted);font-weight:400}
+.maprow .arw{color:var(--fg-disabled);font-size:11px;flex:none}
+.maplist{display:flex;flex-direction:column;gap:9px}
+.srccol{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10.5px}
+.chipn{display:inline-grid;place-items:center;min-width:16px;height:16px;padding:0 3px;border-radius:var(--r-1);
+  background:var(--bg-subtle);box-shadow:inset 0 0 0 1px var(--border);font-size:9.5px;font-weight:600;
+  font-family:var(--mono);color:var(--fg-secondary)}
+.rawtab{font-family:var(--mono);font-size:11px}
+.rawtab th{font-size:10px}
+.col-assigned{box-shadow:inset 0 2px 0 var(--accent)}
+.prev-ok{color:var(--fg)}
+.brk{display:flex;gap:8px;align-items:flex-start;padding:8px 12px;border-bottom:1px solid var(--border-subtle);font-size:12px;min-width:0}
+.brk:last-child{border-bottom:0}
+.brk .bi{flex:none;color:var(--loss);margin-top:2px}
+.brk .bb{min-width:0;display:flex;flex-direction:column;gap:2px}
+.brk code{font-size:11px;color:var(--fg-muted);word-break:break-word;white-space:normal}
+
+/* ───────── json ───────── */
+.jsonpane{font-family:var(--mono);font-size:11px;line-height:17px;background:var(--bg-sunken);
+  border:1px solid var(--border);border-radius:var(--r-3);padding:10px 12px;overflow:auto;max-height:330px;
+  white-space:pre;min-width:0;color:var(--fg-secondary)}
+.jsonpane .k{color:var(--c1)}
+.jsonpane .s{color:var(--c2)}
+.jsonpane .n2{color:var(--c3)}
+.jsonpane .hl{background:var(--accent-soft);border-radius:2px;box-shadow:0 0 0 1px var(--accent-line)}
+.pathlist{display:flex;flex-direction:column;min-width:0}
+.pathrow{display:flex;align-items:center;gap:9px;padding:7px 11px;border-bottom:1px solid var(--border-subtle);
+  cursor:pointer;min-width:0;border-left:2px solid transparent;background:none;width:100%;text-align:left;
+  transition:background-color var(--t-fast) var(--ease)}
+.pathrow:last-child{border-bottom:0}
+.pathrow:hover{background:var(--bg-hover)}
+.pathrow[aria-pressed="true"]{background:var(--accent-soft);border-left-color:var(--accent)}
+.pathrow code{flex:1;min-width:0;font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pathrow[aria-pressed="true"] code{color:var(--accent);font-weight:500}
+.pathrow .pc{font-size:11px;color:var(--fg-muted);flex:none;font-variant-numeric:tabular-nums}
+
+/* ───────── handoff ───────── */
+.boundary{display:grid;grid-template-columns:minmax(0,1fr) auto minmax(0,1fr);gap:0;align-items:stretch;min-width:0}
+@media(max-width:820px){.boundary{grid-template-columns:minmax(0,1fr)}}
+.bside{padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.bside.left{background:var(--bg-surface)}
+.bside.right{background:var(--bg-subtle)}
+.bline{width:2px;background:repeating-linear-gradient(to bottom,var(--accent) 0 6px,transparent 6px 12px);position:relative}
+@media(max-width:820px){.bline{width:auto;height:2px;background:repeating-linear-gradient(to right,var(--accent) 0 6px,transparent 6px 12px)}}
+.bline .bl{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate(-90deg);
+  background:var(--accent);color:var(--accent-on);font-size:9.5px;font-weight:600;letter-spacing:.09em;
+  text-transform:uppercase;padding:2px 8px;border-radius:var(--r-1);white-space:nowrap}
+@media(max-width:820px){.bline .bl{transform:translate(-50%,-50%)}}
+.crossrow{display:flex;gap:9px;align-items:flex-start;font-size:12px;line-height:17px;min-width:0}
+.crossrow .ci{flex:none;margin-top:2px;color:var(--accent)}
+.crossrow.no .ci{color:var(--fg-disabled)}
+.crossrow code{font-size:11px;color:var(--fg-muted)}
+.crossrow b{font-weight:600}
+
+/* ───────── misc ───────── */
+.keyline{display:flex;flex-direction:column;min-width:0}
+.keyline > *{padding:9px 13px;border-bottom:1px solid var(--border-subtle)}
+.keyline > *:last-child{border-bottom:0}
+.dupl{display:flex;gap:11px;align-items:flex-start;min-width:0}
+.dupn{width:20px;height:20px;flex:none;border-radius:var(--r-1);display:grid;place-items:center;
+  font-family:var(--mono);font-size:10px;font-weight:600;background:var(--bg-subtle);
+  box-shadow:inset 0 0 0 1px var(--border);color:var(--fg-secondary)}
+.dupb{min-width:0;display:flex;flex-direction:column;gap:2px}
+.dupb b{font-size:12.5px;font-weight:600}
+.dupb p{font-size:11.5px;line-height:17px;color:var(--fg-secondary)}
+.dupb .res{font-size:11px;color:var(--fg-muted);font-variant-numeric:tabular-nums}
+.empty{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:26px 16px}
+.empty b{font-size:14px;line-height:20px;font-weight:600}
+.empty p{font-size:12.5px;line-height:18px;color:var(--fg-muted);max-width:48ch}
+.tip-note{font-size:11.5px;line-height:17px;color:var(--fg-muted);display:flex;gap:7px;align-items:flex-start}
+.tip-note svg{flex:none;margin-top:2px;color:var(--fg-disabled)}
+.confbar{display:flex;align-items:center;gap:9px;min-width:0}
+.confbar .track{flex:1;min-width:70px;height:6px;border-radius:var(--r-pill);background:var(--bg-sunken);
+  box-shadow:inset 0 0 0 1px var(--border);overflow:hidden}
+.confbar .track i{display:block;height:100%;border-radius:var(--r-pill);background:var(--gain);transition:width var(--t) var(--ease)}
+.confbar .track.mid i{background:var(--warn)}
+.confbar .track.low i{background:var(--loss)}
+.confbar .pct{font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;flex:none}
+.evid{display:flex;flex-direction:column;gap:0;font-size:12px;min-width:0}
+.evid > div{display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--border-subtle)}
+.evid > div:last-child{border-bottom:0}
+.evid .ei{flex:none;margin-top:2px}
+.evid .ey{color:var(--gain)}.evid .en{color:var(--fg-disabled)}.evid .ew{color:var(--warn)}
+.evid .et{min-width:0;flex:1}
+.evid code{font-size:11px;color:var(--fg-muted)}
+
+@media(max-width:640px){
+  .panel-b{padding:13px 12px}
+  .kpi .kv2{font-size:21px;line-height:27px}
+  .maprow{grid-template-columns:minmax(0,1fr);gap:5px}
+  .maprow .arw{display:none}
+  .paper{width:360px;min-width:360px}
+  .pgrid{grid-template-columns:30px 1fr 40px 30px 36px 36px 42px}
+}
+</style>
+
+<div class="chrome">
+  <span class="brand"><span class="mark" aria-hidden="true"></span>Statement&nbsp;intake</span>
+  <nav class="secnav" id="secnav" aria-label="Intake stages">
+    <button data-s="upload" aria-current="true"><span class="sx">1</span>Upload</button>
+    <button data-s="detect"><span class="sx">2</span>Format</button>
+    <button data-s="pages"><span class="sx">3</span>Pages</button>
+    <button data-s="map"><span class="sx">4</span>Mapping</button>
+    <button data-s="check"><span class="sx">5</span>Reconcile</button>
+    <button data-s="json">JSON</button>
+    <button data-s="library">Formats</button>
+    <button data-s="handoff">Handoff</button>
+  </nav>
+  <span class="chrome-r">
+    <span class="segf segf-sm" id="themeSeg" role="group" aria-label="Theme">
+      <button data-t="system" aria-pressed="true">System</button>
+      <button data-t="light" aria-pressed="false">Light</button>
+      <button data-t="dark" aria-pressed="false">Dark</button>
+    </span>
+  </span>
+</div>
+
+<!-- ══════════════════ 1 · UPLOAD ══════════════════ -->
+<main class="page" id="p-upload">
+  <div class="stepr" data-stepr="1" aria-label="Intake progress"></div>
+  <div class="phead">
+    <div class="eye"><span>/imports &middot; new batch</span><span class="bdg out-acc">Before review</span></div>
+    <h1>Bring in a statement</h1>
+    <p>One drop zone, four file shapes. A PDF goes through page selection and column mapping; a CSV or spreadsheet skips straight to mapping; JSON takes its own path. Nothing reaches the journal from here — this stage ends at a staged batch.</p>
+  </div>
+
+  <div class="split-ctl">
+    <div class="col">
+      <div class="panel">
+        <div class="panel-b">
+          <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose statement files or drop them here">
+            <i data-i="upload" data-s="22"></i>
+            <b id="dropTitle">Drop statements here</b>
+            <span id="dropSub">or <span style="color:var(--accent);text-decoration:underline;text-underline-offset:2px">choose files</span> — several at once is fine, they queue</span>
+            <span class="fmtrow">
+              <span class="bdg out-n mono">PDF</span>
+              <span class="bdg out-n mono">CSV</span>
+              <span class="bdg out-n mono">XLS / XLSX</span>
+              <span class="bdg out-n mono">JSON</span>
+              <span class="bdg out-n mono">OFX</span>
+            </span>
+          </div>
+          <div class="fld">
+            <label for="intoAcct">Into account</label>
+            <select class="sel lg" id="intoAcct">
+              <option>HDFC Savings &bull;&bull;1234</option>
+              <option>ICICI Savings &bull;&bull;8842</option>
+              <option>Kotak Salary &bull;&bull;4412</option>
+              <option>Paytm Payments Bank &bull;&bull;7720</option>
+            </select>
+            <span class="hint">Every file in the queue is read against this account. A statement whose own letterhead names a different account is held, not imported.</span>
+          </div>
+          <div class="tip-note">
+            <i data-i="info" data-s="13"></i>
+            <span>Files are read on this machine. A statement listing every payment you have made in three years is not sent anywhere, and a PDF password is used to open the file and then discarded.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>What the importer checks</h3></div>
+        <div class="panel-b">
+          <span class="lbl">Four layers of duplicate detection</span>
+          <div class="keyline" style="border:1px solid var(--border);border-radius:var(--r-3)">
+            <div class="dupl"><span class="dupn">0</span><span class="dupb"><b>Same file.</b><p>The file&rsquo;s content hash has been imported before. Nothing is staged at all.</p></span></div>
+            <div class="dupl"><span class="dupn">1</span><span class="dupb"><b>Same row.</b><p>That exact date, amount and narration is already staged, usually from an overlapping statement.</p></span></div>
+            <div class="dupl"><span class="dupn">2</span><span class="dupb"><b>Same bank reference.</b><p>The bank&rsquo;s own reference for the movement already exists in the journal.</p></span></div>
+            <div class="dupl"><span class="dupn">3</span><span class="dupb"><b>Looks the same within a week.</b><p>Same amount, close narration, seven-day window. A suggestion, never a block.</p></span></div>
+          </div>
+          <p class="hint">A row caught by any layer is still staged, flagged <span class="bdg sub-loss sm">Looks familiar</span>. &ldquo;We think you already have this&rdquo; is a claim you must be able to overrule.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-h">
+        <h3>Queue</h3>
+        <span class="nt" id="qCount"></span>
+        <button class="btn btn-sm btn-ghost" id="qReset">Reset</button>
+      </div>
+      <div class="q" id="queue"></div>
+      <div class="panel-f">
+        <span class="sp hint" id="qFoot"></span>
+        <button class="btn btn-primary" id="qGo">Read these files</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="why"><b>Why the queue carries the failure, not a toast.</b> Every refusal here is recoverable by the person holding the file: a password they were emailed, a different account to import into, a bank export that has text in it. A dismissible toast loses the one instruction that would have fixed it.</p>
+</main>
+
+<!-- ══════════════════ 2 · FORMAT DETECTION ══════════════════ -->
+<main class="page" id="p-detect" hidden>
+  <div class="stepr" data-stepr="2"></div>
+  <div class="phead">
+    <div class="eye"><span>/imports &middot; HDFC-Savings-Sep-2025.pdf</span></div>
+    <h1>Which layout is this?</h1>
+    <p>A saved format is a stored answer to every question on stages 3 and 4 — which pages hold the table, which column plays which role, how the dates read. Recognising one is what turns the second statement from a bank into a two-click import.</p>
+  </div>
+
+  <div class="row">
+    <span class="segf" id="detSeg" role="group" aria-label="Detection outcome">
+      <button data-d="known" aria-pressed="true">Recognised</button>
+      <button data-d="near" aria-pressed="false">Close, not certain</button>
+      <button data-d="unknown" aria-pressed="false">Nothing matches</button>
+    </span>
+    <span class="hint">Three real outcomes. The third is what the first statement from any bank always does.</span>
+  </div>
+
+  <div id="detBody"></div>
+
+  <p class="why"><b>Confidence is evidence, not a mood.</b> The percentage is the share of signals that agreed, and every signal is listed with its own verdict. A number on its own invites you to trust it; a number you can audit invites you to check the one line that disagreed.</p>
+</main>
+
+<!-- ══════════════════ 3 · PAGES & REGIONS ══════════════════ -->
+<main class="page" id="p-pages" hidden>
+  <div class="stepr" data-stepr="3"></div>
+  <div class="phead">
+    <div class="eye"><span>/imports &middot; HDFC-Savings-Sep-2025.pdf</span><span class="bdg out-n mono">5 pages</span></div>
+    <h1>Which pages hold the table</h1>
+    <p>A PDF has no rows and no columns — it has glyphs at coordinates. Before anything can be mapped, the cover page, the repeated letterhead, the page footers and the terms page have to come out, and the opening and closing balance blocks have to be told apart from transactions.</p>
+  </div>
+
+  <div class="split-wide">
+    <div class="col">
+      <div class="panel">
+        <div class="panel-h"><h3>Pages</h3><span class="nt" id="pgNote"></span></div>
+        <div class="panel-b">
+          <div class="thumbs" id="thumbs"></div>
+          <div class="row">
+            <button class="btn btn-sm" id="pgAll">Include all</button>
+            <button class="btn btn-sm" id="pgAuto">Use the detected range</button>
+          </div>
+          <span class="hint" id="pgRange"></span>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>Repeating furniture</h3><span class="nt">Found by comparing pages, not by a rule per bank</span></div>
+        <div class="panel-b">
+          <label class="ctl"><input type="checkbox" id="zHdr" checked><span class="bx"><i data-i="ck" data-s="11" class="ck"></i></span><span class="tx"><b>Skip the page header</b><span>6 lines repeated on pages 2&ndash;4: logo, branch address, account block, column headings</span></span></label>
+          <label class="ctl"><input type="checkbox" id="zFtr" checked><span class="bx"><i data-i="ck" data-s="11" class="ck"></i></span><span class="tx"><b>Skip the page footer</b><span>&ldquo;Page 3 of 5&rdquo; and &ldquo;This is a computer generated statement and does not require a signature&rdquo;</span></span></label>
+          <label class="ctl"><input type="checkbox" id="zBal" checked><span class="bx"><i data-i="ck" data-s="11" class="ck"></i></span><span class="tx"><b>Read the balance block as control figures</b><span>Opening balance, closing balance and the printed debit/credit totals — checked against, never imported as transactions</span></span></label>
+          <label class="ctl"><input type="checkbox" id="zRule"><span class="bx"><i data-i="ck" data-s="11" class="ck"></i></span><span class="tx"><b>Treat a reprinted heading row as a separator</b><span>Only needed where a bank repeats the column headings mid-page after a date change</span></span></label>
+          <hr class="hr">
+          <dl class="kv" id="furnStats"></dl>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-h">
+        <h3>Page preview</h3>
+        <span class="nt" id="pvNote"></span>
+        <span class="segf segf-sm" id="zoneSeg" role="group" aria-label="Region overlay">
+          <button data-z="on" aria-pressed="true">Show regions</button>
+          <button data-z="off" aria-pressed="false">Hide</button>
+        </span>
+      </div>
+      <div class="paperwrap"><div class="paper" id="paper"></div></div>
+      <div class="panel-f">
+        <span class="sp hint">The preview is the page as the file draws it. A wrong region is visible rather than inferred.</span>
+        <button class="btn btn-primary" data-goto="map">Map the columns</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="why"><b>Page selection is not cosmetic.</b> A terms-and-conditions page read as a table is where phantom rows come from, and a footer line caught inside the table is where a balance check that should have failed quietly passes. Both are silent, so both are chosen here rather than guessed later.</p>
+</main>
+
+<!-- ══════════════════ 4 · COLUMN MAPPING ══════════════════ -->
+<main class="page" id="p-map" hidden>
+  <div class="stepr" data-stepr="4"></div>
+  <div class="phead">
+    <div class="eye"><span>/imports &middot; column mapping</span><span class="bdg sub-acc">Everything below re-parses live</span></div>
+    <h1>Which column means what</h1>
+    <p>Every choice on this screen is a guess the file cannot confirm on its own. The running balance is what confirms it: swap the two amount columns and every row after the first stops adding up. Change anything here and the preview, the balance check and the problem list all move.</p>
+  </div>
+
+  <div class="row">
+    <span class="lbl" style="letter-spacing:.05em">Source file</span>
+    <span class="segf" id="srcSeg" role="group" aria-label="Source file">
+      <button data-src="hdfc" aria-pressed="true">HDFC &middot; PDF</button>
+      <button data-src="sbi" aria-pressed="false">SBI &middot; e-statement</button>
+      <button data-src="paytm" aria-pressed="false">Paytm wallet &middot; CSV</button>
+    </span>
+    <span class="hint" id="srcNote"></span>
+  </div>
+
+  <div class="split-ctl">
+    <div class="col">
+      <div class="panel">
+        <div class="panel-h"><h3>Amount shape</h3></div>
+        <div class="panel-b">
+          <label class="ctl"><input type="radio" name="amtmode" value="two" id="am-two"><span class="bx rd"></span><span class="tx"><b>Two columns</b><span>A withdrawal column and a deposit column; the blank one is the side that did not move</span></span></label>
+          <label class="ctl"><input type="radio" name="amtmode" value="typed" id="am-typed"><span class="bx rd"></span><span class="tx"><b>One amount, plus a Dr/Cr column</b><span>The amount is always positive; a separate column or a trailing marker carries the direction</span></span></label>
+          <label class="ctl"><input type="radio" name="amtmode" value="signed" id="am-signed"><span class="bx rd"></span><span class="tx"><b>One signed amount</b><span>Money out is negative, written as <code>-1234.56</code> or <code>(1,234.56)</code></span></span></label>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>Roles</h3><span class="nt">Source column &rarr; domain field</span></div>
+        <div class="panel-b"><div class="maplist" id="maplist"></div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>Reading rules</h3></div>
+        <div class="panel-b">
+          <div class="fld">
+            <span class="lab">Date order</span>
+            <span class="segf segf-sm" id="dateSeg" role="group" aria-label="Date order">
+              <button data-do="auto" aria-pressed="true">Detect</button>
+              <button data-do="DMY" aria-pressed="false">DD/MM</button>
+              <button data-do="MDY" aria-pressed="false">MM/DD</button>
+            </span>
+            <span class="hint" id="dateEvidence"></span>
+          </div>
+          <hr class="hr">
+          <label class="ctl"><input type="checkbox" id="optWrap" checked><span class="sw"></span><span class="tx"><b>Join wrapped narration lines</b><span>A line with no date and no amount belongs to the transaction above it</span></span></label>
+          <label class="ctl"><input type="checkbox" id="optBlank" checked><span class="sw"></span><span class="tx"><b>Skip blank rows</b><span>A fully empty extracted line, usually a page break</span></span></label>
+          <label class="ctl"><input type="checkbox" id="optTotal" checked><span class="sw"></span><span class="tx"><b>Skip summary rows</b><span>OPENING BALANCE, CLOSING BALANCE, TOTAL — kept as control figures, not as transactions</span></span></label>
+          <label class="ctl"><input type="checkbox" id="optMarker" checked><span class="sw"></span><span class="tx"><b>Strip trailing Cr / Dr markers</b><span><code>1,23,832.40 Cr</code> is one amount, not a number followed by a word</span></span></label>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>Save as a format</h3></div>
+        <div class="panel-b">
+          <div class="fld">
+            <label for="fmtName">Name</label>
+            <div class="inw"><input id="fmtName" value="HDFC Savings — Statement of Account, v2"></div>
+            <span class="hint">The next statement whose layout fingerprint matches this one arrives already mapped, and stage 4 is skipped.</span>
+          </div>
+          <div class="row">
+            <button class="btn btn-primary" id="fmtSave">Save format</button>
+            <span class="hint" id="fmtSaved" hidden></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="panel">
+        <div class="panel-h">
+          <h3>Parsed preview</h3>
+          <span class="nt" id="prevNote"></span>
+          <span class="segf segf-sm" id="prevSeg" role="group" aria-label="Preview mode">
+            <button data-pv="parsed" aria-pressed="true">Parsed</button>
+            <button data-pv="raw" aria-pressed="false">As extracted</button>
+          </span>
+        </div>
+        <div id="prevAlerts" class="panel-b" style="gap:9px"></div>
+        <div class="tscroll" id="prevWrap"></div>
+        <div class="panel-f"><span class="sp hint" id="prevFoot"></span></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>Running-balance check</h3><span class="nt" id="balNote"></span></div>
+        <div id="balBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <p class="why"><b>Try it.</b> Set <em>Withdrawal</em> and <em>Deposit</em> to each other&rsquo;s columns and watch every row after the first break. Force <em>MM/DD</em> and watch four dates become unreadable, because no month is 18. That is the whole argument for printing a running balance check next to a mapping control instead of on a later screen.</p>
+</main>
+
+<!-- ══════════════════ 5 · PARSE RESULT & RECONCILIATION ══════════════════ -->
+<main class="page" id="p-check" hidden>
+  <div class="stepr" data-stepr="5"></div>
+  <div class="phead">
+    <div class="eye"><span>/imports &middot; before staging</span><span class="bdg out-acc">Nothing has been written yet</span></div>
+    <h1>Does the reading hold up?</h1>
+    <p>Three independent checks, in rising strength: every row against the balance printed beside it, the parsed totals against the totals the bank printed outside the table, and every row against what is already in the journal. They are shown separately because they fail separately.</p>
+  </div>
+
+  <div class="kpirow" id="checkKpis"></div>
+
+  <div id="checkAlerts" class="col"></div>
+
+  <div class="split2">
+    <div class="col">
+      <div class="panel">
+        <div class="panel-h"><h3>Against the bank&rsquo;s own figures</h3><span class="nt" id="ctrlNote"></span></div>
+        <div class="panel-b"><dl class="kv" id="ctrlTable"></dl></div>
+        <div class="panel-f"><span class="hint">Row-wise continuity tests the links in a chain and cannot see a link that was never read. Only a figure printed outside the table catches a reader that stopped one row short.</span></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>Lines that could not be read</h3><span class="bdg sub-loss sm" id="probCount">0</span></div>
+        <div class="keyline" id="probList"></div>
+        <div class="panel-f"><span class="hint">Listed, never counted. A line the importer cannot read is not a line worth zero.</span></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="panel">
+        <div class="panel-h"><h3>Already in the journal</h3><span class="nt">Four layers, in rising order of doubt</span></div>
+        <div class="keyline">
+          <div class="dupl"><span class="dupn">0</span><span class="dupb"><b>Same file</b><p>Content hash <code class="mono">sha256:9f3c&hellip;a71d</code> has not been imported before.</p><span class="res"><span class="bdg sub-gain sm">Clear</span> &middot; 0 rows held</span></span></div>
+          <div class="dupl"><span class="dupn">1</span><span class="dupb"><b>Same row</b><p>Date, amount and narration fingerprint matched against rows staged from the August statement, whose period overlaps this one by one day.</p><span class="res"><span class="bdg sub-warn sm">1 match</span> &middot; row 2 &mdash; 02 Sep, &minus;&#8377;486.00, UPI-SWIGGY</span></span></div>
+          <div class="dupl"><span class="dupn">2</span><span class="dupb"><b>Same bank reference</b><p>The bank&rsquo;s reference for the movement already exists against a transaction in the journal.</p><span class="res"><span class="bdg sub-gain sm">Clear</span> &middot; 0 rows held</span></span></div>
+          <div class="dupl"><span class="dupn">3</span><span class="dupb"><b>Looks the same within a week</b><p>Same amount, close narration, seven-day window. A suggestion, and the one layer that is allowed to be wrong.</p><span class="res"><span class="bdg sub-warn sm">1 match</span> &middot; row 7 &mdash; +&#8377;12,000.00 against T0118 on 08 Sep</span></span></div>
+        </div>
+        <div class="panel-f"><span class="hint">Both flagged rows are staged as <span class="bdg sub-loss sm">Looks familiar</span>, never dropped. They arrive on the review screen with the matching journal entry beside them.</span></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>Period and account</h3></div>
+        <div class="panel-b">
+          <div class="evid">
+            <div><i data-i="check" data-s="13" class="ei ey"></i><span class="et">Letterhead names an account ending <b>1234</b>, which is the account selected. <code>accountMatches &rarr; true</code></span></div>
+            <div><i data-i="check" data-s="13" class="ei ey"></i><span class="et">Period <b>01 Sep 2025 &ndash; 30 Sep 2025</b> does not overlap any posted batch.</span></div>
+            <div><i data-i="warn" data-s="13" class="ei ew"></i><span class="et">There is a <b>3-day gap</b> before this period: the last batch ended 28 Aug 2025. Three days with no transactions on record is invisible in every report and silently wrong in all of them.</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-h"><h3>Stage the batch</h3><span class="nt">This is the last screen before the rows become reviewable</span></div>
+    <div class="panel-b">
+      <div class="row vtop" style="gap:14px">
+        <div class="col" style="flex:1;min-width:230px">
+          <span class="lbl">What will be written</span>
+          <dl class="kv" id="stageSummary"></dl>
+        </div>
+        <div class="col" style="flex:1;min-width:230px">
+          <span class="lbl">What will not</span>
+          <div class="evid">
+            <div><i data-i="x" data-s="13" class="ei en"></i><span class="et">No posting, no transaction, no change to any balance.</span></div>
+            <div><i data-i="x" data-s="13" class="ei en"></i><span class="et">The PDF password, which was used to open the file and discarded.</span></div>
+            <div><i data-i="x" data-s="13" class="ei en"></i><span class="et">The full account number. Only the last four digits are kept, and only to answer &ldquo;is this the account you selected?&rdquo;</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel-f">
+      <span class="sp hint" id="stageFoot"></span>
+      <button class="btn" data-goto="map">Back to mapping</button>
+      <button class="btn btn-primary" data-goto="handoff">Stage and open the review</button>
+    </div>
+  </div>
+</main>
+
+<!-- ══════════════════ 6 · JSON IMPORT ══════════════════ -->
+<main class="page" id="p-json" hidden>
+  <div class="phead">
+    <div class="eye"><span>/imports &middot; groww-ledger-FY26.json</span><span class="bdg out-n mono">JSON &middot; 41 KB</span></div>
+    <h1>JSON takes a different route</h1>
+    <p>A JSON export has no pages, no columns and no printed balance to check against. What it has instead is a shape — and the two questions worth asking are where the transaction array lives and what each key means. Everything after that rejoins the same pipeline.</p>
+  </div>
+
+  <div class="split2">
+    <div class="col">
+      <div class="panel">
+        <div class="panel-h"><h3>Shape</h3><span class="nt" id="jsShape"></span></div>
+        <div class="panel-b">
+          <div class="evid">
+            <div><i data-i="check" data-s="13" class="ei ey"></i><span class="et">Valid JSON, UTF-8, 41,208 bytes, one root object.</span></div>
+            <div><i data-i="check" data-s="13" class="ei ey"></i><span class="et">Three arrays of objects found. The one with a date-like and an amount-like key on every element is the candidate.</span></div>
+            <div><i data-i="warn" data-s="13" class="ei ew"></i><span class="et">Amounts are <b>objects</b>, not numbers: <code>{"value": "-486.00", "currency": "INR"}</code>. A nested path is needed.</span></div>
+            <div><i data-i="x" data-s="13" class="ei en"></i><span class="et">No running balance anywhere in the file. The parse cannot be checked against itself, and the batch will carry <code>UNVERIFIED</code> rather than a false pass.</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>Where the transactions live</h3><span class="nt">Arrays found in the document</span></div>
+        <div class="pathlist" id="jsonPaths"></div>
+        <div class="panel-f">
+          <div class="fld" style="flex:1;min-width:0">
+            <label for="jsonPathManual">Or write the path</label>
+            <div class="inw md"><input id="jsonPathManual" class="mono" value="$.data.transactions[*]"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>Keys &rarr; fields</h3><span class="nt" id="jsKeyNote"></span></div>
+        <div class="panel-b"><div class="maplist" id="jsonMap"></div></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="panel">
+        <div class="panel-h"><h3>The file</h3><span class="nt">The selected path is highlighted</span></div>
+        <div class="panel-b flush"><div class="jsonpane" id="jsonPane"></div></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>Validation report</h3><span class="nt" id="jsValNote"></span></div>
+        <div class="keyline" id="jsonReport"></div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>Parsed preview</h3><span class="nt" id="jsPrevNote"></span></div>
+        <div class="tscroll" id="jsonPrev"></div>
+        <div class="panel-f">
+          <span class="sp hint">Rejoins the pipeline here, at the same staged-row shape a PDF or CSV produces.</span>
+          <button class="btn btn-primary" data-goto="handoff">Stage 141 rows</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="why"><b>A JSON import is honest about what it cannot prove.</b> With no printed balance there is nothing to reconcile against, so the batch is marked <code>UNVERIFIED</code> — not a failure, an absence of evidence, and it has to be reported as such rather than quietly counted as success.</p>
+</main>
+
+<!-- ══════════════════ 7 · FORMAT LIBRARY ══════════════════ -->
+<main class="page" id="p-library" hidden>
+  <div class="phead">
+    <div class="eye"><span>/settings/import-formats</span></div>
+    <h1>Saved formats</h1>
+    <p>Each one is the answer to every mapping question for one layout from one bank. A format is matched by the shape of the file, not by its name, so a statement renamed on the way out of an inbox still lands on the right format.</p>
+  </div>
+
+  <div class="kpirow">
+    <div class="kpi"><span class="kl">Formats</span><span class="kv2 tnum">6</span><span class="kd">5 built here, 1 imported</span></div>
+    <div class="kpi"><span class="kl">Statements read with them</span><span class="kv2 tnum">47</span><span class="kd">Across 4 accounts</span></div>
+    <div class="kpi"><span class="kl">Rows staged</span><span class="kv2 tnum">6,182</span><span class="kd">Since 11 Mar 2025</span></div>
+    <div class="kpi warnk"><span class="kl">Needs a look</span><span class="kv2 tnum">1</span><span class="kd">A format whose bank changed its layout</span></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-h">
+      <h3>Formats</h3>
+      <span class="nt"></span>
+      <button class="btn btn-sm" id="libImport"><i data-i="upload" data-s="13"></i>Import a definition</button>
+      <button class="btn btn-sm btn-primary"><i data-i="plus" data-s="13"></i>New format</button>
+    </div>
+    <div class="tscroll" id="libWrap"></div>
+    <div class="panel-f"><span class="sp hint">A format is never deleted while a posted batch still references it; the delete becomes an archive instead, so an old batch can still explain how it was read.</span></div>
+  </div>
+
+  <div class="split2">
+    <div class="panel">
+      <div class="panel-h"><h3 id="defTitle">Definition</h3><span class="nt">What travels when you export one</span>
+        <button class="btn btn-sm" id="defCopy"><i data-i="copy" data-s="13"></i>Copy</button></div>
+      <div class="panel-b flush"><div class="jsonpane" id="defPane" style="max-height:400px"></div></div>
+      <div class="panel-f"><span class="hint">No account id, no user id, no figures. A format definition describes a layout, so sharing one tells nobody anything about your money.</span></div>
+    </div>
+
+    <div class="col">
+      <div class="panel">
+        <div class="panel-h"><h3>When a bank changes its layout</h3></div>
+        <div class="panel-b">
+          <div class="alrt w">
+            <i data-i="warn" data-s="15" class="ai"></i>
+            <div class="ab">
+              <b>ICICI Savings — Statement of Account, v1 no longer matches</b>
+              <p>The last file read with it had 8 columns where this format expects 7, and the extra one sits between <code>Value Date</code> and <code>Withdrawals</code>. The format was not changed and the import was not guessed at.</p>
+              <div class="aa">
+                <button class="btn btn-sm btn-primary">Map the new layout</button>
+                <button class="btn btn-sm">Save it as v2</button>
+                <button class="btn btn-sm btn-ghost">Keep v1 for old files</button>
+              </div>
+            </div>
+          </div>
+          <p class="hint">Versioning rather than editing in place: a batch imported two years ago was read by v1, and rewriting v1 would make that batch unexplainable.</p>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>Import a definition</h3></div>
+        <div class="panel-b">
+          <div class="drop" id="defDrop" tabindex="0" role="button" aria-label="Drop a format definition file">
+            <i data-i="file" data-s="20"></i>
+            <b>Drop a <span class="mono">.format.json</span></b>
+            <span>Or paste one below. It is checked against the schema before anything is saved.</span>
+          </div>
+          <div class="fld">
+            <label for="defPaste">Paste a definition</label>
+            <div class="inw md"><input id="defPaste" class="mono" placeholder='{"schema":"stock-mania/import-format@1", ...}'></div>
+            <span class="hint" id="defPasteMsg">A definition carries no account and no money. Importing one is safe; the first file read with it still has to reconcile.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<!-- ══════════════════ 8 · HANDOFF ══════════════════ -->
+<main class="page" id="p-handoff" hidden>
+  <div class="stepr" data-stepr="6"></div>
+  <div class="phead">
+    <div class="eye"><span>/imports &rarr; /imports/[batchId]</span><span class="bdg sol-acc">The boundary</span></div>
+    <h1>Where intake ends</h1>
+    <p>Everything before this line is about reading a file correctly. Everything after it is about deciding what the rows mean. They are different jobs with different failure modes, and this is the one place where the first hands over to the second.</p>
+  </div>
+
+  <div class="panel">
+    <div class="boundary">
+      <div class="bside left">
+        <span class="lbl">Stages 1&ndash;5 &middot; this artifact</span>
+        <h3 style="font-size:15px">Intake</h3>
+        <p class="hint">Opens the file, picks the pages, assigns the columns, reads the dates and amounts, proves the reading against the bank&rsquo;s own figures, and asks the journal whether it has seen these rows before.</p>
+        <hr class="hr">
+        <span class="lbl">Fails like this</span>
+        <div class="evid">
+          <div><i data-i="warn" data-s="13" class="ei ew"></i><span class="et">The wrong column was read as the amount.</span></div>
+          <div><i data-i="warn" data-s="13" class="ei ew"></i><span class="et">A date read MM/DD when it was DD/MM.</span></div>
+          <div><i data-i="warn" data-s="13" class="ei ew"></i><span class="et">A terms page was read as 40 phantom rows.</span></div>
+        </div>
+      </div>
+      <div class="bline"><span class="bl">Staged rows</span></div>
+      <div class="bside right">
+        <span class="lbl">/imports/[batchId] &middot; existing screen</span>
+        <h3 style="font-size:15px">Review</h3>
+        <p class="hint">Categorises, resolves duplicates, picks the other side of each transfer, confirms, and posts. Owns the review table, the keyboard-first bulk confirm and the original-document pane.</p>
+        <hr class="hr">
+        <span class="lbl">Fails like this</span>
+        <div class="evid">
+          <div><i data-i="warn" data-s="13" class="ei ew"></i><span class="et">A card payment categorised as an expense instead of a transfer.</span></div>
+          <div><i data-i="warn" data-s="13" class="ei ew"></i><span class="et">A real second payment dismissed as a duplicate.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="split2">
+    <div class="panel">
+      <div class="panel-h"><h3>What crosses</h3><span class="nt">One <code>import_batches</code> row, N <code>import_rows</code></span></div>
+      <div class="panel-b flush"><div class="jsonpane" id="crossPane" style="max-height:none"></div></div>
+    </div>
+
+    <div class="col">
+      <div class="panel">
+        <div class="panel-h"><h3>And what does not</h3></div>
+        <div class="panel-b">
+          <div class="crossrow no"><i data-i="x" data-s="14" class="ci"></i><span><b>The mapping.</b> It is saved as a <em>format</em>, referenced by <code>formatId</code>. The batch records which format read it, not the rules themselves, so one correction fixes every future statement rather than one batch.</span></div>
+          <div class="crossrow no"><i data-i="x" data-s="14" class="ci"></i><span><b>The file bytes.</b> The original goes to the document archive and the batch keeps only <code>fileHash</code>. The review screen&rsquo;s document pane reads the archive, not the batch.</span></div>
+          <div class="crossrow no"><i data-i="x" data-s="14" class="ci"></i><span><b>The PDF password.</b> Used to derive the decryption key, held nowhere.</span></div>
+          <div class="crossrow no"><i data-i="x" data-s="14" class="ci"></i><span><b>Any category decision.</b> Keyword rules fire during staging and write <code>parsedJson.suggestedAccountId</code>, but the choice belongs to review.</span></div>
+          <div class="crossrow no"><i data-i="x" data-s="14" class="ci"></i><span><b>Anything in the ledger.</b> No posting exists until review posts the batch.</span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>The contract, in one line each</h3></div>
+        <div class="panel-b">
+          <div class="crossrow"><i data-i="arrow-r" data-s="14" class="ci"></i><span><b>Intake promises</b> that <code>rawJson</code> is the source line verbatim, so a re-parse never needs the original upload back.</span></div>
+          <div class="crossrow"><i data-i="arrow-r" data-s="14" class="ci"></i><span><b>Intake promises</b> that <code>amount</code> is positive and <code>direction</code> carries the sign, matching <code>Posting</code>. A signed amount would make &minus;500 ambiguous between a withdrawal and a reversed deposit.</span></div>
+          <div class="crossrow"><i data-i="arrow-r" data-s="14" class="ci"></i><span><b>Intake promises</b> that a row it could not read arrives as a <code>problem</code> with a reason, never as a row worth zero.</span></div>
+          <div class="crossrow"><i data-i="arrow-r" data-s="14" class="ci"></i><span><b>Review promises</b> that a row whose <code>trust</code> is <code>BROKEN</code> or whose <code>controls</code> are <code>MISMATCHED</code> still shows the warning on its own screen. Intake&rsquo;s verdict does not expire at the boundary.</span></div>
+          <div class="crossrow"><i data-i="arrow-r" data-s="14" class="ci"></i><span><b>Neither owns</b> the duplicate decision. Intake flags with a layer; review decides.</span></div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-h"><h3>Hand over</h3></div>
+        <div class="panel-b">
+          <div class="alrt s" id="handoffDone" hidden>
+            <i data-i="check" data-s="15" class="ai"></i>
+            <div class="ab">
+              <b id="handoffHead">Batch B-1043 staged</b>
+              <p id="handoffBody">Two rows arrive flagged <span class="bdg sub-loss sm">Looks familiar</span>.</p>
+            </div>
+          </div>
+          <div class="row">
+            <button class="btn btn-primary btn-lg" id="handoffGo">Stage the batch and open the review</button>
+            <button class="btn btn-lg" data-goto="check">Back to the checks</button>
+          </div>
+          <p class="hint">In the app this navigates to <code>/imports/B-1043</code>, which is the Banking Console screen. This mockup stops at the line.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<style>
+.band{position:relative;border-radius:2px;padding:1px 3px;margin:0 -3px}
+.band.hdr{background:rgb(79 98 216 / .12);box-shadow:inset 0 0 0 1px rgb(79 98 216 / .45)}
+.band.ftr{background:rgb(180 83 9 / .12);box-shadow:inset 0 0 0 1px rgb(180 83 9 / .5)}
+.band.bal{background:rgb(14 124 102 / .13);box-shadow:inset 0 0 0 1px rgb(14 124 102 / .55)}
+.band.tbl{background:rgb(79 98 216 / .05);box-shadow:inset 0 0 0 1px rgb(79 98 216 / .4)}
+.band > .zlab{position:absolute;top:-1px;right:2px;font-size:6px;font-weight:600;letter-spacing:.04em;
+  text-transform:uppercase;padding:0 3px;border-radius:0 0 2px 2px;line-height:9px}
+.band.hdr > .zlab{background:#4F62D8;color:#fff}
+.band.ftr > .zlab{background:#B45309;color:#fff}
+.band.bal > .zlab{background:#0E7C66;color:#fff}
+.band.tbl > .zlab{background:#4F62D8;color:#fff;top:auto;bottom:-1px;border-radius:2px 2px 0 0}
+</style>
+
+<script>
+/* ═══════════════ icons ═══════════════ */
+var ICON={
+grid:'<rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/>',
+clock:'<circle cx="8" cy="8" r="5.5"/><path d="M8 4.8V8l2.4 1.4"/>',
+bank:'<path d="M2 6.5 8 2.6l6 3.9"/><path d="M4.5 7.5v4.5M8 7.5v4.5M11.5 7.5v4.5"/><path d="M2 13.5h12"/>',
+list:'<path d="M3 4.5h10M3 8h10M3 11.5h6.5"/>',
+upload:'<path d="M8 10.5V3.2M5.4 5.8 8 3.2l2.6 2.6"/><path d="M2.8 10.8v2.2h10.4v-2.2"/>',
+download:'<path d="M8 3.2v7.3M5.4 7.9 8 10.5l2.6-2.6"/><path d="M2.8 10.8v2.2h10.4v-2.2"/>',
+search:'<circle cx="7.1" cy="7.1" r="4.3"/><path d="M10.3 10.3 13.4 13.4"/>',
+plus:'<path d="M8 3.4v9.2M3.4 8h9.2"/>',
+edit:'<path d="M10.4 2.9 13.1 5.6 5.7 13H3v-2.7z"/><path d="M9.1 4.2 11.8 6.9"/>',
+trash:'<path d="M2.9 4.4h10.2"/><path d="M4.4 4.4V3.1h7.2v1.3"/><path d="M4.1 4.4 4.7 13h6.6l.6-8.6"/><path d="M6.7 6.8v3.8M9.3 6.8v3.8"/>',
+refresh:'<path d="M12.6 6.6A4.9 4.9 0 1 0 13 9.4"/><path d="M13.2 3.2v3.4h-3.4"/>',
+info:'<circle cx="8" cy="8" r="5.5"/><path d="M8 7.3v3.6"/><circle cx="8" cy="5.3" r=".75" fill="currentColor" stroke="none"/>',
+warn:'<path d="M8 2.6 14 13H2z"/><path d="M8 6.6v3"/><circle cx="8" cy="11.2" r=".75" fill="currentColor" stroke="none"/>',
+check:'<path d="M3.2 8.4 6.4 11.6 12.8 4.8"/>',
+ck:'<path d="M3.4 8.3 6.3 11.2 12.6 4.9"/>',
+x:'<path d="M4.2 4.2 11.8 11.8M11.8 4.2 4.2 11.8"/>',
+copy:'<rect x="5.4" y="5.4" width="7.8" height="7.8" rx="1.2"/><path d="M10.6 5.4V4a1.2 1.2 0 0 0-1.2-1.2H4a1.2 1.2 0 0 0-1.2 1.2v5.4a1.2 1.2 0 0 0 1.2 1.2h1.4"/>',
+'chev-r':'<path d="M6.3 4.4 9.9 8l-3.6 3.6"/>',
+'arrow-r':'<path d="M3 8h10M9.4 4.4 13 8l-3.6 3.6"/>',
+more:'<circle cx="3.6" cy="8" r=".95" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r=".95" fill="currentColor" stroke="none"/><circle cx="12.4" cy="8" r=".95" fill="currentColor" stroke="none"/>',
+columns:'<rect x="2.3" y="3" width="11.4" height="10" rx="1.2"/><path d="M6.1 3v10M9.9 3v10"/>',
+calendar:'<rect x="2.4" y="3.5" width="11.2" height="10.1" rx="1.3"/><path d="M2.4 6.5h11.2"/><path d="M5.5 2.3v2.3M10.5 2.3v2.3"/>',
+file:'<path d="M9 2.5H4.6a1.2 1.2 0 0 0-1.2 1.2v8.6a1.2 1.2 0 0 0 1.2 1.2h6.8a1.2 1.2 0 0 0 1.2-1.2V6z"/><path d="M9 2.5V6h3.6"/>',
+lock:'<rect x="3.4" y="7" width="9.2" height="6.1" rx="1.3"/><path d="M5.7 7V5.5a2.3 2.3 0 0 1 4.6 0V7"/>',
+key:'<circle cx="5.3" cy="10.7" r="2.4"/><path d="M7.1 9 12.8 3.3"/><path d="m10.7 5.4 1.4 1.4M12.1 4l1.4 1.4"/>',
+scan:'<path d="M2.6 5.4V3.6a1 1 0 0 1 1-1h1.8M10.6 2.6h1.8a1 1 0 0 1 1 1v1.8M13.4 10.6v1.8a1 1 0 0 1-1 1h-1.8M5.4 13.4H3.6a1 1 0 0 1-1-1v-1.8"/><path d="M2.6 8h10.8"/>'
+};
+function svg(n,s){s=s||16;return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+(ICON[n]||'')+'</svg>';}
+function paintIcons(root){(root||document).querySelectorAll('i[data-i]').forEach(function(el){
+  var w=document.createElement('span');w.className=el.className;w.setAttribute('aria-hidden','true');
+  w.style.display='inline-flex';w.style.flex='none';
+  w.innerHTML=svg(el.getAttribute('data-i'),parseInt(el.getAttribute('data-s')||'16',10));
+  el.replaceWith(w);});}
+
+/* ═══════════════ theme ═══════════════ */
+var root=document.documentElement,themeMode='system';
+try{var sv=localStorage.getItem('sm-intake-theme');if(sv)themeMode=sv;}catch(e){}
+function applyTheme(){
+  if(themeMode==='system')root.removeAttribute('data-theme');else root.setAttribute('data-theme',themeMode);
+  document.querySelectorAll('#themeSeg button').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.t===themeMode));});
+}
+document.getElementById('themeSeg').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;themeMode=b.dataset.t;
+  try{localStorage.setItem('sm-intake-theme',themeMode);}catch(err){}
+  applyTheme();});
+applyTheme();
+
+/* ═══════════════ formatting ═══════════════ */
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function pad2(n){return (n<10?'0':'')+n;}
+function inr(paise,opt){
+  opt=opt||{};var neg=paise<0,v=Math.abs(paise);
+  var r=Math.floor(v/100),p=String(v%100).padStart(2,'0');
+  var s=String(r),last3=s.slice(-3),rest=s.slice(0,-3);
+  var g=rest?rest.replace(/\B(?=(\d{2})+(?!\d))/g,',')+','+last3:last3;
+  var sign=neg?'−':(opt.sign?'+':'');
+  return sign+'₹'+g+'.'+p;
+}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+/* ═══════════════ sample files ═══════════════ */
+var SAMPLES={
+hdfc:{
+  label:'HDFC-Savings-Sep-2025.pdf',
+  note:'Recovered from PDF geometry. Narrations wrap, amounts sit in two columns, dates are DD/MM/YY.',
+  headers:['Date','Narration','Chq./Ref.No.','Value Dt','Withdrawal Amt.','Deposit Amt.','Closing Balance'],
+  rows:[
+   ['01/09/25','OPENING BALANCE','','','','','1,24,318.40'],
+   ['02/09/25','UPI-SWIGGY LIMITED-SWIGGY@AXISBANK-UTIB0','0000524510400265','02/09/25','486.00','','1,23,832.40'],
+   ['','000080-524510400265-ORDER 8821','','','','',''],
+   ['05/09/25','NEFT CR-HDFC0000123-ACME SOFTWARE PRIVAT','N324250905012345','05/09/25','','1,85,000.00','3,08,832.40'],
+   ['','E LIMITED-HDFC-SALARY SEP 2025','','','','',''],
+   ['07/09/25','ACH D- PARAG PARIKH FLEXI CAP 070925 ICCL','ACHD25090700891','07/09/25','25,000.00','','2,83,832.40'],
+   ['','-ACHD25090700891','','','','',''],
+   ['','','','','','',''],
+   ['09/09/25','POS 437518XXXXXX1234 19:04:22 BIGBASKET B','','09/09/25','2,450.00','','2,81,382.40'],
+   ['','ANGALORE','','','','',''],
+   ['12/09/25','IMPS-526312345678-RANA D-HDFC-XXXXXXXX44','526312345678','12/09/25','','12,000.00','2,93,382.40'],
+   ['','12-RENT REFUND','','','','',''],
+   ['14/09/25','ACHC-HDFC MF SYSTEMATIC WITHDRAWAL-ACHC25','ACHC2509140442','14/09/25','10,000.00','','2,83,382.40'],
+   ['','09140442','','','','',''],
+   ['18/09/25','NACH DR-BESCOM BILL PAY','NACH1809251122','18/09/25','1,860.00','','2,81,522.40'],
+   ['22/09/25','UPI-ZERODHA BROKING LTD-ZERODHA@HDFCBANK-','0000526500789012','22/09/25','50,000.00','','2,31,522.40'],
+   ['','HDFC0000060-526500789012-FUNDS ADD','','','','',''],
+   ['28/09/25','INT.PD:01-07-2025 to 30-09-2025','','28/09/25','','1,284.00','2,32,806.40'],
+   ['30/09/25','IMPS-526412345678-RANA D-HDFC-XXXXXXXX44','526412345678','30/09/25','','','2,32,806.40'],
+   ['','12-REFUND','','','','',''],
+   ['','TOTAL','','','89,796.00','1,98,284.00',''],
+   ['','CLOSING BALANCE','','','','','2,32,806.40']
+  ],
+  defMap:{date:0,description:1,reference:2,valueDate:3,debit:4,credit:5,balance:6,amount:-1,type:-1},
+  defMode:'two',
+  order:'Withdrawal, then Deposit',
+  orderWarn:'HDFC prints <b>Withdrawal before Deposit</b>. SBI prints <b>Credit before Debit</b>, and ICICI prints <b>DEPOSITS before WITHDRAWALS</b>. A default carried over from another bank inverts the sign on every row and still looks like a clean import.'
+},
+sbi:{
+  label:'SBI-eStatement-Aug-2025.pdf',
+  note:'SBI keeps four distinct layouts across its download channels. This is the monthly e-statement, and its amount columns run the other way round: Credit first.',
+  headers:['Txn Date','Value Date','Description','Ref No./Cheque No.','Credit','Debit','Balance'],
+  rows:[
+   ['01-08-25','01-08-25','OPENING BALANCE','-','0','0','62,480.00'],
+   ['04-08-25','04-08-25','UPI/CR/521612345678/ACME SOFTWARE/HDFC/acme@hdfcbank/SALARY','521612345678','1,85,000.00','0','2,47,480.00'],
+   ['08-08-25','08-08-25','UPI/DR/521798765432/BLINKIT/YESB/blinkit@ybl/GROCERY','521798765432','0','1,240.00','2,46,240.00'],
+   ['13-08-25','13-08-25','NEFT*HDFC0000123*N21325081312345*HDFC LIFE INSURANCE','N21325081312345','0','9,912.00','2,36,328.00'],
+   ['19-08-25','19-08-25','IMPS/521900112233/HDFC-XXXXXXXX1234-RANA D/CARD PAYMENT','521900112233','0','24,318.40','2,12,009.60'],
+   ['25-08-25','25-08-25','OTHPG 521912345678AMAZON SELLER BANGALORE','-','0','3,499.00','2,08,510.60'],
+   ['31-08-25','31-08-25','CREDIT INTEREST','-','318.00','0','2,08,828.60'],
+   ['','','CLOSING BALANCE','-','0','0','2,08,828.60']
+  ],
+  defMap:{date:0,description:2,reference:3,valueDate:1,credit:4,debit:5,balance:6,amount:-1,type:-1},
+  defMode:'two',
+  order:'Credit, then Debit',
+  orderWarn:'This file puts <b>Credit before Debit</b> &mdash; the opposite of HDFC. The unused side is printed as <code>0</code> rather than left blank, so a reader looking for &ldquo;whichever column has something in it&rdquo; finds both.'
+},
+paytm:{
+  label:'paytm-wallet-Sep-2025.csv',
+  note:'A wallet export: one signed amount column, no separate debit and credit, and every balance printed with a trailing Cr marker.',
+  headers:['Date','Activity','Order ID','Amount','Closing Balance'],
+  rows:[
+   ['01-Sep-2025','Opening balance','-','0.00','4,210.00 Cr'],
+   ['03-Sep-2025','Paid to BESCOM BILL PAY','OID52190011','-1,860.00','2,350.00 Cr'],
+   ['06-Sep-2025','Added from HDFC Bank 1234','OID52190338','5,000.00','7,350.00 Cr'],
+   ['11-Sep-2025','Paid to UBER INDIA SYSTEMS','OID52191204','-318.00','7,032.00 Cr'],
+   ['17-Sep-2025','Cashback received','OID52191877','40.00','7,072.00 Cr'],
+   ['24-Sep-2025','Paid to APOLLO PHARMACY','OID52192549','(1,245.50)','5,826.50 Cr'],
+   ['30-Sep-2025','Closing balance','-','0.00','5,826.50 Cr']
+  ],
+  defMap:{date:0,description:1,reference:2,valueDate:-1,debit:-1,credit:-1,balance:4,amount:3,type:-1},
+  defMode:'signed',
+  order:'One signed column',
+  orderWarn:'Money out is negative. One row writes it as <code>(1,245.50)</code> in brackets, which means the same thing, and a reader that only looks for a leading minus sign posts that payment as a receipt.'
+}};
+
+var STATE={
+  src:'hdfc',
+  map:{hdfc:Object.assign({},SAMPLES.hdfc.defMap),sbi:Object.assign({},SAMPLES.sbi.defMap),paytm:Object.assign({},SAMPLES.paytm.defMap)},
+  mode:{hdfc:'two',sbi:'two',paytm:'signed'},
+  dateOrder:'auto',wrap:true,blank:true,total:true,marker:true,prev:'parsed'
+};
+
+/* ═══════════════ readers ═══════════════ */
+function readMoney(cell,allowMarker){
+  var raw=String(cell==null?'':cell).trim();
+  if(raw==='')return{none:true};
+  var t=raw,marker=null;
+  var m=t.match(/\b(cr|dr)\.?$/i);
+  if(m){ if(!allowMarker) return {bad:true,raw:raw,reason:'"'+raw+'" ends in a Cr/Dr marker, and markers are not being stripped'};
+    marker=m[1].toUpperCase(); t=t.slice(0,m.index).trim(); }
+  var neg=false;
+  if(/^\(.*\)$/.test(t)){neg=true;t=t.slice(1,-1).trim();}
+  t=t.replace(/[₹$,\s]/g,'');
+  if(t.charAt(0)==='-'){neg=true;t=t.slice(1);}
+  if(!/^(\d+(\.\d+)?|\.\d+)$/.test(t))return{bad:true,raw:raw,reason:'"'+raw+'" is not a number'};
+  var parts=t.split('.'),rup=parts[0]||'0',p=((parts[1]||'')+'00').slice(0,2);
+  return{paise:Number(rup)*100+Number(p),negative:neg,marker:marker};
+}
+function readDate(cell,order){
+  var t=String(cell==null?'':cell).trim();
+  if(t==='')return null;
+  var m=t.match(/^(\d{1,2})[\/\-.](\d{1,2}|[A-Za-z]{3})[\/\-.](\d{2,4})$/);
+  if(!m)return null;
+  var a=Number(m[1]),braw=m[2],y=Number(m[3]);
+  if(y<100)y+=2000;
+  var mo,d;
+  if(/^[A-Za-z]{3}$/.test(braw)){mo=MON.map(function(x){return x.toLowerCase();}).indexOf(braw.toLowerCase())+1;d=a;if(!mo)return null;}
+  else{var b=Number(braw);if(order==='MDY'){mo=a;d=b;}else{d=a;mo=b;}}
+  if(mo<1||mo>12||d<1||d>31)return null;
+  return{iso:y+'-'+pad2(mo)+'-'+pad2(d),txt:pad2(d)+' '+MON[mo-1]+' '+y};
+}
+function detectOrder(rows,col){
+  var dFirst=0,mFirst=0,n=0,named=0;
+  rows.forEach(function(r){
+    var t=String(col>=0?(r[col]||''):'').trim();
+    if(/^\d{1,2}[\/\-.][A-Za-z]{3}[\/\-.]\d{2,4}$/.test(t)){named++;n++;return;}
+    var m=t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+    if(!m)return;n++;
+    if(Number(m[1])>12)dFirst++;
+    if(Number(m[2])>12)mFirst++;
+  });
+  if(named&&named===n)return{order:'DMY',why:'Every date names its month in letters ('+named+' of '+n+'), so there is nothing to disambiguate.'};
+  if(dFirst&&!mFirst)return{order:'DMY',why:dFirst+' of '+n+' dates have a first number above 12, so it cannot be a month. Read as DD/MM.'};
+  if(mFirst&&!dFirst)return{order:'MDY',why:mFirst+' of '+n+' dates have a second number above 12, so it cannot be a month. Read as MM/DD.'};
+  if(!n)return{order:'DMY',why:'No date-shaped cell in the mapped column.'};
+  if(dFirst&&mFirst)return{order:'DMY',why:'Both orders are contradicted somewhere in the file. Falling back to DD/MM and flagging the batch.'};
+  return{order:'DMY',why:'Every date is ambiguous — no day above 12 anywhere. Defaulting to DD/MM, the Indian convention. Set it by hand if this file came from elsewhere.'};
+}
+
+/* ═══════════════ the parse ═══════════════ */
+var SUMMARY=/^(opening balance|closing balance|total|statement summary|b\/f|c\/f|brought forward|carried forward)/i;
+function joined(r){return r.filter(function(c){return String(c||'').trim()!=='';}).join('  ');}
+
+function parse(srcKey){
+  var S=SAMPLES[srcKey],M=STATE.map[srcKey],mode=STATE.mode[srcKey],rows=S.rows;
+  var od=STATE.dateOrder==='auto'?detectOrder(rows,M.date)
+      :{order:STATE.dateOrder,why:'Forced to '+(STATE.dateOrder==='DMY'?'DD/MM':'MM/DD')+'. Detection would have chosen '+(detectOrder(rows,M.date).order==='DMY'?'DD/MM':'MM/DD')+'.'};
+  var order=od.order;
+  var out=[],problems=[],skipped=[],opening=null,closing=null,printed=null,cur=null;
+
+  function amountOf(r){
+    if(mode==='two'){
+      var d=M.debit>=0?readMoney(r[M.debit],STATE.marker):{none:true};
+      var c=M.credit>=0?readMoney(r[M.credit],STATE.marker):{none:true};
+      if(d.bad)return{bad:true,reason:d.reason};
+      if(c.bad)return{bad:true,reason:c.reason};
+      var hasD=!d.none&&d.paise>0,hasC=!c.none&&c.paise>0;
+      if(hasD&&hasC)return{bad:true,reason:'Both amount columns carry a figure on this line'};
+      if(hasD)return{signed:-d.paise,dir:'DEBIT'};
+      if(hasC)return{signed:c.paise,dir:'CREDIT'};
+      return{none:true};
+    }
+    var a=M.amount>=0?readMoney(r[M.amount],STATE.marker):{none:true};
+    if(a.bad)return{bad:true,reason:a.reason};
+    if(a.none)return{none:true};
+    if(mode==='signed'){
+      if(a.paise===0)return{none:true};
+      return a.negative?{signed:-a.paise,dir:'DEBIT'}:{signed:a.paise,dir:'CREDIT'};
+    }
+    var t=M.type>=0?String(r[M.type]||'').trim().toUpperCase():(a.marker||'');
+    if(/^DR/.test(t))return{signed:-a.paise,dir:'DEBIT'};
+    if(/^CR/.test(t))return{signed:a.paise,dir:'CREDIT'};
+    return{bad:true,reason:'No Dr/Cr marker on a line that has an amount'};
+  }
+
+  for(var i=0;i<rows.length;i++){
+    var r=rows[i];
+    var blank=r.every(function(c){return String(c||'').trim()==='';});
+    if(blank){
+      if(STATE.blank)skipped.push({idx:i,reason:'Blank line'});
+      else problems.push({idx:i,reason:'Blank line, and blank rows are not being skipped',raw:'(empty)'});
+      cur=null;continue;
+    }
+    var desc=M.description>=0?String(r[M.description]||'').trim():'';
+    if(SUMMARY.test(desc)){
+      if(/^opening/i.test(desc)&&M.balance>=0){var ob=readMoney(r[M.balance],STATE.marker);if(!ob.bad&&!ob.none)opening=ob.paise;}
+      if(/^closing/i.test(desc)&&M.balance>=0){var cb=readMoney(r[M.balance],STATE.marker);if(!cb.bad&&!cb.none)closing=cb.paise;}
+      if(/^total/i.test(desc)&&mode==='two'&&M.debit>=0&&M.credit>=0){
+        var td=readMoney(r[M.debit],STATE.marker),tc=readMoney(r[M.credit],STATE.marker);
+        if(!td.bad&&!td.none&&!tc.bad&&!tc.none)printed={debit:td.paise,credit:tc.paise};
+      }
+      if(STATE.total)skipped.push({idx:i,reason:desc+' — a control figure, not a transaction'});
+      else problems.push({idx:i,reason:'Summary line read as a transaction, because summary rows are not being skipped',raw:joined(r)});
+      cur=null;continue;
+    }
+    var dt=readDate(M.date>=0?r[M.date]:'',order);
+    var amt=amountOf(r);
+    if(!dt){
+      var dcell=String(M.date>=0?(r[M.date]||''):'').trim();
+      if(cur&&amt.none&&desc){
+        if(STATE.wrap){cur.desc+=' '+desc;cur.lines.push(i);skipped.push({idx:i,reason:'Continuation of the narration on line '+(cur.idx+1)});continue;}
+        problems.push({idx:i,reason:'No date on this line, and wrapped narrations are not being joined',raw:joined(r)});continue;
+      }
+      problems.push({idx:i,reason:dcell?'Could not read "'+dcell+'" as a date in '+(order==='DMY'?'DD/MM':'MM/DD')+' order':'No date on this line',raw:joined(r)});
+      cur=null;continue;
+    }
+    if(amt.bad){problems.push({idx:i,reason:amt.reason,raw:joined(r)});cur=null;continue;}
+    if(amt.none){problems.push({idx:i,reason:'No amount in '+(mode==='two'?'either amount column':'the amount column'),raw:joined(r)});cur=null;continue;}
+    var bal=null,balBad=null;
+    if(M.balance>=0){var b=readMoney(r[M.balance],STATE.marker);if(b.bad)balBad=b.reason;else if(!b.none)bal=b.paise;}
+    cur={idx:i,date:dt,desc:desc,ref:M.reference>=0?String(r[M.reference]||'').trim():'',
+         valueDate:M.valueDate>=0?readDate(r[M.valueDate],order):null,
+         signed:amt.signed,dir:amt.dir,bal:bal,balBad:balBad,lines:[i]};
+    out.push(cur);
+  }
+
+  /* running-balance continuity */
+  var breaks=[],checked=0,prev=null;
+  if(opening!=null)prev=opening;
+  else if(out.length&&out[0].bal!=null)prev=out[0].bal-out[0].signed;
+  if(prev!=null){
+    out.forEach(function(row){
+      if(row.bal==null)return;
+      checked++;
+      var expected=prev+row.signed;
+      if(expected!==row.bal)breaks.push({idx:row.idx,line:row.idx+1,expected:expected,printed:row.bal,delta:row.bal-expected,row:row});
+      prev=row.bal;
+    });
+  }
+  var trust=breaks.length?'BROKEN':(checked?'RECONCILED':'UNVERIFIED');
+
+  /* control totals */
+  var sumD=0,sumC=0;
+  out.forEach(function(r){if(r.signed<0)sumD-=r.signed;else sumC+=r.signed;});
+  var controls={status:'ABSENT',detail:null};
+  if(printed){
+    if(printed.debit===sumD&&printed.credit===sumC)
+      controls={status:'MATCHED',detail:'The statement prints withdrawals '+inr(printed.debit)+' and deposits '+inr(printed.credit)+'. The parsed rows come to the same.'};
+    else
+      controls={status:'MISMATCHED',detail:'The statement prints withdrawals '+inr(printed.debit)+' and deposits '+inr(printed.credit)+'. The parsed rows come to '+inr(sumD)+' and '+inr(sumC)+'.'};
+  }else if(opening!=null&&closing!=null){
+    var derived=opening+sumC-sumD;
+    controls=derived===closing
+      ?{status:'MATCHED',detail:'Opening '+inr(opening)+' plus deposits less withdrawals lands exactly on the printed closing balance '+inr(closing)+'.'}
+      :{status:'MISMATCHED',detail:'Opening '+inr(opening)+' plus deposits less withdrawals gives '+inr(derived)+', and the statement prints '+inr(closing)+'.'};
+  }
+
+  return{src:srcKey,file:S.label,order:order,orderWhy:od.why,rows:out,problems:problems,skipped:skipped,
+         opening:opening,closing:closing,printed:printed,sumD:sumD,sumC:sumC,
+         breaks:breaks,checked:checked,trust:trust,controls:controls,mode:mode,map:M,headers:S.headers};
+}
+
+/* ═══════════════ role metadata ═══════════════ */
+var ROLES=[
+ {k:'date',   name:'Transaction date', field:'txnDate',     req:true},
+ {k:'valueDate',name:'Value date',     field:'valueDate',   req:false},
+ {k:'description',name:'Narration',    field:'description', req:true},
+ {k:'reference',name:'Reference',      field:'refNo',       req:false},
+ {k:'debit',  name:'Withdrawal',       field:'amount (DEBIT)',req:true,only:'two'},
+ {k:'credit', name:'Deposit',          field:'amount (CREDIT)',req:true,only:'two'},
+ {k:'amount', name:'Amount',           field:'amount',      req:true,not:'two'},
+ {k:'type',   name:'Dr / Cr',          field:'direction',   req:true,only:'typed'},
+ {k:'balance',name:'Running balance',  field:'balanceAfter',req:false}
+];
+function rolesFor(mode){return ROLES.filter(function(r){
+  if(r.only&&r.only!==mode)return false;
+  if(r.not&&r.not===mode)return false;
+  return true;});}
+</script>
+
+<style>
+.new{display:inline-flex;align-items:center;height:14px;padding:0 4px;margin-left:5px;border-radius:var(--r-1);
+  border:1px solid var(--accent-line);color:var(--accent);background:none;font-size:8.5px;font-weight:600;
+  letter-spacing:.08em;text-transform:uppercase;line-height:1;vertical-align:1px;flex:none}
+.stepr .st.down .sn{background:none;box-shadow:inset 0 0 0 1px var(--border);border:1px dashed var(--border-control);color:var(--fg-disabled)}
+.stepr .st.down .sx b{color:var(--fg-disabled)}
+.stepr .bar.dash{background:repeating-linear-gradient(to right,var(--border-control) 0 3px,transparent 3px 6px)}
+.gate{display:flex;flex-wrap:wrap;align-items:baseline;gap:7px;font-family:var(--mono);font-size:13px;
+  font-variant-numeric:slashed-zero tabular-nums;line-height:24px}
+.gate .op{color:var(--fg-muted)}
+.gate .v{color:var(--fg);font-weight:500}
+.gate .res.ok{color:var(--gain);font-weight:600}
+.gate .res.no{color:var(--loss);font-weight:600}
+.gate .mu{font-size:10.5px;color:var(--fg-muted);display:block;line-height:13px;font-weight:400}
+.gatebox{border:1px solid var(--border);border-radius:var(--r-3);padding:11px 13px;background:var(--bg-sunken);min-width:0;overflow-x:auto}
+.gatebox.ok{border-left:2px solid var(--gain)}
+.gatebox.no{border-left:2px solid var(--loss)}
+.ordwarn{display:flex;gap:9px;align-items:flex-start;padding:9px 11px;border:1px solid var(--warn-line);
+  border-left-width:2px;border-radius:var(--r-3);background:var(--warn-bg);min-width:0}
+.ordwarn .ob{min-width:0;display:flex;flex-direction:column;gap:5px;flex:1}
+.ordwarn b{font-size:12.5px}
+.ordwarn p{font-size:11.5px;line-height:17px;color:var(--fg-secondary)}
+.banktab{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;font-size:11.5px;min-width:0}
+.banktab b{font-weight:600;white-space:nowrap}
+.banktab span{color:var(--fg-secondary);min-width:0}
+</style>
+
+<script>
+/* ═══════════════ router ═══════════════ */
+var PAGES=['upload','detect','pages','map','check','json','library','handoff'];
+var SPINE=[
+ {k:'upload',n:'Upload',c:'files queued'},
+ {k:'detect',n:'Detect',c:'format matched'},
+ {k:'pages',n:'Pages',c:'PDF only'},
+ {k:'map',n:'Map',c:'columns → fields'},
+ {k:'check',n:'Reconcile',c:'proof'},
+ {k:'review',n:'Review',c:'/imports/[batchId]',down:true},
+ {k:'post',n:'Post',c:'into the journal',down:true}
+];
+var CURRENT='upload';
+function drawSteppers(){
+  var pos=SPINE.findIndex(function(s){return s.k===CURRENT;});
+  if(CURRENT==='handoff')pos=5;
+  document.querySelectorAll('[data-stepr]').forEach(function(el){
+    var h='';
+    SPINE.forEach(function(s,i){
+      var cls=s.down?'st down':(i<pos?'st ok':(i===pos?'st on':'st'));
+      h+='<button class="'+cls+'" data-goto="'+(s.down?'handoff':s.k)+'">'
+        +'<span class="sn">'+(s.down?'·':(i<pos?svg('ck',11):i+1))+'</span>'
+        +'<span class="sx"><b>'+s.n+'</b><span>'+s.c+'</span></span></button>';
+      if(i<SPINE.length-1)h+='<span class="bar'+(i<pos?' ok':'')+(SPINE[i+1].down?' dash':'')+'"></span>';
+    });
+    el.innerHTML=h;
+  });
+}
+function go(id){
+  if(PAGES.indexOf(id)<0)return;
+  CURRENT=id;
+  PAGES.forEach(function(p){document.getElementById('p-'+p).hidden=(p!==id);});
+  document.querySelectorAll('#secnav button').forEach(function(b){b.setAttribute('aria-current',String(b.dataset.s===id));});
+  drawSteppers();paintIcons();window.scrollTo(0,0);
+}
+document.getElementById('secnav').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(b)go(b.dataset.s);});
+document.addEventListener('click',function(e){
+  var g=e.target.closest('[data-goto]');if(g){e.preventDefault();go(g.dataset.goto);}});
+
+/* ═══════════════ 1 · upload queue ═══════════════ */
+var QUEUE=[
+ {id:'f1',name:'HDFC-Savings-Sep-2025.pdf',t:'PDF',size:'248 KB',meta:'5 pages · text layer found',
+  state:'ready',note:'Recognised as <b>HDFC Savings &mdash; Statement of Account, v2</b>. Pages 2&ndash;4 hold the table.'},
+ {id:'f2',name:'SBI-eStatement-Aug-2025.pdf',t:'PDF',size:'186 KB',meta:'Encrypted · pages unknown until opened',
+  state:'locked',
+  note:'Password-protected. <b>SBI&rsquo;s rule is not something to guess at</b> &mdash; it varies by channel and the statement is refused outright on a wrong try. Use the password from the covering email.'},
+ {id:'f3',name:'ICICI-Savings-Sep-2025.pdf',t:'PDF',size:'312 KB',meta:'4 pages · positional text, no ruled table',
+  state:'wrongacct',
+  note:'The letterhead names an account ending <b>8842</b>. You are importing into HDFC Savings &bull;&bull;1234.'},
+ {id:'f4',name:'passbook-scan-2019.pdf',t:'PDF',size:'3.4 MB',meta:'12 pages · no text layer',
+  state:'notext',
+  note:'There is no text in this PDF to read &mdash; it is a scan or a photograph. Ask the bank for a CSV or an Excel export.'},
+ {id:'f5',name:'kotak-salary-Jul-2025.csv',t:'CSV',size:'41 KB',meta:'8 columns · 142 rows · UTF-8',
+  state:'ready',note:'Header row matched a saved format. Mapping is already answered.'},
+ {id:'f6',name:'axis-q2-FY26.xlsx',t:'XLSX',size:'88 KB',meta:'3 sheets · reading &ldquo;Transaction Details&rdquo;',
+  state:'ready',note:'Two of the three sheets are summaries and are not read.'},
+ {id:'f7',name:'HDFC-Savings-Aug-Sep-2025.pdf',t:'PDF',size:'402 KB',meta:'9 pages · period 01 Aug &ndash; 30 Sep',
+  state:'overlap',
+  note:'This period overlaps batch <b>B-1039</b> (01 Aug &ndash; 31 Aug). About 31 rows are already in the journal. They will be staged and flagged, never silently dropped.'},
+ {id:'f8',name:'groww-ledger-FY26.json',t:'JSON',size:'41 KB',meta:'Root object · 3 arrays · 141 candidate rows',
+  state:'ready',newf:true,note:'Takes the JSON route: a path picker and key mapping instead of pages and columns.'}
+];
+var UNLOCKING={};
+function qRender(){
+  var q=document.getElementById('queue');
+  var ready=QUEUE.filter(function(f){return f.state==='ready';}).length;
+  var held=QUEUE.length-ready;
+  var h='';
+  QUEUE.forEach(function(f){
+    var cls='qr'+(f.state==='notext'?' isbad':f.state==='wrongacct'||f.state==='overlap'?' iswarn':f.state==='locked'?' islock':'');
+    var badge={ready:'<span class="bdg sub-gain sm"><span class="dot"></span>Ready</span>',
+      locked:'<span class="bdg sub-info sm">Locked</span>',
+      wrongacct:'<span class="bdg sub-warn sm">Wrong account</span>',
+      notext:'<span class="bdg sub-loss sm">Cannot be read</span>',
+      overlap:'<span class="bdg sub-warn sm">Overlaps a batch</span>'}[f.state];
+    h+='<div class="qr '+cls.slice(3)+'" data-f="'+f.id+'">'
+      +'<span class="ftype">'+f.t+'</span>'
+      +'<span class="qb"><span class="qn">'+esc(f.name)+(f.newf?'<span class="new">New</span>':'')+'</span>'
+      +'<span class="qm">'+badge+'<span>'+f.size+'</span><span class="sep">·</span><span>'+f.meta+'</span></span>'
+      +'<span class="qmsg">'+f.note+'</span>';
+    if(f.state==='locked'&&UNLOCKING[f.id]){
+      h+='<span class="unlock"><span class="fld" style="flex:1;min-width:150px">'
+        +'<label for="pw-'+f.id+'">Password</label>'
+        +'<span class="inw md"><span class="ico">'+svg('key',14)+'</span><input id="pw-'+f.id+'" type="password" placeholder="From the covering email"></span>'
+        +'</span><button class="btn btn-sm btn-primary" data-unlock="'+f.id+'">Open</button>'
+        +'<span class="hint" style="flex-basis:100%">A derivable rule exists only for HDFC, ICICI, a CDSL or NSDL consolidated statement, Zerodha and Groww. For every other issuer the app asks rather than guesses, because a wrong guess is indistinguishable from a corrupt file. The password opens the file and is then discarded.</span>'
+        +'<span class="errtxt" id="pwerr-'+f.id+'" hidden>'+svg('warn',12)+'<span>Enter the password before opening.</span></span></span>';
+    }
+    h+='</span><span class="qa">';
+    if(f.state==='locked')h+='<button class="btn btn-sm" data-unlockopen="'+f.id+'">'+(UNLOCKING[f.id]?'Cancel':'Unlock')+'</button>';
+    if(f.state==='wrongacct')h+='<button class="btn btn-sm btn-primary" data-switch="'+f.id+'">Switch account</button>';
+    if(f.state==='overlap')h+='<button class="btn btn-sm btn-primary" data-keep="'+f.id+'">Read it anyway</button>';
+    if(f.state==='notext')h+='<button class="btn btn-sm btn-ghost" data-rm="'+f.id+'">Remove</button>';
+    if(f.state==='ready')h+='<button class="btn btn-sm btn-ghost only" data-rm="'+f.id+'" aria-label="Remove '+esc(f.name)+'">'+svg('x',14)+'</button>';
+    h+='</span></div>';
+  });
+  q.innerHTML=h||'<div class="empty"><b>The queue is empty</b><p>Drop a statement above. PDF, CSV, a spreadsheet or a JSON export — each takes the route that suits it.</p></div>';
+  document.getElementById('qCount').textContent=QUEUE.length+' files · '+ready+' ready · '+held+' need you';
+  document.getElementById('qFoot').innerHTML=held
+    ? '<b>'+ready+'</b> will be read now. <b>'+held+'</b> wait for the answer on their row.'
+    : 'All '+ready+' files are ready to read.';
+  document.getElementById('qGo').textContent='Read '+ready+' file'+(ready===1?'':'s');
+  document.getElementById('qGo').disabled=ready===0;
+  paintIcons(q);
+}
+document.getElementById('queue').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;
+  var id=b.dataset.rm||b.dataset.unlockopen||b.dataset.unlock||b.dataset.switch||b.dataset.keep;
+  var f=QUEUE.find(function(x){return x.id===id;});
+  if(b.dataset.rm){QUEUE=QUEUE.filter(function(x){return x.id!==id;});qRender();return;}
+  if(b.dataset.unlockopen){UNLOCKING[id]=!UNLOCKING[id];qRender();
+    var inp=document.getElementById('pw-'+id);if(inp)inp.focus();return;}
+  if(b.dataset.unlock){
+    var v=(document.getElementById('pw-'+id)||{}).value||'';
+    if(!v.trim()){document.getElementById('pwerr-'+id).hidden=false;return;}
+    f.state='ready';f.meta='7 pages · opened';
+    f.note='Opened. The password derived the decryption key and was discarded. <b>SBI &mdash; Account Statement</b> matched on the column headings.';
+    delete UNLOCKING[id];qRender();return;}
+  if(b.dataset.switch){
+    document.getElementById('intoAcct').selectedIndex=1;
+    f.state='ready';f.note='Reading into <b>ICICI Savings &bull;&bull;8842</b>, which is the account this statement names.';qRender();return;}
+  if(b.dataset.keep){
+    f.state='ready';
+    f.note='Will be read. The overlapping rows are staged and flagged <b>Looks familiar</b> by layer 1, so you decide rather than the importer.';qRender();return;}
+});
+document.getElementById('qReset').addEventListener('click',function(){location.reload();});
+(function(){
+  var d=document.getElementById('drop');
+  ['dragenter','dragover'].forEach(function(ev){d.addEventListener(ev,function(e){e.preventDefault();d.classList.add('over');
+    document.getElementById('dropTitle').textContent='Release to queue';});});
+  ['dragleave','drop'].forEach(function(ev){d.addEventListener(ev,function(e){e.preventDefault();d.classList.remove('over');
+    document.getElementById('dropTitle').textContent='Drop statements here';});});
+})();
+
+/* ═══════════════ 2 · format detection ═══════════════ */
+var DET={
+known:function(){
+ return '<div class="split-ctl"><div class="col">'
+ +panel('This file','<span class="bdg sub-gain">Recognised</span>',
+   '<div class="confbar"><span class="lbl" style="letter-spacing:.04em">Confidence</span><span class="track"><i style="width:96%"></i></span><span class="pct">96%</span></div>'
+   +'<h3 style="font-size:15px;margin-top:2px">HDFC Savings &mdash; Statement of Account, v2</h3>'
+   +'<p class="hint">Saved 14 Mar 2025 · used on 18 statements · last on 19 Oct 2025</p><hr class="hr">'
+   +'<span class="lbl">What agreed</span>'
+   +evid([['y','Layout fingerprint <code>col7:d-n-r-v-w-d-b</code> matches the stored one exactly.'],
+          ['y','All seven column headings matched their saved spelling, including <code>Chq./Ref.No.</code> and <code>Withdrawal Amt.</code>'],
+          ['y','Narrations terminate on a <code>Value Dt DD/MM/YYYY</code> marker, which is what separates v2 from v1.'],
+          ['y','Letterhead account ending <b>1234</b> matches the selected account.'],
+          ['w','Period 01&ndash;30 Sep 2025 leaves a 3-day gap after the last imported batch.']])
+   ,'<button class="btn btn-sm" data-det="other">This is wrong — pick another</button><span class="sp"></span><button class="btn btn-sm btn-primary" data-goto="pages">Use this format</button>')
+ +panel('Why not v1','',
+   '<div class="banktab">'
+   +'<b>v1</b><span>One table row can hold an entire page; the narration runs on until a <code>Value Dt</code> marker ends it. Recovered line by line.</span>'
+   +'<b>v2</b><span>One row per transaction, narration wrapped across physical lines. Recovered by column geometry.</span></div>'
+   +'<p class="hint" style="margin-top:7px">Two formats from the same bank, both current, both named &ldquo;Statement of Account&rdquo;. The file name tells you nothing; the fingerprint does.</p>','')
+ +'</div>'
+ +panel('What this format already answers','<span class="bdg out-n">Skips stages 3 and 4</span>',
+   kvHTML([['Pages holding the table','2 to the last'],['Header lines skipped per page','6'],['Footer lines skipped per page','2'],
+     ['Date order','DD/MM — fixed, not detected'],['Amount shape','Withdrawal and Deposit columns'],
+     ['Column order','Withdrawal, then Deposit'],['Trailing Cr / Dr markers','Stripped'],
+     ['Opening balance row','<code>OPENING BALANCE</code>'],['Control totals row','<code>TOTAL</code>'],
+     ['Statements read with it','18'],['Reconciled','18 of 18']]),
+   '<span class="sp hint">Every one of these is editable, and editing one creates v3 rather than rewriting v2.</span>')
+ +'</div>';
+},
+near:function(){
+ return '<div class="split-ctl"><div class="col">'
+ +panel('This file','<span class="bdg sub-warn">Close, not certain</span>',
+   '<div class="confbar"><span class="lbl" style="letter-spacing:.04em">Confidence</span><span class="track mid"><i style="width:61%"></i></span><span class="pct">61%</span></div>'
+   +'<h3 style="font-size:15px;margin-top:2px">ICICI Savings &mdash; Statement of Account, v1</h3>'
+   +'<p class="hint">Saved 02 Jun 2025 · used on 11 statements</p><hr class="hr">'
+   +'<span class="lbl">What agreed, and what did not</span>'
+   +evid([['y','Letterhead and branch block match the saved shape.'],
+          ['y','Account ending <b>8842</b> matches the selected account.'],
+          ['n','The file has <b>8</b> columns where this format expects 7. The extra one sits between <code>Value Date</code> and the amounts.'],
+          ['w','ICICI prints <code>DEPOSITS</code> before <code>WITHDRAWALS</code>. Accepting a near match without checking would invert the sign on every row.']])
+   ,'<button class="btn btn-sm btn-primary" data-goto="map">Check the mapping</button><button class="btn btn-sm" data-det="unknown">Start a new format</button>')
+ +'</div>'
+ +panel('Below the bar, nothing is assumed','<span class="bdg out-warn">Under 85%</span>',
+   '<p class="hint">A near match is offered as a <b>starting point for the mapping screen</b>, never applied on its own. The cost of the two outcomes is not symmetric: a format applied wrongly produces a statement that imports cleanly, reconciles against nothing, and quietly inverts every sign.</p>'
+   +'<hr class="hr"><span class="lbl">How the threshold is set</span>'
+   +evid([['y','<b>85% and above</b> — applied, with the evidence shown. One click to reject.'],
+          ['w','<b>50&ndash;85%</b> — pre-fills the mapping screen. You confirm each role.'],
+          ['n','<b>Under 50%</b> — treated as unknown. Nothing is pre-filled.']]),'')
+ +'</div>';
+},
+unknown:function(){
+ return '<div class="split-ctl"><div class="col">'
+ +panel('This file','<span class="bdg dash">Unknown</span>',
+   '<p class="hint" style="font-size:12.5px;line-height:19px">No saved format matches this layout. That is the normal state for the first statement from any bank, and for any bank that has changed its template. Nothing is wrong.</p>'
+   +'<hr class="hr"><span class="lbl">What could still be read without a format</span>'
+   +evid([['y','<b>7 columns</b> found by geometry, consistent on 3 of 5 pages.'],
+          ['y','<b>5 headings</b> matched the shared alias table: <code>Date</code>, <code>Narration</code>, <code>Withdrawal</code>, <code>Deposit</code>, <code>Balance</code>.'],
+          ['w','<b>2 headings</b> matched nothing: <code>Tran Id</code> and <code>Posted By</code>. They are left unassigned.'],
+          ['y','A <b>running balance</b> is printed, so whatever mapping you choose can be proved right or wrong.'],
+          ['w','<b>Dates are ambiguous</b> on the first 11 rows. Resolved by the first day above 12.']])
+   ,'<button class="btn btn-sm btn-primary" data-goto="pages">Set it up by hand</button>')
+ +panel('Named by the bank, or by you','',
+   '<div class="fld"><label for="newFmtName">Format name</label>'
+   +'<div class="inw"><input id="newFmtName" value="Axis Savings — Statement of Account, v1"></div>'
+   +'<span class="hint">Suggested from the letterhead. It is only a label — matching is done on the layout fingerprint.</span></div>','')
+ +'</div>'
+ +panel('What a format has to answer','<span class="nt">The unknown path walks all of it</span>',
+   '<div class="evid">'
+   +'<div><span class="ei" style="color:var(--accent)">'+svg('arrow-r',13)+'</span><span class="et"><b>Stage 3 — Pages.</b> Which pages hold the table, what repeats at the top and bottom of each, where the balance block is.</span></div>'
+   +'<div><span class="ei" style="color:var(--accent)">'+svg('arrow-r',13)+'</span><span class="et"><b>Stage 4 — Columns.</b> Which column is the date, the narration, the reference, the amount or amounts, the balance.</span></div>'
+   +'<div><span class="ei" style="color:var(--accent)">'+svg('arrow-r',13)+'</span><span class="et"><b>Stage 4 — Reading rules.</b> Date order, amount shape, whether narrations wrap, which rows are summaries.</span></div>'
+   +'<div><span class="ei" style="color:var(--accent)">'+svg('arrow-r',13)+'</span><span class="et"><b>Stage 5 — Proof.</b> The running balance and the printed totals decide whether the answers above were right.</span></div>'
+   +'</div><p class="hint" style="margin-top:9px">Once, for this bank. The next statement with the same fingerprint skips straight to stage 5.</p>'
+   +'<hr class="hr"><span class="lbl">Known layout families<span class="new">New</span></span>'
+   +'<div class="banktab" style="margin-top:5px">'
+   +'<b>HDFC</b><span>Two live formats. Withdrawal before Deposit.</span>'
+   +'<b>ICICI</b><span>Positional text, no ruled grid; the narration sits symmetrically above and below the date line. <b>DEPOSITS before WITHDRAWALS.</b></span>'
+   +'<b>SBI</b><span>Four distinct layouts across its download channels. <b>Credit before Debit.</b></span>'
+   +'<b>Kotak</b><span><code>Withdrawal (Dr.)</code> and <code>Deposit (Cr.)</code>, dates <code>DD Mon YYYY</code>, opening row padded with <code>-</code>.</span>'
+   +'<b>Axis</b><span><code>Tran Date / Chq No / Particulars / Debit / Credit / Balance / Init.Br</code>.</span></div>'
+   +'<p class="hint" style="margin-top:7px">The column order differs between banks, and a wrong default does not fail — it inverts the sign on every row and still reconciles against nothing. This is why stage 4 shows the order and makes you look at a signed preview.</p>','')
+ +'</div>';
+}};
+function panel(title,right,body,foot){
+  return '<div class="panel"><div class="panel-h"><h3>'+title+'</h3><span class="nt"></span>'+(right||'')+'</div>'
+    +'<div class="panel-b">'+body+'</div>'+(foot?'<div class="panel-f">'+foot+'</div>':'')+'</div>';
+}
+function evid(items){
+  return '<div class="evid">'+items.map(function(it){
+    var ic=it[0]==='y'?['check','ey']:it[0]==='w'?['warn','ew']:['x','en'];
+    return '<div><span class="ei '+ic[1]+'">'+svg(ic[0],13)+'</span><span class="et">'+it[1]+'</span></div>';
+  }).join('')+'</div>';
+}
+function kvHTML(pairs){
+  return '<dl class="kv">'+pairs.map(function(p){return '<dt>'+p[0]+'</dt><dd>'+p[1]+'</dd>';}).join('')+'</dl>';
+}
+var detMode='known';
+function drawDet(){
+  document.getElementById('detBody').innerHTML=DET[detMode]();
+  document.querySelectorAll('#detSeg button').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.d===detMode));});
+  paintIcons(document.getElementById('detBody'));
+}
+document.getElementById('detSeg').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;detMode=b.dataset.d;drawDet();});
+document.getElementById('detBody').addEventListener('click',function(e){
+  var b=e.target.closest('[data-det]');if(!b)return;detMode=b.dataset.det;drawDet();});
+</script>
+
+<script>
+/* ═══════════════ 3 · pages & regions ═══════════════ */
+var PDFPAGES=[
+ {n:1,kind:'Cover',lines:22,include:false,why:'Letterhead, the account block and the statement summary. No transaction table.'},
+ {n:2,kind:'Transactions',lines:52,include:true,why:'The table starts here, under a repeated heading row.'},
+ {n:3,kind:'Transactions',lines:52,include:true,why:'Table continues. Same six header lines, same two footer lines.'},
+ {n:4,kind:'Transactions',lines:52,include:true,why:'Table ends, followed by the TOTAL and CLOSING BALANCE rows.'},
+ {n:5,kind:'Terms',lines:38,include:false,why:'Legends, the nominee block and the computer-generated-statement notice.'}
+];
+var PGSEL=3,ZONES=true;
+function drawPages(){
+  var inc=PDFPAGES.filter(function(p){return p.include;});
+  var t='';
+  PDFPAGES.forEach(function(p){
+    var sel=p.n===PGSEL;
+    t+='<button class="thumb'+(p.include?'':' off')+'" aria-pressed="'+sel+'" data-pg="'+p.n+'">'
+      +'<span class="tbadge '+(p.include?'inc':'exc')+'">'+(p.include?'in':'out')+'</span>'
+      +(p.kind==='Transactions'
+        ?'<span class="tl w90"></span><span class="tl w70"></span><span class="tl w90"></span><span class="tl w90"></span><span class="tl w70"></span><span class="tl w40"></span>'
+        :p.kind==='Cover'
+        ?'<span class="tl w40"></span><span class="tl w70"></span><span class="tl w40"></span><span class="tl w90"></span><span class="tl w90"></span><span class="tl w40"></span>'
+        :'<span class="tl w90"></span><span class="tl w90"></span><span class="tl w90"></span><span class="tl w90"></span><span class="tl w90"></span><span class="tl w70"></span>')
+      +'<span class="tcap">'+p.n+'</span></button>';
+  });
+  document.getElementById('thumbs').innerHTML=t;
+  document.getElementById('pgNote').textContent=inc.length+' of 5 included';
+  var cur=PDFPAGES[PGSEL-1];
+  document.getElementById('pgRange').innerHTML='<b>'+cur.kind+'</b> &mdash; '+cur.why
+    +' <button class="btn btn-sm btn-link" data-toggle="'+cur.n+'" style="font-size:11px">'+(cur.include?'Exclude this page':'Include this page')+'</button>';
+  document.getElementById('pvNote').textContent='Page '+PGSEL+' of 5 — '+cur.kind.toLowerCase();
+
+  var hdr=document.getElementById('zHdr').checked,ftr=document.getElementById('zFtr').checked,bal=document.getElementById('zBal').checked;
+  var nTxn=inc.filter(function(p){return p.kind==='Transactions';}).length;
+  var excluded=PDFPAGES.filter(function(p){return !p.include;}).reduce(function(a,p){return a+p.lines;},0);
+  var removed=(hdr?6*nTxn:0)+(ftr?2*inc.length:0);
+  var total=216,candidate=total-excluded-removed;
+  var res=parse('hdfc');
+  document.getElementById('furnStats').innerHTML=
+    '<dt>Lines of text in the file</dt><dd class="tnum">'+total+'</dd>'
+   +'<dt>On pages you excluded</dt><dd class="tnum">−'+excluded+'</dd>'
+   +'<dt>Repeating header and footer</dt><dd class="tnum">−'+removed+'</dd>'
+   +'<dt>Candidate table lines</dt><dd class="tnum">'+candidate+'</dd>'
+   +'<dt>Transactions recovered</dt><dd class="tnum"><b>'+res.rows.length+'</b></dd>';
+  drawPaper();
+}
+function paperRow(cells,cls){
+  return '<div class="ptr pgrid'+(cls?' '+cls:'')+'">'
+    +'<span>'+esc(cells[0])+'</span><span class="pln">'+esc(cells[1])+'</span><span class="pln">'+esc(cells[2])+'</span>'
+    +'<span>'+esc(cells[3])+'</span><span class="r">'+esc(cells[4])+'</span><span class="r">'+esc(cells[5])+'</span><span class="r">'+esc(cells[6])+'</span></div>';
+}
+function drawPaper(){
+  var p=PDFPAGES[PGSEL-1],h='',Z=ZONES;
+  var head=function(inner,kind,label){return Z?'<div class="band '+kind+'">'+inner+'<span class="zlab">'+label+'</span></div>':inner;};
+  if(p.kind==='Cover'){
+    h+=head('<div class="plogo">HDFC BANK</div><div class="psub">HDFC Bank House, Senapati Bapat Marg, Lower Parel, Mumbai 400013</div>','hdr','Letterhead');
+    h+='<div class="prule"></div>';
+    h+='<div style="font-weight:600;font-size:9px;margin-bottom:3px">Statement of Account</div>';
+    h+='<div class="pln">DEBASISH RANA</div><div class="pln psub">BANGALORE 560103</div><div class="prule"></div>';
+    h+='<div class="pln">A/C No : XXXXXXXX1234&nbsp;&nbsp;&nbsp;IFSC : HDFC0000060&nbsp;&nbsp;&nbsp;MICR : 560240002</div>';
+    h+='<div class="pln">Statement From : 01/09/2025&nbsp;&nbsp;&nbsp;To : 30/09/2025</div>';
+    h+='<div class="prule"></div>';
+    h+=head('<div style="font-weight:600;margin-bottom:2px">STATEMENT SUMMARY :-</div>'
+      +'<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:3px;font-size:7px">'
+      +'<span>Opening Balance<br><b>1,24,318.40</b></span><span>Debit Amount<br><b>89,796.00</b></span>'
+      +'<span>Credit Amount<br><b>1,98,284.00</b></span><span>Closing Balance<br><b>2,32,806.40</b></span></div>','bal','Control figures');
+    h+='<div class="pfoot">This is a computer generated statement and does not require signature.</div>';
+  }else if(p.kind==='Terms'){
+    h+=head('<div class="plogo">HDFC BANK</div>','hdr','Letterhead');
+    h+='<div class="prule"></div><div style="font-weight:600;font-size:8px;margin-bottom:3px">LEGENDS FOR TRANSACTIONS</div>';
+    ['POS &ndash; Point of Sale transaction at a merchant terminal.','UPI &ndash; Unified Payments Interface. The narration carries the payee name, the virtual payment address and the retrieval reference number.','ACH D / ACHC &ndash; Automated Clearing House debit or credit, used for mandates.','NACH &ndash; National Automated Clearing House.','NEFT / IMPS / RTGS &ndash; Interbank transfer rails. The reference is the UTR.','*Closing balance includes funds earmarked for hold and uncleared funds.','NAME OF NOMINEE : REGISTERED'].forEach(function(l){
+      h+='<div style="margin-bottom:2px">'+l+'</div>';});
+    h+='<div class="prule"></div><div class="pfoot">Page 5 of 5 · This is a computer generated statement and does not require signature.</div>';
+  }else{
+    var hdrInner='<div class="plogo" style="font-size:9px">HDFC BANK</div>'
+      +'<div class="psub">A/C No : XXXXXXXX1234 &nbsp; Statement From : 01/09/2025 &nbsp; To : 30/09/2025</div>'
+      +'<div class="pth pgrid"><span>Date</span><span>Narration</span><span>Chq./Ref.No.</span><span>Value Dt</span>'
+      +'<span class="r">Withdrawal Amt.</span><span class="r">Deposit Amt.</span><span class="r">Closing Balance</span></div>';
+    h+=head(hdrInner,'hdr','Repeats on every page');
+    var R=SAMPLES.hdfc.rows;
+    var slice=p.n===2?R.slice(0,8):p.n===3?R.slice(8,16):R.slice(16);
+    var body='';
+    slice.forEach(function(r){
+      var isSum=SUMMARY.test(String(r[1]||''));
+      var isCont=String(r[0]||'').trim()===''&&String(r[1]||'').trim()!=='';
+      body+=paperRow(r,isCont?'cont':'');
+      if(isSum&&p.n===4){}
+    });
+    if(p.n===4&&ZONES) h+='<div class="band tbl">'+body+'<span class="zlab">Transaction table</span></div>';
+    else h+=ZONES?'<div class="band tbl">'+body+'<span class="zlab">Transaction table</span></div>':body;
+    h+=head('<div class="pfoot" style="margin-top:4px">Page '+p.n+' of 5 · This is a computer generated statement and does not require signature.</div>','ftr','Repeats on every page');
+  }
+  document.getElementById('paper').innerHTML=h;
+}
+document.getElementById('thumbs').addEventListener('click',function(e){
+  var b=e.target.closest('[data-pg]');if(b){PGSEL=Number(b.dataset.pg);drawPages();}});
+document.getElementById('pgRange').addEventListener('click',function(e){
+  var b=e.target.closest('[data-toggle]');if(b){var p=PDFPAGES[Number(b.dataset.toggle)-1];p.include=!p.include;drawPages();}});
+['zHdr','zFtr','zBal','zRule'].forEach(function(id){document.getElementById(id).addEventListener('change',drawPages);});
+document.getElementById('pgAll').addEventListener('click',function(){PDFPAGES.forEach(function(p){p.include=true;});drawPages();});
+document.getElementById('pgAuto').addEventListener('click',function(){PDFPAGES.forEach(function(p){p.include=p.kind==='Transactions';});drawPages();});
+document.getElementById('zoneSeg').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;ZONES=b.dataset.z==='on';
+  document.querySelectorAll('#zoneSeg button').forEach(function(x){x.setAttribute('aria-pressed',String((x.dataset.z==='on')===ZONES));});
+  drawPaper();});
+
+/* ═══════════════ 4 · mapping ═══════════════ */
+function drawMap(){
+  var S=SAMPLES[STATE.src],M=STATE.map[STATE.src],mode=STATE.mode[STATE.src];
+  document.getElementById('srcNote').innerHTML=S.note;
+  document.querySelectorAll('#srcSeg button').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.src===STATE.src));});
+  document.querySelectorAll('input[name="amtmode"]').forEach(function(r){r.checked=(r.value===mode);});
+  document.getElementById('fmtName').value=({hdfc:'HDFC Savings — Statement of Account, v2',
+    sbi:'SBI — Monthly e-statement, v1',paytm:'Paytm wallet — CSV export, v1'})[STATE.src];
+
+  var h='<div class="ordwarn">'+svg('warn',15)+'<span class="ob"><b>Column order in this file: '+S.order+'</b><p>'+S.orderWarn+'</p>'
+    +(mode==='two'?'<span class="row"><button class="btn btn-sm" id="swapCols">Swap the two amount columns</button><span class="hint">Try it. The balance check below answers within one frame.</span></span>':'')
+    +'</span></div>';
+  rolesFor(mode).forEach(function(R){
+    var cur=M[R.k];
+    var opts='<option value="-1"'+(cur<0?' selected':'')+'>— not in this file —</option>';
+    S.headers.forEach(function(hd,i){
+      opts+='<option value="'+i+'"'+(cur===i?' selected':'')+'>'+i+' · '+esc(hd||'(unnamed)')+'</option>';});
+    h+='<div class="maprow"><span class="mf">'+R.name+(R.req?' <span style="color:var(--loss)">*</span>':'')
+      +'<code>'+R.field+'</code></span><span class="arw">'+svg('arrow-r',12)+'</span>'
+      +'<select class="sel'+(cur<0?' unset':'')+'" data-role="'+R.k+'" aria-label="Source column for '+R.name+'">'+opts+'</select></div>';
+  });
+  document.getElementById('maplist').innerHTML=h;
+  paintIcons(document.getElementById('maplist'));
+  drawPreview();
+}
+function drawPreview(){
+  var res=parse(STATE.src),S=SAMPLES[STATE.src],M=res.map;
+  document.getElementById('dateEvidence').textContent=res.orderWhy;
+  document.querySelectorAll('#dateSeg button').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.do===STATE.dateOrder));});
+  document.querySelectorAll('#prevSeg button').forEach(function(b){b.setAttribute('aria-pressed',String(b.dataset.pv===STATE.prev));});
+
+  /* alerts */
+  var al='';
+  if(res.breaks.length)
+    al+='<div class="alrt e">'+svg('warn',15)+'<div class="ab"><b>'+res.breaks.length+' row'+(res.breaks.length===1?'':'s')+' no longer follow'+(res.breaks.length===1?'s':'')+' the printed balance</b>'
+      +'<p>A printed balance that does not follow from the row above plus this row’s amount means a column is being read the wrong way round, or a row was missed. The mapping is wrong, not the bank.</p></div></div>';
+  if(res.trust==='UNVERIFIED')
+    al+='<div class="alrt w">'+svg('info',15)+'<div class="ab"><b>This reading cannot check itself</b>'
+      +'<p>No running balance is mapped, so there is nothing to test the column choices against. That is an absence of evidence, not a pass — the batch carries <code>UNVERIFIED</code>.</p></div></div>';
+  if(res.trust==='RECONCILED')
+    al+='<div class="alrt s">'+svg('check',15)+'<div class="ab"><b>Every printed balance follows</b>'
+      +'<p>'+res.checked+' row'+(res.checked===1?'':'s')+' tested against the balance the bank printed beside '+(res.checked===1?'it':'them')+'. Exact, because amounts are integer paise.</p></div></div>';
+  if(res.problems.length)
+    al+='<div class="alrt w">'+svg('warn',15)+'<div class="ab"><b>'+res.problems.length+' line'+(res.problems.length===1?'':'s')+' could not be read</b>'
+      +'<p>'+esc(res.problems[0].reason)+(res.problems.length>1?' — and '+(res.problems.length-1)+' more. All are listed on the reconcile stage.':'')+'</p></div></div>';
+  document.getElementById('prevAlerts').innerHTML=al;
+
+  var wrap=document.getElementById('prevWrap'),t='';
+  if(STATE.prev==='raw'){
+    var roleOf={};Object.keys(M).forEach(function(k){if(M[k]>=0)roleOf[M[k]]=k;});
+    t='<table class="dt rawtab"><thead><tr><th style="width:40px">#</th>';
+    S.headers.forEach(function(hd,i){
+      t+='<th'+(roleOf[i]?' class="col-assigned"':'')+'><span class="chipn">'+i+'</span> '+esc(hd||'—')
+        +(roleOf[i]?'<br><span style="font-size:9.5px;color:var(--accent);font-weight:600">'+roleOf[i]+'</span>':'<br><span style="font-size:9.5px;color:var(--fg-disabled)">unassigned</span>')+'</th>';});
+    t+='</tr></thead><tbody>';
+    S.rows.forEach(function(r,i){
+      var blank=r.every(function(c){return String(c||'').trim()==='';});
+      var cont=String(r[M.date>=0?M.date:0]||'').trim()===''&&!blank;
+      t+='<tr class="'+(blank?'skip':cont?'wrapln':'')+'"><td class="muted">'+(i+1)+'</td>';
+      r.forEach(function(c,ci){t+='<td'+(roleOf[ci]?' class="col-assigned"':'')+'>'+(String(c||'').trim()===''?'<span class="muted">·</span>':esc(c))+'</td>';});
+      t+='</tr>';});
+    t+='</tbody></table>';
+    document.getElementById('prevFoot').innerHTML=S.rows.length+' extracted lines, exactly as the reader handed them over. A highlighted column header has been given a role.';
+  }else{
+    var brkBy={};res.breaks.forEach(function(b){brkBy[b.idx]=b;});
+    t='<table class="dt"><thead><tr><th style="width:44px">Line</th><th style="width:92px">Date</th><th>Narration</th>'
+     +'<th style="width:140px">Reference</th><th class="num" style="width:120px">Amount</th>'
+     +'<th class="num" style="width:120px">Balance</th><th style="width:34px"></th></tr></thead><tbody>';
+    res.rows.forEach(function(r){
+      var bad=brkBy[r.idx];
+      t+='<tr'+(bad?' class="bad"':'')+'>'
+        +'<td class="muted tnum">'+(r.idx+1)+(r.lines.length>1?'<span class="muted" style="font-size:10px">+'+(r.lines.length-1)+'</span>':'')+'</td>'
+        +'<td class="tnum">'+r.date.txt+'</td>'
+        +'<td style="white-space:normal;max-width:300px;font-size:12px;line-height:16px">'+esc(r.desc)+'</td>'
+        +'<td class="mono" style="font-size:11px">'+(r.ref?esc(r.ref):'<span class="dash-cell" tabindex="0" title="This row prints no reference. Duplicate layer 2 cannot run on it.">—</span>')+'</td>'
+        +'<td class="num '+(r.signed<0?'loss':'gain')+'">'+inr(r.signed,{sign:true})+'</td>'
+        +'<td class="num">'+(r.bal==null?'<span class="dash-cell" tabindex="0" title="No balance printed on this row.">—</span>':inr(r.bal))+'</td>'
+        +'<td>'+(bad?'<span class="loss" title="Expected '+inr(bad.expected)+'">'+svg('warn',13)+'</span>':r.bal!=null?'<span class="gain">'+svg('check',13)+'</span>':'')+'</td></tr>';
+    });
+    res.problems.forEach(function(p){
+      t+='<tr class="bad"><td class="muted tnum">'+(p.idx+1)+'</td><td colspan="5" style="white-space:normal;font-size:12px;line-height:16px">'
+        +'<b>Not read — </b>'+esc(p.reason)+'<br><code class="mono" style="font-size:10.5px;color:var(--fg-muted)">'+esc(p.raw)+'</code></td>'
+        +'<td>'+svg('x',13)+'</td></tr>';});
+    t+='</tbody><tfoot><tr><td colspan="4">'+res.rows.length+' read · '+res.skipped.length+' skipped · '+res.problems.length+' unreadable</td>'
+     +'<td class="num">'+inr(res.sumC-res.sumD,{sign:true})+'</td><td class="num">'+(res.closing!=null?inr(res.closing):'—')+'</td><td></td></tr></tfoot></table>';
+    document.getElementById('prevFoot').innerHTML='Read as <b>'+(res.order==='DMY'?'DD/MM':'MM/DD')+'</b> · amounts in integer paise · <b>'+res.trust+'</b>';
+  }
+  wrap.innerHTML=t;
+  document.getElementById('prevNote').textContent=res.rows.length+' rows · '+res.problems.length+' unreadable';
+  paintIcons(wrap);
+
+  /* balance panel */
+  var bn=document.getElementById('balNote'),bb=document.getElementById('balBody');
+  bn.innerHTML=res.trust==='RECONCILED'?'<span class="bdg sub-gain"><span class="dot"></span>RECONCILED</span>'
+    :res.trust==='BROKEN'?'<span class="bdg sub-loss"><span class="dot"></span>BROKEN</span>'
+    :'<span class="bdg dash">UNVERIFIED</span>';
+  if(res.breaks.length){
+    var bh='';
+    res.breaks.forEach(function(b){
+      bh+='<div class="brk"><span class="bi">'+svg('warn',14)+'</span><span class="bb">'
+        +'<b>Line '+b.line+' — '+esc(b.row.desc.slice(0,46))+(b.row.desc.length>46?'…':'')+'</b>'
+        +'<span class="tnum">Carried forward '+inr(b.printed-b.row.signed-b.delta)+' '+(b.row.signed<0?'less':'plus')+' '+inr(Math.abs(b.row.signed))
+        +' gives '+inr(b.expected)+'. The statement prints '+inr(b.printed)+'.</span>'
+        +'<code>off by '+inr(b.delta,{sign:true})+'</code></span></div>';});
+    bb.innerHTML='<div class="keyline">'+bh+'</div>';
+  }else if(res.checked){
+    bb.innerHTML='<div class="panel-b"><p class="hint" style="font-size:12.5px;line-height:19px">All <b>'+res.checked+'</b> printed balances follow from the row above. '
+      +'Opening '+(res.opening!=null?inr(res.opening):'—')+', closing '+(res.closing!=null?inr(res.closing):'—')+'.</p>'
+      +'<p class="hint">This is the only check that can prove a column choice right. Without it, a mapping that inverts every sign imports perfectly and reconciles against nothing.</p></div>';
+  }else{
+    bb.innerHTML='<div class="panel-b"><p class="hint">Map a running-balance column to turn this panel on. Without one the reading cannot be tested, and the batch is marked UNVERIFIED rather than passed.</p></div>';
+  }
+}
+document.getElementById('srcSeg').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;STATE.src=b.dataset.src;drawMap();drawCheck();});
+document.getElementById('maplist').addEventListener('change',function(e){
+  var s=e.target.closest('[data-role]');if(!s)return;
+  STATE.map[STATE.src][s.dataset.role]=Number(s.value);drawMap();drawCheck();});
+document.getElementById('maplist').addEventListener('click',function(e){
+  if(!e.target.closest('#swapCols'))return;
+  var M=STATE.map[STATE.src],t=M.debit;M.debit=M.credit;M.credit=t;drawMap();drawCheck();});
+document.querySelectorAll('input[name="amtmode"]').forEach(function(r){
+  r.addEventListener('change',function(){STATE.mode[STATE.src]=r.value;drawMap();drawCheck();});});
+document.getElementById('dateSeg').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;STATE.dateOrder=b.dataset.do;drawPreview();drawCheck();});
+document.getElementById('prevSeg').addEventListener('click',function(e){
+  var b=e.target.closest('button');if(!b)return;STATE.prev=b.dataset.pv;drawPreview();});
+[['optWrap','wrap'],['optBlank','blank'],['optTotal','total'],['optMarker','marker']].forEach(function(p){
+  document.getElementById(p[0]).addEventListener('change',function(e){STATE[p[1]]=e.target.checked;drawPreview();drawCheck();});});
+document.getElementById('fmtSave').addEventListener('click',function(){
+  var m=document.getElementById('fmtSaved');
+  m.hidden=false;m.innerHTML='Saved. The next file whose fingerprint matches arrives already mapped.';});
+</script>
+
+<script>
+/* ═══════════════ 5 · reconcile ═══════════════ */
+function drawCheck(){
+  var res=parse(STATE.src);
+  var gateOk=null,derived=null;
+  if(res.opening!=null&&res.closing!=null){derived=res.opening+res.sumC-res.sumD;gateOk=(derived===res.closing);}
+
+  document.getElementById('checkKpis').innerHTML=
+   '<div class="kpi"><span class="kl">Rows read</span><span class="kv2 tnum">'+res.rows.length+'</span>'
+   +'<span class="kd">'+res.skipped.length+' lines skipped as furniture or continuation</span></div>'
+   +'<div class="kpi'+(res.problems.length?' badk':'')+'"><span class="kl">Lines not read</span><span class="kv2 tnum">'+res.problems.length+'</span>'
+   +'<span class="kd">'+(res.problems.length?'Listed below with a reason each':'Every line was either read or recognised')+'</span></div>'
+   +'<div class="kpi'+(res.trust==='RECONCILED'?' ok':res.trust==='BROKEN'?' badk':' warnk')+'"><span class="kl">Running balance</span>'
+   +'<span class="kv2" style="font-size:17px;line-height:30px">'+res.trust+'</span>'
+   +'<span class="kd">'+(res.checked?res.checked+' rows testable \u00b7 '+res.breaks.length+' break'+(res.breaks.length===1?'':'s'):'No balance column mapped')+'</span></div>'
+   +'<div class="kpi'+(gateOk===true?' ok':gateOk===false?' badk':' warnk')+'"><span class="kl">Acceptance gate</span>'
+   +'<span class="kv2" style="font-size:17px;line-height:30px">'+(gateOk===true?'PASS':gateOk===false?'FAIL':'NOT RUNNABLE')+'</span>'
+   +'<span class="kd">opening + credits \u2212 debits = closing</span></div>';
+
+  var gh;
+  if(gateOk===null){
+    gh='<div class="gatebox"><p class="hint" style="font-size:12.5px">The gate needs an opening and a closing balance printed by the bank. '
+      +(res.opening==null?'No opening-balance row was recognised. ':'')+(res.closing==null?'No closing-balance row was recognised. ':'')
+      +'Until both are read, the batch carries <code>UNVERIFIED</code> and the review screen says so.</p></div>';
+  }else{
+    gh='<div class="gatebox '+(gateOk?'ok':'no')+'"><div class="gate">'
+      +'<span class="v">'+inr(res.opening)+'<span class="mu">opening &middot; '+res.opening+' p</span></span><span class="op">+</span>'
+      +'<span class="v">'+inr(res.sumC)+'<span class="mu">credits &middot; '+res.sumC+' p</span></span><span class="op">\u2212</span>'
+      +'<span class="v">'+inr(res.sumD)+'<span class="mu">debits &middot; '+res.sumD+' p</span></span><span class="op">=</span>'
+      +'<span class="res '+(gateOk?'ok':'no')+'">'+inr(derived)+'<span class="mu">'+derived+' p</span></span>'
+      +'<span class="op">'+(gateOk?'=':'\u2260')+'</span>'
+      +'<span class="v">'+inr(res.closing)+'<span class="mu">printed closing &middot; '+res.closing+' p</span></span></div>'
+      +'<p class="hint" style="margin-top:7px">Integer paise throughout. '+(gateOk
+        ?'An exact equality, which no floating-point sum could promise.'
+        :'Off by <b>'+inr(derived-res.closing,{sign:true})+'</b>. The batch may still be posted, and it is flagged permanently.')+'</p></div>';
+  }
+
+  var ca='';
+  if(gateOk===false)
+    ca+='<div class="alrt e">'+svg('warn',15)+'<div class="ab"><b>This does not match the bank\u2019s own totals.</b>'
+      +'<p>'+(res.controls.detail||'The acceptance gate does not balance.')+' Posting anyway is allowed, and the batch is flagged.</p>'
+      +'<div class="aa"><button class="btn btn-sm btn-primary" data-goto="map">Go back to the mapping</button>'
+      +'<button class="btn btn-sm">Post it anyway and flag the batch</button></div></div></div>';
+  if(res.trust==='BROKEN')
+    ca+='<div class="alrt e">'+svg('warn',15)+'<div class="ab"><b>'+res.breaks.length+' printed balance'+(res.breaks.length===1?'':'s')+' do'+(res.breaks.length===1?'es':'')+' not follow.</b>'
+      +'<p>Either a column is being read the wrong way round, or the reader skipped a row. Both are mapping problems, and both are fixed on the previous stage.</p></div></div>';
+  if(res.trust==='UNVERIFIED')
+    ca+='<div class="alrt w">'+svg('info',15)+'<div class="ab"><b>This statement cannot check itself.</b>'
+      +'<p>No running balance was read, so there is nothing to test the reading against. Not a failure \u2014 an absence of evidence, and it travels with the batch so the review screen can repeat it.</p></div></div>';
+  document.getElementById('checkAlerts').innerHTML=gh+ca;
+
+  document.getElementById('ctrlNote').innerHTML=
+    res.controls.status==='MATCHED'?'<span class="bdg sub-gain">MATCHED</span>'
+   :res.controls.status==='MISMATCHED'?'<span class="bdg sub-loss">MISMATCHED</span>'
+   :'<span class="bdg dash">ABSENT</span>';
+  document.getElementById('ctrlTable').innerHTML=
+   '<dt>File</dt><dd>'+esc(res.file)+'</dd>'
+   +'<dt>Opening balance, printed</dt><dd>'+(res.opening!=null?inr(res.opening):'<span class="dash-cell" tabindex="0" title="No opening-balance row recognised.">\u2014</span>')+'</dd>'
+   +'<dt>Deposits, parsed</dt><dd class="gain">'+inr(res.sumC,{sign:true})+'</dd>'
+   +'<dt>Withdrawals, parsed</dt><dd class="loss">'+inr(-res.sumD)+'</dd>'
+   +'<dt>Closing balance, printed</dt><dd>'+(res.closing!=null?inr(res.closing):'<span class="dash-cell" tabindex="0" title="No closing-balance row recognised.">\u2014</span>')+'</dd>'
+   +'<dt>Control totals, printed</dt><dd>'+(res.printed?inr(res.printed.debit)+' / '+inr(res.printed.credit):'<span class="dash-cell" tabindex="0" title="This file prints no TOTAL row. The gate falls back to opening and closing.">\u2014</span>')+'</dd>'
+   +'<dt>Date order used</dt><dd>'+(res.order==='DMY'?'DD/MM':'MM/DD')+'</dd>'
+   +'<dt>Verdict</dt><dd><b>'+res.trust+'</b></dd>';
+
+  document.getElementById('probCount').textContent=res.problems.length;
+  document.getElementById('probList').innerHTML=res.problems.length
+   ? res.problems.map(function(p){
+       return '<div class="brk"><span class="bi">'+svg('x',14)+'</span><span class="bb">'
+         +'<b>Line '+(p.idx+1)+'</b><span>'+esc(p.reason)+'</span><code>'+esc(p.raw)+'</code></span></div>';}).join('')
+   : '<div class="empty"><b>Every line was accounted for</b><p>Each one was either read as a transaction, recognised as a control figure, or joined to the narration above it.</p></div>';
+
+  var status=res.problems.length?'PARTIAL':'COMPLETED';
+  document.getElementById('stageSummary').innerHTML=
+   '<dt>import_batches</dt><dd>1 row \u00b7 <code>'+status+'</code></dd>'
+   +'<dt>import_rows</dt><dd class="tnum">'+res.rows.length+'</dd>'
+   +'<dt>&nbsp;&nbsp;of those, flagged</dt><dd class="tnum">2</dd>'
+   +'<dt>problemsJson entries</dt><dd class="tnum">'+res.problems.length+'</dd>'
+   +'<dt>Postings written</dt><dd>0</dd>';
+  document.getElementById('stageFoot').innerHTML='Batch will be staged as <code>'+status+'</code> with verdict <b>'+res.trust+'</b>.';
+  paintIcons(document.getElementById('p-check'));
+}
+
+/* ═══════════════ 6 · JSON ═══════════════ */
+var JSONTXT=[
+ ['{','root'],['  "meta": {','meta'],['    "generatedAt": "2026-10-20T09:14:02+05:30",','meta'],
+ ['    "source": "Groww",','meta'],['    "schemaVersion": "2.3",','meta'],
+ ['    "warnings": ["2 rows carry no amount", "balance not exported"]','warn'],
+ ['  },','meta'],['  "data": {','root'],
+ ['    "account": { "id": "acc_8842", "label": "Savings 1234" },','root'],
+ ['    "summary": {','sum'],['      "monthly": [','sum'],
+ ['        { "month": "2025-09", "in": "212840.00", "out": "98214.00" }','sum'],
+ ['      ]','sum'],['    },','sum'],
+ ['    "transactions": [','txn'],['      {','txn'],
+ ['        "id": "txn_0001",','txn'],
+ ['        "postedAt": "2025-09-02T11:42:17+05:30",','txn'],
+ ['        "valueDate": "2025-09-02",','txn'],
+ ['        "narration": "UPI-SWIGGY LIMITED-SWIGGY@AXISBANK-UTIB0000080-524510400265-ORDER 8821",','txn'],
+ ['        "reference": { "utr": "524510400265", "channel": "UPI" },','txn'],
+ ['        "amount": { "value": "-486.00", "currency": "INR" },','txn'],
+ ['        "tags": ["food"]','txn'],
+ ['      },','txn'],['      \u2026 140 more','txn'],['    ]','txn'],
+ ['  }','root'],['}','root']
+];
+var JPATHS=[
+ {k:'txn',p:'$.data.transactions[*]',n:'141 objects',ok:true,note:'Every element has a date-like and an amount-like key'},
+ {k:'sum',p:'$.data.summary.monthly[*]',n:'12 objects',ok:false,note:'Monthly aggregates, not movements'},
+ {k:'warn',p:'$.meta.warnings[*]',n:'2 strings',ok:false,note:'Strings, not objects'}
+];
+var JSEL='txn';
+var JKEYS=['id','postedAt','valueDate','narration','reference.utr','reference.channel','amount.value','amount.currency','tags'];
+var JMAP={txnDate:'postedAt',valueDate:'valueDate',description:'narration',refNo:'reference.utr',amount:'amount.value',balance:''};
+var JROWS=[
+ {id:'txn_0001',postedAt:'2025-09-02T11:42:17+05:30',valueDate:'2025-09-02',narration:'UPI-SWIGGY LIMITED-SWIGGY@AXISBANK-UTIB0000080-524510400265-ORDER 8821',reference:{utr:'524510400265',channel:'UPI'},amount:{value:'-486.00',currency:'INR'}},
+ {id:'txn_0002',postedAt:'2025-09-05T06:31:00+05:30',valueDate:'2025-09-05',narration:'NEFT CR-HDFC0000123-ACME SOFTWARE PRIVATE LIMITED-SALARY SEP 2025',reference:{utr:'N324250905012345',channel:'NEFT'},amount:{value:'185000.00',currency:'INR'}},
+ {id:'txn_0003',postedAt:'2025-09-07T02:10:44+05:30',valueDate:'2025-09-07',narration:'ACH D- PARAG PARIKH FLEXI CAP 070925 ICCL-ACHD25090700891',reference:{utr:'ACHD25090700891',channel:'ACH'},amount:{value:'-25000.00',currency:'INR'}},
+ {id:'txn_0004',postedAt:'2025-09-09T19:04:22+05:30',valueDate:'2025-09-09',narration:'POS 437518XXXXXX1234 19:04:22 BIGBASKET BANGALORE',reference:{utr:'',channel:'POS'},amount:{value:null,currency:'INR'}}
+];
+function dig(o,path){ if(!path)return undefined; return path.split('.').reduce(function(a,k){return a==null?a:a[k];},o); }
+function drawJson(){
+  document.getElementById('jsShape').innerHTML='<span class="bdg out-n mono">141 candidate rows</span>';
+  document.getElementById('jsonPaths').innerHTML=JPATHS.map(function(p){
+    return '<button class="pathrow" aria-pressed="'+(p.k===JSEL)+'" data-jp="'+p.k+'">'
+      +'<span class="'+(p.ok?'gain':'muted')+'">'+svg(p.ok?'check':'x',13)+'</span>'
+      +'<code class="mono">'+esc(p.p)+'</code><span class="pc">'+p.n+'</span></button>';}).join('');
+  document.getElementById('jsonPathManual').value=(JPATHS.find(function(p){return p.k===JSEL;})||{}).p||'';
+  document.getElementById('jsonPane').innerHTML=JSONTXT.map(function(l){
+    var on=l[1]===JSEL;
+    return '<span class="'+(on?'hl':'')+'" style="display:block">'+esc(l[0])+'</span>';}).join('');
+
+  var roles=[['txnDate','Transaction date','required'],['valueDate','Value date',''],['description','Narration','required'],
+             ['refNo','Reference',''],['amount','Amount (signed)','required'],['balance','Running balance','']];
+  document.getElementById('jsonMap').innerHTML=roles.map(function(r){
+    var cur=JMAP[r[0]]||'';
+    var opts='<option value=""'+(cur===''?' selected':'')+'>\u2014 not in this file \u2014</option>'
+      +JKEYS.map(function(k){return '<option value="'+k+'"'+(cur===k?' selected':'')+'>'+k+'</option>';}).join('');
+    return '<div class="maprow"><span class="mf">'+r[1]+(r[2]?' <span style="color:var(--loss)">*</span>':'')+'<code>'+r[0]+'</code></span>'
+      +'<span class="arw">'+svg('arrow-r',12)+'</span>'
+      +'<select class="sel'+(cur===''?' unset':'')+'" data-jrole="'+r[0]+'" aria-label="JSON key for '+r[1]+'">'+opts+'</select></div>';}).join('');
+  document.getElementById('jsKeyNote').textContent=JSEL==='txn'?'9 keys, 2 of them nested':'Not an array of transactions';
+
+  if(JSEL!=='txn'){
+    var jp=JPATHS.find(function(x){return x.k===JSEL;});
+    document.getElementById('jsonPrev').innerHTML='<div class="empty"><b>Nothing to parse at this path</b><p>'
+      +esc(jp.note)+'. A transaction path has to hold objects, and every object has to carry something date-shaped and something amount-shaped.</p></div>';
+    document.getElementById('jsPrevNote').textContent=jp.n+' · not movements';
+    document.getElementById('jsValNote').innerHTML='<span class="bdg sub-loss">Wrong path</span>';
+    document.getElementById('jsonReport').innerHTML='<div class="dupl"><span class="dupn">!</span><span class="dupb"><b>'
+      +esc(jp.p)+'</b><p>'+esc(jp.note)+'. Pick <code>$.data.transactions[*]</code> instead.</p></span></div>';
+    paintIcons(document.getElementById('p-json'));return;}
+  var good=0,bad=[];
+  var body='<table class="dt"><thead><tr><th style="width:44px">#</th><th style="width:92px">Date</th><th>Narration</th>'
+    +'<th style="width:130px">Reference</th><th class="num" style="width:110px">Amount</th></tr></thead><tbody>';
+  JROWS.forEach(function(o,i){
+    var dRaw=dig(o,JMAP.txnDate),nRaw=dig(o,JMAP.description),rRaw=dig(o,JMAP.refNo),aRaw=dig(o,JMAP.amount);
+    var d=dRaw?String(dRaw).slice(0,10):null;
+    var a=(aRaw==null||aRaw==='')?null:readMoney(String(aRaw),true);
+    if(!d||!a||a.bad||a.none){
+      bad.push({i:i+1,why:!d?'No value at '+(JMAP.txnDate||'(unmapped)'):'No amount at '+(JMAP.amount||'(unmapped)')+' \u2014 the key is present and null'});
+      body+='<tr class="bad"><td class="muted tnum">'+(i+1)+'</td><td colspan="4" style="white-space:normal;font-size:12px">'
+        +'<b>Not read \u2014 </b>'+(!d?'no readable date at <code>'+esc(JMAP.txnDate||'(unmapped)')+'</code>':'no amount at <code>'+esc(JMAP.amount||'(unmapped)')+'</code>, the key is present and null')+'</td></tr>';
+      return;}
+    good++;
+    var signed=a.negative?-a.paise:a.paise;
+    var dt=d.split('-');
+    body+='<tr><td class="muted tnum">'+(i+1)+'</td><td class="tnum">'+dt[2]+' '+MON[Number(dt[1])-1]+' '+dt[0]+'</td>'
+      +'<td style="white-space:normal;max-width:280px;font-size:12px;line-height:16px">'+esc(String(nRaw||'\u2014'))+'</td>'
+      +'<td class="mono" style="font-size:11px">'+(rRaw?esc(rRaw):'<span class="dash-cell" tabindex="0" title="No reference. Duplicate layer 2 cannot run on this row.">\u2014</span>')+'</td>'
+      +'<td class="num '+(signed<0?'loss':'gain')+'">'+inr(signed,{sign:true})+'</td></tr>';
+  });
+  body+='</tbody></table>';
+  document.getElementById('jsonPrev').innerHTML=body;
+  document.getElementById('jsPrevNote').textContent='4 of 141 shown \u00b7 '+good+' read, '+bad.length+' not';
+
+  document.getElementById('jsValNote').innerHTML=bad.length?'<span class="bdg sub-warn">139 of 141 usable</span>':'<span class="bdg sub-gain">All usable</span>';
+  document.getElementById('jsonReport').innerHTML=[
+   ['y','<b>141 objects</b> at <code>'+esc(document.getElementById('jsonPathManual').value)+'</code>.'],
+   [JMAP.txnDate?'y':'n','<b>'+(JMAP.txnDate?'141':'0')+'</b> have a readable date at <code>'+esc(JMAP.txnDate||'(unmapped)')+'</code>. ISO 8601 with a +05:30 offset; the date is taken in that offset, not in UTC, so a 23:40 payment stays on its own day.'],
+   [JMAP.amount?'w':'n','<b>139 of 141</b> have a numeric amount at <code>'+esc(JMAP.amount||'(unmapped)')+'</code>. Two are <code>null</code> and are listed, not counted as zero.'],
+   ['y','<b>141</b> carry <code>"currency": "INR"</code>. No conversion is needed, and none is invented.'],
+   ['n','<b>0</b> carry a running balance. Nothing can test this reading, so the batch is staged <code>UNVERIFIED</code>.'],
+   ['w','<b>2</b> share a UTR with a transaction already in the journal. Duplicate layer 2 flags them.'],
+   ['y','<b>3</b> narrations exceed 180 characters. Kept whole; the review table truncates on screen only.']
+  ].map(function(it){
+    var ic=it[0]==='y'?['check','gain']:it[0]==='w'?['warn','warnc']:['x','muted'];
+    return '<div class="dupl"><span class="dupn '+ic[1]+'" style="background:none;box-shadow:none">'+svg(ic[0],14)+'</span><span class="dupb"><p>'+it[1]+'</p></span></div>';}).join('');
+  paintIcons(document.getElementById('p-json'));
+}
+document.getElementById('jsonPaths').addEventListener('click',function(e){
+  var b=e.target.closest('[data-jp]');if(!b)return;JSEL=b.dataset.jp;drawJson();});
+document.getElementById('jsonMap').addEventListener('change',function(e){
+  var s=e.target.closest('[data-jrole]');if(!s)return;JMAP[s.dataset.jrole]=s.value;drawJson();});
+
+/* ═══════════════ 7 · format library ═══════════════ */
+var FORMATS=[
+ {id:'fmt_hdfc_soa_v2',name:'HDFC Savings \u2014 Statement of Account, v2',bank:'HDFC Bank',acct:'HDFC Savings \u2022\u20221234',src:'PDF',n:18,last:'19 Oct 2025',state:'ok'},
+ {id:'fmt_hdfc_nb_csv',name:'HDFC Savings \u2014 NetBanking CSV',bank:'HDFC Bank',acct:'HDFC Savings \u2022\u20221234',src:'CSV',n:6,last:'02 Sep 2025',state:'ok'},
+ {id:'fmt_icici_soa_v1',name:'ICICI Savings \u2014 Statement of Account, v1',bank:'ICICI Bank',acct:'ICICI Savings \u2022\u20228842',src:'PDF',n:11,last:'14 Oct 2025',state:'stale'},
+ {id:'fmt_sbi_estmt_v1',name:'SBI \u2014 Monthly e-statement, v1',bank:'State Bank of India',acct:'\u2014',src:'PDF',n:4,last:'11 Aug 2025',state:'ok'},
+ {id:'fmt_kotak_xlsx',name:'Kotak \u2014 Account statement export',bank:'Kotak Mahindra',acct:'Kotak Salary \u2022\u20224412',src:'XLSX',n:7,last:'30 Sep 2025',state:'ok'},
+ {id:'fmt_groww_json',name:'Groww ledger export',bank:'Groww',acct:'\u2014',src:'JSON',n:1,last:'20 Oct 2025',state:'imported'}
+];
+var DEFS={
+ fmt_hdfc_soa_v2:'{\n  "schema": "stock-mania/import-format@1",\n  "id": "fmt_hdfc_soa_v2",\n  "name": "HDFC Savings \u2014 Statement of Account, v2",\n  "issuer": "HDFC Bank",\n  "source": "PDF",\n  "fingerprint": "col7:d-n-r-v-w-d-b",\n  "pages": { "from": 2, "to": "last", "headerLines": 6, "footerLines": 2 },\n  "columns": {\n    "date": 0, "description": 1, "reference": 2,\n    "valueDate": 3, "debit": 4, "credit": 5, "balance": 6\n  },\n  "columnOrder": "debit-before-credit",\n  "amountShape": "TWO_COLUMNS",\n  "dateOrder": "DMY",\n  "joinWrappedNarration": true,\n  "narrationTerminator": "Value Dt \\\\d{2}/\\\\d{2}/\\\\d{4}",\n  "stripCrDrMarkers": true,\n  "summaryRows": ["OPENING BALANCE", "CLOSING BALANCE", "TOTAL"],\n  "controlBlock": { "opening": "OPENING BALANCE", "closing": "CLOSING BALANCE", "totals": "TOTAL" },\n  "furniture": [\n    "This is a computer generated statement",\n    "Registered Office Address",\n    "Page \\\\d+ of \\\\d+"\n  ]\n}',
+ fmt_sbi_estmt_v1:'{\n  "schema": "stock-mania/import-format@1",\n  "id": "fmt_sbi_estmt_v1",\n  "name": "SBI \u2014 Monthly e-statement, v1",\n  "issuer": "State Bank of India",\n  "source": "PDF",\n  "note": "One of four SBI layouts. The others are the YONO PDF, the YONO XLSX and the legacy tab-separated .xls.",\n  "columns": {\n    "date": 0, "valueDate": 1, "description": 2,\n    "reference": 3, "credit": 4, "debit": 5, "balance": 6\n  },\n  "columnOrder": "credit-before-debit",\n  "amountShape": "TWO_COLUMNS",\n  "emptySidePlaceholder": "0",\n  "emptyReferencePlaceholder": "-",\n  "dateOrder": "DMY",\n  "password": { "known": false, "prompt": "Ask \u2014 SBI does not document a rule for the PDF e-statement." }\n}',
+ fmt_groww_json:'{\n  "schema": "stock-mania/import-format@1",\n  "id": "fmt_groww_json",\n  "name": "Groww ledger export",\n  "issuer": "Groww",\n  "source": "JSON",\n  "rowPath": "$.data.transactions[*]",\n  "keys": {\n    "date": "postedAt", "valueDate": "valueDate",\n    "description": "narration", "reference": "reference.utr",\n    "amount": "amount.value", "currency": "amount.currency"\n  },\n  "amountShape": "SIGNED",\n  "dateFormat": "ISO8601_OFFSET",\n  "balance": null,\n  "trustCeiling": "UNVERIFIED"\n}'
+};
+var FSEL='fmt_hdfc_soa_v2';
+function drawLib(){
+  var t='<table class="dt"><thead><tr><th>Format</th><th style="width:140px">Bank</th><th style="width:170px">Account</th>'
+   +'<th style="width:80px">Source</th><th class="num" style="width:100px">Statements</th><th style="width:110px">Last used</th><th style="width:150px"></th></tr></thead><tbody>';
+  FORMATS.forEach(function(f){
+    t+='<tr'+(f.id===FSEL?' style="box-shadow:inset 2px 0 0 var(--accent)"':'')+'>'
+      +'<td><button class="btn btn-link" data-fmt="'+f.id+'" style="font-size:13px">'+esc(f.name)+'</button>'
+      +(f.state==='stale'?' <span class="bdg sub-warn sm">Needs a look</span>':'')
+      +(f.state==='imported'?' <span class="bdg out-n sm">Imported</span>':'')
+      +'<div class="mono muted" style="font-size:10.5px">'+f.id+'</div></td>'
+      +'<td>'+esc(f.bank)+'</td><td>'+esc(f.acct)+'</td>'
+      +'<td><span class="bdg out-n mono sm">'+f.src+'</span></td>'
+      +'<td class="num tnum">'+f.n+'</td><td class="tnum">'+f.last+'</td>'
+      +'<td><button class="btn btn-sm btn-ghost only" aria-label="Edit">'+svg('edit',14)+'</button>'
+      +'<button class="btn btn-sm btn-ghost only" aria-label="Duplicate">'+svg('copy',14)+'</button>'
+      +'<button class="btn btn-sm btn-ghost only" data-fmt="'+f.id+'" aria-label="Export">'+svg('download',14)+'</button>'
+      +'<button class="btn btn-sm btn-ghost only" aria-label="Delete">'+svg('trash',14)+'</button></td></tr>';});
+  t+='</tbody></table>';
+  document.getElementById('libWrap').innerHTML=t;
+  var f=FORMATS.find(function(x){return x.id===FSEL;});
+  document.getElementById('defTitle').textContent=f.name;
+  document.getElementById('defPane').textContent=DEFS[FSEL]||'{\n  "schema": "stock-mania/import-format@1",\n  "id": "'+FSEL+'",\n  "name": "'+f.name+'",\n  "issuer": "'+f.bank+'",\n  "source": "'+f.src+'"\n}';
+  paintIcons(document.getElementById('p-library'));
+}
+document.getElementById('libWrap').addEventListener('click',function(e){
+  var b=e.target.closest('[data-fmt]');if(!b)return;FSEL=b.dataset.fmt;drawLib();});
+document.getElementById('defCopy').addEventListener('click',function(){
+  var b=this,txt=document.getElementById('defPane').textContent;
+  function done(ok){b.textContent=ok?'Copied':'Select it and copy';setTimeout(function(){b.innerHTML=svg('copy',13)+'Copy';},1600);}
+  try{navigator.clipboard.writeText(txt).then(function(){done(true);},function(){done(false);});}catch(err){done(false);}
+});
+document.getElementById('defPaste').addEventListener('input',function(){
+  var v=this.value.trim(),m=document.getElementById('defPasteMsg');
+  if(!v){m.className='hint';m.textContent='A definition carries no account and no money. Importing one is safe; the first file read with it still has to reconcile.';return;}
+  try{var o=JSON.parse(v);
+    if(o.schema!=='stock-mania/import-format@1'){m.className='errtxt';m.textContent='Not a format definition: "schema" must be stock-mania/import-format@1.';}
+    else{m.className='hint';m.innerHTML='Valid. <b>'+esc(o.name||o.id||'Unnamed')+'</b> would be added as a new format.';}
+  }catch(err){m.className='errtxt';m.textContent='That is not valid JSON yet \u2014 '+err.message;}
+});
+(function(){var d=document.getElementById('defDrop');
+ ['dragenter','dragover'].forEach(function(ev){d.addEventListener(ev,function(e){e.preventDefault();d.classList.add('over');});});
+ ['dragleave','drop'].forEach(function(ev){d.addEventListener(ev,function(e){e.preventDefault();d.classList.remove('over');});});})();
+
+/* ═══════════════ 8 · handoff ═══════════════ */
+function drawHandoff(){
+  var res=parse('hdfc');
+  var status=res.problems.length?'PARTIAL':'COMPLETED';
+  document.getElementById('crossPane').textContent=
+'// import_batches \u2014 one row\n'+
+'{\n'+
+'  "id":          "B-1043",\n'+
+'  "kind":        "BANK_STATEMENT",\n'+
+'  "accountId":   "acc_hdfc_savings_1234",\n'+
+'  "fileName":    "HDFC-Savings-Sep-2025.pdf",\n'+
+'  "fileHash":    "sha256:9f3c\u2026a71d",\n'+
+'  "formatId":    "fmt_hdfc_soa_v2",            // NEW \u2014 no column for this today\n'+
+'  "rowsRead":    '+(res.rows.length+res.problems.length)+',\n'+
+'  "rowsImported":'+res.rows.length+',\n'+
+'  "rowsDuplicate": 2,\n'+
+'  "rowsFailed":  '+res.problems.length+',\n'+
+'  "problemsJson": "[{ \\"rowIndex\\": 19, \\"reason\\": \\"No amount in either amount column\\", \\"raw\\": \\"\u2026\\" }]",\n'+
+'  "status":      "'+status+'",\n'+
+'  "verdictJson": {                              // NEW \u2014 the proof travels with the batch\n'+
+'    "trust":     "'+res.trust+'",\n'+
+'    "checked":   '+res.checked+',\n'+
+'    "breaks":    [],\n'+
+'    "controls":  { "status": "'+res.controls.status+'", "detail": "\u2026" },\n'+
+'    "dateOrder": "'+res.order+'",\n'+
+'    "mapping":   { "date":0, "description":1, "reference":2, "valueDate":3,\n'+
+'                   "debit":4, "credit":5, "balance":6 }\n'+
+'  }\n'+
+'}\n\n'+
+'// import_rows \u2014 one per movement\n'+
+'{\n'+
+'  "id":        "R001",\n'+
+'  "batchId":   "B-1043",\n'+
+'  "rowIndex":  1,\n'+
+'  "rawJson":   "02/09/25  UPI-SWIGGY LIMITED\u2026  0000524510400265  02/09/25  486.00  1,23,832.40",\n'+
+'  "parsedJson": {\n'+
+'    "date":              "2025-09-02",\n'+
+'    "valueDate":         "2025-09-02",\n'+
+'    "description":       "UPI-SWIGGY LIMITED-SWIGGY@AXISBANK-UTIB0000080-524510400265-ORDER 8821",\n'+
+'    "reference":         "0000524510400265",\n'+
+'    "externalId":        "524510400265",\n'+
+'    "amountMinor":       48600,        // always positive\n'+
+'    "direction":         "DEBIT",      // carries the sign\n'+
+'    "currency":          "INR",\n'+
+'    "balanceAfterMinor": 12383240,\n'+
+'    "occurrence":        1,            // 2nd \u20b940 payment to the same shop, same day\n'+
+'    "suggestedAccountId":"exp_food_eatingout"   // from category_rules, keyword-matched\n'+
+'  },\n'+
+'  "status":                "MATCHED",\n'+
+'  "matchedTransactionId":  "T0131",\n'+
+'  "matchPass":             1,\n'+
+'  "rejectedReason":        null\n'+
+'}\n\n'+
+'// what /imports/[batchId] renders from that row\n'+
+'{ i:0, id:"R001", date:"2025-09-02",\n'+
+'  raw:"UPI-SWIGGY LIMITED\u2026 0000524510400265",\n'+
+'  amt:-48600, cat:"Expenses:Food:EatingOut",\n'+
+'  state:"dup", ref:"0000524510400265", closing:12383240 }';
+}
+document.getElementById('handoffGo').addEventListener('click',function(){
+  var res=parse('hdfc');
+  document.getElementById('handoffHead').textContent=
+    'Batch B-1043 staged — '+res.rows.length+' rows, '+res.problems.length+' unreadable line'+(res.problems.length===1?'':'s')+' kept';
+  document.getElementById('handoffBody').innerHTML=
+    'Two rows arrive flagged <span class="bdg sub-loss sm">Looks familiar</span>. The verdict is <b>'+res.trust+'</b>, so the review screen '
+    +(res.trust==='RECONCILED'?'will not carry the &ldquo;cannot check itself&rdquo; warning for this batch.':'repeats that warning on its own header.');
+  document.getElementById('handoffDone').hidden=false;
+  this.disabled=true;this.textContent='Staged \u2014 B-1043';});
+
+document.getElementById('libImport').addEventListener('click',function(){
+  var f=document.getElementById('defPaste');f.focus();f.scrollIntoView({block:'center'});});
+
+/* ═══════════════ init ═══════════════ */
+qRender();drawDet();drawPages();drawMap();drawCheck();drawJson();drawLib();drawHandoff();
+drawSteppers();paintIcons();
+</script>
+
+</body></html>

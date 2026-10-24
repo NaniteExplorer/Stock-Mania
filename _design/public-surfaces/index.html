@@ -1,0 +1,1803 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Stock-Mania Public Surfaces</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/* Layout concept: a sticky screen switcher over one column of public, account and system
+   surfaces. Component layer is the control bench (2026-10-20) verbatim — heights 24/28/32/36/40,
+   radius bound to height, five border strengths, 90ms colour-only transitions. */
+
+:root{
+  --n-0:#FFFFFF; --n-25:#FBFCFD; --n-50:#F6F8FA; --n-100:#EFF2F5; --n-150:#E4E8ED;
+  --n-200:#D6DCE3; --n-300:#B9C2CC; --n-400:#8C98A6; --n-450:#808C9A; --n-500:#64707E;
+  --n-600:#49545F; --n-700:#343C45; --n-775:#2A323A; --n-800:#232A31; --n-850:#1A2026;
+  --n-900:#13181D; --n-950:#0C1014;
+
+  --h-xs:24px; --h-sm:28px; --h-md:32px; --h-lg:36px; --h-xl:40px;
+  --r-1:2px; --r-2:3px; --r-3:4px; --r-4:6px; --r-5:8px; --r-pill:999px;
+  --t-fast:90ms; --t:110ms; --ease:cubic-bezier(.2,0,.38,1);
+
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --gl:max(16px,env(safe-area-inset-left,0px));
+  --gr:max(16px,env(safe-area-inset-right,0px));
+}
+
+:root{
+  --bg-canvas:#F6F8FA; --bg-surface:#FFFFFF; --bg-raised:#FFFFFF; --bg-sunken:#F2F5F8;
+  --bg-subtle:#F2F5F8; --bg-hover:#F6F8FA; --bg-active:#EFF2F5; --bg-selected:#EEF2FF;
+  --border-subtle:#E4E8ED; --border:#D6DCE3; --border-control:#808C9A;
+  --border-hover:#64707E; --border-active:#49545F;
+  --fg:#13181D; --fg-secondary:#49545F; --fg-muted:#64707E; --fg-disabled:#7C8896;
+  --accent:#4F62D8; --accent-hover:#3F50BE; --accent-active:#36459F; --accent-on:#FFFFFF;
+  --accent-soft:#EEF2FF; --accent-soft-hover:#E0E7FF; --accent-line:#A5B4FC;
+  --gain:#0E7C66; --gain-bg:#E6F5F1; --gain-line:#8FD3C4;
+  --loss:#C0392B; --loss-bg:#FBEAE7; --loss-line:#EAA69E; --loss-on:#FFFFFF;
+  --flat:#64707E;
+  --warn:#B45309; --warn-bg:#FDF4E6; --warn-line:#E8C58A;
+  --info:#1D6FA5; --info-bg:#E9F3FA; --info-line:#9CC6E2;
+  --inner-hl:inset 0 -1px 0 rgb(19 24 29 / .07);
+  --inner-hl-2:inset 0 -1px 0 rgb(19 24 29 / .13);
+  --shadow-pop:0 4px 12px rgb(19 24 29 / .10), 0 0 0 1px rgb(19 24 29 / .04);
+  --shadow-modal:0 16px 48px rgb(19 24 29 / .20), 0 0 0 1px rgb(19 24 29 / .06);
+  --skel-a:#EFF2F5; --skel-b:#E0E5EA;
+  --tip-bg:#13181D; --tip-fg:#F6F8FA;
+  --c1:#5468D6; --c2:#1F94A8; --c3:#B5801F; --c4:#A14C9E; --c5:#4E7A3A; --c-other:#8C98A6;
+  --grid:#E4E8ED;
+  color-scheme:light;
+}
+
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg-canvas:#0C1014; --bg-surface:#13181D; --bg-raised:#1A2026; --bg-sunken:#0C1014;
+  --bg-subtle:#1A2026; --bg-hover:#232A31; --bg-active:#2A323A; --bg-selected:#1B2340;
+  --border-subtle:#232A31; --border:#343C45; --border-control:#64707E;
+  --border-hover:#8C98A6; --border-active:#B9C2CC;
+  --fg:#F6F8FA; --fg-secondary:#B9C2CC; --fg-muted:#8C98A6; --fg-disabled:#5C6875;
+  --accent:#7D8CEA; --accent-hover:#9AA6F0; --accent-active:#B2BBF5; --accent-on:#0C1014;
+  --accent-soft:#1B2340; --accent-soft-hover:#232C4E; --accent-line:#4F62D8;
+  --gain:#3FC9A6; --gain-bg:#0E2F29; --gain-line:#1F6B5B;
+  --loss:#FF7A6B; --loss-bg:#3A1A16; --loss-line:#8A3C33; --loss-on:#0C1014;
+  --flat:#8C98A6;
+  --warn:#F0B429; --warn-bg:#2E2411; --warn-line:#7A5E1B;
+  --info:#5BB0E8; --info-bg:#11252F; --info-line:#2E6888;
+  --inner-hl:inset 0 1px 0 rgb(255 255 255 / .055);
+  --inner-hl-2:inset 0 1px 0 rgb(255 255 255 / .10);
+  --shadow-pop:0 4px 12px rgb(0 0 0 / .45), 0 0 0 1px rgb(255 255 255 / .06);
+  --shadow-modal:0 16px 48px rgb(0 0 0 / .60), 0 0 0 1px rgb(255 255 255 / .08);
+  --skel-a:#1A2026; --skel-b:#272F37;
+  --tip-bg:#E4E8ED; --tip-fg:#13181D;
+  --c1:#8A7FE8; --c2:#2FA3BA; --c3:#B68530; --c4:#C76BA0; --c5:#6FA14E; --c-other:#64707E;
+  --grid:#232A31;
+  color-scheme:dark;
+}}
+
+:root[data-theme="dark"]{
+  --bg-canvas:#0C1014; --bg-surface:#13181D; --bg-raised:#1A2026; --bg-sunken:#0C1014;
+  --bg-subtle:#1A2026; --bg-hover:#232A31; --bg-active:#2A323A; --bg-selected:#1B2340;
+  --border-subtle:#232A31; --border:#343C45; --border-control:#64707E;
+  --border-hover:#8C98A6; --border-active:#B9C2CC;
+  --fg:#F6F8FA; --fg-secondary:#B9C2CC; --fg-muted:#8C98A6; --fg-disabled:#5C6875;
+  --accent:#7D8CEA; --accent-hover:#9AA6F0; --accent-active:#B2BBF5; --accent-on:#0C1014;
+  --accent-soft:#1B2340; --accent-soft-hover:#232C4E; --accent-line:#4F62D8;
+  --gain:#3FC9A6; --gain-bg:#0E2F29; --gain-line:#1F6B5B;
+  --loss:#FF7A6B; --loss-bg:#3A1A16; --loss-line:#8A3C33; --loss-on:#0C1014;
+  --flat:#8C98A6;
+  --warn:#F0B429; --warn-bg:#2E2411; --warn-line:#7A5E1B;
+  --info:#5BB0E8; --info-bg:#11252F; --info-line:#2E6888;
+  --inner-hl:inset 0 1px 0 rgb(255 255 255 / .055);
+  --inner-hl-2:inset 0 1px 0 rgb(255 255 255 / .10);
+  --shadow-pop:0 4px 12px rgb(0 0 0 / .45), 0 0 0 1px rgb(255 255 255 / .06);
+  --shadow-modal:0 16px 48px rgb(0 0 0 / .60), 0 0 0 1px rgb(255 255 255 / .08);
+  --skel-a:#1A2026; --skel-b:#272F37;
+  --tip-bg:#E4E8ED; --tip-fg:#13181D;
+  --c1:#8A7FE8; --c2:#2FA3BA; --c3:#B68530; --c4:#C76BA0; --c5:#6FA14E; --c-other:#64707E;
+  --grid:#232A31;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg-canvas);color:var(--fg);font-family:var(--sans);
+  font-size:14px;line-height:20px;font-feature-settings:"tnum" 1,"cv05" 1;-webkit-font-smoothing:antialiased}
+@media (prefers-reduced-motion:reduce){*{transition-duration:1ms!important;animation-duration:1ms!important;animation-iteration-count:1!important}}
+h1,h2,h3,h4{margin:0;font-weight:600;text-wrap:balance}
+p{margin:0}
+a{color:var(--accent)}
+button,input,select,textarea{font:inherit;color:inherit;margin:0}
+.tnum{font-variant-numeric:tabular-nums}
+code,.mono{font-family:var(--mono);font-variant-numeric:slashed-zero tabular-nums}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.muted{color:var(--fg-muted)}
+.gain{color:var(--gain)}.loss{color:var(--loss)}.flat{color:var(--flat)}
+
+/* ---------------- chrome ---------------- */
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:60;background:var(--bg-surface)}
+.chrome{position:sticky;top:env(safe-area-inset-top,0px);z-index:50;background:var(--bg-surface);
+  border-bottom:1px solid var(--border);padding-block:9px;padding-left:var(--gl);padding-right:var(--gr);
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;white-space:nowrap;letter-spacing:-.005em}
+.mark{width:20px;height:20px;border:1.5px solid var(--accent);border-radius:var(--r-2);flex:none;position:relative}
+.mark::after{content:"";position:absolute;left:2.5px;right:2.5px;bottom:2.5px;height:6px;
+  background:linear-gradient(to right,var(--accent) 0 2px,transparent 2px 4px,var(--accent) 4px 7px,transparent 7px 9px,var(--accent) 9px 13px)}
+.mark.sm{width:16px;height:16px}
+.mark.sm::after{height:5px;left:2px;right:2px;bottom:2px}
+.secnav{display:flex;gap:1px;flex-wrap:wrap;flex:1;min-width:0}
+.secnav button{height:var(--h-sm);padding:0 9px;border:1px solid transparent;border-radius:var(--r-2);
+  background:none;font-size:12px;font-weight:500;color:var(--fg-muted);cursor:pointer;white-space:nowrap;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.secnav button:hover{background:var(--bg-hover);color:var(--fg)}
+.secnav button[aria-current="true"]{color:var(--accent);background:var(--accent-soft);font-weight:600}
+.chrome-r{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ---------------- BUTTONS (control bench) ---------------- */
+.btn{
+  --bh:var(--h-md); --bp:12px; --bf:13px; --br:var(--r-2);
+  position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:var(--bh);padding:0 var(--bp);font-size:var(--bf);font-weight:500;line-height:1;
+  letter-spacing:.004em;border:1px solid var(--border-control);border-radius:var(--br);
+  background:var(--bg-surface);color:var(--fg);box-shadow:var(--inner-hl);
+  cursor:pointer;white-space:nowrap;user-select:none;-webkit-tap-highlight-color:transparent;text-decoration:none;
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease),
+             color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.btn > *{transition:transform var(--t-fast) var(--ease)}
+.btn:hover{background:var(--bg-hover);border-color:var(--border-hover)}
+.btn:active{background:var(--bg-active);border-color:var(--border-active);box-shadow:none}
+.btn:active > *{transform:translateY(.5px)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn[disabled],.btn[aria-disabled="true"]{background:var(--bg-subtle);border-color:var(--border);
+  color:var(--fg-disabled);box-shadow:none;cursor:not-allowed}
+.btn-sm{--bh:var(--h-sm);--bp:10px;--bf:12px}
+.btn-lg{--bh:var(--h-lg);--bp:16px;--bf:14px;--br:var(--r-3)}
+.btn.only{width:var(--bh);padding:0;gap:0}
+.btn svg{flex:none;display:block}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-on);box-shadow:var(--inner-hl-2)}
+.btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-primary:active{background:var(--accent-active);border-color:var(--accent-active);box-shadow:none}
+.btn-ghost{background:transparent;border-color:transparent;box-shadow:none;color:var(--fg-secondary)}
+.btn-ghost:hover{background:var(--bg-hover);border-color:transparent;color:var(--fg)}
+.btn-ghost:active{background:var(--bg-active);border-color:transparent}
+.btn-danger{background:var(--loss);border-color:var(--loss);color:var(--loss-on);box-shadow:var(--inner-hl-2)}
+.btn-danger:hover{filter:brightness(.93) saturate(1.06);border-color:var(--loss)}
+.btn-danger:active{filter:brightness(.86) saturate(1.08);box-shadow:none}
+.btn-danger-quiet{background:var(--bg-surface);border-color:var(--loss-line);color:var(--loss)}
+.btn-danger-quiet:hover{background:var(--loss-bg);border-color:var(--loss)}
+.btn-link{height:auto;padding:0;border:0;background:none;box-shadow:none;color:var(--accent);
+  text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:1px;text-decoration-color:var(--accent-line)}
+.btn-link:hover{background:none;text-decoration-color:currentColor}
+.btn-link:active > *{transform:none}
+
+.seg{display:inline-flex;height:var(--h-md);padding:2px;background:var(--bg-sunken);
+  border:1px solid var(--border);border-radius:var(--r-3);max-width:100%;overflow:auto}
+.seg button{height:100%;padding:0 11px;border:0;border-radius:var(--r-2);background:none;
+  font-size:12px;font-weight:500;color:var(--fg-muted);cursor:pointer;white-space:nowrap;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.seg button:hover{color:var(--fg)}
+.seg button[aria-pressed="true"]{background:var(--bg-surface);color:var(--fg);font-weight:600;
+  box-shadow:0 1px 2px rgb(19 24 29 / .10),0 0 0 1px var(--border)}
+.seg button:focus-visible{outline-offset:-1px}
+.segf{display:inline-flex;height:var(--h-md);border:1px solid var(--border-control);
+  border-radius:var(--r-2);overflow:hidden;background:var(--bg-surface);max-width:100%}
+.segf button{height:100%;padding:0 11px;border:0;background:none;font-size:12px;font-weight:500;
+  color:var(--fg-secondary);cursor:pointer;white-space:nowrap;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.segf button + button{box-shadow:inset 1px 0 0 var(--border)}
+.segf button:hover{background:var(--bg-hover);color:var(--fg)}
+.segf button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.segf button[aria-pressed="true"],.segf button[aria-pressed="true"] + button{box-shadow:none}
+.segf button:focus-visible{outline-offset:-2px}
+.segf-sm{height:var(--h-sm)}
+.segf-sm button{padding:0 9px;font-size:11.5px}
+
+/* ---------------- FORM CONTROLS ---------------- */
+.fld{display:flex;flex-direction:column;gap:5px;min-width:0}
+.fld > label,.fld > .lab{font-size:12px;line-height:16px;font-weight:500;color:var(--fg-secondary);
+  display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.req{color:var(--loss);font-weight:600;line-height:1}
+.hint{font-size:11px;line-height:16px;color:var(--fg-muted)}
+.errtxt{font-size:11px;line-height:16px;color:var(--loss);display:flex;gap:5px;align-items:flex-start}
+.errtxt svg{flex:none;margin-top:1.5px}
+.inw{--ih:var(--h-lg);display:flex;align-items:center;height:var(--ih);
+  background:var(--bg-surface);border:1px solid var(--border-control);border-radius:var(--r-3);
+  box-shadow:var(--inner-hl);min-width:0;
+  transition:border-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+.inw:hover{border-color:var(--border-hover)}
+.inw:focus-within{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px;box-shadow:none}
+.inw input{flex:1;min-width:0;height:100%;border:0;background:none;padding:0 10px;
+  font-size:13px;color:var(--fg);outline:none}
+.inw input::placeholder{color:var(--fg-disabled)}
+.inw.md{--ih:var(--h-md);border-radius:var(--r-2)}
+.inw.md input{font-size:12.5px;padding:0 9px}
+.inw.num input{text-align:right;font-variant-numeric:tabular-nums}
+.inw .afx{display:inline-flex;align-items:center;height:100%;padding:0 0 0 10px;font-size:13px;
+  color:var(--fg-muted);flex:none;user-select:none}
+.inw .afx.r{padding:0 10px 0 0}
+.inw .afx + input{padding-left:4px}
+.inw .ico{display:inline-flex;align-items:center;justify-content:center;width:30px;height:100%;color:var(--fg-muted);flex:none}
+.inw .ico + input{padding-left:0}
+.inw.err{border-color:var(--loss);background:var(--loss-bg)}
+.inw.err:focus-within{outline-color:var(--loss);border-color:var(--loss)}
+.inw.ro{background:var(--bg-subtle);border-color:var(--border);border-style:dashed;box-shadow:none}
+.inw.ro input{color:var(--fg-secondary);cursor:default}
+select.sel{height:var(--h-lg);padding:0 30px 0 10px;font-size:13px;background-color:var(--bg-surface);
+  color:var(--fg);border:1px solid var(--border-control);border-radius:var(--r-3);box-shadow:var(--inner-hl);
+  cursor:pointer;appearance:none;min-width:0;max-width:100%;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 15px) calc(50% + 1px),calc(100% - 11px) calc(50% + 1px);
+  background-size:4px 4px,4px 4px;background-repeat:no-repeat;
+  transition:border-color var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+select.sel:hover{border-color:var(--border-hover);background-color:var(--bg-hover)}
+select.sel:focus-visible{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px}
+select.sel.md{height:var(--h-md);font-size:12.5px;border-radius:var(--r-2)}
+
+.ctl{display:inline-flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;line-height:18px;min-width:0}
+.ctl input{position:absolute;opacity:0;width:0;height:0}
+.ctl .bx{width:16px;height:16px;flex:none;margin-top:1px;border:1px solid var(--border-control);
+  border-radius:var(--r-1);background:var(--bg-surface);box-shadow:var(--inner-hl);
+  display:grid;place-items:center;color:var(--accent-on);
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.ctl .bx > *{opacity:0;grid-area:1/1;transition:opacity var(--t-fast) var(--ease)}
+.ctl:hover .bx{border-color:var(--border-hover)}
+.ctl input:checked + .bx{background:var(--accent);border-color:var(--accent);box-shadow:var(--inner-hl-2)}
+.ctl input:checked + .bx .ck{opacity:1}
+.ctl input:focus-visible + .bx{outline:2px solid var(--accent);outline-offset:2px}
+.ctl .tx{min-width:0}
+.ctl .tx b{display:block;font-weight:500}
+.ctl .tx span{display:block;font-size:11.5px;line-height:16px;color:var(--fg-muted)}
+.sw{position:relative;width:32px;height:18px;flex:none;margin-top:1px;border-radius:var(--r-pill);
+  background:var(--bg-sunken);border:1px solid var(--border-control);box-shadow:var(--inner-hl);
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease)}
+.sw::after{content:"";position:absolute;top:1px;left:1px;width:14px;height:14px;border-radius:var(--r-pill);
+  background:var(--bg-surface);border:1px solid var(--border-control);
+  box-shadow:0 1px 1px rgb(19 24 29 / .18), inset 0 1px 0 rgb(255 255 255 / .5);
+  transition:transform var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease)}
+.ctl:hover .sw{border-color:var(--border-hover)}
+.ctl input:checked + .sw{background:var(--accent);border-color:var(--accent)}
+.ctl input:checked + .sw::after{transform:translateX(14px);border-color:var(--accent-active)}
+.ctl input:focus-visible + .sw{outline:2px solid var(--accent);outline-offset:2px}
+.strength{display:flex;gap:3px;margin-top:2px}
+.strength i{height:3px;flex:1;background:var(--border);border-radius:var(--r-1);
+  transition:background-color var(--t-fast) var(--ease)}
+.drop{display:flex;flex-direction:column;align-items:center;gap:7px;padding:22px 16px;text-align:center;
+  border:1px dashed var(--border-control);border-radius:var(--r-4);background:var(--bg-sunken);cursor:pointer;
+  transition:border-color var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+.drop:hover{border-color:var(--border-hover);background:var(--bg-hover)}
+.drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.drop b{font-size:13px;font-weight:500}
+.drop span{font-size:11.5px;color:var(--fg-muted);line-height:16px}
+.drop svg{color:var(--fg-muted)}
+
+/* ---------------- DATA DISPLAY ---------------- */
+.bdg{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:var(--r-2);
+  font-size:11px;font-weight:500;line-height:1;letter-spacing:.008em;white-space:nowrap;
+  border:1px solid transparent;background:var(--bg-subtle);color:var(--fg-secondary)}
+.bdg.sm{height:18px;padding:0 6px;font-size:10.5px}
+.bdg .dot{width:5px;height:5px;border-radius:var(--r-pill);background:currentColor;flex:none;opacity:.85}
+.bdg.sub-gain{background:var(--gain-bg);color:var(--gain)}
+.bdg.sub-loss{background:var(--loss-bg);color:var(--loss)}
+.bdg.sub-warn{background:var(--warn-bg);color:var(--warn)}
+.bdg.sub-info{background:var(--info-bg);color:var(--info)}
+.bdg.sub-acc{background:var(--accent-soft);color:var(--accent)}
+.bdg.sol-warn{background:var(--warn);color:var(--bg-surface)}
+.bdg.sol-acc{background:var(--accent);color:var(--accent-on)}
+.bdg.out-gain{background:none;border-color:var(--gain-line);color:var(--gain)}
+.bdg.out-warn{background:none;border-color:var(--warn-line);color:var(--warn)}
+.bdg.out-acc{background:none;border-color:var(--accent-line);color:var(--accent)}
+.bdg.out-n{background:none;border-color:var(--border);color:var(--fg-secondary)}
+.bdg.mono{font-family:var(--mono);font-size:10px;letter-spacing:0}
+.bdg.dash{background:none;border-style:dashed;border-color:var(--border-control);color:var(--fg-muted);
+  letter-spacing:.06em;font-size:10px;font-weight:600}
+.plate{width:24px;height:24px;border-radius:var(--r-2);flex:none;display:grid;place-items:center;
+  background:var(--bg-subtle);box-shadow:inset 0 0 0 1px var(--border);font-size:9.5px;font-weight:600;
+  color:var(--fg-secondary);overflow:hidden}
+.avat{width:28px;height:28px;border-radius:var(--r-pill);flex:none;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:600;
+  box-shadow:inset 0 0 0 1px var(--accent-line)}
+
+dl.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0;margin:0;font-size:12.5px;min-width:0}
+dl.kv dt{color:var(--fg-muted);padding:6px 16px 6px 0;border-bottom:1px solid var(--border-subtle);white-space:nowrap}
+dl.kv dd{margin:0;padding:6px 0;border-bottom:1px solid var(--border-subtle);text-align:right;
+  font-variant-numeric:tabular-nums;min-width:0;overflow:hidden;text-overflow:ellipsis}
+dl.kv dt:last-of-type,dl.kv dd:last-of-type{border-bottom:0}
+
+.kpi{display:flex;flex-direction:column;gap:5px;padding:12px 14px 0;border:1px solid var(--border);
+  border-radius:var(--r-4);background:var(--bg-surface);text-align:left;cursor:pointer;min-width:0;
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease)}
+.kpi:hover{background:var(--bg-hover);border-color:var(--border-hover)}
+.kpi:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.kpi .kl{display:flex;align-items:center;gap:5px;font-size:12px;line-height:16px;font-weight:500;color:var(--fg-muted);flex-wrap:wrap}
+.kpi .kv2{font-size:24px;line-height:30px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.016em;color:var(--fg)}
+.kpi .kv2 .u{font-size:11px;font-weight:500;color:var(--fg-muted);margin-left:2px;letter-spacing:0}
+.kpi .kd{font-size:11px;line-height:14px;font-weight:500;font-variant-numeric:tabular-nums}
+.kpi.flat-tile{padding-bottom:12px;cursor:default}
+.kpi.flat-tile:hover{background:var(--bg-surface);border-color:var(--border)}
+.info-i{width:13px;height:13px;border-radius:var(--r-pill);border:1px solid var(--border-control);
+  display:inline-grid;place-items:center;font-size:8.5px;font-weight:600;color:var(--fg-muted);
+  cursor:help;flex:none;line-height:1;font-style:normal}
+.info-i:hover{border-color:var(--border-hover);color:var(--fg)}
+.dash-cell{color:var(--fg-muted);text-decoration:underline dotted;text-underline-offset:3px;cursor:help;border-radius:var(--r-1)}
+.dash-cell:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pbar{height:6px;border-radius:var(--r-pill);background:var(--bg-sunken);box-shadow:inset 0 0 0 1px var(--border);
+  overflow:hidden;min-width:60px}
+.pbar i{display:block;height:100%;border-radius:var(--r-pill);background:var(--accent);transition:width var(--t) var(--ease)}
+.pbar.warn i{background:var(--warn)}
+.delta{display:inline-flex;align-items:baseline;gap:3px;font-variant-numeric:tabular-nums;font-weight:500}
+.delta .ar{font-size:8px;line-height:1;transform:translateY(-1px)}
+
+table.dt{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+table.dt th,table.dt td{padding:6px 12px;border-bottom:1px solid var(--border-subtle);white-space:nowrap;
+  height:32px;text-align:left;vertical-align:middle}
+table.dt thead th{background:var(--bg-surface);font-size:12px;font-weight:500;letter-spacing:.015em;
+  color:var(--fg-muted);box-shadow:inset 0 -1px 0 var(--border);border-bottom:0}
+table.dt .num{text-align:right}
+table.dt tbody tr{transition:background-color var(--t-fast) var(--ease)}
+table.dt tbody tr:hover{background:var(--bg-hover)}
+table.dt td.wrap,table.dt th.wrap{white-space:normal}
+.tscroll{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r-4);background:var(--bg-surface)}
+.nm{display:flex;flex-direction:column;gap:0;max-width:230px;min-width:0}
+.nm b{font-weight:600;font-size:13px;line-height:17px;display:flex;align-items:center;gap:5px}
+.nm span{font-size:11.5px;line-height:15px;color:var(--fg-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---------------- NAVIGATION ---------------- */
+.nvi{display:flex;align-items:center;gap:9px;height:var(--h-md);padding:0 9px;border-radius:var(--r-2);
+  color:var(--fg-secondary);text-decoration:none;font-size:13px;cursor:pointer;border:0;background:none;
+  width:100%;text-align:left;position:relative;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.nvi:hover{background:var(--bg-hover);color:var(--fg)}
+.nvi svg{flex:none;opacity:.82}
+.nvi .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.nvi .rt{flex:none;font-size:11px;color:var(--fg-muted);font-variant-numeric:tabular-nums}
+.nvi[aria-current="page"]{background:var(--accent-soft);color:var(--accent);font-weight:600;
+  box-shadow:inset 2px 0 0 var(--accent)}
+.nvi[aria-current="page"] svg{opacity:1}
+.nvi:focus-visible{outline-offset:-2px}
+.nvi-grp{font-size:10.5px;line-height:16px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--fg-muted);padding:6px 9px 3px}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:thin}
+.tabs button{height:var(--h-lg);padding:0 12px;border:0;background:none;font-size:13px;font-weight:500;
+  color:var(--fg-muted);cursor:pointer;white-space:nowrap;box-shadow:inset 0 -1px 0 transparent;
+  transition:color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+.tabs button:hover{color:var(--fg);background:var(--bg-hover);box-shadow:inset 0 -1px 0 var(--border-hover)}
+.tabs button[aria-selected="true"]{color:var(--accent);font-weight:600;box-shadow:inset 0 -2px 0 var(--accent)}
+.tabs button:focus-visible{outline-offset:-3px}
+.tabs .ct{margin-left:5px;font-size:11px;color:var(--fg-muted);font-variant-numeric:tabular-nums}
+.crumbs{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:12px;color:var(--fg-muted);min-width:0}
+.crumbs a{color:var(--fg-muted);text-decoration:none;border-radius:var(--r-1);padding:1px 2px}
+.crumbs a:hover{color:var(--fg);text-decoration:underline;text-underline-offset:2px}
+.crumbs b{font-weight:600;color:var(--fg)}
+.crumbs .sl{color:var(--border-active);user-select:none}
+.fchip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 3px 0 8px;border-radius:var(--r-2);
+  background:var(--bg-subtle);box-shadow:inset 0 0 0 1px var(--border);font-size:11.5px;color:var(--fg-secondary);
+  max-width:230px;transition:box-shadow var(--t-fast) var(--ease)}
+.fchip:hover{box-shadow:inset 0 0 0 1px var(--border-hover)}
+.fchip > span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fchip em{font-style:normal;color:var(--fg-muted)}
+.fchip button{width:16px;height:16px;border:0;border-radius:var(--r-1);background:none;color:var(--fg-muted);
+  cursor:pointer;display:grid;place-items:center;flex:none;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.fchip button:hover{background:var(--bg-active);color:var(--fg)}
+.fchip button:focus-visible{outline-offset:0}
+.stepr{display:flex;align-items:flex-start;gap:0;min-width:0;overflow-x:auto;padding-bottom:2px}
+.stepr .st{display:flex;align-items:flex-start;gap:8px;padding-right:14px;min-width:0;flex:none}
+.stepr .sn{width:20px;height:20px;border-radius:var(--r-pill);flex:none;display:grid;place-items:center;
+  font-size:10.5px;font-weight:600;background:var(--bg-sunken);color:var(--fg-muted);
+  box-shadow:inset 0 0 0 1px var(--border-control);font-variant-numeric:tabular-nums}
+.stepr .st.on .sn{background:var(--accent);color:var(--accent-on);box-shadow:none}
+.stepr .st.ok .sn{background:var(--gain-bg);color:var(--gain);box-shadow:inset 0 0 0 1px var(--gain-line)}
+.stepr .sx{display:flex;flex-direction:column;gap:1px;min-width:0}
+.stepr .sx b{font-size:12.5px;font-weight:500;color:var(--fg-muted);white-space:nowrap}
+.stepr .st.on .sx b{color:var(--fg);font-weight:600}
+.stepr .st.ok .sx b{color:var(--fg-secondary)}
+.stepr .sx span{font-size:11px;color:var(--fg-muted);white-space:nowrap}
+.stepr .bar{height:1px;background:var(--border);flex:1;min-width:20px;margin:10px 14px 0 0}
+.cmdrow{display:flex;align-items:center;gap:10px;height:var(--h-lg);padding:0 10px;border-radius:var(--r-2);
+  cursor:pointer;font-size:13px;color:var(--fg);
+  transition:background-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.cmdrow:hover,.cmdrow.on{background:var(--bg-hover);box-shadow:inset 2px 0 0 var(--accent)}
+.cmdrow .sym{font-family:var(--mono);font-size:11.5px;color:var(--fg-secondary);min-width:82px;flex:none;
+  font-variant-numeric:slashed-zero}
+.cmdrow .nm2{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmdrow .rt{font-size:11.5px;color:var(--fg-muted);font-variant-numeric:tabular-nums;flex:none}
+.kbd{font-family:var(--mono);font-size:10.5px;height:18px;min-width:18px;padding:0 5px;
+  border:1px solid var(--border);border-bottom-width:2px;border-radius:var(--r-2);color:var(--fg-muted);
+  background:var(--bg-subtle);display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+
+/* ---------------- OVERLAYS / FEEDBACK ---------------- */
+.ovl{position:fixed;inset:0;z-index:100;background:rgb(12 16 20 / .48);display:flex;
+  justify-content:center;align-items:flex-start;
+  padding:max(48px,env(safe-area-inset-top,0px)) var(--gr) 24px var(--gl)}
+.pal{width:100%;max-width:620px;background:var(--bg-raised);border:1px solid var(--border);
+  border-radius:var(--r-5);box-shadow:var(--shadow-modal);overflow:hidden;display:flex;flex-direction:column;max-height:70vh}
+.pal-in{display:flex;align-items:center;gap:0;border-bottom:1px solid var(--border-subtle);padding:0 12px;height:48px;flex:none}
+.pal-in svg{color:var(--fg-muted);flex:none}
+.pal-in input{flex:1;min-width:0;border:0;background:none;outline:none;font-size:15px;padding:0 10px;height:100%}
+.pal-in input::placeholder{color:var(--fg-disabled)}
+.pal-list{overflow-y:auto;padding:5px;overscroll-behavior:contain}
+.pal-grp{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-muted);padding:7px 10px 4px}
+.pal-foot{border-top:1px solid var(--border-subtle);padding:8px 12px;display:flex;gap:12px;flex-wrap:wrap;
+  font-size:11px;color:var(--fg-muted);background:var(--bg-subtle);align-items:center}
+.modal{width:min(720px,100%);background:var(--bg-raised);border:1px solid var(--border);
+  border-radius:var(--r-5);box-shadow:var(--shadow-modal);max-height:80vh;overflow:auto}
+.modal-h{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;
+  border-bottom:1px solid var(--border-subtle);position:sticky;top:0;background:var(--bg-raised);z-index:1}
+.modal-h h4{font-size:15px;line-height:20px}
+.toast{display:flex;gap:10px;align-items:flex-start;background:var(--bg-raised);border:1px solid var(--border);
+  border-left-width:2px;border-radius:var(--r-3);box-shadow:var(--shadow-pop);padding:10px 12px;max-width:400px;min-width:0}
+.toast.ok{border-left-color:var(--accent)}
+.toast.wn{border-left-color:var(--warn)}
+.toast.er{border-left-color:var(--loss)}
+.toast.nu{border-left-color:var(--border-active)}
+.toast .ti{flex:none;margin-top:1px}
+.toast.ok .ti{color:var(--accent)}.toast.wn .ti{color:var(--warn)}.toast.er .ti{color:var(--loss)}.toast.nu .ti{color:var(--fg-muted)}
+.toast .tb{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.toast b{font-size:12.5px;font-weight:600}
+.toast p{font-size:11.5px;line-height:16px;color:var(--fg-muted)}
+.alrt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-left-width:2px;
+  border-radius:var(--r-3);padding:11px 13px;min-width:0}
+.alrt.i{border-left-color:var(--info);background:var(--info-bg)}
+.alrt.w{border-left-color:var(--warn);background:var(--warn-bg)}
+.alrt.e{border-left-color:var(--loss);background:var(--loss-bg)}
+.alrt.s{border-left-color:var(--accent);background:var(--accent-soft)}
+.alrt .ai{flex:none;margin-top:1px}
+.alrt.i .ai{color:var(--info)}.alrt.w .ai{color:var(--warn)}.alrt.e .ai{color:var(--loss)}.alrt.s .ai{color:var(--accent)}
+.alrt .ab{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.alrt b{font-size:12.5px;font-weight:600;color:var(--fg)}
+.alrt p{font-size:12px;line-height:17px;color:var(--fg-secondary)}
+.empty{display:flex;flex-direction:column;align-items:flex-start;gap:6px;padding:26px 16px}
+.empty b{font-size:15px;line-height:21px;font-weight:600}
+.empty p{font-size:12.5px;line-height:18px;color:var(--fg-muted);max-width:50ch}
+.empty .ea{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px}
+.errpanel{border:1px solid var(--border);border-left:2px solid var(--loss);border-radius:var(--r-3);
+  padding:14px;display:flex;flex-direction:column;gap:8px;background:var(--bg-surface)}
+.livetoasts{position:fixed;right:var(--gr);bottom:calc(16px + env(safe-area-inset-bottom,0px));
+  z-index:90;display:grid;gap:8px;max-width:min(400px,calc(100vw - 32px))}
+
+/* ---------------- page scaffolding ---------------- */
+.wrap{padding-left:var(--gl);padding-right:var(--gr);padding-block:22px 64px;max-width:1240px;margin:0 auto;
+  display:flex;flex-direction:column;gap:16px}
+.note{font-size:12px;line-height:18px;color:var(--fg-secondary);border-left:2px solid var(--accent-line);
+  padding-left:10px;max-width:84ch}
+.card{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-4);padding:16px;min-width:0}
+.card > h3{font-size:15px;line-height:21px}
+.card-flush{background:var(--bg-surface);border:1px solid var(--border);border-radius:var(--r-4);overflow:hidden;min-width:0}
+.card-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 14px;
+  border-bottom:1px solid var(--border-subtle);background:var(--bg-subtle)}
+.card-h h3{font-size:13px;line-height:18px;font-weight:600}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row.vtop{align-items:flex-start}
+.two{display:grid;gap:16px;align-items:start}
+@media(min-width:880px){.two{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.three{display:grid;gap:16px;align-items:start}
+@media(min-width:800px){.three{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.tiles{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(165px,1fr))}
+.hdr{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.hdr h1{font-size:22px;line-height:28px;letter-spacing:-.012em}
+.hdr p{font-size:12.5px;color:var(--fg-muted);margin-top:2px}
+.sec-t{font-size:15px;line-height:21px;font-weight:600}
+.eyebrow{font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-muted)}
+.hr{height:1px;background:var(--border-subtle);border:0;margin:0}
+.swrow{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;
+  padding:11px 0;border-bottom:1px solid var(--border-subtle);flex-wrap:wrap}
+.swrow:last-child{border-bottom:0}
+.swrow .t{display:flex;flex-direction:column;gap:2px;min-width:210px;flex:1}
+.swrow .t b{font-size:13px;font-weight:500;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.swrow .t p{font-size:12px;line-height:17px;color:var(--fg-muted);max-width:68ch}
+.swrow .c{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* landing bands */
+.band{padding-left:var(--gl);padding-right:var(--gr)}
+.band-inner{max-width:1140px;margin:0 auto;padding-block:52px}
+.band.top{border-top:1px solid var(--border-subtle)}
+.band.sub{background:var(--bg-subtle)}
+.hero{display:grid;gap:40px;grid-template-columns:minmax(0,1fr)}
+@media(min-width:980px){.hero{grid-template-columns:minmax(0,1fr) minmax(0,1.06fr);align-items:center}}
+.hero h1{font-size:40px;line-height:46px;letter-spacing:-.022em}
+@media(max-width:600px){.hero h1{font-size:29px;line-height:35px}}
+.lede{font-size:16px;line-height:25px;color:var(--fg-secondary);max-width:58ch;margin-top:14px}
+.facts{display:flex;gap:22px;flex-wrap:wrap;margin-top:24px;padding-top:18px;border-top:1px solid var(--border-subtle)}
+.fact .fl{font-size:11px;font-weight:500;color:var(--fg-muted)}
+.fact .fv{font-size:19px;line-height:25px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+.shot{border:1px solid var(--border);border-radius:var(--r-5);background:var(--bg-surface);overflow:hidden}
+.shot-bar{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border-subtle);
+  background:var(--bg-subtle);font-size:11.5px;color:var(--fg-muted)}
+.shot-b{padding:14px;display:flex;flex-direction:column;gap:12px}
+.cellgrid{display:grid;gap:1px;background:var(--border-subtle);border:1px solid var(--border);
+  border-radius:var(--r-4);overflow:hidden}
+@media(min-width:760px){.cellgrid.c3{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .cellgrid.c4{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.cell{background:var(--bg-surface);padding:18px;min-width:0}
+.cell h4{font-size:14px;margin-bottom:6px}
+.cell p{font-size:13px;line-height:19px;color:var(--fg-secondary)}
+.cell .n{font-family:var(--mono);font-size:11px;color:var(--accent);display:block;margin-bottom:8px}
+.notlist{display:flex;flex-direction:column;gap:9px;margin-top:14px;max-width:88ch}
+.notlist > div{display:flex;gap:10px;font-size:13px;line-height:19px;color:var(--fg-secondary)}
+.notlist .dsh{color:var(--fg-disabled);font-family:var(--mono);flex:none}
+
+/* auth */
+.auth{display:grid;gap:0;border:1px solid var(--border);border-radius:var(--r-5);overflow:hidden;background:var(--bg-surface)}
+@media(min-width:920px){.auth{grid-template-columns:minmax(0,1fr) minmax(0,.9fr)}}
+.auth-f{padding:26px;min-width:0}
+.auth-s{background:var(--bg-subtle);padding:26px;border-top:1px solid var(--border-subtle);min-width:0}
+@media(min-width:920px){.auth-s{border-top:0;border-left:1px solid var(--border-subtle)}}
+.auth-f form{display:flex;flex-direction:column;gap:14px;max-width:420px}
+.sidelist{display:flex;flex-direction:column;gap:14px;margin-top:18px}
+.sidelist > div{display:flex;flex-direction:column;gap:3px}
+.sidelist b{font-size:13px;font-weight:600}
+.sidelist p{font-size:12px;line-height:17px;color:var(--fg-secondary)}
+
+/* settings */
+.set{display:grid;gap:18px;grid-template-columns:minmax(0,1fr);align-items:start}
+@media(min-width:920px){.set{grid-template-columns:214px minmax(0,1fr)}}
+.rail{display:flex;gap:1px;overflow-x:auto;padding-bottom:4px;min-width:0}
+@media(min-width:920px){.rail{flex-direction:column;overflow:visible;position:sticky;top:94px;padding-bottom:0}}
+.set-p{display:flex;flex-direction:column;gap:14px;min-width:0}
+
+/* system states */
+.statepage{border:1px solid var(--border);border-radius:var(--r-4);background:var(--bg-surface);
+  padding:24px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.statepage .code{font-family:var(--mono);font-size:11px;color:var(--fg-muted);letter-spacing:.1em}
+.statepage h3{font-size:20px;line-height:26px;letter-spacing:-.012em}
+.statepage p{font-size:13px;line-height:20px;color:var(--fg-secondary);max-width:56ch}
+
+/* alerts */
+.notif{display:flex;gap:11px;padding:12px 0;border-bottom:1px solid var(--border-subtle);align-items:flex-start}
+.notif:last-child{border-bottom:0}
+.sev{width:3px;align-self:stretch;border-radius:var(--r-1);flex:none;background:var(--border-active)}
+.sev.w{background:var(--warn)}.sev.l{background:var(--loss)}.sev.i{background:var(--info)}.sev.g{background:var(--accent)}
+.notif .b{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.notif b{font-size:13px;font-weight:600}
+.notif p{font-size:12px;line-height:17px;color:var(--fg-secondary)}
+.notif .t{font-size:11px;color:var(--fg-muted);white-space:nowrap;font-variant-numeric:tabular-nums;flex:none}
+
+/* onboarding */
+.cl{display:flex;gap:11px;padding:12px 0;border-bottom:1px solid var(--border-subtle);align-items:flex-start}
+.cl:last-child{border-bottom:0}
+.cl .b{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.cl b{font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.cl p{font-size:12px;line-height:17px;color:var(--fg-muted)}
+.cl .mk{width:18px;height:18px;border-radius:var(--r-pill);flex:none;margin-top:1px;display:grid;place-items:center;
+  font-size:10px;font-weight:600;background:var(--bg-sunken);color:var(--fg-muted);
+  box-shadow:inset 0 0 0 1px var(--border-control);font-variant-numeric:tabular-nums}
+.cl .mk.ok{background:var(--accent);color:var(--accent-on);box-shadow:none}
+
+/* nav IA */
+.navmock{border:1px solid var(--border);border-radius:var(--r-4);background:var(--bg-surface);overflow:hidden}
+.navgrp{padding:9px 10px;border-bottom:1px solid var(--border-subtle)}
+.navgrp:last-child{border-bottom:0}
+.sub{padding:3px 9px 0 30px;font-size:11.5px;line-height:16px;color:var(--fg-muted)}
+.bnav{display:flex;border:1px solid var(--border);border-radius:var(--r-4);overflow:hidden;background:var(--bg-surface)}
+.bnav div{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:8px 4px;
+  font-size:10.5px;color:var(--fg-muted);box-shadow:inset -1px 0 0 var(--border-subtle);min-width:0}
+.bnav div:last-child{box-shadow:none}
+.bnav div.on{color:var(--accent);background:var(--accent-soft)}
+</style>
+
+<div class="chrome">
+  <span class="brand"><span class="mark" aria-hidden="true"></span>Stock-Mania&nbsp;v2</span>
+  <nav class="secnav" id="switcher" aria-label="Mockup screens">
+    <button data-s="landing" aria-current="true">Landing</button>
+    <button data-s="auth">Auth</button>
+    <button data-s="settings">Settings</button>
+    <button data-s="search">Search</button>
+    <button data-s="alerts">Alerts</button>
+    <button data-s="states">System states</button>
+    <button data-s="onboarding">Onboarding</button>
+    <button data-s="toasts">Toasts</button>
+    <button data-s="nav">Navigation IA</button>
+  </nav>
+  <span class="chrome-r">
+    <button class="btn btn-sm" id="openPal"><i data-i="search" data-s="14"></i>Search<span class="kbd">⌘K</span></button>
+    <button class="btn btn-sm btn-ghost" id="openSc">Shortcuts<span class="kbd">?</span></button>
+    <span class="segf segf-sm" id="themeSeg" role="group" aria-label="Page theme">
+      <button data-t="system" aria-pressed="true">System</button>
+      <button data-t="light" aria-pressed="false">Light</button>
+      <button data-t="dark" aria-pressed="false">Dark</button>
+    </span>
+  </span>
+</div>
+
+<!-- ======================= LANDING ======================= -->
+<section id="s-landing">
+  <div class="band">
+    <div class="band-inner hero">
+      <div>
+        <span class="bdg out-acc"><span class="dot"></span>Manual mode · you hold the pen</span>
+        <h1 style="margin-top:14px">A double-entry ledger for your whole Indian net worth.</h1>
+        <p class="lede">Stock-Mania records every rupee as a balanced posting, matches disposals to tax lots, and computes XIRR from the cashflows you actually made. Nothing moves unless you enter it, import it, or ask for a price refresh.</p>
+        <div class="row" style="margin-top:22px;gap:10px">
+          <a class="btn btn-lg btn-primary" href="#auth">Create an account</a>
+          <a class="btn btn-lg" href="#landing">See how it works</a>
+        </div>
+        <div class="facts">
+          <div class="fact"><div class="fl">Precision</div><div class="fv">BIGINT</div><div class="hint">minor units, never floats</div></div>
+          <div class="fact"><div class="fl">Grouping</div><div class="fv">₹1,23,456</div><div class="hint">en-IN lakh and crore</div></div>
+          <div class="fact"><div class="fl">Tax year</div><div class="fv">FY 2026-27</div><div class="hint">1 Apr – 31 Mar</div></div>
+        </div>
+      </div>
+
+      <div class="shot">
+        <div class="shot-bar"><span class="mark sm" aria-hidden="true"></span><span>Net worth</span>
+          <span class="bdg out-n" style="margin-left:auto">As of 19 Oct 2026</span></div>
+        <div class="shot-b">
+          <div class="tiles">
+            <div class="kpi flat-tile"><span class="kl">Net worth</span><span class="kv2">₹48.72<span class="u">L</span></span><span class="kd gain">▲ +₹1.42L · +3.01% this FY</span></div>
+            <div class="kpi flat-tile"><span class="kl">Assets</span><span class="kv2">₹56.18<span class="u">L</span></span><span class="kd muted">11 accounts</span></div>
+            <div class="kpi flat-tile"><span class="kl">Liabilities</span><span class="kv2">₹7.46<span class="u">L</span></span><span class="kd muted">1 card · 1 loan</span></div>
+            <div class="kpi flat-tile"><span class="kl">Liquid</span><span class="kv2">₹9.34<span class="u">L</span></span><span class="kd muted">6.2 months runway</span></div>
+          </div>
+          <svg viewBox="0 0 560 152" width="100%" height="152" role="img" aria-label="Net worth rose from ₹41.3 L to ₹48.7 L over twelve months. Monthly bars split the change into contributions and market growth; two months show a market loss.">
+            <g stroke="var(--grid)" stroke-width="1">
+              <line x1="42" y1="20" x2="552" y2="20"/><line x1="42" y1="60" x2="552" y2="60"/>
+              <line x1="42" y1="100" x2="552" y2="100"/><line x1="42" y1="128" x2="552" y2="128"/>
+            </g>
+            <g font-size="9" fill="var(--fg-muted)" font-family="Inter,sans-serif">
+              <text x="0" y="23">₹50 L</text><text x="0" y="63">₹46 L</text><text x="0" y="103">₹42 L</text>
+              <text x="42" y="145">Nov 25</text><text x="266" y="145">Apr 26</text><text x="503" y="145">Oct 26</text>
+            </g>
+            <g fill="var(--c-other)">
+              <rect x="52" y="110" width="20" height="18"/><rect x="94" y="112" width="20" height="16"/>
+              <rect x="136" y="108" width="20" height="20"/><rect x="178" y="111" width="20" height="17"/>
+              <rect x="220" y="107" width="20" height="21"/><rect x="262" y="110" width="20" height="18"/>
+              <rect x="304" y="106" width="20" height="22"/><rect x="346" y="110" width="20" height="18"/>
+              <rect x="388" y="109" width="20" height="19"/><rect x="430" y="105" width="20" height="23"/>
+              <rect x="472" y="108" width="20" height="20"/><rect x="514" y="107" width="20" height="21"/>
+            </g>
+            <g fill="var(--gain)">
+              <rect x="52" y="98" width="20" height="12"/><rect x="94" y="103" width="20" height="9"/>
+              <rect x="136" y="92" width="20" height="16"/><rect x="220" y="94" width="20" height="13"/>
+              <rect x="262" y="99" width="20" height="11"/><rect x="304" y="88" width="20" height="18"/>
+              <rect x="388" y="95" width="20" height="14"/><rect x="430" y="86" width="20" height="19"/>
+              <rect x="472" y="96" width="20" height="12"/><rect x="514" y="84" width="20" height="23"/>
+            </g>
+            <g fill="var(--loss)">
+              <rect x="178" y="128" width="20" height="9"/><rect x="346" y="128" width="20" height="6"/>
+            </g>
+            <polyline fill="none" stroke="var(--accent)" stroke-width="1.75" stroke-linejoin="round"
+              points="62,101 104,97 146,88 188,91 230,82 272,78 314,68 356,71 398,62 440,51 482,46 524,34"/>
+            <circle cx="524" cy="34" r="3" fill="var(--accent)"/>
+          </svg>
+          <div class="row" style="gap:14px;font-size:11px;color:var(--fg-muted)">
+            <span class="row" style="gap:5px"><i style="width:9px;height:9px;background:var(--c-other);border-radius:1px;display:inline-block"></i>Contributions</span>
+            <span class="row" style="gap:5px"><i style="width:9px;height:9px;background:var(--gain);border-radius:1px;display:inline-block"></i>Market growth</span>
+            <span class="row" style="gap:5px"><i style="width:9px;height:9px;background:var(--loss);border-radius:1px;display:inline-block"></i>Market loss</span>
+            <span style="margin-left:auto">Example data</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="band top"><div class="band-inner">
+    <span class="eyebrow">What it does</span>
+    <h2 class="sec-t" style="margin:8px 0 18px;font-size:20px;line-height:26px">Six things, built properly.</h2>
+    <div class="cellgrid c3">
+      <div class="cell"><h4>Balanced postings, append-only</h4><p>Every transaction debits and credits real accounts. Mistakes are corrected by a reversal, never by an edit, so the history stays auditable. The books check on every load that assets − liabilities = equity + income − expenses.</p></div>
+      <div class="cell"><h4>Statement ingestion that reconciles</h4><p>PDF, JSON and CSV bank and card statements. Four duplicate checks — same file, same row, same bank reference, looks-the-same-within-a-week — and every row stages for review against the bank's own totals before it reaches the ledger.</p></div>
+      <div class="cell"><h4>Indian capital-gains lots</h4><p>FIFO lot matching with holding-period buckets, STCG and LTCG tiering, the ₹1,25,000 LTCG exemption per financial year, and realised-gains statements scoped to the FY.</p></div>
+      <div class="cell"><h4>XIRR on real cashflows</h4><p>Money-weighted return from your dated contributions and withdrawals. When the inputs cannot support a figure you get an em-dash and the reason, never a zero dressed up as an answer.</p></div>
+      <div class="cell"><h4>The full Indian charge stack</h4><p>Brokerage, STT, exchange transaction charges, SEBI turnover fee, stamp duty, GST and DP charges stored per trade and carried into cost basis and realised gain.</p></div>
+      <div class="cell"><h4>Loans, cards, deposits, gold</h4><p>EMI schedules with the principal and interest split taken from the amortisation, card cycles and minimum due, FD, RD, PPF, EPF and NPS accrual, and digital gold with lease credits tracked in grams.</p></div>
+    </div>
+  </div></div>
+
+  <div class="band top"><div class="band-inner">
+    <span class="eyebrow">How it works</span>
+    <h2 class="sec-t" style="margin:8px 0 18px;font-size:20px;line-height:26px">Four steps from a bank statement to a tax figure.</h2>
+    <div class="cellgrid c4">
+      <div class="cell"><span class="n">01</span><h4>Open your accounts</h4><p>Bank, wallet, cash, broker, card, loan and deposit. Each gets a ledger code and an opening balance.</p></div>
+      <div class="cell"><span class="n">02</span><h4>Import your statements</h4><p>Upload a PDF, JSON or CSV statement. Rows stage for review with four duplicate checks, and the batch is measured against the bank's own closing total.</p></div>
+      <div class="cell"><span class="n">03</span><h4>Refresh prices when you want</h4><p>NSE and BSE equities today; AMFI scheme NAVs are in progress, so fund holdings are valued from the price you last entered. Every figure carries its price state and date.</p></div>
+      <div class="cell"><span class="n">04</span><h4>Read the statements</h4><p>Net worth, realised gains by financial year, budget variance, payoff comparisons. Export the numbers you need for your return.</p></div>
+    </div>
+  </div></div>
+
+  <div class="band top sub"><div class="band-inner">
+    <span class="eyebrow">What it is not</span>
+    <h2 class="sec-t" style="margin:8px 0 2px;font-size:20px;line-height:26px">No streaming ticker, no signals, no advice.</h2>
+    <div class="notlist">
+      <div><span class="dsh">—</span><span>There is no real-time quote feed. Prices are fetched on request and stamped Priced, Stale, Unpriced or FX unavailable.</span></div>
+      <div><span class="dsh">—</span><span>Mutual-fund NAVs have no automatic fetch path yet. AMFI scheme codes are stored and the adapter is in progress; until it lands, fund values come from the price you last entered.</span></div>
+      <div><span class="dsh">—</span><span>There is no AI signal engine and no buy or sell recommendation. Categorisation runs on keyword rules you write and can read.</span></div>
+      <div><span class="dsh">—</span><span>Tax figures are indicative, computed against a named rule set with an effective date. Verify against the Finance Act before you file.</span></div>
+      <div><span class="dsh">—</span><span>Corporate actions are logged by you, not inferred. Any split-adjusted series says so on the chart.</span></div>
+    </div>
+    <div class="row" style="margin-top:24px;gap:10px">
+      <a class="btn btn-lg btn-primary" href="#auth">Create an account</a>
+      <a class="btn btn-lg" href="#auth">Sign in</a>
+    </div>
+  </div></div>
+
+  <div class="band"><div class="band-inner" style="padding-block:20px;border-top:1px solid var(--border-subtle)">
+    <p class="hint">Stock-Mania · single-user, self-hosted · ₹ in en-IN grouping · FY 2026-27 rule set <span class="mono">india-fy2025</span>, effective 23 Jul 2024</p>
+  </div></div>
+</section>
+
+<!-- ======================= AUTH ======================= -->
+<section id="s-auth" hidden><div class="wrap">
+  <p class="note">One split-screen shell for all four auth routes, rebuilt on the control bench: 36px form controls on <span class="mono">--border-control</span>, focus ring at offset 1 with the border turning accent, read-only fields dashed. The right panel claims only what ships.</p>
+  <div class="auth">
+    <div class="auth-f">
+      <div class="row" style="justify-content:space-between;margin-bottom:16px">
+        <span class="brand"><span class="mark" aria-hidden="true"></span>Stock-Mania</span>
+        <a class="btn btn-sm btn-ghost" href="#landing"><i data-i="chev-l" data-s="14"></i>Back to home</a>
+      </div>
+      <div class="tabs" id="authTabs" role="tablist" aria-label="Auth screens" style="margin-bottom:18px">
+        <button data-a="in" role="tab" aria-selected="true">Sign in</button>
+        <button data-a="up" role="tab" aria-selected="false">Sign up</button>
+        <button data-a="forgot" role="tab" aria-selected="false">Forgot password</button>
+        <button data-a="reset" role="tab" aria-selected="false">Reset password</button>
+      </div>
+
+      <div data-apanel="in">
+        <h2 style="font-size:20px;line-height:26px;letter-spacing:-.012em">Sign in</h2>
+        <p class="hint" style="margin:6px 0 16px">Your ledger is single-user and lives on your own instance.</p>
+        <form onsubmit="event.preventDefault()">
+          <div class="alrt e"><span class="ai"><i data-i="warn"></i></span><div class="ab"><b>Email or password is wrong</b><p>Two attempts left before a 60-second cooldown.</p></div></div>
+          <div class="fld"><label for="in-email">Email</label>
+            <span class="inw"><input id="in-email" type="email" value="debasish@example.in"></span></div>
+          <div class="fld"><label for="in-pw">Password</label>
+            <span class="inw err"><input id="in-pw" type="password" value="xxxxxxxxxx"></span>
+            <span class="errtxt"><i data-i="warn" data-s="13"></i>We could not match these credentials.</span></div>
+          <button class="btn btn-lg btn-primary" type="submit">Sign in</button>
+          <button class="btn btn-lg" type="button"><i data-i="vault" data-s="15"></i>Use a passkey <span class="bdg dash sm">NEW</span></button>
+          <p class="hint">New here? <a href="#auth">Create an account</a> · <a href="#auth">Forgot your password?</a></p>
+        </form>
+      </div>
+
+      <div data-apanel="up" hidden>
+        <h2 style="font-size:20px;line-height:26px;letter-spacing:-.012em">Create your account</h2>
+        <p class="hint" style="margin:6px 0 16px">Country sets your reporting currency and financial-year calendar.</p>
+        <form onsubmit="event.preventDefault()">
+          <div class="fld"><label for="up-name">Full name <span class="req" aria-hidden="true">*</span></label>
+            <span class="inw"><input id="up-name" value="Debasish Rana"></span></div>
+          <div class="fld"><label for="up-email">Email <span class="req" aria-hidden="true">*</span></label>
+            <span class="inw"><input id="up-email" type="email" value="debasish@example.in"></span></div>
+          <div class="fld">
+            <label for="up-pw">Password <span class="req" aria-hidden="true">*</span> <span class="bdg dash sm">NEW strength meter</span></label>
+            <span class="inw"><input id="up-pw" type="password" value="correct horse 42"></span>
+            <span class="strength" id="strengthBars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+            <span class="hint" id="strengthTxt"></span>
+          </div>
+          <div class="fld"><label for="up-country">Country <span class="req" aria-hidden="true">*</span></label>
+            <select class="sel" id="up-country"><option>India</option><option>United States</option><option>United Arab Emirates</option><option>Singapore</option></select>
+            <span class="hint">India selected — reporting currency INR, financial year 1 Apr – 31 Mar.</span></div>
+          <button class="btn btn-lg btn-primary" type="submit">Create account</button>
+          <p class="hint">Creating an account means accepting that tax figures here are indicative and not advice.</p>
+        </form>
+      </div>
+
+      <div data-apanel="forgot" hidden>
+        <h2 style="font-size:20px;line-height:26px;letter-spacing:-.012em">Forgot your password</h2>
+        <p class="hint" style="margin:6px 0 16px">We send a single-use link that expires in 30 minutes.</p>
+        <form onsubmit="event.preventDefault()">
+          <div class="alrt i"><span class="ai"><i data-i="info"></i></span><div class="ab"><b>Check your inbox</b><p>If an account exists for that address, a reset link is on its way. We do not confirm whether an address is registered.</p></div></div>
+          <div class="fld"><label for="fg-email">Email</label>
+            <span class="inw"><span class="ico"><i data-i="search" data-s="14"></i></span><input id="fg-email" type="email" placeholder="you@example.in"></span></div>
+          <button class="btn btn-lg btn-primary" type="submit">Send reset link</button>
+          <p class="hint"><a href="#auth">Back to sign in</a></p>
+        </form>
+      </div>
+
+      <div data-apanel="reset" hidden>
+        <h2 style="font-size:20px;line-height:26px;letter-spacing:-.012em">Set a new password</h2>
+        <p class="hint" style="margin:6px 0 16px">This link is valid once. Other devices will need to sign in again.</p>
+        <form onsubmit="event.preventDefault()">
+          <div class="fld"><label for="rs-pw">New password</label>
+            <span class="inw"><input id="rs-pw" type="password" value="trailing-stop-91"></span>
+            <span class="strength" aria-hidden="true"><i style="background:var(--accent)"></i><i style="background:var(--accent)"></i><i style="background:var(--accent)"></i><i></i></span>
+            <span class="hint">Good · add one more word to reach strong.</span></div>
+          <div class="fld"><label for="rs-pw2">Confirm new password</label>
+            <span class="inw err"><input id="rs-pw2" type="password" value="trailing-stop-9"></span>
+            <span class="errtxt"><i data-i="warn" data-s="13"></i>The two passwords do not match.</span></div>
+          <div class="swrow" style="border-bottom:0;padding-top:4px">
+            <span class="t"><b>Sign out of all other sessions <span class="bdg dash sm">NEW</span></b><p>Three sessions are active, last seen Bengaluru and Pune.</p></span>
+            <span class="c"><label class="ctl"><input type="checkbox" checked><span class="sw"></span><span class="vh">Sign out of all other sessions</span></label></span>
+          </div>
+          <button class="btn btn-lg btn-primary" type="submit">Save password</button>
+        </form>
+      </div>
+    </div>
+
+    <aside class="auth-s">
+      <span class="eyebrow">Built for one careful owner</span>
+      <h3 style="font-size:18px;line-height:25px;margin-top:8px;letter-spacing:-.012em">Your whole net worth, in one ledger you can audit.</h3>
+      <div class="sidelist">
+        <div><b>Net worth</b><p>Assets minus liabilities, summed from journal postings at read time, never stored.</p></div>
+        <div><b>Accounts</b><p>Bank, wallet, cash, broker, card, loan and deposit, each with an opening balance and a reconcile panel.</p></div>
+        <div><b>Imports</b><p>PDF, JSON and CSV statements staged for review, checked four ways for duplicates and against the bank's own totals.</p></div>
+        <div><b>Holdings</b><p>Equities, ETFs, mutual funds, SGBs and digital metals with lot-level cost basis and the full charge stack.</p></div>
+        <div><b>Financial year</b><p>Realised gains, tax buckets and the LTCG exemption all scoped to 1 April – 31 March.</p></div>
+      </div>
+      <div class="alrt i" style="margin-top:20px"><span class="ai"><i data-i="info"></i></span><div class="ab"><b>Manual mode</b><p>Your entries change only when you edit them or request a price refresh. There is no live feed and no automated trading.</p></div></div>
+    </aside>
+  </div>
+</div></section>
+
+<!-- ======================= SETTINGS ======================= -->
+<section id="s-settings" hidden><div class="wrap">
+  <div class="hdr">
+    <div><h1>Settings</h1><p>Preferences for this instance. Changes apply immediately.</p></div>
+    <span class="bdg out-n">FY 2026-27 · <span class="mono" style="margin-left:4px">india-fy2025</span></span>
+  </div>
+  <p class="note">Today the page ships Account, Reporting currency and Tax settings in one column. This is the full set behind a section rail. Notifications, Security &amp; sessions and most of Appearance are NEW.</p>
+  <div class="set">
+    <nav class="rail" id="setRail" aria-label="Settings sections">
+      <button class="nvi" data-sec="account" aria-current="page"><i data-i="gear" data-s="15"></i><span class="t">Account</span></button>
+      <button class="nvi" data-sec="appearance"><i data-i="density" data-s="15"></i><span class="t">Appearance</span></button>
+      <button class="nvi" data-sec="currency"><i data-i="cash" data-s="15"></i><span class="t">Reporting currency</span></button>
+      <button class="nvi" data-sec="tax"><i data-i="bond" data-s="15"></i><span class="t">Tax settings</span></button>
+      <button class="nvi" data-sec="cats"><i data-i="filter" data-s="15"></i><span class="t">Categories &amp; rules</span></button>
+      <button class="nvi" data-sec="notif"><i data-i="signal" data-s="15"></i><span class="t">Notifications</span><span class="rt"><span class="bdg dash sm">NEW</span></span></button>
+      <button class="nvi" data-sec="data"><i data-i="download" data-s="15"></i><span class="t">Data</span></button>
+      <button class="nvi" data-sec="security"><i data-i="vault" data-s="15"></i><span class="t">Security</span><span class="rt"><span class="bdg dash sm">NEW</span></span></button>
+    </nav>
+
+    <div class="set-p">
+      <div data-secp="account">
+        <div class="card">
+          <h3>Account</h3>
+          <p class="hint" style="margin:4px 0 12px">The identity on this instance.</p>
+          <dl class="kv">
+            <dt>Name</dt><dd>Debasish Rana</dd>
+            <dt>Email</dt><dd>debasish@example.in</dd>
+            <dt>Account created</dt><dd>14 Feb 2025</dd>
+            <dt>Country</dt><dd>India</dd>
+          </dl>
+          <div class="row" style="margin-top:14px"><button class="btn"><i data-i="edit" data-s="14"></i>Edit name</button><button class="btn">Change password</button></div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <h3>Manual mode is active</h3>
+          <p class="hint" style="margin-top:6px;max-width:72ch">Your entries change only when you edit them or request a price refresh. No background job writes to your ledger, no broker is connected, and no price is fetched without a request. Last price refresh: <span class="tnum">19 Oct 2026, 15:42 IST</span>.</p>
+        </div>
+      </div>
+
+      <div data-secp="appearance" hidden>
+        <div class="card">
+          <h3>Appearance</h3>
+          <p class="hint" style="margin:4px 0 12px">Theme and density are per device. Number format applies everywhere, including exports.</p>
+          <div class="swrow"><span class="t"><b>Theme</b><p>Light is the default. System follows your operating system.</p></span>
+            <span class="c"><span class="seg" id="themeSeg2" role="group" aria-label="Theme">
+              <button data-t="light">Light</button><button data-t="dark">Dark</button><button data-t="system" aria-pressed="true">System</button></span></span></div>
+          <div class="swrow"><span class="t"><b>Default table density</b><p>Compact is the default, and 32px is why a control dropped into a cell does not change the row height. This is the global default — a saved view can override it, and the view's own density wins wherever it is applied.</p></span>
+            <span class="c"><span class="seg" role="group" aria-label="Density">
+              <button data-d="c">Comfortable 36</button><button data-d="k" aria-pressed="true">Compact 32</button><button data-d="d">Dense 28</button></span></span></div>
+          <div class="swrow"><span class="t"><b>Number format</b><p>Full digits keep ₹12,45,678 everywhere. Abbreviated shows ₹12.45 L in KPI tiles and chart axes only; table cells and exports always stay full.</p></span>
+            <span class="c"><span class="seg" id="numSeg" role="group" aria-label="Number format">
+              <button data-n="full" aria-pressed="true">Full digits</button><button data-n="abbr">L / Cr in tiles</button></span></span></div>
+          <div class="swrow"><span class="t"><b>Accounting parentheses for negatives</b><p>Off: −₹12,340. On: (₹12,340). The minus is U+2212 either way.</p></span>
+            <span class="c"><label class="ctl"><input type="checkbox" id="ap-paren"><span class="sw"></span><span class="vh">Accounting parentheses</span></label></span></div>
+          <div class="swrow"><span class="t"><b>Direction glyphs on deltas</b><p>Adds ▲ and ▼ beside signed figures so gain and loss never rely on colour alone.</p></span>
+            <span class="c"><label class="ctl"><input type="checkbox" id="ap-glyph" checked><span class="sw"></span><span class="vh">Direction glyphs</span></label></span></div>
+          <div class="swrow"><span class="t"><b>Reduce motion</b><p>Follows your system setting. Transitions collapse to 1ms and both spinners become a static ring.</p></span>
+            <span class="c"><label class="ctl"><input type="checkbox" id="ap-motion" checked><span class="sw"></span><span class="vh">Reduce motion</span></label></span></div>
+          <div class="card" style="margin-top:14px;background:var(--bg-subtle)">
+            <span class="eyebrow">Preview</span>
+            <div class="row" style="gap:26px;margin-top:10px">
+              <span><span class="kpi-l hint">Net worth</span>
+                <div style="font-size:24px;line-height:30px;font-weight:600;letter-spacing:-.016em" class="tnum" id="prevVal">₹48,72,140</div>
+                <span class="kd gain" style="font-size:11px;font-weight:500" id="prevD1">▲ +₹1,42,380 · +3.01% this FY</span></span>
+              <span><span class="kpi-l hint">Unrealised</span>
+                <div style="font-size:24px;line-height:30px;font-weight:600;letter-spacing:-.016em" class="tnum loss" id="prevVal2">−₹18,450</div>
+                <span class="kd loss" style="font-size:11px;font-weight:500" id="prevD2">▼ −1.14% today</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div data-secp="currency" hidden>
+        <div class="card">
+          <h3>Reporting currency</h3>
+          <p class="hint" style="margin:4px 0 12px">Every statement is presented in this currency.</p>
+          <div class="fld" style="max-width:320px;margin-bottom:12px">
+            <label for="cur">Reporting currency <span class="bdg out-n sm">read-only</span></label>
+            <span class="inw ro"><input id="cur" value="INR — Indian rupee (₹)" readonly></span>
+            <span class="hint">Read-only keeps its ink and takes a dashed edge, because the value is real data rather than a disabled control.</span>
+          </div>
+          <dl class="kv">
+            <dt>Grouping</dt><dd>en-IN · 3-then-2s · lakh and crore</dd>
+            <dt>Minor unit</dt><dd>2 decimal places (paise)</dd>
+            <dt>Holdings in another currency</dt><dd>1 — AAPL, USD <span class="bdg sub-warn">FX unavailable</span></dd>
+          </dl>
+          <div class="alrt w" style="margin-top:14px"><span class="ai"><i data-i="warn"></i></span><div class="ab"><b>Changing this is not available yet</b><p>A different reporting currency needs a per-user preferences table and an FX rate book with dated rates, so past statements keep the rate that applied on their own date. Until that exists, a holding priced in another currency reports as FX unavailable rather than converting at today's rate.</p></div></div>
+        </div>
+      </div>
+
+      <div data-secp="tax" hidden>
+        <div class="card">
+          <h3>Tax settings</h3>
+          <p class="hint" style="margin:4px 0 12px">Applied to realised gains, lot bucketing and the tax statement.</p>
+          <div style="display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))">
+            <div class="fld"><label for="t-fy">Financial year</label>
+              <select class="sel" id="t-fy"><option>2026-27 (current)</option><option>2025-26</option><option>2024-25</option></select>
+              <span class="hint">1 Apr 2026 – 31 Mar 2027 · AY 2027-28</span></div>
+            <div class="fld"><label for="t-slab">Marginal slab rate</label>
+              <span class="inw num"><input id="t-slab" value="30" inputmode="decimal"><span class="afx r">%</span></span>
+              <span class="hint">Used for STCG on debt and slab-rate disposals.</span></div>
+            <div class="fld"><label for="t-ltcg">LTCG exemption, this FY</label>
+              <span class="inw num"><span class="afx">₹</span><input id="t-ltcg" value="1,25,000.00"></span>
+              <span class="hint">Per financial year on equity and equity-oriented funds. Resets 1 April.</span></div>
+            <div class="fld"><label for="t-regime">Rule set <span class="bdg out-n sm">read-only</span></label>
+              <span class="inw ro"><input class="mono" id="t-regime" value="india-fy2025" readonly></span>
+              <span class="hint">Effective 23 Jul 2024. Equity LTCG 12.5%, STCG 20%.</span></div>
+          </div>
+          <div style="margin-top:12px">
+            <div class="swrow"><span class="t"><b>New regime</b><p>Changes the slab table used for slab-rate gains and the deductions assumed in projections.</p></span>
+              <span class="c"><label class="ctl"><input type="checkbox" checked><span class="sw"></span><span class="vh">New regime</span></label></span></div>
+            <div class="swrow"><span class="t"><b>Lot matching method</b><p>FIFO is mandatory for Indian listed equity and equity funds. Shown so the rule is visible, not offered as a choice.</p></span>
+              <span class="c"><span class="bdg out-n">FIFO · locked</span></span></div>
+          </div>
+          <div class="alrt w" style="margin-top:14px"><span class="ai"><i data-i="warn"></i></span><div class="ab"><b>Indicative, not tax advice</b><p>Verify against the Finance Act and the Income Tax Department before filing. Section numbering changed under the Income Tax Act, 2025 from 1 Apr 2026.</p></div></div>
+        </div>
+      </div>
+
+      <div data-secp="cats" hidden>
+        <div class="card-flush">
+          <div class="card-h"><h3>Categories &amp; rules</h3>
+            <span class="hint" style="flex:1;min-width:140px">First rule whose keyword matches the narration wins</span>
+            <button class="btn btn-sm btn-primary"><i data-i="plus" data-s="14"></i>Add a rule</button>
+            <button class="btn btn-sm"><i data-i="refresh" data-s="14"></i>Re-run on uncategorised <span class="bdg sub-warn sm">37</span></button>
+          </div>
+          <div style="padding:14px">
+            <p class="hint" style="margin-bottom:12px;max-width:76ch">A transaction gets its category from your keyword rules. Rules are yours to write and read. Nothing here is categorised by a model.</p>
+            <div class="tscroll"><table class="dt">
+              <thead><tr><th style="width:44px">#</th><th>Keyword in narration</th><th>Category</th><th class="num">Matched</th><th style="width:44px"></th></tr></thead>
+              <tbody>
+                <tr><td class="mono muted">1</td><td class="mono">BIGBASKET</td><td>Expenses:Food:Groceries</td><td class="num">48</td><td><button class="btn btn-sm btn-ghost only" aria-label="Rule actions"><i data-i="more" data-s="14"></i></button></td></tr>
+                <tr><td class="mono muted">2</td><td class="mono">SWIGGY</td><td>Expenses:Food:Eating out</td><td class="num">112</td><td><button class="btn btn-sm btn-ghost only" aria-label="Rule actions"><i data-i="more" data-s="14"></i></button></td></tr>
+                <tr><td class="mono muted">3</td><td class="mono">BESCOM</td><td>Expenses:Utilities</td><td class="num">24</td><td><button class="btn btn-sm btn-ghost only" aria-label="Rule actions"><i data-i="more" data-s="14"></i></button></td></tr>
+                <tr><td class="mono muted">4</td><td class="mono">SALARY</td><td>Income:Salary</td><td class="num">21</td><td><button class="btn btn-sm btn-ghost only" aria-label="Rule actions"><i data-i="more" data-s="14"></i></button></td></tr>
+                <tr><td class="mono muted">5</td><td class="mono">ZERODHA</td><td>Expenses:Investing:Charges</td><td class="num">63</td><td><button class="btn btn-sm btn-ghost only" aria-label="Rule actions"><i data-i="more" data-s="14"></i></button></td></tr>
+                <tr><td class="mono muted">6</td><td class="mono">NEFT*RENT</td><td>Expenses:Housing:Rent</td><td class="num">19</td><td><button class="btn btn-sm btn-ghost only" aria-label="Rule actions"><i data-i="more" data-s="14"></i></button></td></tr>
+              </tbody>
+            </table></div>
+            <p class="hint" style="margin-top:10px">Order matters: rule 1 wins over rule 6 when both match. Drag to reorder. A row no rule matches stays Uncategorised and is counted on the Transactions page.</p>
+          </div>
+        </div>
+      </div>
+
+      <div data-secp="notif" hidden>
+        <div class="card">
+          <h3>Notifications <span class="bdg dash sm">NEW</span></h3>
+          <p class="hint" style="margin:4px 0 12px">Alerts appear in the in-app alerts centre. Email delivery needs an SMTP endpoint configured on this instance.</p>
+          <div class="swrow"><span class="t"><b>Price staleness</b><p>When a priced holding has had no observation for longer than the freshness window.</p></span>
+            <span class="c"><select class="sel md" aria-label="Staleness window"><option>After 3 days</option><option>After 7 days</option><option>Never</option></select>
+            <label class="ctl"><input type="checkbox" checked><span class="sw"></span><span class="vh">Price staleness alerts</span></label></span></div>
+          <div class="swrow"><span class="t"><b>Card due dates</b><p>Ahead of the due date you recorded on a card. Card balances and due dates are values you enter, so this reminds you to update them as much as to pay.</p></span>
+            <span class="c"><select class="sel md" aria-label="Card reminder lead time"><option>3 days before</option><option>5 days before</option><option>1 day before</option></select>
+            <label class="ctl"><input type="checkbox" checked><span class="sw"></span><span class="vh">Card due date alerts</span></label></span></div>
+          <div class="swrow"><span class="t"><b>Deposit maturities</b><p>FD, RD and scheme maturities, so a renewal decision is not missed.</p></span>
+            <span class="c"><label class="ctl"><input type="checkbox" checked><span class="sw"></span><span class="vh">Deposit maturity alerts</span></label></span></div>
+          <div class="swrow"><span class="t"><b>Budget overspend</b><p>When an envelope passes its budgeted amount, or its pace-to-date projects an overspend.</p></span>
+            <span class="c"><label class="ctl"><input type="checkbox" checked><span class="sw"></span><span class="vh">Budget overspend alerts</span></label></span></div>
+          <div class="swrow"><span class="t"><b>Unreviewed import rows</b><p>When a staged batch has sat unconfirmed for more than a day. Statement ingestion is the main way the ledger grows, so this one is on by default.</p></span>
+            <span class="c"><label class="ctl"><input type="checkbox" checked><span class="sw"></span><span class="vh">Unreviewed import alerts</span></label></span></div>
+          <div class="swrow"><span class="t"><b>Accounting identity fails</b><p>When B02 does not hold after a posting. This is a data-integrity signal, not a preference.</p></span>
+            <span class="c"><span class="bdg out-n">Always on</span></span></div>
+          <div class="swrow"><span class="t"><b>Approaching LTCG</b><p>When a holding is within 30 days of crossing its long-term threshold.</p></span>
+            <span class="c"><label class="ctl"><input type="checkbox"><span class="sw"></span><span class="vh">Approaching LTCG alerts</span></label></span></div>
+          <div class="swrow"><span class="t"><b>Email delivery</b><p>No SMTP endpoint is configured on this instance.</p></span>
+            <span class="c"><span class="bdg out-warn">Unavailable</span></span></div>
+        </div>
+      </div>
+
+      <div data-secp="data" hidden>
+        <div class="card">
+          <h3>Data</h3>
+          <p class="hint" style="margin:4px 0 12px">Your ledger is yours. Exports carry exact values, not display formatting.</p>
+          <div class="swrow"><span class="t"><b>Export everything</b><p>A zip of CSVs: accounts, transactions, postings, trades, lots, lot matches, instruments, price quotes, budgets, loan and deposit terms, import batches and audit events. ISO-8601 dates, raw minor units, one file per table.</p></span>
+            <span class="c"><button class="btn"><i data-i="download" data-s="14"></i>Export</button></span></div>
+          <div class="swrow"><span class="t"><b>Export for your return</b><p>Realised-gains statement for FY 2026-27: instrument, ISIN, buy date, sell date, quantity, cost, proceeds, charges, gain, bucket.</p></span>
+            <span class="c"><button class="btn"><i data-i="download" data-s="14"></i>Export CSV</button></span></div>
+          <div class="swrow"><span class="t"><b>Import a statement</b><p>PDF, JSON and CSV bank and card statements. Rows stage for review with four duplicate checks before anything posts.</p></span>
+            <span class="c"><button class="btn"><i data-i="upload" data-s="14"></i>Go to imports</button></span></div>
+          <div class="swrow"><span class="t"><b>Restore from an export</b><p>Replaces the entire ledger with the contents of an export zip. Available only on an empty instance.</p></span>
+            <span class="c"><button class="btn">Restore</button></span></div>
+          <hr class="hr" style="margin:14px 0">
+          <h4 style="font-size:13px;color:var(--loss)">Delete this account</h4>
+          <p class="hint" style="margin:6px 0 10px;max-width:72ch">Removes the user, every account, transaction, posting, trade, lot and import batch. Audit events go too. This cannot be undone and there is no backup on this instance. Export first.</p>
+          <div class="row vtop" style="align-items:flex-end">
+            <div class="fld" style="flex:1;min-width:230px"><label for="del">Type <span class="mono">delete my ledger</span> to confirm</label>
+              <span class="inw"><input id="del" placeholder="delete my ledger"></span></div>
+            <button class="btn btn-lg btn-danger"><i data-i="trash" data-s="14"></i>Delete account</button>
+          </div>
+        </div>
+      </div>
+
+      <div data-secp="security" hidden>
+        <div class="card">
+          <h3>Security &amp; sessions <span class="bdg dash sm">NEW</span></h3>
+          <div class="swrow" style="margin-top:8px"><span class="t"><b>Passkey</b><p>Sign in with the device you are on. The password stays as a fallback.</p></span>
+            <span class="c"><button class="btn"><i data-i="plus" data-s="14"></i>Add a passkey</button></span></div>
+          <div class="swrow"><span class="t"><b>Two-factor authentication</b><p>A time-based code from an authenticator app, required after the password.</p></span>
+            <span class="c"><span class="bdg out-warn">Not set up</span><button class="btn">Set up</button></span></div>
+          <div class="swrow"><span class="t"><b>Recovery codes</b><p>Ten single-use codes, generated once two-factor is on.</p></span>
+            <span class="c"><span class="bdg out-n">Unavailable until 2FA is on</span></span></div>
+          <div class="swrow"><span class="t"><b>Re-authenticate for destructive actions</b><p>Deleting the account, restoring a ledger, or exporting everything.</p></span>
+            <span class="c"><label class="ctl"><input type="checkbox" checked><span class="sw"></span><span class="vh">Require re-authentication</span></label></span></div>
+        </div>
+        <div class="card-flush" style="margin-top:14px">
+          <div class="card-h"><h3>Active sessions</h3><span class="hint" style="flex:1">3 signed in</span>
+            <button class="btn btn-sm btn-danger-quiet">Sign out everywhere else</button></div>
+          <div class="tscroll" style="border:0;border-radius:0"><table class="dt">
+            <thead><tr><th>Device</th><th>Location</th><th>Last seen</th><th style="width:88px"></th></tr></thead>
+            <tbody>
+              <tr><td>Chrome on Windows <span class="bdg sub-acc sm">This device</span></td><td>Bengaluru, IN</td><td>Now</td><td></td></tr>
+              <tr><td>Safari on iPhone</td><td>Bengaluru, IN</td><td>19 Oct 2026, 09:12</td><td><button class="btn btn-sm btn-danger-quiet">Revoke</button></td></tr>
+              <tr><td>Firefox on Linux</td><td>Pune, IN</td><td>02 Oct 2026, 21:44</td><td><button class="btn btn-sm btn-danger-quiet">Revoke</button></td></tr>
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<!-- ======================= SEARCH ======================= -->
+<section id="s-search" hidden><div class="wrap">
+  <div class="crumbs"><a href="#search">Home</a><span class="sl">›</span><b>Search</b></div>
+  <div class="hdr">
+    <div><h1>Results for <span class="mono">infy</span></h1><p>18 matches across holdings, lots, transactions and pages</p></div>
+    <button class="btn" id="openPal2"><i data-i="search" data-s="14"></i>Command palette<span class="kbd">⌘K</span></button>
+  </div>
+  <p class="note">The palette handles navigation and quick actions; this page is for the long tail — every posting and lot that mentions a term. Both are NEW: <span class="mono">cmdk</span> is installed today but unwired, and the header has no search.</p>
+  <div class="tabs" role="tablist" aria-label="Result kinds">
+    <button role="tab" aria-selected="true">All<span class="ct">18</span></button>
+    <button role="tab" aria-selected="false">Holdings<span class="ct">1</span></button>
+    <button role="tab" aria-selected="false">Transactions<span class="ct">11</span></button>
+    <button role="tab" aria-selected="false">Lots<span class="ct">4</span></button>
+    <button role="tab" aria-selected="false">Pages<span class="ct">2</span></button>
+  </div>
+  <div class="two">
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card-flush">
+        <div class="card-h"><h3>Holdings</h3><span class="hint" style="flex:1">1 match</span></div>
+        <div class="tscroll" style="border:0;border-radius:0"><table class="dt">
+          <thead><tr><th>Holding</th><th>Platform</th><th class="num">Units</th><th class="num">Market value</th><th class="num">Unrealised</th></tr></thead>
+          <tbody><tr>
+            <td><span class="nm"><b class="mono">INFY <span class="bdg out-n sm">NSE</span></b><span>Infosys Ltd</span></span></td>
+            <td>Zerodha</td><td class="num">35</td><td class="num">₹88,722.00</td>
+            <td class="num loss">−₹2,664.00</td></tr></tbody>
+        </table></div>
+      </div>
+      <div class="card-flush">
+        <div class="card-h"><h3>Tax lots</h3><span class="hint" style="flex:1">FIFO · 4 lots, 2 open</span></div>
+        <div class="tscroll" style="border:0;border-radius:0"><table class="dt">
+          <thead><tr><th>Opened</th><th class="num">Units</th><th class="num">Cost</th><th>Bucket</th></tr></thead>
+          <tbody>
+            <tr><td>06 May 2025</td><td class="num">35</td><td class="num">₹53,308.50</td><td><span class="bdg out-gain">LTCG</span></td></tr>
+            <tr><td>21 Aug 2025</td><td class="num">25</td><td class="num">₹38,077.50</td>
+              <td><span class="row" style="gap:6px"><span class="bdg sub-warn">LTCG in 47 days</span>
+                <span class="pbar warn" style="width:52px" role="img" aria-label="Holding period 87 percent complete"><i style="width:87%"></i></span></span></td></tr>
+          </tbody>
+        </table></div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card-flush">
+        <div class="card-h"><h3>Transactions</h3><span class="hint" style="flex:1">Showing 4 of 11</span>
+          <button class="btn btn-sm btn-link">Open in Transactions</button></div>
+        <div class="tscroll" style="border:0;border-radius:0"><table class="dt">
+          <thead><tr><th>Date</th><th>Narration</th><th>Account</th><th class="num">Amount</th></tr></thead>
+          <tbody>
+            <tr><td>21 Aug 2025</td><td>INFY sell · 25 units @ ₹1,684.00</td><td>Zerodha</td><td class="num gain">+₹42,100.00</td></tr>
+            <tr><td>21 Aug 2025</td><td>INFY charges · STT, GST, DP</td><td>Zerodha</td><td class="num loss">−₹815.00</td></tr>
+            <tr><td>06 May 2025</td><td>INFY buy · 60 units @ ₹1,523.10</td><td>HDFC Savings ••1234</td><td class="num loss">−₹91,386.00</td></tr>
+            <tr><td>12 Jun 2025</td><td>Dividend — Infosys Ltd</td><td>HDFC Savings ••1234</td><td class="num gain">+₹1,200.00</td></tr>
+          </tbody>
+        </table></div>
+      </div>
+      <div class="card">
+        <h3>Pages</h3>
+        <dl class="kv" style="margin-top:8px">
+          <dt>Holding — Infosys Ltd</dt><dd class="mono muted">/investments/INFY</dd>
+          <dt>Realised gains · FY 2025-26</dt><dd class="mono muted">/investments/history</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<!-- ======================= ALERTS ======================= -->
+<section id="s-alerts" hidden><div class="wrap">
+  <div class="hdr">
+    <div><h1>Alerts</h1><p>7 open · 2 need a decision today</p></div>
+    <div class="row"><button class="btn"><i data-i="check" data-s="14"></i>Mark all read</button><button class="btn"><i data-i="gear" data-s="14"></i>Notification settings</button></div>
+  </div>
+  <p class="note">NEW surface. Nothing here is a market signal — every item is a fact about your own ledger or about data freshness. Card figures are values you entered, so a card alert prompts a check as much as a payment.</p>
+  <div class="row" style="gap:6px">
+    <span class="fchip"><span>All</span><em>7</em></span>
+    <span class="fchip"><span>Needs action</span><em>2</em><button type="button" aria-label="Remove filter"><i data-i="x" data-s="12"></i></button></span>
+    <span class="fchip"><span>Data quality</span><em>3</em></span>
+    <span class="fchip"><span>Money dates</span><em>2</em></span>
+    <span class="fchip"><span>Read</span><em>14</em></span>
+  </div>
+  <div class="two">
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card">
+        <h3>Today</h3>
+        <div style="margin-top:4px">
+          <div class="notif"><span class="sev l"></span><div class="b"><b>HDFC Regalia payment due in 2 days</b>
+            <p>You recorded ₹24,318.40 owed with a minimum due of ₹1,216.00, statement closed 05 Oct, due 25 Oct 2026. Confirm the figure against your statement before paying.</p>
+            <div class="row" style="margin-top:5px"><button class="btn btn-sm btn-primary">Record a payment</button><button class="btn btn-sm">Update card balance</button></div></div><span class="t">2h</span></div>
+          <div class="notif"><span class="sev w"></span><div class="b"><b>12 import rows still awaiting review</b>
+            <p>HDFC statement Sep 2026, uploaded 16 Oct. Three look like duplicates of rows already posted.</p>
+            <div class="row" style="margin-top:5px"><button class="btn btn-sm btn-primary">Review batch</button></div></div><span class="t">5h</span></div>
+          <div class="notif"><span class="sev w"></span><div class="b"><b>Food &amp; groceries is over budget</b>
+            <p>₹14,820 spent against ₹12,000 budgeted, with 12 days of October left. Carried in ₹1,400.</p></div><span class="t">9h</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>This week</h3>
+        <div style="margin-top:4px">
+          <div class="notif"><span class="sev i"></span><div class="b"><b>ICICI FD matures on 24 Oct 2026</b>
+            <p>₹2,10,000 at 7.10%. Value today ₹2,41,880, of which ₹4,112 is accrued but not yet booked.</p></div><span class="t">Mon</span></div>
+          <div class="notif"><span class="sev g"></span><div class="b"><b>LTCG headroom for FY 2026-27: ₹81,340 left</b>
+            <p>₹43,660 of the ₹1,25,000 exemption is used. Two holdings cross their long-term threshold within 60 days.</p></div><span class="t">Mon</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Data quality</h3>
+        <div style="margin-top:4px">
+          <div class="notif"><span class="sev w"></span><div class="b"><b>TATAMOTORS price is 6 days old</b>
+            <p>Last observation 13 Oct 2026, 15:30 IST from NSE. Market value for this holding renders as stale.</p>
+            <div class="row" style="margin-top:5px"><button class="btn btn-sm"><i data-i="refresh" data-s="14"></i>Refresh prices</button></div></div><span class="t">13 Oct</span></div>
+          <div class="notif"><span class="sev w"></span><div class="b"><b>Parag Parikh Flexi Cap has no NAV source</b>
+            <p>AMFI scheme code <span class="mono">120503</span> is stored, but no AMFI adapter is wired yet, so this fund is valued from the NAV you last entered on 01 Oct 2026.</p>
+            <div class="row" style="margin-top:5px"><button class="btn btn-sm">Enter today's NAV</button></div></div><span class="t">13 Oct</span></div>
+          <div class="notif"><span class="sev l"></span><div class="b"><b>AAPL has no FX rate for INR</b>
+            <p>The portfolio total is withheld until every holding has a price and the required conversion. Enter a rate or exclude the holding.</p></div><span class="t">13 Oct</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>What raises an alert</h3>
+      <p class="hint" style="margin:6px 0 12px">Each rule is a fact check over your own data. Thresholds live in Settings → Notifications.</p>
+      <dl class="kv">
+        <dt>Price staleness</dt><dd>&gt; 3 days old</dd>
+        <dt>Fund with no NAV source</dt><dd>no AMFI adapter yet</dd>
+        <dt>Card due date you recorded</dt><dd>3 days before</dd>
+        <dt>Deposit maturity</dt><dd>7 days before</dd>
+        <dt>Budget overspend</dt><dd>at 100% of envelope</dd>
+        <dt>Unreviewed import rows</dt><dd>&gt; 24 hours staged</dd>
+        <dt>Accounting identity fails</dt><dd>B02 · always on</dd>
+        <dt>Approaching LTCG</dt><dd>within 30 days · off</dd>
+      </dl>
+      <div class="alrt i" style="margin-top:14px"><span class="ai"><i data-i="info"></i></span><div class="ab"><b>No market triggers</b><p>There are no price alerts and no target-price triggers. This product does not watch the market for you.</p></div></div>
+      <div class="alrt i" style="margin-top:10px"><span class="ai"><i data-i="card"></i></span><div class="ab"><b>Cards are entered by hand</b><p>Balances, limits and due dates on a card are values you record. There is no interest projection and no rewards analysis, because nothing here is fetched from the issuer.</p></div></div>
+    </div>
+  </div>
+</div></section>
+
+<!-- ======================= SYSTEM STATES ======================= -->
+<section id="s-states" hidden><div class="wrap">
+  <div class="hdr"><div><h1>System states</h1><p>Three full-page states and the two empty states</p></div></div>
+  <p class="note">Each names the cause in plain words and gives one recovery action. ServiceUnavailable is the state the app already renders when auth is unreachable.</p>
+  <div class="three">
+    <div class="statepage">
+      <span class="code">404</span>
+      <h3>That page does not exist.</h3>
+      <p>The address <span class="mono">/investments/RELAINCE</span> did not match a route or a holding. If you followed a link from inside the app, the holding may have been deleted.</p>
+      <div class="row" style="margin-top:4px"><button class="btn btn-primary">Go to Net worth</button>
+        <button class="btn" id="palFrom404"><i data-i="search" data-s="14"></i>Search<span class="kbd">⌘K</span></button></div>
+    </div>
+    <div class="statepage">
+      <span class="code">500</span>
+      <h3>Something broke while building this page.</h3>
+      <p>No data was written. The request was rolled back before any posting was saved, so the ledger is unchanged.</p>
+      <dl class="kv"><dt>Request</dt><dd class="mono">req_8f2c41ba9d</dd><dt>Route</dt><dd class="mono">/investments/history</dd><dt>At</dt><dd>19 Oct 2026, 16:04 IST</dd></dl>
+      <div class="row" style="margin-top:4px"><button class="btn btn-primary"><i data-i="refresh" data-s="14"></i>Try again</button>
+        <button class="btn" data-toast="Request id copied"><i data-i="copy" data-s="14"></i>Copy request id</button></div>
+    </div>
+    <div class="statepage">
+      <span class="code">503 · SERVICE UNAVAILABLE</span>
+      <h3>We cannot reach the sign-in service.</h3>
+      <p>The app could not verify your session, so it will not show or accept ledger data. Usually the database is unreachable or still starting up. Your data is not affected.</p>
+      <dl class="kv"><dt>Checked</dt><dd>16:04:12 IST</dd><dt>Retried</dt><dd>3 times</dd></dl>
+      <div class="row" style="margin-top:4px"><button class="btn btn-primary"><i data-i="refresh" data-s="14"></i>Retry now</button></div>
+      <p class="hint">Retrying automatically every 15 seconds.</p>
+    </div>
+  </div>
+
+  <div class="two">
+    <div class="card-flush">
+      <div class="card-h"><h3>Empty, because there is no data</h3></div>
+      <div style="padding:0">
+        <div style="padding:7px 12px;border-bottom:1px solid var(--border-subtle);background:var(--bg-subtle)"
+             class="hint">Holding · Platform · Units · Invested · Market value</div>
+        <div class="empty">
+          <b>No holdings yet</b>
+          <p>Record a trade with its charges, or import a broker contract note. Holdings appear once a buy has been posted.</p>
+          <div class="ea"><button class="btn btn-primary"><i data-i="plus" data-s="14"></i>Record a trade</button>
+            <button class="btn"><i data-i="upload" data-s="14"></i>Import a statement</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-flush">
+      <div class="card-h"><h3>Empty, because the filters exclude everything</h3></div>
+      <div style="padding:0">
+        <div style="padding:8px 12px;border-bottom:1px solid var(--border-subtle);background:var(--bg-subtle);display:flex;gap:6px;flex-wrap:wrap">
+          <span class="fchip"><span>Platform: Kuvera</span><button type="button" aria-label="Remove platform filter"><i data-i="x" data-s="12"></i></button></span>
+          <span class="fchip"><span>Price state: Unpriced</span><button type="button" aria-label="Remove price state filter"><i data-i="x" data-s="12"></i></button></span>
+          <span class="fchip"><span>Value ≥ ₹1,00,000</span><button type="button" aria-label="Remove value filter"><i data-i="x" data-s="12"></i></button></span>
+        </div>
+        <div class="empty">
+          <b>No holdings match these filters</b>
+          <p>You have 12 holdings. None is on Kuvera, unpriced, and worth ₹1,00,000 or more at the same time.</p>
+          <div class="ea"><button class="btn btn-primary">Clear all filters</button><button class="btn">Drop the price-state filter</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Telling these two apart is non-negotiable: one means start here, the other means you narrowed too far.</p>
+
+  <div class="card">
+    <h3>Partial failure is not a full error</h3>
+    <p class="hint" style="margin:6px 0 12px;max-width:76ch">When three of nine symbols fail to price, the table keeps every row at full opacity and marks only the affected cells. The em-dash is focusable, so the reason is reachable by keyboard and not only on hover.</p>
+    <div class="tscroll"><table class="dt">
+      <thead><tr><th>Holding</th><th>Platform</th><th class="num">Market value</th><th>Price state</th></tr></thead>
+      <tbody>
+        <tr><td><span class="nm"><b class="mono">RELIANCE</b><span>Reliance Industries Ltd</span></span></td><td>Zerodha</td><td class="num">₹63,918.00</td><td><span class="bdg sub-gain"><span class="dot"></span>Priced</span></td></tr>
+        <tr><td><span class="nm"><b class="mono">TATAMOTORS</b><span>Tata Motors Ltd</span></span></td><td>Upstox</td>
+          <td class="num"><span class="dash-cell" tabindex="0" title="Last observation 13 Oct 2026, 15:30 IST from NSE — 6 days old">₹1,08,900.00</span></td>
+          <td><span class="bdg sub-warn"><span class="dot"></span>Stale</span></td></tr>
+        <tr><td><span class="nm"><b class="mono">ITC</b><span>ITC Ltd</span></span></td><td>Angel One</td>
+          <td class="num"><span class="dash-cell" tabindex="0" title="No price has ever been recorded for this instrument">—</span></td>
+          <td><span class="bdg out-n">Unpriced</span></td></tr>
+        <tr><td><span class="nm"><b class="mono">AAPL</b><span>Apple Inc.</span></span></td><td>INDmoney</td>
+          <td class="num"><span class="dash-cell" tabindex="0" title="A USD price exists, but no USD/INR rate is available for this date">—</span></td>
+          <td><span class="bdg sub-warn">FX unavailable</span></td></tr>
+      </tbody>
+    </table></div>
+    <p class="hint" style="margin-top:10px">Unpriced is an outline badge, not a warning: a missing price is an absence. Amber is kept for Stale and FX unavailable, where a figure exists but should not be trusted as current.</p>
+  </div>
+</div></section>
+
+<!-- ======================= ONBOARDING ======================= -->
+<section id="s-onboarding" hidden><div class="wrap">
+  <div class="crumbs"><span>Overview</span><span class="sl">›</span><b>Net worth</b></div>
+  <div class="hdr">
+    <div><h1>Net worth</h1><p>Nothing recorded yet · 19 Oct 2026</p></div>
+    <span class="bdg out-acc"><span class="dot"></span>Manual mode</span>
+  </div>
+  <p class="note">First run: no accounts, no holdings, no transactions. The dashboard keeps its real shape so the layout is learned before data arrives, and every tile says why it is empty rather than showing ₹0.</p>
+  <div class="tiles">
+    <div class="kpi flat-tile"><span class="kl">Net worth</span><span class="kv2 muted"><span class="dash-cell" tabindex="0" title="Net worth needs at least one account with a balance">—</span></span><span class="kd muted">No accounts yet</span></div>
+    <div class="kpi flat-tile"><span class="kl">Assets</span><span class="kv2 muted"><span class="dash-cell" tabindex="0" title="Assets are summed from postings on asset accounts">—</span></span><span class="kd muted">Open an account to start</span></div>
+    <div class="kpi flat-tile"><span class="kl">Liabilities</span><span class="kv2 muted"><span class="dash-cell" tabindex="0" title="Liabilities are summed from postings on liability accounts">—</span></span><span class="kd muted">No cards or loans</span></div>
+    <div class="kpi flat-tile"><span class="kl">Liquid<span class="info-i" title="Cash and bank balances, minus anything due within 30 days" role="img" aria-label="About this metric">i</span></span><span class="kv2 muted"><span class="dash-cell" tabindex="0" title="Runway needs at least one month of recorded spending">—</span></span><span class="kd muted">Runway needs a month of spending</span></div>
+  </div>
+
+  <div class="card-flush">
+    <div class="card-h"><h3>Set up your ledger</h3><span class="hint" style="flex:1;min-width:120px">Step 1 of 5 done · each step is reversible</span></div>
+    <div style="padding:14px">
+      <div class="stepr" style="margin-bottom:12px">
+        <span class="st ok"><span class="sn"><i data-i="check" data-s="12"></i></span><span class="sx"><b>Account</b><span>Done</span></span></span><span class="bar"></span>
+        <span class="st on"><span class="sn">2</span><span class="sx"><b>First account</b><span>Now</span></span></span><span class="bar"></span>
+        <span class="st"><span class="sn">3</span><span class="sx"><b>Import statements</b><span>Next</span></span></span><span class="bar"></span>
+        <span class="st"><span class="sn">4</span><span class="sx"><b>Category rules</b><span></span></span></span><span class="bar"></span>
+        <span class="st"><span class="sn">5</span><span class="sx"><b>First holding</b><span></span></span></span>
+      </div>
+      <div>
+        <div class="cl"><span class="mk ok"><i data-i="check" data-s="11"></i></span><div class="b"><b>Create your account</b><p>Done 19 Oct 2026. Country India, reporting currency INR.</p></div></div>
+        <div class="cl"><span class="mk">2</span><div class="b"><b>Open your first bank account</b><p>Name, bank, last four digits, and the balance as of today. That balance posts as an opening balance against equity.</p>
+          <div class="row" style="margin-top:6px"><button class="btn btn-sm btn-primary"><i data-i="plus" data-s="14"></i>Open an account</button></div></div></div>
+        <div class="cl"><span class="mk">3</span><div class="b"><b>Import your statements <span class="bdg sub-acc sm">the fastest way in</span></b>
+          <p>PDF, JSON or CSV from your bank or card. Rows stage for review, four duplicate checks run, and the batch is measured against the bank's own closing total before anything posts. A year of statements builds most of the ledger in one pass.</p>
+          <div class="row" style="margin-top:8px">
+            <span class="drop" style="flex:1;min-width:240px;padding:16px"><i data-i="upload" data-s="20"></i><b>Drop a statement here</b><span>PDF, JSON or CSV · up to 20 MB</span></span>
+          </div></div></div>
+        <div class="cl"><span class="mk">4</span><div class="b"><b>Write three category rules</b><p>Start with your salary, your rent and your groceries. Everything else can stay uncategorised until a pattern appears in the imported rows.</p></div></div>
+        <div class="cl"><span class="mk">5</span><div class="b"><b>Add a holding or a platform</b><p>Search the instrument catalogue for an NSE symbol or an AMFI scheme, pick the platform, and record the buy with its charges.</p></div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="two">
+    <div class="card">
+      <h3>Where it is</h3>
+      <div class="empty" style="padding:22px 0"><b>No allocation to show</b>
+        <p>Allocation is computed from account balances and priced holdings. It appears after your first opening balance is posted.</p></div>
+    </div>
+    <div class="card">
+      <h3>The books</h3>
+      <div class="row" style="margin-top:8px;align-items:flex-start">
+        <span class="bdg sub-acc"><span class="dot"></span>B02 holds</span>
+        <span class="hint" style="flex:1;min-width:200px">Assets − liabilities = equity + income − expenses. Trivially true on an empty ledger, and checked on every load from here on.</span>
+      </div>
+      <hr class="hr" style="margin:14px 0">
+      <h3>This year</h3>
+      <dl class="kv" style="margin-top:6px">
+        <dt>Income</dt><dd><span class="dash-cell" tabindex="0" title="No income postings recorded yet">—</span></dd>
+        <dt>Expenses</dt><dd><span class="dash-cell" tabindex="0" title="No expense postings recorded yet">—</span></dd>
+        <dt>Saved</dt><dd><span class="dash-cell" tabindex="0" title="Saved is income minus expenses; both are empty">—</span></dd>
+        <dt>Savings rate</dt><dd><span class="dash-cell" tabindex="0" title="Savings rate divides by income, which is zero">—</span></dd>
+      </dl>
+    </div>
+  </div>
+</div></section>
+
+<!-- ======================= TOASTS ======================= -->
+<section id="s-toasts" hidden><div class="wrap">
+  <div class="hdr"><div><h1>Toasts</h1><p>Four roles, one specimen each</p></div></div>
+  <p class="note">Confirmation uses the accent, never green — green means money up, and borrowing it for "saved" makes a confirmation look like a profit. Destructive actions get an undo window rather than a confirmation dialog, except the ones that cannot be undone.</p>
+  <div style="display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))">
+    <div class="card"><span class="eyebrow">Success · accent</span>
+      <div style="margin-top:10px"><div class="toast ok"><span class="ti"><i data-i="check" data-s="15"></i></span>
+        <div class="tb"><b>Trade recorded</b><p>RELIANCE buy · 45 units · ₹58,423.50 including ₹1,205.60 of charges.</p></div>
+        <button class="btn btn-sm btn-link" data-toast="Opened in ledger">View</button></div></div></div>
+    <div class="card"><span class="eyebrow">Warning</span>
+      <div style="margin-top:10px"><div class="toast wn"><span class="ti"><i data-i="warn" data-s="15"></i></span>
+        <div class="tb"><b>Posted over a failed balance check</b><p>The batch total is ₹1,240.00 away from the bank's own closing figure.</p></div>
+        <button class="btn btn-sm btn-link" data-toast="Reconcile opened">Reconcile</button></div></div></div>
+    <div class="card"><span class="eyebrow">Error</span>
+      <div style="margin-top:10px"><div class="toast er"><span class="ti"><i data-i="x" data-s="15"></i></span>
+        <div class="tb"><b>Could not refresh prices</b><p>NSE returned no quote for 3 of 9 symbols. Existing prices are unchanged and still carry their own dates.</p></div>
+        <button class="btn btn-sm btn-link" data-toast="Retrying price refresh">Retry</button></div></div></div>
+    <div class="card"><span class="eyebrow">Undo · neutral</span>
+      <div style="margin-top:10px"><div class="toast nu"><span class="ti"><i data-i="refresh" data-s="15"></i></span>
+        <div class="tb"><b>Transaction reversed</b><p>A reversal was posted against 02 Oct · BigBasket groceries. The original entry stays in the journal.</p></div>
+        <button class="btn btn-sm btn-link" data-toast="Reversal undone">Undo · 8s</button></div></div></div>
+  </div>
+
+  <div class="card">
+    <h3>Try them</h3>
+    <p class="hint" style="margin:4px 0 10px">Toasts stack bottom-right, newest on top, four at most. They never cover the sticky totals row on mobile.</p>
+    <div class="row">
+      <button class="btn" data-fire="ok">Fire success</button>
+      <button class="btn" data-fire="wn">Fire warning</button>
+      <button class="btn" data-fire="er">Fire error</button>
+      <button class="btn" data-fire="nu">Fire undo</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Rules</h3>
+    <dl class="kv" style="margin-top:6px">
+      <dt>Success</dt><dd>accent left rule · 4s · one optional link</dd>
+      <dt>Warning</dt><dd>warn left rule · 8s, or until dismissed when it needs a decision</dd>
+      <dt>Error</dt><dd>loss left rule · never auto-dismisses · retry is the only control</dd>
+      <dt>Undo</dt><dd>neutral left rule · 8s countdown · undo is the only control</dd>
+      <dt>Never a toast</dt><dd>anything the user must read to stay correct — that is an inline alert</dd>
+    </dl>
+  </div>
+</div></section>
+
+<!-- ======================= NAV IA ======================= -->
+<section id="s-nav" hidden><div class="wrap">
+  <div class="hdr"><div><h1>Navigation</h1><p>Proposed grouping, mobile set and breadcrumb pattern</p></div></div>
+  <p class="note">Today: one flat 12-item "Wealth" group, PiggyBank and Landmark each used twice, a deep link to /investments/history beside top-level sections, no breadcrumbs and no search. Proposed: four groups by the question each answers, one icon per concept.</p>
+  <div class="two">
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="navmock">
+        <div class="card-h"><h3>Proposed sidebar · 272px</h3><span class="bdg dash sm" style="margin-left:auto">NEW: search, alerts, breadcrumbs</span></div>
+        <div class="navgrp" style="background:var(--bg-subtle)">
+          <div class="row" style="justify-content:space-between">
+            <span class="brand"><span class="mark" aria-hidden="true"></span>Stock-Mania</span>
+            <span class="bdg out-acc sm"><span class="dot"></span>Manual mode</span>
+          </div>
+          <button class="btn" id="openPal3" style="width:100%;justify-content:space-between;margin-top:10px">
+            <span class="row" style="gap:7px"><i data-i="search" data-s="14"></i>Search or jump to…</span><span class="kbd">⌘K</span></button>
+          <div style="margin-top:10px;padding:9px 10px;border:1px solid var(--border);border-radius:var(--r-3);background:var(--bg-surface)">
+            <div class="hint">Net worth</div>
+            <div class="tnum" style="font-size:21px;line-height:27px;font-weight:600;letter-spacing:-.016em">₹48.72<span style="font-size:11px;font-weight:500;color:var(--fg-muted);margin-left:2px">L</span></div>
+            <div class="delta gain" style="font-size:11px"><span class="ar">▲</span>+₹1,42,380 · +3.01% this FY</div>
+          </div>
+        </div>
+        <div class="navgrp">
+          <div class="nvi-grp">Overview</div>
+          <a class="nvi" href="#nav" aria-current="page"><i data-i="grid" data-s="15"></i><span class="t">Net worth</span></a>
+          <a class="nvi" href="#nav"><i data-i="clock" data-s="15"></i><span class="t">History</span><span class="rt">monthly</span></a>
+          <a class="nvi" href="#nav"><i data-i="signal" data-s="15"></i><span class="t">Alerts</span><span class="rt"><span class="bdg sub-warn sm">7</span></span></a>
+        </div>
+        <div class="navgrp">
+          <div class="nvi-grp">Money</div>
+          <a class="nvi" href="#nav"><i data-i="building" data-s="15"></i><span class="t">Accounts</span></a>
+          <a class="nvi" href="#nav"><i data-i="list" data-s="15"></i><span class="t">Transactions</span></a>
+          <a class="nvi" href="#nav"><i data-i="upload" data-s="15"></i><span class="t">Imports</span><span class="rt"><span class="bdg sub-warn sm">12</span></span></a>
+          <div class="sub">Statements are the main way the ledger grows, so Imports sits above Budgets</div>
+          <a class="nvi" href="#nav" style="margin-top:4px"><i data-i="wallet" data-s="15"></i><span class="t">Budgets</span></a>
+        </div>
+        <div class="navgrp">
+          <div class="nvi-grp">Investments</div>
+          <a class="nvi" href="#nav"><i data-i="chart-line" data-s="15"></i><span class="t">Portfolio</span></a>
+          <div class="sub">Overview · Holdings · Performance · Analysis · Compare · Realised gains · Activity</div>
+          <a class="nvi" href="#nav" style="margin-top:4px"><i data-i="bank" data-s="15"></i><span class="t">Platforms</span></a>
+          <a class="nvi" href="#nav"><i data-i="trend" data-s="15"></i><span class="t">Market data</span><span class="rt">1 stale</span></a>
+          <div class="sub">Tracker and Live data merged into one page</div>
+        </div>
+        <div class="navgrp">
+          <div class="nvi-grp">Debt &amp; commitments</div>
+          <a class="nvi" href="#nav"><i data-i="card" data-s="15"></i><span class="t">Cards</span><span class="rt">due in 2d</span></a>
+          <a class="nvi" href="#nav"><i data-i="loan" data-s="15"></i><span class="t">Loans</span></a>
+          <a class="nvi" href="#nav"><i data-i="fd" data-s="15"></i><span class="t">Deposits</span></a>
+          <a class="nvi" href="#nav"><i data-i="gem" data-s="15"></i><span class="t">Assets</span><span class="rt"><span class="bdg out-n sm">Phase 4</span></span></a>
+        </div>
+        <div class="navgrp">
+          <div class="nvi-grp">Account</div>
+          <a class="nvi" href="#nav"><i data-i="gear" data-s="15"></i><span class="t">Settings</span></a>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Mobile bottom nav</h3>
+        <p class="hint" style="margin:4px 0 10px">Five slots chosen by daily frequency rather than by mirroring the sidebar. More opens a sheet with everything else.</p>
+        <div class="bnav">
+          <div class="on"><i data-i="grid" data-s="17"></i>Net worth</div>
+          <div><i data-i="list" data-s="17"></i>Transactions</div>
+          <div><i data-i="upload" data-s="17"></i>Import</div>
+          <div><i data-i="signal" data-s="17"></i>Alerts</div>
+          <div><i data-i="more" data-s="17"></i>More</div>
+        </div>
+        <p class="hint" style="margin-top:10px">Today's set is Net Worth · Accounts · Invest · Monthly · Settings. Accounts is a weekly visit and Settings a monthly one. Import takes a slot because capturing a statement from a phone, right when it arrives, is the moment the ledger is most likely to fall behind.</p>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card">
+        <h3>Why these four groups</h3>
+        <dl class="kv" style="margin-top:8px">
+          <dt><b>Overview</b> — how am I doing?</dt><dd>Net worth, History, Alerts</dd>
+          <dt><b>Money</b> — what moved?</dt><dd>Accounts, Transactions, Imports, Budgets</dd>
+          <dt><b>Investments</b> — what do I own?</dt><dd>Portfolio, Platforms, Market data</dd>
+          <dt><b>Debt &amp; commitments</b> — what do I owe?</dt><dd>Cards, Loans, Deposits, Assets</dd>
+        </dl>
+        <p class="hint" style="margin-top:12px">Twelve flat items force a read of every label. Four groups of three or four let the eye land on a group first, which is how a sidebar is actually used.</p>
+      </div>
+
+      <div class="card">
+        <h3>Changes from today</h3>
+        <dl class="kv" style="margin-top:6px">
+          <dt>Imports raised</dt><dd class="wrap" style="text-align:right">above Budgets, with a badge and a mobile slot — statement ingestion is core</dd>
+          <dt>Realised gains leaves the sidebar</dt><dd>now a Portfolio tab</dd>
+          <dt>Liabilities retired</dt><dd>cards are entered by hand, not analysed</dd>
+          <dt>Tracker + Live data merged</dt><dd>one Market data page</dd>
+          <dt>Investments route cards dropped</dt><dd>they duplicated the sub-nav</dd>
+          <dt>One icon per concept</dt><dd>Budgets takes Wallet, Accounts takes Building</dd>
+          <dt>Alerts added</dt><dd>with an unread count</dd>
+          <dt>Search added</dt><dd>sidebar button and ⌘K, wiring cmdk</dd>
+        </dl>
+        <div class="alrt i" style="margin-top:12px"><span class="ai"><i data-i="card"></i></span><div class="ab"><b>Why Liabilities went</b><p>Not because Cards and Loans cover it on paper — because card values are entered by hand and the owner does not treat cards as an analytical surface. A debt hub would have been a page of charts over numbers typed in once a month.</p></div></div>
+      </div>
+
+      <div class="card">
+        <h3>Breadcrumbs</h3>
+        <p class="hint" style="margin:4px 0 10px">Two levels plus the entity. The group is text, not a link — it has no page of its own. Active filters ride along as chips, so a drilled-down view is a link worth keeping.</p>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <div class="crumbs"><span>Investments</span><span class="sl">›</span><a href="#nav">Portfolio</a><span class="sl">›</span><a href="#nav">Holdings</a><span class="sl">›</span><b class="mono">INFY</b></div>
+          <div class="crumbs"><span>Money</span><span class="sl">›</span><a href="#nav">Transactions</a><span class="sl">›</span><b>01 Apr – 19 Oct 2026</b>
+            <span class="fchip"><span>Category: Expenses:Food</span><button type="button" aria-label="Remove category filter"><i data-i="x" data-s="12"></i></button></span>
+            <span class="fchip"><span>Account: HDFC ••1234</span><button type="button" aria-label="Remove account filter"><i data-i="x" data-s="12"></i></button></span></div>
+          <div class="crumbs"><span>Money</span><span class="sl">›</span><a href="#nav">Imports</a><span class="sl">›</span><b>HDFC Sep 2026</b><span class="sl">›</span><b>Review</b></div>
+        </div>
+        <p class="hint" style="margin-top:10px">Every crumb restores the scroll position of the view it names. The last crumb is never a link.</p>
+      </div>
+    </div>
+  </div>
+</div></section>
+
+<!-- ======================= PALETTE ======================= -->
+<div class="ovl" id="palOvl" hidden>
+  <div class="pal" role="dialog" aria-modal="true" aria-label="Command palette">
+    <div class="pal-in"><i data-i="search" data-s="17"></i>
+      <input id="palInput" placeholder="Search holdings, accounts, transactions, or type a command…" autocomplete="off" aria-label="Search"></div>
+    <div class="pal-list" id="palList"></div>
+    <div class="pal-foot"><span><span class="kbd">↑↓</span> navigate</span><span><span class="kbd">↵</span> open</span>
+      <span><span class="kbd">esc</span> close</span><span style="margin-left:auto" id="palCount"></span></div>
+  </div>
+</div>
+
+<!-- ======================= SHORTCUTS ======================= -->
+<div class="ovl" id="scOvl" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts">
+    <div class="modal-h"><h4>Keyboard shortcuts</h4>
+      <button class="btn btn-sm" id="scClose">Close<span class="kbd">esc</span></button></div>
+    <div style="display:grid;gap:18px;padding:16px" id="scGrid"></div>
+    <p class="hint" style="padding:0 16px 16px">Shortcuts are disabled while a text field has focus, except ⌘K and escape.</p>
+  </div>
+</div>
+
+<div class="livetoasts" id="toastHost" aria-live="polite"></div>
+
+<script>
+(function(){
+"use strict";
+
+/* ===== icons — control bench set, hand-authored, 16-unit grid, 1.3 stroke ===== */
+var ICON={
+grid:'<rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/>',
+clock:'<circle cx="8" cy="8" r="5.5"/><path d="M8 4.8V8l2.4 1.4"/>',
+bank:'<path d="M2 6.5 8 2.6l6 3.9"/><path d="M4.5 7.5v4.5M8 7.5v4.5M11.5 7.5v4.5"/><path d="M2 13.5h12"/>',
+list:'<path d="M3 4.5h10M3 8h10M3 11.5h6.5"/>',
+wallet:'<rect x="2" y="4" width="12" height="8.5" rx="1.6"/><path d="M2 6.6h12"/><circle cx="11.2" cy="9.6" r=".85" fill="currentColor" stroke="none"/>',
+upload:'<path d="M8 10.5V3.2M5.4 5.8 8 3.2l2.6 2.6"/><path d="M2.8 10.8v2.2h10.4v-2.2"/>',
+'chart-line':'<path d="M2.5 12.2 6 8.4l2.6 2.1L13.5 4"/><path d="M10.9 4h2.6v2.6"/>',
+trend:'<path d="M2.5 11.6 6.2 7l2.6 2.4 4.7-5.2"/><path d="M11 4.2h2.5v2.5"/>',
+building:'<rect x="3" y="2.5" width="10" height="11" rx="1.2"/><path d="M5.6 5.4h1.6M8.8 5.4h1.6M5.6 8h1.6M8.8 8h1.6"/><path d="M6.6 13.5v-2.6h2.8v2.6"/>',
+signal:'<path d="M3 12.4V9.6M6.3 12.4V6.2M9.7 12.4V8.4M13 12.4V3.6"/>',
+vault:'<rect x="2.5" y="2.8" width="11" height="10.4" rx="1.4"/><circle cx="8" cy="8" r="2.6"/><path d="M8 3.9v1.5M8 10.6v1.5"/>',
+gem:'<path d="M4.6 3.2h6.8L14 6.6 8 13.1 2 6.6z"/><path d="M2 6.6h12"/>',
+card:'<rect x="2" y="3.8" width="12" height="8.4" rx="1.4"/><path d="M2 6.7h12"/>',
+loan:'<rect x="2.2" y="2.8" width="11.6" height="10.4" rx="1.3"/><path d="M4.6 11.2h2.4V8.8h2.6V6.2h3"/>',
+gear:'<circle cx="8" cy="8" r="2.4"/><path d="M8 2.2v1.6M8 12.2v1.6M13.8 8h-1.6M3.8 8H2.2M12.1 3.9l-1.1 1.1M5 11l-1.1 1.1M12.1 12.1 11 11M5 5 3.9 3.9"/>',
+filter:'<path d="M2.6 3.9h10.8l-4.2 5v4.2l-2.4-1.3V8.9z"/>',
+density:'<path d="M3 3.8h10M3 6.6h10M3 9.4h10M3 12.2h10"/>',
+download:'<path d="M8 3.2v7.3M5.4 7.9 8 10.5l2.6-2.6"/><path d="M2.8 10.8v2.2h10.4v-2.2"/>',
+search:'<circle cx="7.1" cy="7.1" r="4.3"/><path d="M10.3 10.3 13.4 13.4"/>',
+plus:'<path d="M8 3.4v9.2M3.4 8h9.2"/>',
+edit:'<path d="M10.4 2.9 13.1 5.6 5.7 13H3v-2.7z"/><path d="M9.1 4.2 11.8 6.9"/>',
+trash:'<path d="M2.9 4.4h10.2"/><path d="M4.4 4.4V3.1h7.2v1.3"/><path d="M4.1 4.4 4.7 13h6.6l.6-8.6"/><path d="M6.7 6.8v3.8M9.3 6.8v3.8"/>',
+refresh:'<path d="M12.6 6.6A4.9 4.9 0 1 0 13 9.4"/><path d="M13.2 3.2v3.4h-3.4"/>',
+info:'<circle cx="8" cy="8" r="5.5"/><path d="M8 7.3v3.6"/><circle cx="8" cy="5.3" r=".75" fill="currentColor" stroke="none"/>',
+warn:'<path d="M8 2.6 14 13H2z"/><path d="M8 6.6v3"/><circle cx="8" cy="11.2" r=".75" fill="currentColor" stroke="none"/>',
+check:'<path d="M3.2 8.4 6.4 11.6 12.8 4.8"/>',
+ck:'<path d="M3.4 8.3 6.3 11.2 12.6 4.9"/>',
+'chev-l':'<path d="M9.7 4.4 6.1 8l3.6 3.6"/>',
+'chev-r':'<path d="M6.3 4.4 9.9 8l-3.6 3.6"/>',
+more:'<circle cx="3.6" cy="8" r=".95" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r=".95" fill="currentColor" stroke="none"/><circle cx="12.4" cy="8" r=".95" fill="currentColor" stroke="none"/>',
+x:'<path d="M4.2 4.2 11.8 11.8M11.8 4.2 4.2 11.8"/>',
+copy:'<rect x="5.4" y="5.4" width="7.8" height="7.8" rx="1.2"/><path d="M10.6 5.4V4a1.2 1.2 0 0 0-1.2-1.2H4a1.2 1.2 0 0 0-1.2 1.2v5.4a1.2 1.2 0 0 0 1.2 1.2h1.4"/>',
+equity:'<path d="M8 2.6v10.8"/><path d="M8 5.6H5.1M8 10.4h2.9"/>',
+'mutual-fund':'<path d="M5.1 9.9V6.4M8 9.9V4.3M10.9 9.9V7.5"/><path d="M3.4 12.3h9.2"/>',
+gold:'<path d="M2.6 11.4 4.4 6.3h7.2l1.8 5.1z"/><path d="M4.4 8.6h7.2"/>',
+bond:'<rect x="2.3" y="3.2" width="11.4" height="9.6" rx="1.2"/><path d="M4.7 6.2h5M4.7 8.4h3.2"/><circle cx="11" cy="9.8" r="1.7"/>',
+fd:'<rect x="2.6" y="3.1" width="10.8" height="9.8" rx="1.5"/><circle cx="8" cy="8" r="2.8"/><path d="M8 6.3V8l1.4.9"/>',
+cash:'<rect x="1.9" y="4.2" width="12.2" height="7.6" rx="1.2"/><circle cx="8" cy="8" r="1.9"/><path d="M4.1 6.5h.4M11.5 9.5h.4"/>'
+};
+function svg(name,size){
+  var s=size||16, body=ICON[name]||'';
+  return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" '+
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+body+'</svg>';
+}
+function paintIcons(root){
+  (root||document).querySelectorAll('i[data-i]').forEach(function(el){
+    var w=document.createElement('span');
+    w.className=el.className; w.setAttribute('aria-hidden','true');
+    w.style.display='inline-flex'; w.style.flex='none';
+    w.innerHTML=svg(el.getAttribute('data-i'), parseInt(el.getAttribute('data-s')||'16',10));
+    el.replaceWith(w);
+  });
+}
+
+/* ===== screen switcher ===== */
+var SCREENS=["landing","auth","settings","search","alerts","states","onboarding","toasts","nav"];
+function show(name){
+  if(SCREENS.indexOf(name)<0) name="landing";
+  SCREENS.forEach(function(s){ var el=document.getElementById("s-"+s); if(el) el.hidden=(s!==name); });
+  document.querySelectorAll("#switcher button").forEach(function(b){
+    b.setAttribute("aria-current", b.dataset.s===name?"true":"false"); });
+  window.scrollTo(0,0);
+}
+document.getElementById("switcher").addEventListener("click",function(e){
+  var b=e.target.closest("button"); if(!b) return;
+  show(b.dataset.s);
+  try{ history.replaceState(null,"","#"+b.dataset.s); }catch(_){}
+});
+window.addEventListener("hashchange",function(){ show((location.hash||"").slice(1)); });
+
+/* ===== theme ===== */
+var root=document.documentElement, modes=["system","light","dark"], mode="system";
+function applyTheme(){
+  if(mode==="system") root.removeAttribute("data-theme"); else root.setAttribute("data-theme",mode);
+  document.querySelectorAll("#themeSeg button,#themeSeg2 button").forEach(function(b){
+    b.setAttribute("aria-pressed", String(b.dataset.t===mode)); });
+}
+document.addEventListener("click",function(e){
+  var b=e.target.closest("#themeSeg button,#themeSeg2 button");
+  if(b){ mode=b.dataset.t; applyTheme(); }
+});
+
+/* ===== auth tabs ===== */
+document.getElementById("authTabs").addEventListener("click",function(e){
+  var b=e.target.closest("button"); if(!b) return;
+  this.querySelectorAll("button").forEach(function(x){ x.setAttribute("aria-selected", String(x===b)); });
+  document.querySelectorAll("[data-apanel]").forEach(function(p){ p.hidden = p.dataset.apanel!==b.dataset.a; });
+});
+
+/* ===== password strength ===== */
+var pw=document.getElementById("up-pw"), bars=document.getElementById("strengthBars"), stxt=document.getElementById("strengthTxt");
+function strength(){
+  var v=pw.value, n=0;
+  if(v.length>=8) n++;
+  if(v.length>=14) n++;
+  if(/[0-9]/.test(v) && /[a-zA-Z]/.test(v)) n++;
+  if(/[^a-zA-Z0-9]/.test(v) || v.split(/\s+/).filter(Boolean).length>=3) n++;
+  var names=["Too short","Weak","Fair","Good","Strong"];
+  var cols=["var(--border)","var(--loss)","var(--warn)","var(--accent)","var(--accent)"];
+  Array.prototype.forEach.call(bars.children,function(b,i){ b.style.background = i<n ? cols[n] : "var(--border)"; });
+  stxt.textContent = names[n]+" · "+v.length+" characters"+(n>=4
+    ? ", mixed classes, no dictionary word in the first token."
+    : ". Add length before symbols; length wins.");
+}
+pw.addEventListener("input",strength);
+
+/* ===== settings rail ===== */
+document.getElementById("setRail").addEventListener("click",function(e){
+  var b=e.target.closest("button"); if(!b) return;
+  this.querySelectorAll("button").forEach(function(x){
+    if(x===b) x.setAttribute("aria-current","page"); else x.removeAttribute("aria-current"); });
+  document.querySelectorAll("[data-secp]").forEach(function(p){ p.hidden = p.dataset.secp!==b.dataset.sec; });
+});
+
+/* ===== segmented controls (non-theme) + number-format preview ===== */
+document.addEventListener("click",function(e){
+  var seg=e.target.closest(".seg,.segf");
+  if(!seg || seg.id==="themeSeg" || seg.id==="themeSeg2") return;
+  var b=e.target.closest("button"); if(!b) return;
+  seg.querySelectorAll("button").forEach(function(x){ x.setAttribute("aria-pressed", String(x===b)); });
+  if(seg.id==="numSeg"){
+    var a=b.dataset.n==="abbr";
+    document.getElementById("prevVal").textContent  = a ? "₹48.72 L" : "₹48,72,140";
+    document.getElementById("prevVal2").textContent = a ? "−₹18,450" : "−₹18,450";
+  }
+});
+
+/* ===== command palette ===== */
+var ITEMS=[
+ {g:"Quick add",s:"",n:"Import a statement",r:"g i"},
+ {g:"Quick add",s:"",n:"Record a trade",r:"n t"},
+ {g:"Quick add",s:"",n:"Add a transaction",r:"n"},
+ {g:"Quick add",s:"",n:"Open an account",r:""},
+ {g:"Quick add",s:"",n:"Set a budget",r:""},
+ {g:"Quick add",s:"",n:"Refresh prices",r:""},
+ {g:"Holdings",s:"RELIANCE",n:"Reliance Industries Ltd · Zerodha",r:"₹63,918.00"},
+ {g:"Holdings",s:"INFY",n:"Infosys Ltd · Zerodha",r:"₹88,722.00"},
+ {g:"Holdings",s:"HDFCBANK",n:"HDFC Bank Ltd · Groww",r:"₹1,42,560.00"},
+ {g:"Holdings",s:"TATAMOTORS",n:"Tata Motors Ltd · Upstox · stale",r:"₹1,08,900.00"},
+ {g:"Holdings",s:"NIFTYBEES",n:"Nippon India ETF Nifty 50 BeES · Zerodha",r:"₹1,23,900.00"},
+ {g:"Holdings",s:"120503",n:"Parag Parikh Flexi Cap — Direct Growth · Kuvera",r:"₹1,89,312.40"},
+ {g:"Holdings",s:"119533",n:"HDFC Corporate Bond — Direct Growth · Groww",r:"₹82,174.30"},
+ {g:"Holdings",s:"SGBAUG32",n:"Sovereign Gold Bond 2024-25 Series II · ICICI Direct",r:"₹1,56,200.00"},
+ {g:"Holdings",s:"GOLD-SG",n:"Digital Gold 24K · SafeGold · 38.4210 g",r:"₹3,31,845.00"},
+ {g:"Holdings",s:"ITC",n:"ITC Ltd · Angel One · unpriced",r:"—"},
+ {g:"Accounts",s:"",n:"HDFC Savings ••1234",r:"₹3,18,420.00"},
+ {g:"Accounts",s:"",n:"ICICI Savings ••9087",r:"₹1,04,210.00"},
+ {g:"Accounts",s:"",n:"HDFC Regalia ••4821 · card",r:"−₹24,318.40"},
+ {g:"Accounts",s:"",n:"Cash in hand",r:"₹12,000.00"},
+ {g:"Accounts",s:"",n:"ICICI FD ••9087 · matures 24 Oct 2026",r:"₹2,41,880.00"},
+ {g:"Transactions",s:"",n:"01 Oct · Salary — October · HDFC ••1234",r:"+₹1,85,000.00"},
+ {g:"Transactions",s:"",n:"05 Oct · Rent — October · HDFC ••1234",r:"−₹38,000.00"},
+ {g:"Transactions",s:"",n:"07 Oct · HDFC Regalia card payment",r:"−₹24,318.40"},
+ {g:"Transactions",s:"",n:"12 Oct · Dividend — ITC Ltd",r:"+₹2,800.00"},
+ {g:"Pages",s:"",n:"Net worth",r:"g d"},
+ {g:"Pages",s:"",n:"Transactions",r:"g t"},
+ {g:"Pages",s:"",n:"Imports",r:"g i"},
+ {g:"Pages",s:"",n:"Holdings",r:"g h"},
+ {g:"Pages",s:"",n:"Realised gains · FY 2026-27",r:""},
+ {g:"Pages",s:"",n:"Budgets",r:""},
+ {g:"Pages",s:"",n:"Market data",r:""},
+ {g:"Pages",s:"",n:"Settings",r:"g s"}
+];
+var palOvl=document.getElementById("palOvl"), palInput=document.getElementById("palInput"),
+    palList=document.getElementById("palList"), palCount=document.getElementById("palCount");
+function score(q,t){
+  q=q.toLowerCase(); t=t.toLowerCase();
+  if(!q) return 1;
+  if(t.indexOf(q)>=0) return 3;
+  var i=0; for(var k=0;k<t.length&&i<q.length;k++){ if(t[k]===q[i]) i++; }
+  return i===q.length ? 1 : 0;
+}
+var sel=0, shown=[];
+function esc(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function renderPal(){
+  var q=palInput.value.trim();
+  shown=ITEMS.map(function(it){ return {it:it, sc:Math.max(score(q,it.s),score(q,it.n),score(q,it.g))}; })
+             .filter(function(x){ return x.sc>0; })
+             .sort(function(a,b){ return b.sc-a.sc; })
+             .map(function(x){ return x.it; });
+  if(sel>=shown.length) sel=0;
+  if(!shown.length){
+    palList.innerHTML='<div style="padding:22px 12px"><div style="font-size:14px;font-weight:600">No match for “'+esc(palInput.value)+'”</div>'+
+      '<div class="hint" style="margin-top:4px">Searched holdings, accounts, transactions and pages. Try a symbol, an amount, or a narration word.</div></div>';
+    palCount.textContent="0 of "+ITEMS.length; return;
+  }
+  var html="", last=null;
+  shown.forEach(function(it,i){
+    if(it.g!==last){ html+='<div class="pal-grp">'+it.g+'</div>'; last=it.g; }
+    html+='<div class="cmdrow'+(i===sel?' on':'')+'" data-i="'+i+'">'+
+      (it.s?'<span class="sym">'+esc(it.s)+'</span>':'')+
+      '<span class="nm2">'+esc(it.n)+'</span>'+
+      (it.r?'<span class="rt">'+esc(it.r)+'</span>':'')+'</div>';
+  });
+  palList.innerHTML=html;
+  palCount.textContent=shown.length+" of "+ITEMS.length;
+  var on=palList.querySelector(".cmdrow.on"); if(on && on.scrollIntoView) on.scrollIntoView({block:"nearest"});
+}
+function openPal(){ palOvl.hidden=false; palInput.value=""; sel=0; renderPal(); palInput.focus(); }
+function closePal(){ palOvl.hidden=true; }
+["openPal","openPal2","openPal3","palFrom404"].forEach(function(id){
+  var b=document.getElementById(id); if(b) b.addEventListener("click",openPal);
+});
+palInput.addEventListener("input",function(){ sel=0; renderPal(); });
+palList.addEventListener("click",function(e){
+  var it=e.target.closest(".cmdrow"); if(!it) return;
+  var c=shown[+it.dataset.i]; closePal(); toast("ok","Opened",c.n);
+});
+palOvl.addEventListener("mousedown",function(e){ if(e.target===palOvl) closePal(); });
+
+/* ===== shortcuts overlay ===== */
+var SC=[
+ ["Global",[["Search and jump to","⌘K"],["Shortcuts","?"],["Alerts","g a"],["Settings","g s"],
+            ["Toggle theme","⌘⇧L"],["Close overlay or clear filter","esc"]]],
+ ["Go to",[["Net worth","g d"],["Transactions","g t"],["Imports","g i"],["Holdings","g h"],["Accounts","g c"]]],
+ ["Tables",[["Move between cells","← ↑ → ↓"],["Row ends","home / end"],["Open or expand the row","↵"],
+            ["Select the row","space"],["Extend the selection","⇧↑ ⇧↓"],["Sort by this column","↵ on header"],
+            ["Add a secondary sort","⇧↵ on header"],["Column menu","⌥↓"],["Filter this table","/"],
+            ["Copy the selection as TSV","⌘C"]]],
+ ["Entry and review",[["Quick add","n"],["Record a trade","n t"],["Import a statement","i"],
+            ["Confirm an import row","c"],["Skip an import row","x"],["Save and next","⌘↵"]]]
+];
+var scOvl=document.getElementById("scOvl");
+document.getElementById("scGrid").innerHTML=
+ '<div style="display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))">'+
+ SC.map(function(g){
+   return '<div><div class="eyebrow" style="margin-bottom:6px">'+g[0]+'</div>'+
+     g[1].map(function(r){
+       return '<div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;'+
+         'border-bottom:1px solid var(--border-subtle);font-size:13px">'+
+         '<span>'+r[0]+'</span><span class="kbd">'+r[1]+'</span></div>';
+     }).join('')+'</div>';
+ }).join('')+'</div>';
+function openSc(){ scOvl.hidden=false; }
+function closeSc(){ scOvl.hidden=true; }
+document.getElementById("openSc").addEventListener("click",openSc);
+document.getElementById("scClose").addEventListener("click",closeSc);
+scOvl.addEventListener("mousedown",function(e){ if(e.target===scOvl) closeSc(); });
+
+/* ===== keys ===== */
+document.addEventListener("keydown",function(e){
+  var typing=/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName);
+  if((e.metaKey||e.ctrlKey) && e.key.toLowerCase()==="k"){ e.preventDefault(); palOvl.hidden?openPal():closePal(); return; }
+  if((e.metaKey||e.ctrlKey) && e.shiftKey && e.key.toLowerCase()==="l"){
+    e.preventDefault(); mode=modes[(modes.indexOf(mode)+1)%modes.length]; applyTheme(); return; }
+  if(e.key==="Escape"){ if(!palOvl.hidden) closePal(); if(!scOvl.hidden) closeSc(); return; }
+  if(!palOvl.hidden){
+    if(e.key==="ArrowDown"){ e.preventDefault(); sel=Math.min(sel+1,shown.length-1); renderPal(); }
+    else if(e.key==="ArrowUp"){ e.preventDefault(); sel=Math.max(sel-1,0); renderPal(); }
+    else if(e.key==="Enter" && shown[sel]){ e.preventDefault(); var c=shown[sel]; closePal(); toast("ok","Opened",c.n); }
+    return;
+  }
+  if(typing) return;
+  if(e.key==="?"){ e.preventDefault(); openSc(); }
+});
+
+/* ===== toasts ===== */
+var host=document.getElementById("toastHost");
+var COPY={
+  ok:["Trade recorded","RELIANCE buy · 45 units · ₹58,423.50 including ₹1,205.60 of charges.","View",4000,"check"],
+  wn:["Posted over a failed balance check","The batch total is ₹1,240.00 away from the bank's own closing figure.","Reconcile",8000,"warn"],
+  er:["Could not refresh prices","NSE returned no quote for 3 of 9 symbols. Existing prices are unchanged.","Retry",0,"x"],
+  nu:["Transaction reversed","A reversal was posted against 02 Oct · BigBasket groceries.","Undo",8000,"refresh"]
+};
+function toast(kind,title,body){
+  var c=COPY[kind]||COPY.ok;
+  var el=document.createElement("div");
+  el.className="toast "+kind;
+  el.innerHTML='<span class="ti">'+svg(c[4],15)+'</span><div class="tb"><b></b><p></p></div>'+
+               '<button type="button" class="btn btn-sm btn-link">'+c[2]+'</button>';
+  el.querySelector("b").textContent=title||c[0];
+  el.querySelector("p").textContent=body||c[1];
+  el.querySelector("button").addEventListener("click",function(){ el.remove(); });
+  host.prepend(el);
+  while(host.children.length>4) host.lastElementChild.remove();
+  if(c[3]) setTimeout(function(){ el.remove(); }, c[3]);
+}
+document.addEventListener("click",function(e){
+  var f=e.target.closest("[data-fire]");
+  if(f){ toast(f.dataset.fire); return; }
+  var t=e.target.closest("[data-toast]");
+  if(t){ toast("ok", t.dataset.toast, "This is a mockup; nothing was written to a ledger."); }
+});
+
+/* ===== boot ===== */
+paintIcons();
+applyTheme();
+strength();
+show((location.hash||"").slice(1)||"landing");
+})();
+</script>
+
+</body></html>

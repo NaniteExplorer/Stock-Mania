@@ -1,0 +1,2254 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Assets, Debt &amp; Platforms</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a left rail of screens (desktop) / scrolling chip strip (phone); each screen is
+   page header + KPI row + panels. Component layer refitted to the Control Bench (2026-10-20). */
+:root{
+  --n-0:#FFFFFF; --n-25:#FBFCFD; --n-50:#F6F8FA; --n-100:#EFF2F5; --n-150:#E4E8ED;
+  --n-200:#D6DCE3; --n-300:#B9C2CC; --n-400:#8C98A6; --n-450:#808C9A; --n-500:#64707E;
+  --n-600:#49545F; --n-700:#343C45; --n-775:#2A323A; --n-800:#232A31; --n-850:#1A2026;
+  --n-900:#13181D; --n-950:#0C1014;
+
+  --h-xs:24px; --h-sm:28px; --h-md:32px; --h-lg:36px; --h-xl:40px;
+  --r-1:2px; --r-2:3px; --r-3:4px; --r-4:6px; --r-5:8px; --r-pill:999px;
+  --t-fast:90ms; --t:110ms; --ease:cubic-bezier(.2,0,.38,1);
+
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --gl:max(16px,env(safe-area-inset-left,0px));
+  --gr:max(16px,env(safe-area-inset-right,0px));
+  --row:32px;
+
+  --bg-canvas:#F6F8FA; --bg-surface:#FFFFFF; --bg-raised:#FFFFFF; --bg-sunken:#F2F5F8;
+  --bg-subtle:#F2F5F8; --bg-hover:#F6F8FA; --bg-active:#EFF2F5; --bg-selected:#EEF2FF;
+  --border-subtle:#E4E8ED; --border:#D6DCE3; --border-control:#808C9A;
+  --border-hover:#64707E; --border-active:#49545F;
+  --fg:#13181D; --fg-secondary:#49545F; --fg-muted:#64707E; --fg-disabled:#7C8896;
+  --accent:#4F62D8; --accent-hover:#3F50BE; --accent-active:#36459F; --accent-on:#FFFFFF;
+  --accent-soft:#EEF2FF; --accent-soft-hover:#E0E7FF; --accent-line:#A5B4FC;
+  --gain:#0E7C66; --gain-bg:#E6F5F1; --gain-line:#8FD3C4;
+  --loss:#C0392B; --loss-bg:#FBEAE7; --loss-line:#EAA69E; --loss-on:#FFFFFF;
+  --flat:#64707E;
+  --warn:#B45309; --warn-bg:#FDF4E6; --warn-line:#E8C58A;
+  --info:#1D6FA5; --info-bg:#E9F3FA; --info-line:#9CC6E2;
+  --inner-hl:inset 0 -1px 0 rgb(19 24 29 / .07);
+  --inner-hl-2:inset 0 -1px 0 rgb(19 24 29 / .13);
+  --shadow-pop:0 4px 12px rgb(19 24 29 / .10), 0 0 0 1px rgb(19 24 29 / .04);
+  --tip-bg:#13181D; --tip-fg:#F6F8FA;
+  --c1:#5468D6; --c2:#1F94A8; --c3:#B5801F; --c4:#A14C9E; --c5:#4E7A3A; --c-other:#8C98A6;
+  --grid:#E4E8ED;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg-canvas:#0C1014; --bg-surface:#13181D; --bg-raised:#1A2026; --bg-sunken:#0C1014;
+  --bg-subtle:#1A2026; --bg-hover:#232A31; --bg-active:#2A323A; --bg-selected:#1B2340;
+  --border-subtle:#232A31; --border:#343C45; --border-control:#64707E;
+  --border-hover:#8C98A6; --border-active:#B9C2CC;
+  --fg:#F6F8FA; --fg-secondary:#B9C2CC; --fg-muted:#8C98A6; --fg-disabled:#5C6875;
+  --accent:#7D8CEA; --accent-hover:#9AA6F0; --accent-active:#B2BBF5; --accent-on:#0C1014;
+  --accent-soft:#1B2340; --accent-soft-hover:#232C4E; --accent-line:#4F62D8;
+  --gain:#3FC9A6; --gain-bg:#0E2F29; --gain-line:#1F6B5B;
+  --loss:#FF7A6B; --loss-bg:#3A1A16; --loss-line:#8A3C33; --loss-on:#0C1014;
+  --flat:#8C98A6;
+  --warn:#F0B429; --warn-bg:#2E2411; --warn-line:#7A5E1B;
+  --info:#5BB0E8; --info-bg:#11252F; --info-line:#2E6888;
+  --inner-hl:inset 0 1px 0 rgb(255 255 255 / .055);
+  --inner-hl-2:inset 0 1px 0 rgb(255 255 255 / .10);
+  --shadow-pop:0 4px 12px rgb(0 0 0 / .45), 0 0 0 1px rgb(255 255 255 / .06);
+  --tip-bg:#E4E8ED; --tip-fg:#13181D;
+  --c1:#8A7FE8; --c2:#2FA3BA; --c3:#B68530; --c4:#C76BA0; --c5:#6FA14E; --c-other:#64707E;
+  --grid:#232A31;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg-canvas:#0C1014; --bg-surface:#13181D; --bg-raised:#1A2026; --bg-sunken:#0C1014;
+  --bg-subtle:#1A2026; --bg-hover:#232A31; --bg-active:#2A323A; --bg-selected:#1B2340;
+  --border-subtle:#232A31; --border:#343C45; --border-control:#64707E;
+  --border-hover:#8C98A6; --border-active:#B9C2CC;
+  --fg:#F6F8FA; --fg-secondary:#B9C2CC; --fg-muted:#8C98A6; --fg-disabled:#5C6875;
+  --accent:#7D8CEA; --accent-hover:#9AA6F0; --accent-active:#B2BBF5; --accent-on:#0C1014;
+  --accent-soft:#1B2340; --accent-soft-hover:#232C4E; --accent-line:#4F62D8;
+  --gain:#3FC9A6; --gain-bg:#0E2F29; --gain-line:#1F6B5B;
+  --loss:#FF7A6B; --loss-bg:#3A1A16; --loss-line:#8A3C33; --loss-on:#0C1014;
+  --flat:#8C98A6;
+  --warn:#F0B429; --warn-bg:#2E2411; --warn-line:#7A5E1B;
+  --info:#5BB0E8; --info-bg:#11252F; --info-line:#2E6888;
+  --inner-hl:inset 0 1px 0 rgb(255 255 255 / .055);
+  --inner-hl-2:inset 0 1px 0 rgb(255 255 255 / .10);
+  --shadow-pop:0 4px 12px rgb(0 0 0 / .45), 0 0 0 1px rgb(255 255 255 / .06);
+  --tip-bg:#E4E8ED; --tip-fg:#13181D;
+  --c1:#8A7FE8; --c2:#2FA3BA; --c3:#B68530; --c4:#C76BA0; --c5:#6FA14E; --c-other:#64707E;
+  --grid:#232A31;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg-canvas);color:var(--fg);font-family:var(--sans);
+  font-size:14px;line-height:20px;font-feature-settings:"tnum" 1,"cv05" 1;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:60;background:var(--bg-surface)}
+@media (prefers-reduced-motion:reduce){*{transition-duration:1ms!important;animation-duration:1ms!important}}
+h1,h2,h3{margin:0;font-weight:600;text-wrap:balance}
+p{margin:0}
+button,input,select,textarea{font:inherit;color:inherit;margin:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tnum{font-variant-numeric:tabular-nums}
+code,.mono{font-family:var(--mono);font-variant-numeric:slashed-zero tabular-nums;font-size:12px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+svg{display:block}
+
+/* ---------------- shell ---------------- */
+.shell{display:flex;min-height:100%;align-items:flex-start}
+.rail{position:sticky;top:env(safe-area-inset-top,0px);flex:0 0 246px;width:246px;align-self:stretch;
+  min-height:100vh;background:var(--bg-surface);border-right:1px solid var(--border);
+  padding-block:14px 24px;padding-left:var(--gl);padding-right:10px}
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;letter-spacing:-.005em}
+.mark{width:20px;height:20px;border:1.5px solid var(--accent);border-radius:var(--r-2);flex:none;position:relative}
+.mark::after{content:"";position:absolute;left:2.5px;right:2.5px;bottom:2.5px;height:6px;
+  background:linear-gradient(to right,var(--accent) 0 2px,transparent 2px 4px,var(--accent) 4px 7px,transparent 7px 9px,var(--accent) 9px 13px)}
+.brand span{font-size:11px;font-weight:500;color:var(--fg-muted);letter-spacing:.07em;text-transform:uppercase}
+.rail-group{margin-top:16px}
+.nvi-grp{font-size:10.5px;line-height:16px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--fg-muted);padding:6px 9px 3px;display:flex;align-items:center;gap:6px}
+.grp-figs{border:1px solid var(--border);border-radius:var(--r-4);background:var(--bg-subtle);
+  padding:9px 10px;margin:2px 0 8px}
+.grp-figs dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0;margin:0;font-size:11.5px}
+.grp-figs dt{color:var(--fg-muted);padding:3px 10px 3px 0;white-space:nowrap}
+.grp-figs dd{margin:0;padding:3px 0;text-align:right;font-variant-numeric:tabular-nums;font-weight:500}
+.grp-figs .cap{font-size:10px;line-height:14px;color:var(--fg-muted);margin-top:6px;
+  padding-top:6px;border-top:1px solid var(--border-subtle)}
+.nvi{display:flex;align-items:center;gap:9px;height:var(--h-md);padding:0 9px;border-radius:var(--r-2);
+  color:var(--fg-secondary);font-size:13px;cursor:pointer;border:0;background:none;width:100%;text-align:left;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.nvi:hover{background:var(--bg-hover);color:var(--fg)}
+.nvi:active{background:var(--bg-active)}
+.nvi .ic{flex:none;opacity:.82;display:inline-flex}
+.nvi .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nvi .rt{font-family:var(--mono);font-size:10px;color:var(--fg-muted);flex:none}
+.nvi[aria-current="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600;box-shadow:inset 2px 0 0 var(--accent)}
+.nvi[aria-current="true"] .ic{opacity:1}
+.nvi[aria-current="true"] .rt{color:var(--accent)}
+.nvi:focus-visible{outline-offset:-2px}
+.nvi.sub{padding-left:26px;font-size:12.5px}
+.rail-foot{margin-top:20px;border:1px solid var(--border);border-radius:var(--r-4);padding:10px;
+  font-size:11.5px;line-height:16px;color:var(--fg-muted)}
+.rail-foot b{color:var(--fg-secondary);font-weight:600;display:flex;align-items:center;gap:6px;margin-bottom:3px}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.chrome{position:sticky;top:env(safe-area-inset-top,0px);z-index:50;background:var(--bg-surface);
+  border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding-block:9px;padding-left:var(--gl);padding-right:var(--gr)}
+.chrome .asof{font-size:12px;color:var(--fg-muted);font-variant-numeric:tabular-nums}
+.spacer{flex:1 1 auto;min-width:0}
+.mobnav{display:none}
+.page{padding-block:20px 60px;padding-left:var(--gl);padding-right:var(--gr);max-width:1480px;width:100%}
+
+/* ---------------- buttons ---------------- */
+.btn{--bh:var(--h-md);--bp:12px;--bf:13px;--br:var(--r-2);
+  position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:var(--bh);padding:0 var(--bp);font-size:var(--bf);font-weight:500;line-height:1;letter-spacing:.004em;
+  border:1px solid var(--border-control);border-radius:var(--br);background:var(--bg-surface);color:var(--fg);
+  box-shadow:var(--inner-hl);cursor:pointer;white-space:nowrap;user-select:none;
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease),
+             color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.btn > *{transition:transform var(--t-fast) var(--ease)}
+.btn:hover{background:var(--bg-hover);border-color:var(--border-hover)}
+.btn:active{background:var(--bg-active);border-color:var(--border-active);box-shadow:none}
+.btn:active > *{transform:translateY(.5px)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn[disabled]{background:var(--bg-subtle);border-color:var(--border);color:var(--fg-disabled);box-shadow:none;cursor:not-allowed}
+.btn-sm{--bh:var(--h-sm);--bp:10px;--bf:12px}
+.btn-xs{--bh:var(--h-xs);--bp:8px;--bf:11.5px}
+.btn-lg{--bh:var(--h-lg);--bp:16px;--bf:14px;--br:var(--r-3)}
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-on);box-shadow:var(--inner-hl-2)}
+.btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-primary:active{background:var(--accent-active);border-color:var(--accent-active);box-shadow:none}
+.btn-ghost{background:transparent;border-color:transparent;box-shadow:none;color:var(--fg-secondary)}
+.btn-ghost:hover{background:var(--bg-hover);border-color:transparent;color:var(--fg)}
+.btn-ghost:active{background:var(--bg-active);border-color:transparent}
+.btn svg{flex:none}
+.segf{display:inline-flex;height:var(--h-md);border:1px solid var(--border-control);border-radius:var(--r-2);
+  overflow:hidden;background:var(--bg-surface)}
+.segf button{height:100%;padding:0 11px;border:0;background:none;font-size:12px;font-weight:500;
+  color:var(--fg-secondary);cursor:pointer;white-space:nowrap;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.segf button + button{box-shadow:inset 1px 0 0 var(--border)}
+.segf button:hover{background:var(--bg-hover);color:var(--fg)}
+.segf button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.segf button[aria-pressed="true"],.segf button[aria-pressed="true"] + button{box-shadow:none}
+.segf button:focus-visible{outline-offset:-2px}
+.segf-sm{height:var(--h-sm)}
+.segf-sm button{padding:0 9px;font-size:11.5px}
+
+/* ---------------- form controls ---------------- */
+.fld{display:flex;flex-direction:column;gap:5px;min-width:0}
+.fld > label{font-size:12px;line-height:16px;font-weight:500;color:var(--fg-secondary);display:flex;align-items:center;gap:5px}
+.hint{font-size:11px;line-height:16px;color:var(--fg-muted)}
+.inw{--ih:var(--h-lg);display:flex;align-items:center;height:var(--ih);background:var(--bg-surface);
+  border:1px solid var(--border-control);border-radius:var(--r-3);box-shadow:var(--inner-hl);min-width:0;
+  transition:border-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+.inw:hover{border-color:var(--border-hover)}
+.inw:focus-within{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px;box-shadow:none}
+.inw input{flex:1;min-width:0;height:100%;border:0;background:none;padding:0 10px;font-size:13px;color:var(--fg);outline:none}
+.inw input::placeholder{color:var(--fg-disabled)}
+.inw.md{--ih:var(--h-md);border-radius:var(--r-2)}
+.inw.md input{font-size:12.5px;padding:0 9px}
+.inw.num input{text-align:right;font-variant-numeric:tabular-nums}
+.inw .afx{display:inline-flex;align-items:center;height:100%;padding:0 0 0 10px;font-size:13px;
+  color:var(--fg-muted);flex:none;user-select:none}
+.inw .afx + input{padding-left:4px}
+.inw.ro{background:var(--bg-subtle);border-color:var(--border);border-style:dashed;box-shadow:none}
+.inw.ro input{color:var(--fg-secondary);cursor:default}
+select.sel{height:var(--h-lg);padding:0 30px 0 10px;font-size:13px;background-color:var(--bg-surface);color:var(--fg);
+  border:1px solid var(--border-control);border-radius:var(--r-3);box-shadow:var(--inner-hl);cursor:pointer;
+  appearance:none;min-width:0;max-width:100%;width:100%;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 15px) calc(50% + 1px),calc(100% - 11px) calc(50% + 1px);
+  background-size:4px 4px,4px 4px;background-repeat:no-repeat;
+  transition:border-color var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+select.sel:hover{border-color:var(--border-hover);background-color:var(--bg-hover)}
+select.sel:focus-visible{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px}
+
+/* slider, control-bench treatment */
+.rng{position:relative;height:28px;display:flex;align-items:center;min-width:0}
+.rng .track{position:absolute;left:7px;right:7px;height:4px;border-radius:var(--r-pill);
+  background:var(--bg-sunken);box-shadow:inset 0 0 0 1px var(--border)}
+.rng .fill{position:absolute;left:7px;height:4px;border-radius:var(--r-pill);background:var(--accent);
+  transition:width var(--t) var(--ease)}
+.rng input[type=range]{position:absolute;left:0;right:0;width:100%;height:28px;margin:0;background:none;appearance:none;cursor:pointer}
+.rng input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:var(--r-pill);
+  background:var(--bg-surface);border:1px solid var(--border-active);
+  box-shadow:0 1px 2px rgb(19 24 29 / .22), inset 0 1px 0 rgb(255 255 255 / .55);cursor:grab}
+.rng input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:var(--r-pill);
+  background:var(--bg-surface);border:1px solid var(--border-active);box-shadow:0 1px 2px rgb(19 24 29 / .22);cursor:grab}
+.rng input[type=range]:focus-visible{outline:none}
+.rng input[type=range]:focus-visible::-webkit-slider-thumb{outline:2px solid var(--accent);outline-offset:2px}
+.rng input[type=range]:focus-visible::-moz-range-thumb{outline:2px solid var(--accent);outline-offset:2px}
+.rng-ends{display:flex;justify-content:space-between;gap:8px;font-size:11px;color:var(--fg-muted);
+  font-variant-numeric:tabular-nums;margin-top:1px}
+
+/* ---------------- data display ---------------- */
+.bdg{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:var(--r-2);
+  font-size:11px;font-weight:500;line-height:1;white-space:nowrap;border:1px solid transparent;
+  background:var(--bg-subtle);color:var(--fg-secondary)}
+.bdg .dot{width:5px;height:5px;border-radius:var(--r-pill);background:currentColor;flex:none;opacity:.85}
+.bdg.sub-gain{background:var(--gain-bg);color:var(--gain)}
+.bdg.sub-loss{background:var(--loss-bg);color:var(--loss)}
+.bdg.sub-warn{background:var(--warn-bg);color:var(--warn)}
+.bdg.sub-info{background:var(--info-bg);color:var(--info)}
+.bdg.sub-acc{background:var(--accent-soft);color:var(--accent)}
+.bdg.out-gain{background:none;border-color:var(--gain-line);color:var(--gain)}
+.bdg.out-loss{background:none;border-color:var(--loss-line);color:var(--loss)}
+.bdg.out-warn{background:none;border-color:var(--warn-line);color:var(--warn)}
+.bdg.out-acc{background:none;border-color:var(--accent-line);color:var(--accent)}
+.bdg.out-n{background:none;border-color:var(--border);color:var(--fg-secondary)}
+.bdg.mono{font-family:var(--mono);font-size:10px}
+.bdg.dash{background:none;border-style:dashed;border-color:var(--border-control);color:var(--fg-muted);
+  letter-spacing:.06em;font-size:10px;font-weight:600}
+.plate{width:24px;height:24px;border-radius:var(--r-2);flex:none;display:grid;place-items:center;
+  background:var(--bg-subtle);box-shadow:inset 0 0 0 1px var(--border);font-size:9.5px;font-weight:600;
+  color:var(--fg-secondary);overflow:hidden}
+
+.panel{border:1px solid var(--border);border-radius:var(--r-4);background:var(--bg-surface);min-width:0;overflow:hidden}
+.panel-hd{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 14px;
+  border-bottom:1px solid var(--border-subtle);background:var(--bg-subtle)}
+.panel-hd h2{font-size:13px;line-height:18px;font-weight:600}
+.panel-bd{padding:14px}
+.panel-bd.flush{padding:0}
+.note{font-size:12px;line-height:18px;color:var(--fg-muted);margin:0}
+.why{font-size:12px;line-height:18px;color:var(--fg-secondary);border-left:2px solid var(--accent-line);padding-left:10px}
+.why b{font-weight:600;color:var(--fg)}
+.grid{display:grid;gap:12px}
+.kpis{grid-template-columns:repeat(auto-fit,minmax(190px,1fr));margin-bottom:14px}
+.cols{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));margin-bottom:12px}
+.cols.c2{grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)}
+.stack{display:flex;flex-direction:column;gap:12px;min-width:0}
+@media(max-width:940px){.cols.c2{grid-template-columns:1fr}}
+
+.kpi{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border:1px solid var(--border);
+  border-radius:var(--r-4);background:var(--bg-surface);text-align:left;min-width:0}
+.kpi .kl{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;line-height:16px;font-weight:500;color:var(--fg-muted)}
+.kpi .kv{font-size:24px;line-height:30px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.016em;color:var(--fg)}
+.kpi .kv .u{font-size:11px;font-weight:500;color:var(--fg-muted);margin-left:2px;letter-spacing:0}
+.kpi .kd{font-size:11px;line-height:15px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--fg-muted)}
+.gain{color:var(--gain)} .loss{color:var(--loss)} .flat{color:var(--flat)} .muted{color:var(--fg-muted)}
+.info-i{width:13px;height:13px;border-radius:var(--r-pill);border:1px solid var(--border-control);
+  display:inline-grid;place-items:center;font-size:8.5px;font-weight:600;color:var(--fg-muted);
+  cursor:help;flex:none;line-height:1;font-style:normal}
+.info-i:hover{border-color:var(--border-hover);color:var(--fg)}
+.pbar{height:6px;border-radius:var(--r-pill);background:var(--bg-sunken);box-shadow:inset 0 0 0 1px var(--border);
+  overflow:hidden;min-width:52px}
+.pbar i{display:block;height:100%;border-radius:var(--r-pill);background:var(--accent);transition:width var(--t) var(--ease)}
+.pbar.gain i{background:var(--gain)} .pbar.loss i{background:var(--loss)} .pbar.warn i{background:var(--warn)}
+dl.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0;margin:0;font-size:12.5px;min-width:0}
+dl.kv dt{color:var(--fg-muted);padding:6px 16px 6px 0;border-bottom:1px solid var(--border-subtle);white-space:nowrap}
+dl.kv dd{margin:0;padding:6px 0;border-bottom:1px solid var(--border-subtle);text-align:right;
+  font-variant-numeric:tabular-nums;min-width:0}
+dl.kv dt:last-of-type,dl.kv dd:last-of-type{border-bottom:0}
+.callout{border:1px solid var(--warn-line);border-left-width:3px;border-radius:var(--r-4);background:var(--warn-bg);
+  padding:11px 13px;font-size:12.5px;line-height:19px;color:var(--fg-secondary)}
+.callout b{font-weight:600;color:var(--fg)}
+.callout.acc{border-color:var(--accent-line);border-left-color:var(--accent);background:var(--accent-soft)}
+.callout.loss{border-color:var(--loss-line);border-left-color:var(--loss);background:var(--loss-bg)}
+.callout.plain{border-color:var(--border);border-left-color:var(--border-active);background:var(--bg-subtle)}
+.callout.gain{border-color:var(--gain-line);border-left-color:var(--gain);background:var(--gain-bg)}
+
+/* ---------------- tables ---------------- */
+.tw{overflow-x:auto;max-width:100%}
+.tw.tall{max-height:420px;overflow-y:auto}
+table.dt{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+table.dt th,table.dt td{padding:6px 12px;border-bottom:1px solid var(--border-subtle);white-space:nowrap;
+  height:var(--row);text-align:left;vertical-align:middle}
+table.dt thead th{position:sticky;top:0;z-index:2;background:var(--bg-surface);font-size:12px;font-weight:500;
+  letter-spacing:.015em;color:var(--fg-muted);box-shadow:inset 0 -1px 0 var(--border);border-bottom:0;
+  user-select:none;transition:color var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+table.dt thead th.sortable{cursor:pointer}
+table.dt thead th.sortable:hover{color:var(--fg);background:var(--bg-hover)}
+table.dt thead th:focus-visible{outline-offset:-2px}
+table.dt .num{text-align:right}
+table.dt tbody tr{transition:background-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+table.dt tbody tr:hover{background:var(--bg-hover)}
+table.dt tbody tr.today{box-shadow:inset 2px 0 0 var(--accent)}
+table.dt tfoot td{background:var(--bg-subtle);font-weight:600;border-bottom:0;border-top:1px solid var(--border);
+  position:sticky;bottom:0}
+.sortw{display:inline-flex;align-items:center;gap:4px}
+.nm{display:flex;flex-direction:column;min-width:0;max-width:260px}
+.nm b{font-weight:600;font-size:13px;line-height:17px}
+.nm span{font-size:11.5px;line-height:15px;color:var(--fg-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sub2{font-size:11.5px;line-height:15px;color:var(--fg-muted)}
+.dash-cell{color:var(--fg-muted);text-decoration:underline dotted;text-underline-offset:3px;cursor:help;
+  border-radius:var(--r-1)}
+.dash-cell:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+body[data-density="comfortable"]{--row:36px}
+body[data-density="dense"]{--row:28px}
+body[data-density="dense"] table.dt th,body[data-density="dense"] table.dt td{padding:4px 10px}
+
+.mcards{display:none}
+.mrow{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:10px 14px;border-bottom:1px solid var(--border-subtle)}
+.mrow .l1{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mrow .r1{font-weight:600;font-variant-numeric:tabular-nums;text-align:right;white-space:nowrap}
+.mrow .l2,.mrow .r2{font-size:12px;color:var(--fg-muted);font-variant-numeric:tabular-nums;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mrow .r2{text-align:right}
+
+.ph{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:2px}
+h1{font-size:22px;line-height:28px;letter-spacing:-.012em}
+.route{font-family:var(--mono);font-size:12px;color:var(--fg-muted);margin-top:3px}
+.sub{font-size:13px;line-height:20px;color:var(--fg-secondary);margin:8px 0 16px;max-width:76ch}
+.fgrid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(168px,1fr))}
+.legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--fg-secondary);margin-top:10px}
+.legend i{width:10px;height:10px;border-radius:var(--r-1);display:inline-block;margin-right:6px;vertical-align:-1px}
+.chartwrap{overflow-x:auto}
+
+@media(max-width:1023px){
+  .rail{display:none}
+  .mobnav{display:block;overflow-x:auto;white-space:nowrap;border-bottom:1px solid var(--border);
+    background:var(--bg-surface);padding-block:8px;padding-left:var(--gl);padding-right:var(--gr)}
+  .mobnav button{display:inline-flex;align-items:center;gap:6px;height:var(--h-sm);background:var(--bg-surface);
+    border:1px solid var(--border);border-radius:var(--r-2);padding:0 10px;margin-right:6px;
+    font-size:12px;font-weight:500;color:var(--fg-secondary);cursor:pointer}
+  .mobnav button[aria-current="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600;border-color:var(--accent-line)}
+}
+@media(max-width:640px){
+  .respond>.tw{display:none}
+  .respond>.mcards{display:block}
+  .kpis{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  .kpi .kv{font-size:20px;line-height:26px}
+  h1{font-size:19px;line-height:25px}
+  .btn{--bh:var(--h-xl)}
+  .btn-sm,.btn-xs{--bh:var(--h-md)}
+}
+</style>
+
+<div class="shell">
+  <nav class="rail" aria-label="Screens">
+    <div class="brand"><span class="mark"></span>Stock-Mania <span>Wealth OS</span></div>
+    <div class="rail-group">
+      <div class="nvi-grp" id="grp-debt-label">Debt</div>
+      <div class="grp-figs" id="grp-debt-figs"></div>
+      <div id="rail-debt"></div>
+    </div>
+    <div class="rail-group">
+      <div class="nvi-grp">Assets</div>
+      <div id="rail-assets"></div>
+    </div>
+    <div class="rail-foot"><b><i data-i="vault"></i>Manual mode</b>Your entries change only when you edit them or request a price refresh.</div>
+  </nav>
+  <div class="main">
+    <div class="chrome">
+      <strong style="font-size:13px">Assets, Debt &amp; Platforms</strong>
+      <span class="bdg out-acc">Redesign mockup</span>
+      <span class="spacer"></span>
+      <span class="asof">As of 19 Oct 2026 &middot; FY 2026-27</span>
+      <div class="segf segf-sm" role="group" aria-label="Row density">
+        <button type="button" data-density="comfortable">Comfortable</button>
+        <button type="button" data-density="compact" aria-pressed="true">Compact</button>
+        <button type="button" data-density="dense">Dense</button>
+      </div>
+      <div class="segf segf-sm" role="group" aria-label="Theme">
+        <button type="button" data-theme="light">Light</button>
+        <button type="button" data-theme="dark">Dark</button>
+        <button type="button" data-theme="system" aria-pressed="true">System</button>
+      </div>
+    </div>
+    <div class="mobnav" id="mobnav" aria-label="Screens"></div>
+    <main class="page" id="view"></main>
+  </div>
+</div>
+<style>
+/* Legacy selectors mapped onto the library's own values — same component, one more selector. */
+.chip{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:var(--r-2);
+  font-size:11px;font-weight:500;line-height:1;white-space:nowrap;border:1px solid var(--border);
+  background:none;color:var(--fg-secondary)}
+.chip.gain{background:var(--gain-bg);color:var(--gain);border-color:transparent}
+.chip.loss{background:var(--loss-bg);color:var(--loss);border-color:transparent}
+.chip.warn{background:var(--warn-bg);color:var(--warn);border-color:transparent}
+.chip.acc{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.chip.mono{font-family:var(--mono);font-size:10px}
+.chip.new{background:none;border-style:dashed;border-color:var(--border-control);color:var(--fg-muted);
+  letter-spacing:.06em;font-size:10px;font-weight:600}
+.bar{height:6px;border-radius:var(--r-pill);background:var(--bg-sunken);box-shadow:inset 0 0 0 1px var(--border);
+  overflow:hidden;min-width:52px}
+.bar i{display:block;height:100%;border-radius:var(--r-pill);background:var(--accent);transition:width var(--t) var(--ease)}
+.bar i.g{background:var(--gain)} .bar i.w{background:var(--warn)} .bar i.l{background:var(--loss)}
+.tile{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border:1px solid var(--border);
+  border-radius:var(--r-4);background:var(--bg-surface);min-width:0}
+.tile .lab{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12px;line-height:16px;
+  font-weight:500;color:var(--fg-muted)}
+.tile .val{font-size:24px;line-height:30px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.016em}
+.tile .val .u{font-size:11px;font-weight:500;color:var(--fg-muted);margin-left:2px;letter-spacing:0}
+.tile .delta{font-size:11px;line-height:15px;font-weight:500;font-variant-numeric:tabular-nums;color:var(--fg-muted)}
+.btn.ghost{background:transparent;border-color:transparent;box-shadow:none;color:var(--fg-secondary)}
+.btn.ghost:hover{background:var(--bg-hover);border-color:transparent;color:var(--fg)}
+.btn.ghost:active{background:var(--bg-active);border-color:transparent}
+
+/* Bare form controls take the shell treatment, so --border-control is the boundary everywhere. */
+input[type=text],input[type=number],input[type=date],textarea{width:100%;height:var(--h-lg);
+  background:var(--bg-surface);color:var(--fg);border:1px solid var(--border-control);border-radius:var(--r-3);
+  box-shadow:var(--inner-hl);padding:0 10px;font-size:13px;font-variant-numeric:tabular-nums;outline:none;
+  transition:border-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+textarea{height:auto;min-height:76px;padding:8px 10px;line-height:20px;resize:vertical;font-family:var(--sans)}
+input[type=text]:hover,input[type=number]:hover,input[type=date]:hover,textarea:hover{border-color:var(--border-hover)}
+input[type=text]:focus-visible,input[type=number]:focus-visible,input[type=date]:focus-visible,
+textarea:focus-visible{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px;box-shadow:none}
+input::placeholder,textarea::placeholder{color:var(--fg-disabled)}
+input[readonly]{background:var(--bg-subtle);border-style:dashed;border-color:var(--border);
+  color:var(--fg-secondary);box-shadow:none}
+select{height:var(--h-lg);width:100%;padding:0 30px 0 10px;font-size:13px;background-color:var(--bg-surface);
+  color:var(--fg);border:1px solid var(--border-control);border-radius:var(--r-3);box-shadow:var(--inner-hl);
+  cursor:pointer;appearance:none;max-width:100%;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 15px) calc(50% + 1px),calc(100% - 11px) calc(50% + 1px);
+  background-size:4px 4px,4px 4px;background-repeat:no-repeat;
+  transition:border-color var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+select:hover{border-color:var(--border-hover);background-color:var(--bg-hover)}
+select:focus-visible{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px}
+label{display:block;font-size:12px;line-height:16px;font-weight:500;color:var(--fg-secondary);margin-bottom:5px}
+
+/* Bare range inputs take the control-bench handle and track. */
+input[type=range]{width:100%;height:28px;margin:0;background:none;appearance:none;cursor:pointer}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:var(--r-pill);
+  background:var(--bg-sunken);box-shadow:inset 0 0 0 1px var(--border)}
+input[type=range]::-moz-range-track{height:4px;border-radius:var(--r-pill);
+  background:var(--bg-sunken);box-shadow:inset 0 0 0 1px var(--border)}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;margin-top:-5px;
+  border-radius:var(--r-pill);background:var(--bg-surface);border:1px solid var(--border-active);
+  box-shadow:0 1px 2px rgb(19 24 29 / .22), inset 0 1px 0 rgb(255 255 255 / .55);cursor:grab}
+input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:var(--r-pill);
+  background:var(--bg-surface);border:1px solid var(--border-active);box-shadow:0 1px 2px rgb(19 24 29 / .22);cursor:grab}
+input[type=range]:focus-visible{outline:none}
+input[type=range]:focus-visible::-webkit-slider-thumb{outline:2px solid var(--accent);outline-offset:2px}
+input[type=range]:focus-visible::-moz-range-thumb{outline:2px solid var(--accent);outline-offset:2px}
+
+table{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+.na{color:var(--fg-muted);text-decoration:underline dotted;text-underline-offset:3px;cursor:help}
+</style>
+<script>
+"use strict";
+/* ---------------- formatting ---------------- */
+var nf0 = new Intl.NumberFormat('en-IN',{minimumFractionDigits:0,maximumFractionDigits:0});
+var nf2 = new Intl.NumberFormat('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+var MINUS = '−';
+function inr(n,dp){
+  var neg = n < 0, a = Math.abs(n);
+  var d = (dp===undefined) ? (a>=100000 ? 0 : 2) : dp;
+  return (neg?MINUS:'') + '₹' + (d ? nf2.format(a) : nf0.format(Math.round(a)));
+}
+function inrS(n,dp){ return (n<0?MINUS:'+') + inr(Math.abs(n),dp).replace(MINUS,''); }
+/* Compact: L / Cr only, truncated toward zero, never rounded up. KPI values + chart axes only. */
+function inrC(n){
+  var neg = n<0, a = Math.abs(n), s;
+  if (a >= 1e7) s = '₹' + (Math.trunc(a/1e5)/100).toFixed(2) + '<span class="u">Cr</span>';
+  else if (a >= 1e5) s = '₹' + (Math.trunc(a/1e3)/100).toFixed(2) + '<span class="u">L</span>';
+  else s = '₹' + nf0.format(Math.trunc(a));
+  return (neg?MINUS:'') + s;
+}
+function axC(n){
+  var a = Math.abs(n);
+  if (a >= 1e7) return (n<0?MINUS:'') + (Math.trunc(a/1e5)/100).toFixed(2) + 'Cr';
+  if (a >= 1e5) return (n<0?MINUS:'') + (Math.trunc(a/1e3)/100).toFixed(2) + 'L';
+  return (n<0?MINUS:'') + nf0.format(Math.trunc(a));
+}
+function pct(n,dp){ return n.toFixed(dp===undefined?2:dp) + '%'; }
+function pctS(n,dp){ return (n<0?MINUS:'+') + Math.abs(n).toFixed(dp===undefined?2:dp) + '%'; }
+function cls(n){ return n>0?'gain':(n<0?'loss':'flat'); }
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+var NEW = '<span class="bdg dash">NEW</span>';
+/* "An em-dash is an admission, a zero is a claim." */
+function unavail(why){ return '<span class="dash-cell" tabindex="0" role="note" title="'+esc(why)+'" aria-label="Unavailable: '+esc(why)+'">—</span>'; }
+var MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+function monthLabel(offsetFromNov2026){ // 0 = Nov 2026
+  var m = 10 + offsetFromNov2026, y = 2026 + Math.floor(m/12);
+  return MONTHS[((m%12)+12)%12] + ' ' + String(y).slice(2);
+}
+function fyOf(offsetFromNov2026){
+  var m = 10 + offsetFromNov2026, y = 2026 + Math.floor(m/12), mm = ((m%12)+12)%12;
+  var start = (mm >= 3) ? y : y-1;
+  return 'FY ' + start + '-' + String(start+1).slice(2);
+}
+
+/* ---------------- data ---------------- */
+var TODAY = '19 Oct 2026';
+
+var CARDS = [
+  { id:'acc_card_hdfc', name:'HDFC Regalia Gold', issuer:'HDFC Bank', mark:'HDFC', last4:'4417', network:'Visa Infinite',
+    limit:450000, owed:55916, billed:48920, cycleSpend:6996, minDue:2446, available:394084, util:12.43,
+    statementDay:10, graceDays:20, dueOn:'30 Oct 2026', daysToDue:11,
+    updatedOn:'19 Oct 2026', source:'Statement PDF, typed in',
+    rewards:{ label:'Reward Points', balance:42180, earnedThisCycle:1398 } },
+  { id:'acc_card_icici', name:'ICICI Amazon Pay', issuer:'ICICI Bank', mark:'ICICI', last4:'8802', network:'Visa Signature',
+    limit:60000, owed:32194, billed:30480, cycleSpend:1714, minDue:1524, available:27806, util:53.66,
+    statementDay:16, graceDays:20, dueOn:'05 Nov 2026', daysToDue:17,
+    updatedOn:'17 Oct 2026', source:'Statement PDF, typed in',
+    rewards:{ label:'Cashback balance', balance:null, earnedThisCycle:null } },
+  { id:'acc_card_axis', name:'Axis Magnus', issuer:'Axis Bank', mark:'AXIS', last4:'2130', network:'Mastercard World',
+    limit:200000, owed:25179, billed:23845, cycleSpend:1334, minDue:1192, available:174821, util:12.59,
+    statementDay:2, graceDays:20, dueOn:'22 Oct 2026', daysToDue:3,
+    updatedOn:'04 Oct 2026', source:'Statement PDF, typed in',
+    rewards:{ label:'EDGE Reward Points', balance:18640, earnedThisCycle:612 } }
+];
+
+/* last billed cycle, spend by category x card (reconciles to each card's billed figure) */
+var CAT_NAMES = ['Food & dining','Shopping','Travel','Fuel','Utilities & bills'];
+var CAT_SPEND = { /* [HDFC, ICICI, Axis] */
+  'Food & dining':[12420,4180,3210],
+  'Shopping':[9840,18600,2100],
+  'Travel':[14200,1200,9840],
+  'Fuel':[6000,2000,1500],
+  'Utilities & bills':[6460,4500,7195]
+};
+
+var CYCLE_TXNS = [ /* HDFC Regalia Gold, cycle 11 Oct - 10 Nov 2026 */
+  { d:'11 Oct 2026', narr:'Swiggy Bengaluru', cat:'Food & dining', amt:842 },
+  { d:'12 Oct 2026', narr:'Indian Oil — Koramangala', cat:'Fuel', amt:2000 },
+  { d:'13 Oct 2026', narr:'Amazon.in', cat:'Shopping', amt:1649 },
+  { d:'16 Oct 2026', narr:'Starbucks Indiranagar', cat:'Food & dining', amt:520 },
+  { d:'17 Oct 2026', narr:'Uber India', cat:'Travel', amt:388 },
+  { d:'18 Oct 2026', narr:'BigBasket', cat:'Food & dining', amt:1597 }
+];
+
+var STATEMENTS = [
+  { on:'10 Oct 2026', billed:48920, due:'30 Oct 2026', paid:null, status:'Unpaid' },
+  { on:'10 Sep 2026', billed:51204, due:'30 Sep 2026', paid:'29 Sep 2026', status:'Paid in full' },
+  { on:'10 Aug 2026', billed:37866, due:'30 Aug 2026', paid:'28 Aug 2026', status:'Paid in full' },
+  { on:'10 Jul 2026', billed:62310, due:'30 Jul 2026', paid:'29 Jul 2026', status:'Paid in full' },
+  { on:'10 Jun 2026', billed:44180, due:'30 Jun 2026', paid:'30 Jun 2026', status:'Paid in full' },
+  { on:'10 May 2026', billed:39420, due:'30 May 2026', paid:'28 May 2026', status:'Paid in full' }
+];
+
+var LOANS = [
+  { id:'acc_loan_pl', name:'Personal loan', lender:'ICICI Bank', last4:'3306', kind:'Personal',
+    principal:600000, rate:13.50, rateKind:'reducing', months:60, openedOn:'Nov 2024',
+    emi:13805, paid:24, left:36, owed:406798, payoffOn:'Oct 2029', payoffOff:36,
+    totalInterest:228300, remainingInterest:90182, effective:14.37 },
+  { id:'acc_loan_car', name:'Car loan', lender:'HDFC Bank', last4:'7741', kind:'Vehicle',
+    principal:500000, rate:9.25, rateKind:'reducing', months:60, openedOn:'Jul 2023',
+    emi:10440, paid:44, left:16, owed:156579, payoffOn:'Feb 2028', payoffOff:16,
+    totalInterest:126400, remainingInterest:10461, effective:9.65 },
+  { id:'acc_loan_cd', name:'Consumer durable', lender:'Bajaj Finance', last4:'9915', kind:'Flat rate',
+    principal:120000, rate:14.64, rateKind:'flat', quotedFlat:8.00, months:24, openedOn:'Dec 2025',
+    emi:5800, paid:11, left:13, owed:69334, payoffOn:'Nov 2027', payoffOff:13,
+    totalInterest:19200, remainingInterest:6066, effective:14.64 }
+];
+
+var DEPOSITS = [
+  { id:'dep_icici_fd', name:'ICICI FD', last4:'9087', kind:'FD', quoted:7.10, comp:'Quarterly', effective:7.29,
+    principal:250000, valueToday:268420, journal:264308, accrued:4112, interestToDate:18420,
+    maturesOn:'14 Mar 2027', fy:'FY 2026-27', days:146, autoRenew:false },
+  { id:'dep_hdfc_fd', name:'HDFC FD', last4:'5521', kind:'FD', quoted:7.25, comp:'Quarterly', effective:7.45,
+    principal:150000, valueToday:161340, journal:158900, accrued:2440, interestToDate:11340,
+    maturesOn:'02 Aug 2027', fy:'FY 2027-28', days:287, autoRenew:true },
+  { id:'dep_sbi_rd', name:'SBI RD', last4:'3344', kind:'RD', quoted:6.80, comp:'Quarterly', effective:6.98,
+    principal:85000, valueToday:92760, journal:91500, accrued:1260, interestToDate:7760,
+    maturesOn:'10 Jan 2028', fy:'FY 2027-28', days:448, autoRenew:false },
+  { id:'dep_ppf', name:'PPF — SBI', last4:'1188', kind:'PPF', quoted:7.10, comp:'Annual', effective:7.10,
+    principal:500000, valueToday:684500, journal:661200, accrued:23300, interestToDate:184500,
+    maturesOn:'31 Mar 2033', fy:'FY 2032-33', days:2355, autoRenew:false },
+  { id:'dep_epf', name:'EPF — UAN 1012••', last4:'', kind:'EPF', quoted:8.25, comp:'Annual', effective:8.25,
+    principal:600000, valueToday:842310, journal:812000, accrued:30310, interestToDate:242310,
+    maturesOn:null, fy:null, days:null, autoRenew:false }
+];
+
+var NPS = { id:'dep_nps', name:'NPS Tier I — Protean', last4:'7760', scheme:'Scheme E — Tier I',
+  units:4218.312, nav:47.8120, value:201710, journal:201710, asOfNav:'17 Oct 2026' };
+
+var ASSETS = [
+  { id:'ast_car', name:'Hyundai i20 Asta (2022)', cls:'Vehicle', value:645000, revaluedOn:'30 Jun 2026', staleDays:111,
+    basis:'Dealer trade-in quote', docs:['RC book.pdf','Insurance 2026-27.pdf'],
+    history:[['Nov 2022',980000],['Jun 2023',885000],['Jun 2024',790000],['Jun 2025',715000],['Jun 2026',645000]] },
+  { id:'ast_gold', name:'Physical gold — 22K jewellery, 14.2 g', cls:'Physical gold', value:130000, revaluedOn:'30 Sep 2026', staleDays:19,
+    basis:'IBJA 22K rate × weight', docs:['Tanishq invoice 2021.pdf'],
+    history:[['Sep 2023',86000],['Sep 2024',101000],['Mar 2025',112000],['Sep 2025',121000],['Sep 2026',130000]] },
+  { id:'ast_coins', name:'Numismatic coin set', cls:'Collectibles', value:48000, revaluedOn:'15 Jan 2025', staleDays:642,
+    basis:'Auction catalogue estimate', docs:[],
+    history:[['Jan 2023',38000],['Jan 2024',43000],['Jan 2025',48000]] }
+];
+
+var PLATFORMS = [
+  { name:'SafeGold',      mark:'SG', kind:'Digital metal', holdings:1, value:331845, invested:295176, xirr:18.62, charges:43211, state:'in_use' },
+  { name:'Zerodha',       mark:'Z',  kind:'Broker',        holdings:3, value:276540, invested:262369, xirr:14.82, charges:4218,  state:'in_use' },
+  { name:'Groww',         mark:'G',  kind:'Broker',        holdings:2, value:224734, invested:205240, xirr:11.34, charges:2815,  state:'in_use' },
+  { name:'Kuvera',        mark:'K',  kind:'MF platform',   holdings:1, value:189312, invested:150000, xirr:21.07, charges:0,     state:'in_use' },
+  { name:'ICICI Direct',  mark:'ID', kind:'Broker',        holdings:1, value:156200, invested:139400, xirr:12.05, charges:1840,  state:'in_use' },
+  { name:'Augmont',       mark:'AU', kind:'Digital metal', holdings:1, value:130625, invested:118750, xirr:9.98,  charges:3750,  state:'in_use' },
+  { name:'Upstox',        mark:'U',  kind:'Broker',        holdings:1, value:108900, invested:113250, xirr:-3.84, charges:1392,  state:'in_use', stale:true },
+  { name:'INDmoney',      mark:'IN', kind:'Broker (US)',   holdings:1, value:null,   invested:214560, xirr:null,  charges:980,   state:'in_use', withheld:'FX unavailable — USD/INR rate missing for 19 Oct 2026' },
+  { name:'Angel One',     mark:'AO', kind:'Broker',        holdings:1, value:null,   invested:82400,  xirr:null,  charges:640,   state:'in_use', withheld:'Unpriced — no stored quote for ITC on 19 Oct 2026' },
+  { name:'HDFC Sky',      mark:'HS', kind:'Broker',        holdings:0, value:0, invested:0, xirr:null, charges:0, state:'idle', since:'Registered 04 Feb 2026' },
+  { name:'MMTC-PAMP',     mark:'MP', kind:'Digital metal', holdings:0, value:0, invested:0, xirr:null, charges:0, state:'idle', since:'Registered 19 Aug 2025' },
+  { name:'Paytm Money',   mark:'PM', kind:'Broker',        holdings:0, value:0, invested:0, xirr:null, charges:0, state:'archived', since:'Archived 12 Jun 2026' }
+];
+
+var HEADLINE = { netWorth:4872000, assets:5618000, liabilities:746000, liquid:934000 };
+
+/* ---------------- derived totals ---------------- */
+function sum(a,f){ return a.reduce(function(s,x){ return s + (f?f(x):x); },0); }
+var CARD_OWED   = sum(CARDS,function(c){return c.owed;});       // 113289
+var CARD_LIMIT  = sum(CARDS,function(c){return c.limit;});      // 710000
+var CARD_MIN    = sum(CARDS,function(c){return c.minDue;});     // 5162
+var CARD_BILLED = sum(CARDS,function(c){return c.billed;});     // 103245
+var LOAN_OWED   = sum(LOANS,function(l){return l.owed;});       // 632711
+var LOAN_EMI    = sum(LOANS,function(l){return l.emi;});        // 30045
+var LOAN_INT    = sum(LOANS,function(l){return l.totalInterest;});
+var LOAN_INT_LEFT = sum(LOANS,function(l){return l.remainingInterest;});
+var DEBT_TOTAL  = CARD_OWED + LOAN_OWED;                        // 746000
+var BLENDED_LOANS = sum(LOANS,function(l){return l.owed*l.rate;}) / LOAN_OWED;
+var DEP_VALUE = sum(DEPOSITS,function(d){return d.valueToday;});
+var DEP_JOURNAL = sum(DEPOSITS,function(d){return d.journal;});
+var DEP_ACCRUED = sum(DEPOSITS,function(d){return d.accrued;});
+var DEP_INT = sum(DEPOSITS,function(d){return d.interestToDate;});
+var AST_TOTAL = sum(ASSETS,function(a){return a.value;});
+var PLAT_PRICED = sum(PLATFORMS,function(p){return p.value||0;});
+var PLAT_IN_USE = PLATFORMS.filter(function(p){return p.state==='in_use';});
+var PLAT_WITHHELD = PLATFORMS.filter(function(p){return p.withheld;});
+
+/* ---------------- loan maths ---------------- */
+function buildSchedule(balance, annualRate, emi, lump){
+  var r = annualRate/100/12, b = balance, rows = [], m = 0;
+  if (lump) { b = Math.max(0, b - lump); }
+  while (b > 0.5 && m < 720){
+    m++;
+    var i = b*r, p = emi - i;
+    if (p <= 0) return rows; // EMI cannot cover interest
+    if (p > b) p = b;
+    b = b - p;
+    rows.push({ m:m, interest:i, principal:p, payment:i+p, balance:b });
+  }
+  return rows;
+}
+function scheduleTotals(rows){
+  return { interest: sum(rows,function(x){return x.interest;}), months: rows.length };
+}
+function payoffSim(debts, budget, orderFn){
+  var ds = debts.map(function(d){ return { name:d.name, bal:d.bal, rate:d.rate, min:d.min }; });
+  var minSum = sum(ds,function(d){return d.min;});
+  if (budget < minSum) return { fails:true, minSum:minSum, short:minSum-budget };
+  var seq = ds.slice().sort(orderFn);
+  var hist = [{ month:0, total: sum(ds,function(d){return d.bal;}) }];
+  var month = 0, totalInterest = 0, order = [];
+  while (ds.some(function(d){return d.bal>0.5;}) && month < 720){
+    month++;
+    var pool = budget;
+    ds.forEach(function(d){ if (d.bal<=0.5) return; var i = d.bal*d.rate/1200; d.bal += i; totalInterest += i; });
+    ds.forEach(function(d){ if (d.bal<=0.5) return; var p = Math.min(d.min, d.bal, pool); d.bal -= p; pool -= p; });
+    for (var k=0;k<seq.length;k++){
+      if (pool <= 0.01) break;
+      var d = ds.filter(function(x){return x.name===seq[k].name;})[0];
+      if (d.bal <= 0.5) continue;
+      var p2 = Math.min(pool, d.bal); d.bal -= p2; pool -= p2;
+    }
+    ds.forEach(function(d){
+      if (d.bal <= 0.5 && !order.some(function(o){return o.name===d.name;})) order.push({ name:d.name, month:month });
+    });
+    hist.push({ month:month, total: sum(ds,function(d){return Math.max(0,d.bal);}) });
+  }
+  return { fails:false, months:month, interest:totalInterest, hist:hist, order:order, minSum:minSum };
+}
+var PAYOFF_DEBTS = LOANS.map(function(l){ return { name:l.name+' ••'+l.last4, bal:l.owed, rate:l.rate, min:l.emi, lender:l.lender }; });
+var BY_RATE = function(a,b){ return b.rate - a.rate; };          // avalanche
+var BY_BALANCE = function(a,b){ return a.bal - b.bal; };         // snowball
+
+/* combined outstanding across all three loans, month by month, at current EMIs */
+function portfolioAmort(){
+  var scheds = LOANS.map(function(l){ return buildSchedule(l.owed, l.rate, l.emi, 0); });
+  var maxM = Math.max.apply(null, scheds.map(function(s){return s.length;}));
+  var out = [];
+  for (var m=0;m<=maxM;m++){
+    var bal=0, pr=0, it=0;
+    scheds.forEach(function(s){
+      if (m===0){ bal += s.length?s[0].balance + s[0].principal:0; return; }
+      var row = s[m-1];
+      if (row){ bal += row.balance; pr += row.principal; it += row.interest; }
+    });
+    out.push({ m:m, balance:bal, principal:pr, interest:it });
+  }
+  return out;
+}
+</script>
+<script>
+"use strict";
+/* ===== icons — from the Control Bench: 16-unit grid, 1.3 stroke, fill:none ===== */
+var ICON = {
+grid:'<rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/>',
+clock:'<circle cx="8" cy="8" r="5.5"/><path d="M8 4.8V8l2.4 1.4"/>',
+bank:'<path d="M2 6.5 8 2.6l6 3.9"/><path d="M4.5 7.5v4.5M8 7.5v4.5M11.5 7.5v4.5"/><path d="M2 13.5h12"/>',
+list:'<path d="M3 4.5h10M3 8h10M3 11.5h6.5"/>',
+wallet:'<rect x="2" y="4" width="12" height="8.5" rx="1.6"/><path d="M2 6.6h12"/><circle cx="11.2" cy="9.6" r=".85" fill="currentColor" stroke="none"/>',
+upload:'<path d="M8 10.5V3.2M5.4 5.8 8 3.2l2.6 2.6"/><path d="M2.8 10.8v2.2h10.4v-2.2"/>',
+'chart-line':'<path d="M2.5 12.2 6 8.4l2.6 2.1L13.5 4"/><path d="M10.9 4h2.6v2.6"/>',
+trend:'<path d="M2.5 11.6 6.2 7l2.6 2.4 4.7-5.2"/><path d="M11 4.2h2.5v2.5"/>',
+building:'<rect x="3" y="2.5" width="10" height="11" rx="1.2"/><path d="M5.6 5.4h1.6M8.8 5.4h1.6M5.6 8h1.6M8.8 8h1.6"/><path d="M6.6 13.5v-2.6h2.8v2.6"/>',
+signal:'<path d="M3 12.4V9.6M6.3 12.4V6.2M9.7 12.4V8.4M13 12.4V3.6"/>',
+vault:'<rect x="2.5" y="2.8" width="11" height="10.4" rx="1.4"/><circle cx="8" cy="8" r="2.6"/><path d="M8 3.9v1.5M8 10.6v1.5"/>',
+gem:'<path d="M4.6 3.2h6.8L14 6.6 8 13.1 2 6.6z"/><path d="M2 6.6h12"/>',
+card:'<rect x="2" y="3.8" width="12" height="8.4" rx="1.4"/><path d="M2 6.7h12"/>',
+loan:'<rect x="2.2" y="2.8" width="11.6" height="10.4" rx="1.3"/><path d="M4.6 11.2h2.4V8.8h2.6V6.2h3"/>',
+gear:'<circle cx="8" cy="8" r="2.4"/><path d="M8 2.2v1.6M8 12.2v1.6M13.8 8h-1.6M3.8 8H2.2M12.1 3.9l-1.1 1.1M5 11l-1.1 1.1M12.1 12.1 11 11M5 5 3.9 3.9"/>',
+'sort-asc':'<path d="M5.5 6.8 8 4.3l2.5 2.5"/><path d="M5.5 9.2 8 11.7l2.5-2.5" opacity=".3"/>',
+'sort-desc':'<path d="M5.5 6.8 8 4.3l2.5 2.5" opacity=".3"/><path d="M5.5 9.2 8 11.7l2.5-2.5"/>',
+'sort-none':'<path d="M5.5 6.8 8 4.3l2.5 2.5" opacity=".35"/><path d="M5.5 9.2 8 11.7l2.5-2.5" opacity=".35"/>',
+filter:'<path d="M2.6 3.9h10.8l-4.2 5v4.2l-2.4-1.3V8.9z"/>',
+density:'<path d="M3 3.8h10M3 6.6h10M3 9.4h10M3 12.2h10"/>',
+download:'<path d="M8 3.2v7.3M5.4 7.9 8 10.5l2.6-2.6"/><path d="M2.8 10.8v2.2h10.4v-2.2"/>',
+search:'<circle cx="7.1" cy="7.1" r="4.3"/><path d="M10.3 10.3 13.4 13.4"/>',
+plus:'<path d="M8 3.4v9.2M3.4 8h9.2"/>',
+edit:'<path d="M10.4 2.9 13.1 5.6 5.7 13H3v-2.7z"/><path d="M9.1 4.2 11.8 6.9"/>',
+refresh:'<path d="M12.6 6.6A4.9 4.9 0 1 0 13 9.4"/><path d="M13.2 3.2v3.4h-3.4"/>',
+info:'<circle cx="8" cy="8" r="5.5"/><path d="M8 7.3v3.6"/><circle cx="8" cy="5.3" r=".75" fill="currentColor" stroke="none"/>',
+warn:'<path d="M8 2.6 14 13H2z"/><path d="M8 6.6v3"/><circle cx="8" cy="11.2" r=".75" fill="currentColor" stroke="none"/>',
+check:'<path d="M3.2 8.4 6.4 11.6 12.8 4.8"/>',
+'chev-d':'<path d="M4.4 6.3 8 9.9l3.6-3.6"/>',
+'chev-r':'<path d="M6.3 4.4 9.9 8l-3.6 3.6"/>',
+'arrow-r':'<path d="M3 8h10M9.4 4.4 13 8l-3.6 3.6"/>',
+x:'<path d="M4.2 4.2 11.8 11.8M11.8 4.2 4.2 11.8"/>',
+copy:'<rect x="5.4" y="5.4" width="7.8" height="7.8" rx="1.2"/><path d="M10.6 5.4V4a1.2 1.2 0 0 0-1.2-1.2H4a1.2 1.2 0 0 0-1.2 1.2v5.4a1.2 1.2 0 0 0 1.2 1.2h1.4"/>',
+calendar:'<rect x="2.4" y="3.5" width="11.2" height="10.1" rx="1.3"/><path d="M2.4 6.5h11.2"/><path d="M5.5 2.3v2.3M10.5 2.3v2.3"/>',
+gold:'<path d="M2.6 11.4 4.4 6.3h7.2l1.8 5.1z"/><path d="M4.4 8.6h7.2"/>',
+fd:'<rect x="2.6" y="3.1" width="10.8" height="9.8" rx="1.5"/><circle cx="8" cy="8" r="2.8"/><path d="M8 6.3V8l1.4.9"/>',
+cash:'<rect x="1.9" y="4.2" width="12.2" height="7.6" rx="1.2"/><circle cx="8" cy="8" r="1.9"/><path d="M4.1 6.5h.4M11.5 9.5h.4"/>',
+property:'<path d="M2 7.6 8 2.6l6 5"/><path d="M3.6 7.1v6.3h8.8V7.1"/><path d="M6.6 13.4V9.9h2.8v3.5"/>'
+};
+function svgIcon(name, size){
+  var s = size || 14, body = ICON[name] || '';
+  return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 16 16" fill="none" stroke="currentColor" '+
+    'stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+body+'</svg>';
+}
+function paintIcons(root){
+  (root || document).querySelectorAll('i[data-i]').forEach(function(el){
+    var w = document.createElement('span');
+    w.setAttribute('aria-hidden','true');
+    w.style.display = 'inline-flex'; w.style.flex = 'none';
+    w.innerHTML = svgIcon(el.dataset.i, +el.dataset.s || 14);
+    el.replaceWith(w);
+  });
+}
+
+var SERIES = ['var(--c1)','var(--c2)','var(--c3)','var(--c4)','var(--c5)'];
+
+/* ===== shared UI ===== */
+function tile(lab, val, delta, opts){
+  opts = opts || {};
+  return '<div class="kpi"><div class="kl">'+lab+(opts.info?' <i class="info-i" title="'+esc(opts.info)+'">i</i>':'')+
+    (opts.chip?' '+opts.chip:'')+'</div>'+
+    '<div class="kv'+(opts.tone?' '+opts.tone:'')+'">'+val+'</div>'+
+    (delta?'<div class="kd'+(opts.deltaTone?' '+opts.deltaTone:'')+'">'+delta+'</div>':'')+'</div>';
+}
+function panel(title, body, opts){
+  opts = opts || {};
+  return '<section class="panel"><div class="panel-hd">'+
+    (opts.icon?'<i data-i="'+opts.icon+'" data-s="14" style="color:var(--fg-muted)"></i>':'')+
+    '<h2>'+title+'</h2>'+(opts.chip?opts.chip:'')+
+    '<span class="spacer"></span>'+(opts.right?opts.right:'')+'</div>'+
+    '<div class="panel-bd'+(opts.flush?' flush':'')+'">'+body+'</div></section>';
+}
+function legend(names, colors){
+  return '<div class="legend">'+names.map(function(n,i){
+    return '<span><i style="background:'+(colors?colors[i]:SERIES[i%5])+'"></i>'+esc(n)+'</span>';
+  }).join('')+'</div>';
+}
+var TBL = 0;
+function dataTable(cfg){
+  var id = cfg.id || ('t'+(++TBL));
+  var head = '<tr>'+cfg.cols.map(function(c,i){
+    return '<th class="'+(c.num?'num ':'')+(c.sortable!==false?'sortable':'')+'" '+
+      (c.sortable!==false?'data-sort="'+i+'" tabindex="0" role="button" aria-sort="none"':'')+
+      (c.w?' style="min-width:'+c.w+'px"':'')+'>'+
+      (c.sortable!==false
+        ? '<span class="sortw">'+(c.num?'<span class="si"></span>'+c.h:c.h+'<span class="si"></span>')+'</span>'
+        : c.h)+'</th>';
+  }).join('')+'</tr>';
+  var body = cfg.rows.map(function(r,ri){
+    return '<tr'+(r.__today?' class="today"':'')+'>'+cfg.cols.map(function(c){
+      return '<td class="'+(c.num?'num':'')+'">'+(c.fmt ? c.fmt(r,ri) : esc(r[c.k]))+'</td>';
+    }).join('')+'</tr>';
+  }).join('');
+  var foot = cfg.foot ? '<tfoot><tr>'+cfg.foot.map(function(f){
+      return '<td class="'+(f.num?'num':'')+'"'+(f.span?' colspan="'+f.span+'"':'')+'>'+f.v+'</td>'; }).join('')+'</tr></tfoot>' : '';
+  var mob = '';
+  if (cfg.mobile){
+    mob = '<div class="mcards">'+cfg.rows.map(function(r){
+      var m = cfg.mobile(r);
+      return '<div class="mrow"><div class="l1">'+m.l1+'</div><div class="r1">'+m.r1+'</div>'+
+             '<div class="l2">'+(m.l2||'')+'</div><div class="r2">'+(m.r2||'')+'</div></div>';
+    }).join('')+'</div>';
+  }
+  return '<div class="respond" data-table="'+id+'">'+
+    '<div class="tw'+(cfg.tall?' tall':'')+'"><table class="dt" id="'+id+'">'+
+    '<thead>'+head+'</thead><tbody>'+body+'</tbody>'+foot+'</table></div>'+mob+'</div>';
+}
+function wireSort(root){
+  root.querySelectorAll('table.dt th.sortable').forEach(function(th){
+    var si = th.querySelector('.si');
+    if (si) si.innerHTML = svgIcon('sort-none',12);
+    function go(){
+      var table = th.closest('table'), tb = table.tBodies[0], idx = +th.dataset.sort;
+      var dir = th.getAttribute('aria-sort') === 'descending' ? 1 : -1;
+      table.querySelectorAll('th.sortable').forEach(function(o){
+        o.setAttribute('aria-sort','none');
+        var s = o.querySelector('.si'); if (s) s.innerHTML = svgIcon('sort-none',12);
+      });
+      th.setAttribute('aria-sort', dir === -1 ? 'descending' : 'ascending');
+      if (si) si.innerHTML = svgIcon(dir === -1 ? 'sort-desc' : 'sort-asc', 12);
+      var rows = Array.prototype.slice.call(tb.rows);
+      rows.sort(function(a,b){
+        var A = a.cells[idx], B = b.cells[idx];
+        var av = valOf(A), bv = valOf(B);
+        if (av === null && bv === null) return A.textContent.localeCompare(B.textContent) * dir;
+        if (av === null) return 1;   // nulls last in both directions
+        if (bv === null) return -1;
+        if (isNaN(av) && isNaN(bv)) return A.textContent.trim().localeCompare(B.textContent.trim()) * dir;
+        if (isNaN(av)) return 1;
+        if (isNaN(bv)) return -1;
+        return (av - bv) * dir;
+      });
+      rows.forEach(function(r){ tb.appendChild(r); });
+    }
+    th.addEventListener('click', go);
+    th.addEventListener('keydown', function(e){ if (e.key==='Enter'||e.key===' '){ e.preventDefault(); go(); } });
+  });
+}
+function valOf(cell){
+  var holder = cell.querySelector('[data-v]');
+  if (holder){ var raw = holder.dataset.v; if (raw === '') return null; return +raw; }
+  return parseNum(cell.textContent);
+}
+function parseNum(t){
+  t = t.replace(/−/g,'-').replace(/[₹,\s%]/g,'');
+  if (t.trim() === '—' || t.trim() === '') return null;
+  var m = t.match(/-?\d+(\.\d+)?/);
+  return m ? parseFloat(m[0]) : NaN;
+}
+</script>
+<script>
+"use strict";
+/* ---------------- SVG charts (hand-rolled) ---------------- */
+function svgOpen(w,h){ return '<div class="chartwrap"><svg viewBox="0 0 '+w+' '+h+'" width="100%" height="'+h+'" style="min-width:'+Math.min(w,560)+'px" role="img">'; }
+function svgClose(){ return '</svg></div>'; }
+function txt(x,y,s,opts){
+  opts = opts||{};
+  return '<text x="'+x+'" y="'+y+'" fill="'+(opts.fill||'var(--fg-muted)')+'" font-size="'+(opts.size||11)+'" '+
+    'font-weight="'+(opts.weight||500)+'" text-anchor="'+(opts.anchor||'start')+'" '+
+    'font-family="var(--sans)" style="font-variant-numeric:tabular-nums">'+esc(s)+'</text>';
+}
+function gridLines(x0,x1,ys){
+  return ys.map(function(y){ return '<line x1="'+x0+'" x2="'+x1+'" y1="'+y+'" y2="'+y+'" stroke="var(--grid)" stroke-width="1"/>'; }).join('');
+}
+function niceTicks(max, n){
+  n = n||4;
+  var raw = max/n, mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  var step = Math.ceil(raw/mag)*mag;
+  var out=[]; for (var v=0; v<=max+step*0.001; v+=step) out.push(v);
+  return out;
+}
+
+/* line + optional stacked area underneath, single ₹ axis */
+function stackedAreaWithLine(cfg){
+  // cfg: {w,h,points:[{label,a,b,line}], aName,bName,lineName, every}
+  var w = cfg.w||760, h = cfg.h||260, pl=56, pr=16, pt=14, pb=28;
+  var iw = w-pl-pr, ih = h-pt-pb;
+  var maxStack = Math.max.apply(null, cfg.points.map(function(p){return p.a+p.b;}));
+  var maxLine = Math.max.apply(null, cfg.points.map(function(p){return p.line;}));
+  var max = Math.max(maxStack, maxLine);
+  var ticks = niceTicks(max,4); max = ticks[ticks.length-1];
+  var X = function(i){ return pl + (cfg.points.length<2?0:iw*i/(cfg.points.length-1)); };
+  var Y = function(v){ return pt + ih - ih*v/max; };
+  var s = svgOpen(w,h);
+  s += gridLines(pl, w-pr, ticks.map(Y));
+  ticks.forEach(function(t){ s += txt(pl-8, Y(t)+4, axC(t), {anchor:'end'}); });
+  // stacked areas: a (principal) at bottom, b (interest) above, 2px surface gap between fills
+  var topA = cfg.points.map(function(p,i){ return X(i)+','+Y(p.a); }).join(' ');
+  var baseR = cfg.points.map(function(p,i){ return X(i)+','+Y(0); }).reverse().join(' ');
+  s += '<polygon points="'+topA+' '+baseR+'" fill="var(--c3)" fill-opacity="0.85" stroke="none"/>';
+  var topB = cfg.points.map(function(p,i){ return X(i)+','+Y(p.a+p.b); }).join(' ');
+  var botB = cfg.points.map(function(p,i){ return X(i)+','+(Y(p.a)-2); }).reverse().join(' ');
+  s += '<polygon points="'+topB+' '+botB+'" fill="var(--c2)" fill-opacity="0.85" stroke="none"/>';
+  // outstanding balance line
+  var ln = cfg.points.map(function(p,i){ return (i?'L':'M')+X(i)+' '+Y(p.line); }).join(' ');
+  s += '<path d="'+ln+'" fill="none" stroke="var(--fg)" stroke-width="2" stroke-linejoin="round"/>';
+  s += '<circle cx="'+X(cfg.points.length-1)+'" cy="'+Y(cfg.points[cfg.points.length-1].line)+'" r="3.5" fill="var(--fg)"/>';
+  var every = cfg.every || Math.ceil(cfg.points.length/7);
+  cfg.points.forEach(function(p,i){ if (i%every===0 || i===cfg.points.length-1) s += txt(X(i), h-9, p.label, {anchor:'middle'}); });
+  s += '<line x1="'+pl+'" x2="'+(w-pr)+'" y1="'+Y(0)+'" y2="'+Y(0)+'" stroke="var(--border-control)" stroke-width="1"/>';
+  return s + svgClose();
+}
+
+/* multi-line comparison (avalanche vs snowball) */
+function multiLine(cfg){
+  var w=cfg.w||740, h=cfg.h||250, pl=56, pr=68, pt=14, pb=28;
+  var iw=w-pl-pr, ih=h-pt-pb;
+  var n = Math.max.apply(null, cfg.series.map(function(s){return s.pts.length;}));
+  var max = Math.max.apply(null, cfg.series.map(function(s){return Math.max.apply(null,s.pts);}));
+  var ticks = niceTicks(max,4); max = ticks[ticks.length-1];
+  var X=function(i){ return pl + (n<2?0:iw*i/(n-1)); };
+  var Y=function(v){ return pt + ih - ih*v/max; };
+  var s = svgOpen(w,h);
+  s += gridLines(pl,w-pr,ticks.map(Y));
+  ticks.forEach(function(t){ s += txt(pl-8, Y(t)+4, axC(t), {anchor:'end'}); });
+  cfg.series.forEach(function(ser){
+    var d = ser.pts.map(function(v,i){ return (i?'L':'M')+X(i)+' '+Y(v); }).join(' ');
+    s += '<path d="'+d+'" fill="none" stroke="'+ser.color+'" stroke-width="2" '+
+         (ser.dash?'stroke-dasharray="5 4" ':'')+'stroke-linejoin="round"/>';
+    var li = ser.pts.length-1;
+    s += '<circle cx="'+X(li)+'" cy="'+Y(ser.pts[li])+'" r="3" fill="'+ser.color+'" stroke="var(--bg-surface)" stroke-width="2"/>';
+    s += txt(X(li)+7, Y(ser.pts[li])+4, ser.label, {fill:'var(--fg-secondary)', size:11});
+  });
+  var every = Math.ceil(n/7);
+  for (var i=0;i<n;i+=every) s += txt(X(i), h-9, i+'m', {anchor:'middle'});
+  s += txt(X(n-1), h-9, (n-1)+'m', {anchor:'middle'});
+  return s + svgClose();
+}
+
+/* horizontal 100% stacked bar, one row per group */
+function stackedRows(cfg){
+  // cfg:{rows:[{label, parts:[v,...], total}], names:[], w,h, barH}
+  var w=cfg.w||700, barH=cfg.barH||20, gap=14, labW=cfg.labW||136, valW=104;
+  var h = cfg.rows.length*(barH+gap)+6;
+  var iw = w-labW-valW-8;
+  var max = Math.max.apply(null, cfg.rows.map(function(r){return r.total;}));
+  var s = svgOpen(w,h);
+  cfg.rows.forEach(function(r,ri){
+    var y = ri*(barH+gap)+4;
+    s += txt(0, y+barH/2+4, r.label, {fill:'var(--fg)', size:12, weight:500});
+    var x = labW, full = iw*r.total/max;
+    r.parts.forEach(function(v,pi){
+      if (v<=0) return;
+      var pw = full*v/r.total;
+      s += '<rect x="'+x+'" y="'+y+'" width="'+Math.max(0,pw-2)+'" height="'+barH+'" rx="2" fill="'+SERIES[pi%5]+'"/>';
+      x += pw;
+    });
+    s += txt(w, y+barH/2+4, cfg.fmt?cfg.fmt(r.total):axC(r.total), {anchor:'end', fill:'var(--fg)', size:12, weight:600});
+  });
+  return s + svgClose();
+}
+
+/* sorted horizontal bars with a value label */
+function hBars(cfg){
+  var w=cfg.w||660, barH=cfg.barH||18, gap=12, labW=cfg.labW||128, valW=cfg.valW||96;
+  var h=cfg.rows.length*(barH+gap)+4, iw=w-labW-valW-8;
+  var vals = cfg.rows.map(function(r){return r.v;});
+  var max = Math.max.apply(null, vals.map(Math.abs));
+  var hasNeg = Math.min.apply(null, vals) < 0;
+  var zero = hasNeg ? labW + iw/2 : labW;
+  var scale = hasNeg ? (iw/2)/max : iw/max;
+  var s = svgOpen(w,h);
+  if (hasNeg) s += '<line x1="'+zero+'" x2="'+zero+'" y1="0" y2="'+(h-6)+'" stroke="var(--border-control)" stroke-width="1"/>';
+  cfg.rows.forEach(function(r,ri){
+    var y=ri*(barH+gap)+2, len=Math.abs(r.v)*scale;
+    var x = r.v<0 ? zero-len : zero;
+    var color = r.color || (hasNeg ? (r.v<0?'var(--loss)':'var(--gain)') : 'var(--accent)');
+    s += txt(0, y+barH/2+4, r.label, {fill:'var(--fg)', size:12, weight:500});
+    s += '<rect x="'+x+'" y="'+y+'" width="'+Math.max(1,len)+'" height="'+barH+'" rx="2" fill="'+color+'"/>';
+    s += txt(w, y+barH/2+4, r.vt, {anchor:'end', fill:'var(--fg)', size:12, weight:600});
+  });
+  return s + svgClose();
+}
+
+/* utilisation gauge: a semicircular arc with threshold ticks */
+function gauge(pctVal, opts){
+  opts = opts||{};
+  var w=220,h=128,cx=110,cy=112,r=84;
+  function pt(p){ var a=Math.PI*(1-p/100); return [cx+r*Math.cos(a), cy-r*Math.sin(a)]; }
+  function arc(p0,p1,color,width){
+    var a=pt(p0), b=pt(p1), large = (p1-p0)>50?1:0;
+    return '<path d="M'+a[0].toFixed(1)+' '+a[1].toFixed(1)+' A'+r+' '+r+' 0 '+large+' 1 '+b[0].toFixed(1)+' '+b[1].toFixed(1)+
+      '" fill="none" stroke="'+color+'" stroke-width="'+(width||10)+'" stroke-linecap="butt"/>';
+  }
+  var tone = pctVal<30?'var(--gain)':(pctVal<50?'var(--warn)':'var(--loss)');
+  var s = svgOpen(w,h);
+  s += arc(0,100,'var(--bg-subtle)',10);
+  s += arc(0, Math.max(0.4,Math.min(100,pctVal)), tone, 10);
+  [30,50].forEach(function(t){
+    var a=pt(t), b=[cx+(r+8)*Math.cos(Math.PI*(1-t/100)), cy-(r+8)*Math.sin(Math.PI*(1-t/100))];
+    s += '<line x1="'+a[0].toFixed(1)+'" y1="'+a[1].toFixed(1)+'" x2="'+b[0].toFixed(1)+'" y2="'+b[1].toFixed(1)+'" stroke="var(--border-control)" stroke-width="1"/>';
+  });
+  s += '<text x="'+cx+'" y="'+(cy-24)+'" text-anchor="middle" fill="var(--fg)" font-size="26" font-weight="600" font-family="var(--sans)" style="font-variant-numeric:tabular-nums">'+pctVal.toFixed(2)+'%</text>';
+  s += txt(cx, cy-6, opts.caption||'of limit used', {anchor:'middle'});
+  s += txt(2, h-4, '0%'); s += txt(w-2, h-4, '100%', {anchor:'end'});
+  s += txt(pt(30)[0], 12, '30', {anchor:'middle', size:10});
+  s += txt(pt(50)[0]+10, 20, '50', {anchor:'middle', size:10});
+  return s + svgClose();
+}
+
+/* cycle timeline strip */
+function cycleTimeline(c){
+  var w=700,h=70,pl=8,pr=8,y=30,iw=w-pl-pr;
+  var s = svgOpen(w,h);
+  s += '<rect x="'+pl+'" y="'+y+'" width="'+iw+'" height="10" rx="2" fill="var(--bg-subtle)"/>';
+  var spentFrac=0.27, graceEnd=0.70;
+  s += '<rect x="'+pl+'" y="'+y+'" width="'+(iw*spentFrac)+'" height="10" rx="2" fill="var(--accent)"/>';
+  s += '<rect x="'+(pl+iw*spentFrac)+'" y="'+y+'" width="'+(iw*(graceEnd-spentFrac))+'" height="10" fill="var(--bg-subtle)" stroke="var(--border-control)" stroke-width="1" stroke-dasharray="3 3"/>';
+  [['Cycle opened',0,'11 Oct'],['Today',spentFrac,'19 Oct'],['Statement',graceEnd,'10 Nov'],['Due',1,'30 Nov']].forEach(function(m,i){
+    var x = pl+iw*m[1];
+    s += '<line x1="'+x+'" x2="'+x+'" y1="'+(y-8)+'" y2="'+(y+18)+'" stroke="'+(i===1?'var(--accent)':'var(--border-control)')+'" stroke-width="'+(i===1?2:1)+'"/>';
+    s += txt(x, y-13, m[0], {anchor:i===3?'end':(i===0?'start':'middle'), fill:i===1?'var(--accent)':'var(--fg-muted)', size:11});
+    s += txt(x, y+32, m[2], {anchor:i===3?'end':(i===0?'start':'middle'), fill:'var(--fg)', size:11, weight:600});
+  });
+  return s + svgClose();
+}
+
+/* maturity ladder: bars positioned on a time axis, grouped by FY */
+function maturityLadder(items){
+  var w=760,h=30+items.length*30+26,pl=150,pr=96,iw=w-pl-pr;
+  var maxDays = Math.max.apply(null, items.map(function(i){return i.days||0;}));
+  var ticks=[0,365,730,1095,1460,1825,2190,2555];
+  ticks = ticks.filter(function(t){return t<=maxDays*1.04;});
+  var X=function(d){ return pl + iw*d/(maxDays*1.04); };
+  var s = svgOpen(w,h);
+  ticks.forEach(function(t){
+    s += '<line x1="'+X(t)+'" x2="'+X(t)+'" y1="18" y2="'+(h-24)+'" stroke="var(--grid)" stroke-width="1"/>';
+    s += txt(X(t), h-8, t===0?'today':(t/365)+'y', {anchor:'middle'});
+  });
+  items.forEach(function(it,i){
+    var y=26+i*30;
+    s += txt(0, y+13, it.name, {fill:'var(--fg)', size:12, weight:500});
+    if (it.days === null){
+      s += txt(pl, y+13, '— no stated maturity', {fill:'var(--fg-muted)', size:11.5});
+      return;
+    }
+    s += '<line x1="'+pl+'" x2="'+X(it.days)+'" y1="'+(y+8)+'" y2="'+(y+8)+'" stroke="var(--border)" stroke-width="1" stroke-dasharray="2 3"/>';
+    s += '<rect x="'+(X(it.days)-5)+'" y="'+y+'" width="10" height="16" rx="2" fill="'+(it.color||'var(--accent)')+'"/>';
+    s += txt(w, y+13, axC(it.value), {anchor:'end', fill:'var(--fg)', size:12, weight:600});
+    s += txt(X(it.days)+10, y+13, it.when, {fill:'var(--fg-muted)', size:11});
+  });
+  return s + svgClose();
+}
+
+/* month-grid payment calendar */
+function dueCalendar(year, monthIdx, firstWeekday, daysInMonth, marks, todayDay){
+  var cw=48, ch=46, w=cw*7, rows=Math.ceil((firstWeekday+daysInMonth)/7), h=22+rows*ch;
+  var s = svgOpen(w,h);
+  ['M','T','W','T','F','S','S'].forEach(function(d,i){ s += txt(i*cw+cw/2, 12, d, {anchor:'middle', size:10.5}); });
+  for (var d=1; d<=daysInMonth; d++){
+    var idx=firstWeekday+d-1, col=idx%7, row=Math.floor(idx/7);
+    var x=col*cw, y=22+row*ch;
+    var m = marks[d];
+    s += '<rect x="'+(x+1)+'" y="'+(y+1)+'" width="'+(cw-2)+'" height="'+(ch-2)+'" rx="3" fill="'+
+         (m?(m.tone==='urgent'?'var(--loss-bg)':(m.tone==='emi'?'var(--bg-subtle)':'var(--accent-soft)')):'none')+
+         '" stroke="'+(d===todayDay?'var(--accent)':'var(--border)')+'" stroke-width="'+(d===todayDay?2:1)+'"/>';
+    s += txt(x+5, y+14, String(d), {fill:d===todayDay?'var(--accent)':'var(--fg-secondary)', size:11, weight:d===todayDay?600:500});
+    if (m){
+      s += txt(x+5, y+27, m.who, {fill:m.tone==='urgent'?'var(--loss)':'var(--fg)', size:9.5, weight:600});
+      s += txt(x+5, y+38, axC(m.amt), {fill:'var(--fg-muted)', size:9.5});
+    }
+  }
+  return s + svgClose();
+}
+
+</script>
+<script>
+"use strict";
+var SCREENS = {};
+function ph(title, route, sub, chips){
+  return '<div class="ph"><div><h1>'+title+'</h1><div class="route">'+route+'</div></div>'+
+    '<span class="spacer"></span>'+(chips||'')+'</div><p class="sub">'+sub+'</p>';
+}
+function utilTone(u){ return u<30?'g':(u<50?'w':'l'); }
+function utilCls(u){ return u<30?'gain':(u<50?'':'loss'); }
+
+/* ======================= /cards ======================= */
+SCREENS.cards = function(){
+  var soonest = CARDS.slice().sort(function(a,b){return a.daysToDue-b.daysToDue;})[0];
+  var overallUtil = CARD_OWED/CARD_LIMIT*100;
+
+  var h = ph('Cards','/cards',
+    'Three credit cards, '+inr(CARD_OWED,0)+' owed against a '+inr(CARD_LIMIT,0)+' combined limit. '+
+    'Card balances are entered by hand from each statement \u2014 the app does not connect to the issuers. '+
+    'Spending still posts to the ledger through bank-statement imports.',
+    '<span class="chip '+(soonest.daysToDue<=3?'loss':'acc')+'">Due in '+soonest.daysToDue+' days · '+esc(soonest.name)+'</span>');
+
+  h += '<div class="grid kpis">'+
+    tile('Total owed', inrC(CARD_OWED), 'Across '+CARDS.length+' cards · '+inr(CARD_MIN,0)+' minimum due') +
+    tile('Utilisation', pct(overallUtil), inr(CARD_OWED,0)+' of '+inr(CARD_LIMIT,0)+' limit', {tone:utilCls(overallUtil)}) +
+    tile('Due soonest', soonest.daysToDue+'<span class="u">days</span>', esc(soonest.name)+' · '+soonest.dueOn, {tone:soonest.daysToDue<=3?'loss':''}) +
+    tile('Billed last cycle', inrC(CARD_BILLED), 'Statements dated 02–16 Oct 2026') +
+  '</div>';
+
+  /* payment-due calendar: Oct 2026 starts Thursday (idx 3, Mon=0); 31 days */
+  var marksOct = {
+    22:{who:'Axis ••2130', amt:25179, tone:'urgent'},
+    30:{who:'HDFC ••4417', amt:55916, tone:'due'}
+  };
+  var marksNov = {
+    2:{who:'Bajaj EMI', amt:5800, tone:'emi'},
+    5:{who:'ICICI ••8802', amt:32194, tone:'due'},
+    7:{who:'HDFC car EMI', amt:10440, tone:'emi'},
+    12:{who:'ICICI PL EMI', amt:13805, tone:'emi'},
+    30:{who:'HDFC ••4417', amt:0, tone:'due'}
+  };
+  delete marksNov[30];
+  var cal = '<div class="cols" style="margin:0">'+
+    '<div><h3 style="margin-bottom:8px">October 2026</h3>'+dueCalendar(2026,9,2,31,marksOct,19)+'</div>'+
+    '<div><h3 style="margin-bottom:8px">November 2026</h3>'+dueCalendar(2026,10,6,30,marksNov,0)+'</div>'+
+    '</div>'+
+    '<div class="legend"><span><i style="background:var(--loss-bg);border:1px solid var(--loss)"></i>Due within 3 days</span>'+
+    '<span><i style="background:var(--bg-selected);border:1px solid var(--accent)"></i>Card payment due</span>'+
+    '<span><i style="background:var(--bg-subtle);border:1px solid var(--border-control)"></i>Loan instalment</span></div>'+
+    '<p class="note" style="margin-top:10px">Card payments post as transfers between accounts you own. Loan instalments split into principal and interest from the schedule.</p>';
+
+  /* spend by category, last billed cycle, stacked by card */
+  var catRows = CAT_NAMES.map(function(n){
+    var p = CAT_SPEND[n];
+    return { label:n, parts:p, total:p[0]+p[1]+p[2] };
+  }).sort(function(a,b){ return b.total-a.total; });
+  var spend = stackedRows({ rows:catRows, w:640, labW:124, fmt:function(v){return inr(v,0);} }) +
+    legend(['HDFC Regalia Gold','ICICI Amazon Pay','Axis Magnus']) +
+    '<p class="note" style="margin-top:8px">Last billed cycle, '+inr(CARD_BILLED,0)+' across all three cards. Click a category in the shipped build to filter the register.</p>';
+
+  /* card list */
+  var listTable = dataTable({
+    id:'cards-list',
+    cols:[
+      {h:'Card', w:232, fmt:function(c){ return '<div style="display:flex;align-items:center;gap:9px">'+'<span class="plate">'+c.mark+'</span>'+'<span class="nm"><b>'+esc(c.name)+'</b>'+'<span>••'+c.last4+' · '+esc(c.network)+'</span></span></div>'; }},
+      {h:'Owed today', num:true, w:116, fmt:function(c){ return '<span data-v="'+c.owed+'">'+inr(c.owed,0)+'</span>'; }},
+      {h:'Billed last cycle', num:true, w:132, fmt:function(c){ return inr(c.billed,0); }},
+      {h:'Minimum due', num:true, w:116, fmt:function(c){ return inr(c.minDue,0); }},
+      {h:'Available', num:true, w:116, fmt:function(c){ return inr(c.available,0); }},
+      {h:'Utilisation', num:true, w:150, fmt:function(c){
+        return '<div style="display:flex;align-items:center;gap:8px;justify-content:flex-end"><span data-v="'+c.util+'" class="'+utilCls(c.util)+'">'+pct(c.util)+'</span>'+
+          '<span class="bar" style="width:56px"><i class="'+utilTone(c.util)+'" style="width:'+Math.min(100,c.util)+'%"></i></span></div>'; }},
+      {h:'Due', w:150, fmt:function(c){ return '<span class="chip '+(c.daysToDue<=3?'loss':'')+'">'+c.dueOn+' · '+c.daysToDue+'d</span>'; }},
+      {h:'Updated', w:106, fmt:function(c){ return '<span>'+c.updatedOn+'</span><div class="sub2">'+esc(c.source)+'</div>'; }},
+      {h:'', w:76, sortable:false, fmt:function(c){ return '<button class="btn ghost btn-xs" data-goto="cardDetail">Open<i data-i="chev-r" data-s="12"></i></button>'; }}
+    ],
+    rows: CARDS,
+    foot:[{v:'3 cards'},{v:inr(CARD_OWED,0),num:true},{v:inr(CARD_BILLED,0),num:true},{v:inr(CARD_MIN,0),num:true},
+          {v:inr(sum(CARDS,function(c){return c.available;}),0),num:true},{v:pct(overallUtil),num:true},{v:''},{v:''},{v:''}],
+    mobile:function(c){ return { l1:esc(c.name), r1:inr(c.owed,0),
+      l2:'••'+c.last4+' · due '+c.dueOn, r2:'<span class="'+utilCls(c.util)+'">'+pct(c.util)+' used</span>' }; }
+  });
+
+  var entry = '<p class="note" style="margin-bottom:12px">Four numbers per card, read straight off the statement. '+
+    'Nothing here is calculated for you except Available and Utilisation, which follow from the limit.</p>'+
+    '<div class="fgrid">'+
+    '<div><label for="ue-card">Card</label><select id="ue-card">'+
+      CARDS.map(function(c){ return '<option value="'+c.id+'">'+esc(c.name)+' \u2022\u2022'+c.last4+'</option>'; }).join('')+'</select></div>'+
+    '<div><label for="ue-billed">Billed last cycle</label><input type="number" id="ue-billed" value="48920"></div>'+
+    '<div><label for="ue-owed">Owed today</label><input type="number" id="ue-owed" value="55916"></div>'+
+    '<div><label for="ue-min">Minimum due</label><input type="number" id="ue-min" value="2446"></div>'+
+    '<div><label for="ue-due">Due date</label><input type="date" id="ue-due" value="2026-10-30"></div>'+
+    '<div><label for="ue-stmt">Statement date</label><input type="date" id="ue-stmt" value="2026-10-10"></div>'+
+    '</div>'+
+    '<div class="callout acc" style="margin-top:14px" id="entry-echo"></div>'+
+    '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="btn btn-primary" type="button">Save statement figures</button>'+
+    '<button class="btn" type="button"><i data-i="upload" data-s="14"></i>Import a statement PDF</button>'+
+    '<button class="btn" type="button"><i data-i="copy" data-s="14"></i>Paste from CSV</button></div>'+
+    '<p class="note" style="margin-top:10px">The PDF and CSV routes run the same four-layer duplicate check as a bank import: '+
+    'same file, same row, same reference, looks-the-same-within-a-week.</p>';
+  h += '<div class="stack">'+
+    panel('Update from your statements', entry, {icon:'edit', right:'<span class="note">Last updated 19 Oct 2026</span>'}) +
+    panel('Payment-due calendar', cal, {chip:NEW, icon:'calendar'}) +
+    panel('Spend by category, per card', spend, {chip:NEW, icon:'chart-line'}) +
+    panel('Cards', listTable, {flush:true, right:'<span class="note">Sort any column. Totals pinned below.</span>'}) +
+    panel('Add a card', '<div class="fgrid">'+
+      '<div><label for="nc-name">Card name</label><input type="text" id="nc-name" placeholder="HDFC Regalia Gold"></div>'+
+      '<div><label for="nc-bank">Bank or provider</label><input type="text" id="nc-bank" placeholder="HDFC Bank"></div>'+
+      '<div><label for="nc-l4">Last four digits</label><input type="text" id="nc-l4" placeholder="4417" maxlength="4"></div>'+
+      '<div><label for="nc-limit">Credit limit</label><input type="number" id="nc-limit" placeholder="450000"></div>'+
+      '<div><label for="nc-stmt">Statement day</label><input type="number" id="nc-stmt" min="1" max="31" placeholder="10"></div>'+
+      '<div><label for="nc-grace">Grace days</label><input type="number" id="nc-grace" placeholder="20"></div>'+
+      '<div><label for="nc-min">Minimum due rule</label><select id="nc-min"><option>5% of billed amount</option><option>5% or ₹200, whichever is higher</option><option>Full billed amount</option></select></div>'+
+      '</div><div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="button">Add card</button>'+
+      '<span class="note" style="align-self:center">A card opens as a liability account at zero. Nothing is owed until a transaction posts.</span></div>') +
+  '</div>';
+  return h;
+};
+
+var REWARD_PANEL = '<dl class="kv">'+CARDS.map(function(c){
+  return '<dt>'+esc(c.name)+'</dt><dd>'+(c.rewards.balance===null
+    ? unavail('Not tracked \u2014 this card pays cashback to the statement, so there is no points balance to record')
+    : nf0.format(c.rewards.balance)+' <span class="muted">pts</span>')+'</dd>';
+}).join('')+'</dl>'+
+'<p class="note" style="margin-top:12px">Points are recorded, not valued. A rupee figure would need a conversion rate '+
+'that varies by redemption route and changes without notice \u2014 so the app tracks the balance you type in and stops there. '+
+'No points figure reaches net worth.</p>'+
+'<div style="margin-top:12px"><button class="btn btn-sm" type="button"><i data-i="edit" data-s="12"></i>Update points balance</button></div>';
+
+/* ================ /cards/[accountId] ================ */
+SCREENS.cardDetail = function(){
+  var c = CARDS[0];
+  var h = ph('HDFC Regalia Gold','/cards/acc_card_hdfc',
+    'Statement day 10, '+c.graceDays+' grace days. Every figure on this screen is one you type in from the statement \u2014 the app does not fetch card data.',
+    '<span class="chip acc">Due '+c.dueOn+' · '+c.daysToDue+' days</span><span class="chip">••'+c.last4+'</span>');
+
+  h += '<div class="grid kpis">'+
+    tile('Owed today', inrC(c.owed), "Including this cycle's spending") +
+    tile('Billed last cycle', inrC(c.billed), 'Statement 10 Oct 2026') +
+    tile('Minimum due', inrC(c.minDue), '5% of billed · due '+c.dueOn) +
+    tile('Available', inrC(c.available), 'Limit '+inr(c.limit,0)) +
+  '</div>';
+
+  var cycleTotal = sum(CYCLE_TXNS,function(t){return t.amt;});
+  var cycleTbl = dataTable({
+    id:'cycle-txns',
+    cols:[
+      {h:'Date', w:106, fmt:function(t){ return t.d; }},
+      {h:'Narration', w:200, fmt:function(t){ return '<span class="nm">'+esc(t.narr)+'</span>'; }},
+      {h:'Category', w:130, fmt:function(t){ return '<span class="chip">'+esc(t.cat)+'</span>'; }},
+      {h:'Amount', num:true, w:110, fmt:function(t){ return '<span data-v="'+t.amt+'">'+inr(t.amt)+'</span>'; }}
+    ],
+    rows: CYCLE_TXNS,
+    foot:[{v:'6 transactions', span:3},{v:inr(cycleTotal),num:true}],
+    mobile:function(t){ return { l1:esc(t.narr), r1:inr(t.amt), l2:t.d+' · '+esc(t.cat), r2:'' }; }
+  });
+
+  var stmtTbl = dataTable({
+    id:'stmts',
+    cols:[
+      {h:'Statement', w:106, fmt:function(s){ return s.on; }},
+      {h:'Billed', num:true, w:104, fmt:function(s){ return '<span data-v="'+s.billed+'">'+inr(s.billed,0)+'</span>'; }},
+      {h:'Due', w:106, fmt:function(s){ return s.due; }},
+      {h:'Paid on', w:106, fmt:function(s){ return s.paid ? s.paid : unavail('Not yet paid — due '+s.due); }},
+      {h:'Status', w:110, fmt:function(s){ return '<span class="chip '+(s.paid?'gain':'warn')+'">'+s.status+'</span>'; }},
+      {h:'Interest charged', num:true, w:130, fmt:function(s){ return s.paid ? '<span data-v="0">'+inr(0,0)+'</span>' : unavail('Not determined until the due date passes'); }}
+    ],
+    rows: STATEMENTS,
+    mobile:function(s){ return { l1:s.on, r1:inr(s.billed,0), l2:'Due '+s.due, r2:s.status }; }
+  });
+
+  h += '<div class="cols c2">'+
+    panel('This cycle', cycleTimeline(c) +
+      '<dl class="kv" style="margin-top:12px"><dt>Spent this cycle</dt><dd>'+inr(c.cycleSpend)+'</dd>'+
+      '<dt>Carried from the statement</dt><dd>'+inr(c.billed,0)+'</dd>'+
+      '<dt>Next statement</dt><dd>10 Nov 2026</dd>'+
+      '<dt>Interest-free if paid in full by '+c.dueOn+'</dt><dd class="gain">'+inr(0,0)+'</dd></dl>') +
+    panel('Utilisation', gauge(c.util, {caption:'of '+inr(c.limit,0)}) +
+      '<p class="note" style="margin-top:4px">Under 30% is the threshold most Indian bureaus treat as healthy. '+
+      'ICICI Amazon Pay ••8802 sits at <span class="loss">53.66%</span> and is the one dragging the file.</p>') +
+  '</div>';
+
+  h += '<div class="cols c2"><div class="stack">'+
+    panel('Transactions this cycle', cycleTbl, {flush:true, chip:NEW}) +
+    panel('Statement history', stmtTbl, {flush:true, chip:NEW}) +
+    '</div><div class="stack">'+
+    panel('Reward points', REWARD_PANEL, {icon:'gem'}) +
+    '</div></div>';
+
+  h += panel('Pay this card',
+    '<div class="fgrid">'+
+    '<div><label for="pay-from">Pay from</label><select id="pay-from">'+
+      '<option>HDFC Savings ••1234 — '+inr(612400,0)+'</option>'+
+      '<option>ICICI Savings ••5567 — '+inr(248900,0)+'</option>'+
+      '<option>Cash in hand — '+inr(12000,0)+'</option></select></div>'+
+    '<div><label for="pay-amt">Amount</label><input type="number" id="pay-amt" value="55916"></div>'+
+    '<div><label for="pay-date">Date</label><input type="date" id="pay-date" value="2026-10-30"></div>'+
+    '<div><label for="pay-preset">Preset</label><select id="pay-preset">'+
+      '<option value="55916">Owed today — '+inr(55916,0)+'</option>'+
+      '<option value="48920">Billed last cycle — '+inr(48920,0)+'</option>'+
+      '<option value="2446">Minimum due — '+inr(2446,0)+'</option>'+
+      '<option value="0">Custom</option></select></div>'+
+    '</div>'+
+    '<div class="callout acc" style="margin-top:14px"><b>Recorded as a transfer between two accounts you own — never as an expense.</b><br>'+
+    '<span class="mono">DEBIT&nbsp; Liabilities:Cards:HDFC Regalia Gold&nbsp; <span id="pay-echo">'+inr(55916,0)+'</span></span><br>'+
+    '<span class="mono">CREDIT Assets:Bank:HDFC Savings&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span id="pay-echo2">'+inr(55916,0)+'</span></span><br>'+
+    'Net worth is unchanged by this entry. The spending already reduced it when each transaction posted.</div>'+
+    '<div style="margin-top:14px"><button class="btn" type="button">Record payment</button></div>');
+  return h;
+};
+</script>
+<script>
+"use strict";
+
+/* ======================= /loans ======================= */
+SCREENS.loans = function(){
+  var h = ph('Loans','/loans',
+    'Three instalment loans, '+inr(LOAN_OWED,0)+' outstanding. The owed figure is summed from journal postings; the schedule figures come from the terms you recorded.',
+    '<span class="chip">Debt-free Oct 2029 at current instalments</span>');
+
+  h += '<div class="grid kpis">'+
+    tile('Owed', inrC(LOAN_OWED), 'From the journal · 3 loans') +
+    tile('Monthly commitment', inrC(LOAN_EMI), 'Instalments, every month') +
+    tile('Interest over the terms', inrC(LOAN_INT), inr(LOAN_INT_LEFT,0)+' of it still ahead of you') +
+    tile('Last instalment', 'Oct <span class="u">2029</span>', 'Personal loan ••3306 · 36 more payments', {chip:NEW}) +
+    tile('Blended rate', pct(BLENDED_LOANS), 'Weighted by outstanding balance', {chip:NEW}) +
+  '</div>';
+
+  var amort = portfolioAmort();
+  var pts = amort.filter(function(r,i){ return i % 2 === 0 || i === amort.length-1; }).map(function(r){
+    return { label: monthLabel(r.m), a:r.principal, b:r.interest, line:r.balance };
+  });
+  var chart = stackedAreaWithLine({ points:pts, w:780, h:270, every:6 }) +
+    legend(['Principal paid, per month','Interest paid, per month','Combined outstanding'],
+           ['var(--c3)','var(--c2)','var(--fg)']) +
+    '<p class="note" style="margin-top:8px">One rupee axis for all three series, so the balance line and the payment split stay comparable. '+
+    'Every bar is two months wide; the final month of each loan is short because the last instalment only clears what is left.</p>';
+
+  var tbl = dataTable({
+    id:'loans-list',
+    cols:[
+      {h:'Loan', w:200, fmt:function(l){ return '<div class="nm">'+esc(l.name)+'</div><div class="sub2">'+esc(l.lender)+' ••'+l.last4+' · opened '+l.openedOn+'</div>'; }},
+      {h:'Rate', num:true, w:116, fmt:function(l){
+        return l.rateKind==='flat'
+          ? '<span data-v="'+l.rate+'">'+pct(l.rate)+'</span><div class="sub2">'+pct(l.quotedFlat)+' flat, quoted</div>'
+          : '<span data-v="'+l.rate+'">'+pct(l.rate)+'</span><div class="sub2">reducing</div>'; }},
+      {h:'Instalment', num:true, w:110, fmt:function(l){ return '<span data-v="'+l.emi+'">'+inr(l.emi,0)+'</span>'; }},
+      {h:'Owed', num:true, w:116, fmt:function(l){ return '<span data-v="'+l.owed+'">'+inr(l.owed,0)+'</span>'; }},
+      {h:'Paid', num:true, w:92, fmt:function(l){ return '<span data-v="'+l.paid+'">'+l.paid+' of '+l.months+'</span>'; }},
+      {h:'Interest over the term', num:true, w:154, fmt:function(l){ return '<span data-v="'+l.totalInterest+'">'+inr(l.totalInterest,0)+'</span><div class="sub2">'+inr(l.remainingInterest,0)+' remaining</div>'; }},
+      {h:'Payoff date', num:true, w:112, fmt:function(l){ return '<span data-v="'+l.payoffOff+'">'+l.payoffOn+'</span><div class="sub2">'+l.left+' left</div>'; }},
+      {h:'', w:76, sortable:false, fmt:function(l){ return '<button class="btn ghost btn-xs" data-goto="loanDetail">Open<i data-i="chev-r" data-s="12"></i></button>'; }}
+    ],
+    rows: LOANS,
+    foot:[{v:'3 loans'},{v:pct(BLENDED_LOANS),num:true},{v:inr(LOAN_EMI,0),num:true},{v:inr(LOAN_OWED,0),num:true},
+          {v:''},{v:inr(LOAN_INT,0),num:true},{v:'Oct 2029',num:true},{v:''}],
+    mobile:function(l){ return { l1:esc(l.name), r1:inr(l.owed,0),
+      l2:esc(l.lender)+' ••'+l.last4+' · '+pct(l.rate), r2:inr(l.emi,0)+'/mo · '+l.payoffOn }; }
+  });
+
+  h += '<div class="stack">'+
+    panel('Outstanding across all loans', chart, {chip:NEW, icon:'chart-line', right:'<span class="note">Principal vs interest, and the balance line</span>'}) +
+    panel('Loans', tbl, {flush:true, icon:'loan'}) +
+    '<div class="cols c2">'+
+      panel('Clearing them faster',
+        '<p class="note" style="margin-bottom:12px">Paying the same '+inr(LOAN_EMI,0)+' but directing every spare rupee at one loan at a time changes the finish date. '+
+        'The payoff comparison runs avalanche against snowball on these three balances.</p>'+
+        '<button class="btn" type="button" data-goto="payoff">Compare payoff strategies</button>') +
+      panel('Add a loan',
+        '<div class="fgrid">'+
+        '<div><label for="nl-name">Loan name</label><input type="text" id="nl-name" placeholder="Personal loan"></div>'+
+        '<div><label for="nl-lender">Lender</label><input type="text" id="nl-lender" placeholder="ICICI Bank"></div>'+
+        '<div><label for="nl-principal">Principal</label><input type="number" id="nl-principal" placeholder="600000"></div>'+
+        '<div><label for="nl-rate">Rate</label><input type="number" id="nl-rate" step="0.01" placeholder="13.50"></div>'+
+        '<div><label for="nl-ratekind">Rate basis</label><select id="nl-ratekind"><option>Reducing balance</option><option>Flat</option></select></div>'+
+        '<div><label for="nl-term">Term, months</label><input type="number" id="nl-term" placeholder="60"></div>'+
+        '<div><label for="nl-into">Disbursed into</label><select id="nl-into"><option>HDFC Savings ••1234</option><option>Not disbursed into a tracked account</option></select></div>'+
+        '</div><div style="margin-top:14px"><button class="btn" type="button">Add loan</button></div>'+
+        '<p class="note" style="margin-top:10px">A loan disbursed into an account you track raises the debt and the balance together, so net worth is unchanged.</p>') +
+    '</div>'+
+  '</div>';
+  return h;
+};
+
+/* ================ /loans/[accountId] ================ */
+SCREENS.loanDetail = function(){
+  var l = LOANS[0]; // Personal loan, ICICI ••3306
+  var cd = LOANS[2];
+  var h = ph('Personal loan','/loans/acc_loan_pl',
+    esc(l.lender)+' ••'+l.last4+', opened '+l.openedOn+'. '+l.paid+' of '+l.months+' instalments paid. '+
+    'Principal and interest are split by the schedule on every payment, never typed in.',
+    '<span class="chip acc">'+pct(l.rate)+' quoted</span><span class="chip">Reducing balance</span>');
+
+  h += '<div class="grid kpis">'+
+    tile('Instalment', inrC(l.emi), 'Every month, '+l.left+' remaining') +
+    tile('Owed', inrC(l.owed), 'From the journal · as at '+TODAY) +
+    tile('Interest over the term', inrC(l.totalInterest), inr(l.remainingInterest,0)+' still ahead') +
+    tile('Effective rate', pct(l.effective), pct(l.rate)+' nominal, compounded monthly') +
+    tile('Payoff date', 'Oct <span class="u">2029</span>', 'At the current instalment', {chip:NEW}) +
+  '</div>';
+
+  /* interest paid last twelve months: months 13-24 of the original schedule */
+  var orig = buildSchedule(l.principal, l.rate, l.emi, 0);
+  var last12 = orig.slice(12,24);
+  var last12Int = sum(last12,function(r){return r.interest;});
+  var last12Pri = sum(last12,function(r){return r.principal;});
+
+  h += '<div class="cols c2">'+
+    panel('What a flat rate actually costs',
+      '<p class="note" style="margin-bottom:12px">This loan quotes a reducing-balance rate, so the headline is honest. '+
+      'Your Bajaj Finance consumer-durable loan does not — and the gap is the point of this card.</p>'+
+      dataTable({ id:'flat-cmp',
+        cols:[{h:'Loan', w:170, fmt:function(r){return '<span class="nm">'+r.n+'</span>';}},
+              {h:'Quoted', num:true, w:92, fmt:function(r){return r.q;}},
+              {h:'What you actually pay', num:true, w:150, fmt:function(r){return '<span class="'+(r.gap?'loss':'')+'">'+r.e+'</span>';}},
+              {h:'Gap', num:true, w:80, fmt:function(r){return r.gap?('<span class="loss">+'+r.gap+' pp</span>'):inr(0,0).replace('₹0','0.00 pp');}}],
+        rows:[
+          {n:'Personal loan ••3306', q:pct(13.50)+' reducing', e:pct(14.37)+' effective', gap:'0.87'},
+          {n:'Car loan ••7741', q:pct(9.25)+' reducing', e:pct(9.65)+' effective', gap:'0.40'},
+          {n:'Consumer durable ••9915', q:pct(8.00)+' flat', e:pct(14.64)+' reducing', gap:'6.64'}
+        ],
+        mobile:function(r){ return { l1:r.n, r1:r.e, l2:'Quoted '+r.q, r2:r.gap?'+'+r.gap+' pp':'' }; }
+      }, true) +
+      '<p class="note" style="margin-top:10px">A flat rate charges interest on the original principal for the whole term, even after you have repaid most of it. '+
+      'Eight percent flat over 24 months is 14.64% in reducing-balance terms — nearly double.</p>', {flush:false}) +
+    panel('Interest paid, last twelve months',
+      '<dl class="kv"><dt>Interest</dt><dd class="loss">'+inr(last12Int,0)+'</dd>'+
+      '<dt>Principal</dt><dd>'+inr(last12Pri,0)+'</dd>'+
+      '<dt>Total paid</dt><dd>'+inr(last12Int+last12Pri,0)+'</dd>'+
+      '<dt>Share that was interest</dt><dd>'+pct(last12Int/(last12Int+last12Pri)*100)+'</dd></dl>'+
+      hBars({ w:320, labW:60, valW:88, barH:14,
+        rows:last12.map(function(r,i){ return { label: monthLabel(i-21), v:r.interest, vt:inr(r.interest,0), color:'var(--c2)' }; })
+      })) +
+  '</div>';
+
+  /* prepayment what-if */
+  h += '<div class="cols c2">'+
+    panel('Prepayment what-if',
+      '<label for="prepay">Lump sum today</label>'+
+      '<input type="range" id="prepay" min="0" max="200000" step="5000" value="50000">'+
+      '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--fg-muted);margin-top:2px">'+
+      '<span>'+inr(0,0)+'</span><span>'+inr(200000,0)+'</span></div>'+
+      '<div id="prepay-out" style="margin-top:14px"></div>'+
+      '<p class="note" style="margin-top:12px">Instalment held constant, so a prepayment shortens the term rather than lowering the payment. '+
+      'The schema records this against <span class="mono">loan_prepayments</span>; ICICI charges nothing to prefore-close a floating-rate personal loan, '+
+      'but confirm your own sanction letter.</p>', {chip:NEW}) +
+    panel('Record a payment',
+      '<div class="fgrid">'+
+      '<div><label for="lp-date">Date</label><input type="date" id="lp-date" value="2026-11-12"></div>'+
+      '<div><label for="lp-from">Paid from</label><select id="lp-from"><option>HDFC Savings ••1234</option><option>ICICI Savings ••5567</option></select></div>'+
+      '<div><label for="lp-amt">Amount</label><input type="number" id="lp-amt" value="13805"></div>'+
+      '</div>'+
+      '<div class="callout acc" style="margin-top:14px"><b>The split comes from the schedule, never typed.</b><br>'+
+      '<span class="mono">DEBIT&nbsp; Liabilities:Loans:Personal loan&nbsp;&nbsp;&nbsp; '+inr(9229,0)+'&nbsp; principal</span><br>'+
+      '<span class="mono">DEBIT&nbsp; Expenses:Interest:Personal loan&nbsp; '+inr(4576,0)+'&nbsp; interest</span><br>'+
+      '<span class="mono">CREDIT Assets:Bank:HDFC Savings&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; '+inr(13805,0)+'</span><br>'+
+      'Instalment 25 of 60. Only the interest leg reduces net worth.</div>'+
+      '<div style="margin-top:14px"><button class="btn" type="button">Record instalment</button></div>') +
+  '</div>';
+
+  h += panel('Amortisation schedule',
+    '<div id="sched-out"></div>', { flush:false, chip:NEW,
+      right:'<button class="btn ghost" type="button" id="jump-today" style="padding:3px 10px;font-size:12px">Jump to today</button>' });
+  return h;
+};
+
+/* ================ /loans/payoff ================ */
+SCREENS.payoff = function(){
+  var h = ph('Payoff strategies','/loans/payoff',
+    'Avalanche pays the highest rate first; snowball pays the smallest balance first. Both assume every instalment is still met and the surplus goes to one loan at a time.',
+    '<span class="chip">3 loans · '+inr(LOAN_OWED,0)+' outstanding</span>');
+
+  h += '<div class="panel" style="margin-bottom:12px"><div class="panel-bd">'+
+    '<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-end">'+
+    '<div style="flex:1 1 320px;min-width:0"><label for="budget">Monthly budget '+NEW+'</label>'+
+    '<input type="range" id="budget" min="24000" max="80000" step="500" value="42000">'+
+    '<div style="display:flex;justify-content:space-between;font-size:11.5px;color:var(--fg-muted);margin-top:2px">'+
+    '<span>'+inr(24000,0)+'</span><span>Instalments total '+inr(LOAN_EMI,0)+'</span><span>'+inr(80000,0)+'</span></div></div>'+
+    '<div style="flex:0 0 160px"><label for="budget-num">Exact amount</label><input type="number" id="budget-num" value="42000" step="500"></div>'+
+    '</div></div></div>';
+
+  h += '<div id="payoff-out"></div>';
+
+  h += panel('What this comparison leaves out',
+    '<p class="note">The shipped <span class="mono">lending.comparePayoff</span> use case runs over loans only, and that is the right scope. '+
+    'The three credit cards hold '+inr(CARD_OWED,0)+', but they are a manually-maintained record of what each statement says \u2014 '+
+    'the app stores no interest rate for them and should not invent one to rank them against a loan. '+
+    'A card balance cleared inside the grace period costs nothing, so it has no place in an interest-minimising order.</p>'+
+    '<p class="note" style="margin-top:8px">If a card is ever carried past its due date, the honest fix is to record the finance rate '+
+    'on that card first, and only then let it enter this comparison.</p>',
+    {chip:'<span class="bdg out-warn">Scope</span>', icon:'info'});
+  return h;
+};
+</script>
+<script>
+"use strict";
+
+/* ======================= /deposits ======================= */
+SCREENS.deposits = function(){
+  var next = DEPOSITS[0];
+  var h = ph('Deposits','/deposits',
+    'FD, RD, PPF and EPF are valued from their terms and accrue day by day. NPS holds units priced against a NAV, so it is shown separately — it is priced, not accrued.',
+    '<span class="chip acc">Next maturity '+next.maturesOn+' · '+next.days+' days</span>');
+
+  h += '<div class="grid kpis">'+
+    tile('Value today', inrC(DEP_VALUE + NPS.value), '5 accrued deposits + 1 NAV scheme') +
+    tile('In the journal', inrC(DEP_JOURNAL + NPS.journal), 'What the postings actually say') +
+    tile('Accrued, unbooked', inrC(DEP_ACCRUED), 'Earned but not yet posted', {tone:'gain'}) +
+    tile('Interest earned to date', inrC(DEP_INT), 'Since each deposit opened', {chip:NEW, tone:'gain'}) +
+    tile('Next maturity', next.days+'<span class="u">days</span>', esc(next.name)+' · '+inr(next.valueToday,0)) +
+  '</div>';
+
+  var ladderItems = DEPOSITS.map(function(d,i){
+    return { name:esc(d.name)+(d.last4?' ••'+d.last4:''), days:d.days, value:d.valueToday,
+             when:d.maturesOn ? d.maturesOn+' · '+d.fy : '', color:SERIES[i%5] };
+  });
+  var ladder = maturityLadder(ladderItems) +
+    '<p class="note" style="margin-top:8px">One time axis in years from today. EPF has no stated maturity, so the row carries an em-dash rather than a date it does not have. '+
+    'NPS is excluded: it is not a deposit with a maturity value.</p>'+
+    '<dl class="kv" style="margin-top:12px;max-width:420px">'+
+    '<dt>Maturing in FY 2026-27</dt><dd>'+inr(268420,0)+'</dd>'+
+    '<dt>Maturing in FY 2027-28</dt><dd>'+inr(254100,0)+'</dd>'+
+    '<dt>Maturing in FY 2032-33</dt><dd>'+inr(684500,0)+'</dd>'+
+    '<dt>No stated maturity</dt><dd>'+inr(842310,0)+'</dd></dl>';
+
+  var yieldChart = hBars({ w:560, labW:148, valW:150, barH:16,
+    rows: DEPOSITS.map(function(d){
+      return { label: d.name, v:d.effective, color:'var(--c1)',
+               vt: pct(d.effective)+'  (quoted '+pct(d.quoted)+')' };
+    })
+  }) + '<p class="note" style="margin-top:8px">Effective annual yield after compounding, against the rate the bank quotes. '+
+  'Quarterly compounding adds about 19 basis points on an FD; PPF and EPF compound annually, so quoted and effective are the same number.</p>';
+
+  var intChart = hBars({ w:560, labW:148, valW:116, barH:16,
+    rows: DEPOSITS.slice().sort(function(a,b){return b.interestToDate-a.interestToDate;}).map(function(d){
+      return { label:d.name, v:d.interestToDate, vt:inr(d.interestToDate,0), color:'var(--gain)' };
+    })
+  }) + '<p class="note" style="margin-top:8px">Total interest credited since each deposit opened, '+inr(DEP_INT,0)+' in all. '+
+  'EPF carries the most because it has run longest and compounds at the highest rate.</p>';
+
+  var tbl = dataTable({
+    id:'deposits',
+    cols:[
+      {h:'Deposit', w:180, fmt:function(d){ return '<div class="nm">'+esc(d.name)+(d.last4?' ••'+d.last4:'')+'</div><div class="sub2">'+pct(d.quoted)+' quoted · '+d.comp.toLowerCase()+'</div>'; }},
+      {h:'Kind', w:72, fmt:function(d){ return '<span class="chip">'+d.kind+'</span>'; }},
+      {h:'Matures', w:120, fmt:function(d){ return d.maturesOn ? '<span data-v="'+d.days+'">'+d.maturesOn+'</span><div class="sub2">'+d.fy+'</div>' : unavail('EPF has no stated maturity — it is withdrawn on exit or retirement'); }},
+      {h:'Value today', num:true, w:116, fmt:function(d){ return '<span data-v="'+d.valueToday+'">'+inr(d.valueToday,0)+'</span>'; }},
+      {h:'In the journal', num:true, w:120, fmt:function(d){ return inr(d.journal,0); }},
+      {h:'Accrued', num:true, w:100, fmt:function(d){ return '<span class="gain" data-v="'+d.accrued+'">'+inr(d.accrued,0)+'</span>'; }},
+      {h:'Interest to date', num:true, w:124, fmt:function(d){ return '<span class="gain" data-v="'+d.interestToDate+'">'+inr(d.interestToDate,0)+'</span>'; }},
+      {h:'Effective yield', num:true, w:118, fmt:function(d){ return '<span data-v="'+d.effective+'">'+pct(d.effective)+'</span>'; }},
+      {h:'', w:84, sortable:false, fmt:function(){ return '<button class="btn ghost btn-xs">Manage<i data-i="chev-r" data-s="12"></i></button>'; }}
+    ],
+    rows: DEPOSITS,
+    foot:[{v:'5 deposits'},{v:''},{v:''},{v:inr(DEP_VALUE,0),num:true},{v:inr(DEP_JOURNAL,0),num:true},
+          {v:inr(DEP_ACCRUED,0),num:true},{v:inr(DEP_INT,0),num:true},{v:''},{v:''}],
+    mobile:function(d){ return { l1:esc(d.name), r1:inr(d.valueToday,0),
+      l2:d.kind+' · '+(d.maturesOn||'no maturity'), r2:'<span class="gain">'+inr(d.accrued,0)+' accrued</span>' }; }
+  });
+
+  var nav = '<div class="callout plain" style="margin-bottom:14px"><b>Priced, not accrued.</b> '+
+    'An NPS holding is units against a NAV. There is no accrual to book and no maturity value to ladder — '+
+    'its worth changes when the NAV changes, the same as any fund.</div>'+
+    '<dl class="kv"><dt>Scheme</dt><dd>'+esc(NPS.scheme)+'</dd>'+
+    '<dt>Units</dt><dd>'+NPS.units.toFixed(3)+'</dd>'+
+    '<dt>NAV</dt><dd>₹'+NPS.nav.toFixed(4)+' <span class="muted">as of '+NPS.asOfNav+'</span></dd>'+
+    '<dt>Value today</dt><dd>'+inr(NPS.value,0)+'</dd>'+
+    '<dt>Accrued</dt><dd>'+unavail('Not applicable — a NAV-priced scheme does not accrue interest')+'</dd>'+
+    '<dt>Matures</dt><dd>'+unavail('Withdrawable at 60; no fixed maturity value')+'</dd></dl>';
+
+  var remind = '<div class="stack">'+
+    '<div class="callout"><b>ICICI FD ••9087 matures in 146 days.</b> '+inr(268420,0)+' lands 14 Mar 2027, inside FY 2026-27. '+
+    'Auto-renew is <b>off</b>, so it will sit in the linked savings account earning 3% unless you act.</div>'+
+    '<div class="callout plain"><b>HDFC FD ••5521 renews automatically</b> on 02 Aug 2027 at the prevailing rate, which may be below the '+pct(7.25)+' you booked.</div>'+
+    '<div class="callout plain"><b>PPF contribution window.</b> '+inr(42000,0)+' of this FY’s '+inr(150000,0)+' limit is unused. '+
+    'Depositing before 5 Apr earns a full month of interest; after the 5th it earns none for that month.</div>'+
+    '</div>';
+
+  h += '<div class="stack">'+
+    panel('Maturity ladder', ladder, {icon:'calendar'}) +
+    '<div class="cols">'+
+      panel('Effective yield against quoted', yieldChart, {chip:NEW}) +
+      panel('Interest earned to date', intChart, {chip:NEW}) +
+    '</div>'+
+    panel('Deposits', tbl, {flush:true, icon:'fd'}) +
+    '<div class="cols c2">'+
+      panel('Reinvestment reminders', remind, {chip:NEW}) +
+      panel('NPS Tier I — Protean ••7760', nav) +
+    '</div>'+
+    panel('Add a deposit',
+      '<div class="fgrid">'+
+      '<div><label for="nd-name">Deposit name</label><input type="text" id="nd-name" placeholder="ICICI FD"></div>'+
+      '<div><label for="nd-kind">Kind</label><select id="nd-kind"><option>FD</option><option>RD</option><option>PPF</option><option>EPF</option><option>NPS</option></select></div>'+
+      '<div><label for="nd-amt">Principal</label><input type="number" id="nd-amt" placeholder="250000"></div>'+
+      '<div><label for="nd-rate">Rate</label><input type="number" id="nd-rate" step="0.01" placeholder="7.10"></div>'+
+      '<div><label for="nd-comp">Compounding</label><select id="nd-comp"><option>Quarterly</option><option>Annual</option><option>Monthly</option><option>On maturity</option></select></div>'+
+      '<div><label for="nd-open">Opened on</label><input type="date" id="nd-open" value="2026-03-14"></div>'+
+      '<div><label for="nd-mat">Matures on</label><input type="date" id="nd-mat" value="2027-03-14"></div>'+
+      '</div><div style="margin-top:14px"><button class="btn" type="button">Add deposit</button></div>') +
+  '</div>';
+  return h;
+};
+
+/* ======================= /assets ======================= */
+SCREENS.assets = function(){
+  var stale = ASSETS.filter(function(a){ return a.staleDays > 365; });
+  var h = ph('Assets','/assets',
+    'Things you own whose value is asserted rather than quoted: property, vehicles, physical metal, collectibles. '+
+    'Every revaluation posts its delta to an equity adjustment account, so the books stay balanced and the change is auditable.',
+    '<span class="chip warn">Phase 4 · not built today</span>');
+
+  h += '<div class="grid kpis">'+
+    tile('Total value', inrC(AST_TOTAL), ASSETS.length+' assets, asserted values', {chip:NEW}) +
+    tile('Share of assets', pct(AST_TOTAL/HEADLINE.assets*100), 'Of '+inrC(HEADLINE.assets).replace(/<[^>]*>/g,'')+' total assets', {chip:NEW}) +
+    tile('Last revalued', '19<span class="u">days ago</span>', 'Physical gold, 30 Sep 2026', {chip:NEW}) +
+    tile('Needs revaluing', '1', 'Numismatic coin set · 642 days', {chip:NEW, tone:'loss'}) +
+    tile('Unrealised against cost', inrS(-213000,0), 'Mostly the car · '+pctS(-20.6), {chip:NEW, tone:'loss'}) +
+  '</div>';
+
+  if (stale.length) h += '<div class="callout loss" style="margin-bottom:12px"><b>One asset has not been revalued in over a year.</b> '+
+    'The numismatic coin set was last valued 15 Jan 2025 at '+inr(48000,0)+'. '+
+    'It still counts toward net worth at that figure, which is a claim the app cannot stand behind. '+
+    '<button class=\"btn btn-sm\" type=\"button\" style=\"margin-left:6px\">Revalue it</button></div>';
+
+  var tbl = dataTable({
+    id:'assets',
+    cols:[
+      {h:'Asset', w:250, fmt:function(a){ return '<div class="nm">'+esc(a.name)+'</div><div class="sub2">'+esc(a.basis)+'</div>'; }},
+      {h:'Class', w:120, fmt:function(a){ return '<span class="chip">'+esc(a.cls)+'</span>'; }},
+      {h:'Valued on', w:124, fmt:function(a){
+        return '<span data-v="'+a.staleDays+'">'+a.revaluedOn+'</span><div class="sub2 '+(a.staleDays>365?'loss':'')+'">'+a.staleDays+' days ago</div>'; }},
+      {h:'Value', num:true, w:116, fmt:function(a){ return '<span data-v="'+a.value+'">'+inr(a.value,0)+'</span>'; }},
+      {h:'Share of assets', num:true, w:150, fmt:function(a){
+        var s = a.value/AST_TOTAL*100;
+        return '<div style="display:flex;align-items:center;gap:8px;justify-content:flex-end"><span data-v="'+s+'">'+pct(s)+'</span>'+
+          '<span class="bar" style="width:56px"><i style="width:'+s+'%"></i></span></div>'; }},
+      {h:'Documents', num:true, w:100, fmt:function(a){ return a.docs.length ? a.docs.length+' attached' : unavail('Nothing attached yet'); }},
+      {h:'', w:96, sortable:false, fmt:function(){ return '<button class="btn ghost btn-xs"><i data-i="refresh" data-s="12"></i>Revalue</button>'; }}
+    ],
+    rows: ASSETS,
+    foot:[{v:'3 assets'},{v:''},{v:''},{v:inr(AST_TOTAL,0),num:true},{v:pct(100),num:true},{v:'2 files',num:true},{v:''}],
+    mobile:function(a){ return { l1:esc(a.name), r1:inr(a.value,0),
+      l2:a.cls+' · valued '+a.revaluedOn, r2:pct(a.value/AST_TOTAL*100)+' of assets' }; }
+  });
+
+  /* valuation history, all three on one indexed axis would mislead; use one chart per asset, shared scale */
+  var histPanels = ASSETS.map(function(a){
+    var maxV = Math.max.apply(null, a.history.map(function(p){return p[1];}));
+    return '<div style="min-width:0"><h3 style="margin-bottom:8px">'+esc(a.name.split('—')[0].trim())+'</h3>'+
+      hBars({ w:300, labW:68, valW:96, barH:14,
+        rows:a.history.map(function(p){ return { label:p[0], v:p[1], vt:inr(p[1],0), color:'var(--c3)' }; }) }) +
+      '<p class="note">'+(a.history[a.history.length-1][1] < a.history[0][1]
+        ? '<span class="loss">'+pctS((a.history[a.history.length-1][1]/a.history[0][1]-1)*100)+'</span> since first valued'
+        : '<span class="gain">'+pctS((a.history[a.history.length-1][1]/a.history[0][1]-1)*100)+'</span> since first valued')+'</p></div>';
+  }).join('');
+
+  var reval = '<div class="fgrid">'+
+    '<div><label for="rv-asset">Asset</label><select id="rv-asset">'+
+      ASSETS.map(function(a){ return '<option value="'+a.value+'">'+esc(a.name)+'</option>'; }).join('')+'</select></div>'+
+    '<div><label for="rv-new">New value</label><input type="number" id="rv-new" value="610000"></div>'+
+    '<div><label for="rv-date">Valued on</label><input type="date" id="rv-date" value="2026-10-19"></div>'+
+    '<div><label for="rv-basis">Basis</label><select id="rv-basis"><option>Dealer trade-in quote</option><option>IBJA rate × weight</option><option>Auction catalogue estimate</option><option>Registered valuer report</option><option>Own estimate</option></select></div>'+
+    '</div>'+
+    '<div class="callout acc" style="margin-top:14px" id="reval-echo"></div>'+
+    '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap"><button class="btn" type="button">Post revaluation</button>'+
+    '<button class="btn ghost" type="button">Attach a document</button></div>'+
+    '<p class="note" style="margin-top:10px">A revaluation is not income and not an expense. The delta goes to '+
+    '<span class="mono">Equity:Valuation adjustments</span>, which keeps B02 — assets minus liabilities equals equity plus income minus expenses — holding.</p>';
+
+  var docs = '<p class="note" style="margin-bottom:10px">Three files attached across two assets. Nothing is uploaded in this mockup.</p>'+
+    dataTable({ id:'docs',
+      cols:[{h:'File', w:200, fmt:function(d){ return '<span class="nm mono">'+esc(d.f)+'</span>'; }},
+            {h:'Asset', w:200, fmt:function(d){ return esc(d.a); }},
+            {h:'Added', w:110, fmt:function(d){ return d.on; }},
+            {h:'Size', num:true, w:80, fmt:function(d){ return d.sz; }}],
+      rows:[{f:'RC book.pdf', a:'Hyundai i20 Asta (2022)', on:'12 Nov 2022', sz:'1.4 MB'},
+            {f:'Insurance 2026-27.pdf', a:'Hyundai i20 Asta (2022)', on:'04 Apr 2026', sz:'820 KB'},
+            {f:'Tanishq invoice 2021.pdf', a:'Physical gold — 22K jewellery', on:'18 Oct 2021', sz:'312 KB'}],
+      mobile:function(d){ return { l1:d.f, r1:d.sz, l2:d.a, r2:d.on }; }
+    });
+
+  h += '<div class="stack">'+
+    panel('Assets', tbl, {flush:true, chip:NEW, icon:'property'}) +
+    panel('Valuation history', '<div class="cols">'+histPanels+'</div>'+
+      '<p class="note" style="margin-top:4px">Each asset on its own scale, because a car depreciating and gold appreciating share no useful axis. '+
+      'Bars, not lines: these are a handful of discrete valuations, not a continuous series.</p>', {chip:NEW}) +
+    '<div class="cols c2">'+
+      panel('Revalue an asset', reval, {chip:NEW}) +
+      panel('Documents', docs, {chip:NEW}) +
+    '</div>'+
+  '</div>';
+  return h;
+};
+</script>
+<script>
+"use strict";
+
+/* ======================= /platforms ======================= */
+SCREENS.platforms = function(){
+  var inUse = PLATFORMS.filter(function(p){ return p.state==='in_use'; });
+  var idle = PLATFORMS.filter(function(p){ return p.state==='idle'; });
+  var archived = PLATFORMS.filter(function(p){ return p.state==='archived'; });
+  var priced = inUse.filter(function(p){ return p.value !== null; });
+  var totalHoldings = sum(inUse,function(p){return p.holdings;});
+
+  /* concentration */
+  var weights = priced.map(function(p){ return { name:p.name, w:p.value/PLAT_PRICED*100 }; });
+  var hhi = sum(weights,function(x){ return x.w*x.w; });
+  var effective = 10000/hhi;
+  var band = hhi<1500?'diversified':(hhi<2500?'moderate':'concentrated');
+
+  var h = ph('Platforms','/platforms',
+    'Holdings grouped by where they are actually held. Seven platforms carry a priced value; two hold something the app cannot price today, and their value is withheld rather than guessed.',
+    '<span class="chip acc">'+inUse.length+' in use</span><span class="chip warn">2 withheld</span>');
+
+  h += '<div class="grid kpis">'+
+    tile('Platforms in use', String(inUse.length), idle.length+' registered holding nothing · 1 archived') +
+    tile('Holdings', String(totalHoldings), 'Across every platform') +
+    tile('Market value', inrC(PLAT_PRICED), 'Priced holdings only · 2 withheld') +
+    tile('Largest exposure', pct(weights[0].w), esc(priced[0].name)+' · '+inr(priced[0].value,0), {chip:NEW}) +
+    tile('Effective platforms', effective.toFixed(1), 'HHI '+Math.round(hhi)+' · '+band, {chip:NEW}) +
+  '</div>';
+
+  h += '<div class="callout" style="margin-bottom:12px"><b>The portfolio total is withheld until every holding has a price and the required FX conversion.</b><br>'+
+    'INDmoney holds AAPL with '+inr(214560,0)+' invested but no USD/INR rate stored for '+TODAY+'. '+
+    'Angel One holds ITC with '+inr(82400,0)+' invested and no stored quote. '+
+    'Both show an em-dash, not a zero — '+inr(PLAT_PRICED,0)+' is what can honestly be claimed.</div>';
+
+  var conc = hBars({ w:560, labW:116, valW:150, barH:16,
+    rows: weights.map(function(x){
+      return { label:x.name, v:x.w, vt:pct(x.w)+'  ·  '+axC(priced.filter(function(p){return p.name===x.name;})[0].value) };
+    })
+  }) + '<p class="note" style="margin-top:8px">Share of priced market value. HHI is '+Math.round(hhi)+', which puts the book in the '+band+' band '+
+  '(under 1,500 diversified, over 2,500 concentrated — a borrowed heuristic, not a rule). '+
+  'Read it as: your '+priced.length+' platforms behave like '+effective.toFixed(1)+'.</p>';
+
+  var ret = hBars({ w:560, labW:116, valW:96, barH:16,
+    rows: priced.slice().sort(function(a,b){return b.xirr-a.xirr;}).map(function(p){
+      return { label:p.name, v:p.xirr, vt:pctS(p.xirr) };
+    })
+  }) + '<p class="note" style="margin-top:8px">XIRR since inception, per platform, money-weighted. '+
+  'Upstox is negative because it holds only Tata Motors, which is both down and priced from a stale quote.</p>';
+
+  var chg = hBars({ w:560, labW:116, valW:110, barH:16,
+    rows: inUse.filter(function(p){return p.charges>0;}).sort(function(a,b){return b.charges-a.charges;}).map(function(p){
+      return { label:p.name, v:p.charges, vt:inr(p.charges,0), color:'var(--c2)' };
+    })
+  }) + '<p class="note" style="margin-top:8px">Charges booked in FY 2026-27: brokerage, STT, exchange and SEBI fees, stamp duty, GST and DP charges. '+
+  'SafeGold dominates because 3% GST on a digital-gold purchase is a charge, not a cost of the metal. '+
+  'Kuvera shows '+inr(0,0)+' — a direct-plan platform that genuinely charged nothing, which is a claim, not an absence.</p>';
+
+  var tbl = dataTable({
+    id:'platforms',
+    cols:[
+      {h:'Platform', w:190, fmt:function(p){
+        return '<div style="display:flex;align-items:center;gap:8px"><span class="chip mono" style="width:30px;justify-content:center;padding:1px 0">'+p.mark+'</span>'+
+          '<span><span class="nm">'+esc(p.name)+'</span><div class="sub2">'+esc(p.kind)+'</div></span></div>'; }},
+      {h:'Holdings', num:true, w:88, fmt:function(p){ return '<span data-v="'+p.holdings+'">'+p.holdings+'</span>'; }},
+      {h:'Invested', num:true, w:116, fmt:function(p){ return '<span data-v="'+p.invested+'">'+inr(p.invested,0)+'</span>'; }},
+      {h:'Market value', num:true, w:124, fmt:function(p){
+        return p.value===null ? '<span data-v="">'+unavail(p.withheld)+'</span>' : '<span data-v="'+p.value+'">'+inr(p.value,0)+'</span>'; }},
+      {h:'Unrealised', num:true, w:124, fmt:function(p){
+        if (p.value===null) return unavail(p.withheld);
+        var g = p.value-p.invested;
+        return '<span data-v="'+g+'" class="'+cls(g)+'">'+inrS(g,0)+'</span>'; }},
+      {h:'Return (XIRR)', num:true, w:116, fmt:function(p){
+        return p.xirr===null ? unavail(p.withheld) : '<span data-v="'+p.xirr+'" class="'+cls(p.xirr)+'">'+pctS(p.xirr)+'</span>'; }},
+      {h:'Charges, this FY', num:true, w:132, fmt:function(p){ return '<span data-v="'+p.charges+'">'+inr(p.charges,0)+'</span>'; }},
+      {h:'Weight', num:true, w:132, fmt:function(p){
+        if (p.value===null) return unavail('Cannot weight an unpriced holding');
+        var s=p.value/PLAT_PRICED*100;
+        return '<div style="display:flex;align-items:center;gap:8px;justify-content:flex-end"><span data-v="'+s+'">'+pct(s)+'</span>'+
+          '<span class="bar" style="width:46px"><i style="width:'+s+'%"></i></span></div>'; }},
+      {h:'State', w:120, sortable:false, fmt:function(p){
+        if (p.withheld) return '<span class="chip warn">Withheld</span>';
+        if (p.stale) return '<span class="chip warn">Stale price</span>';
+        return '<span class="chip gain">Priced</span>'; }}
+    ],
+    rows: inUse,
+    foot:[{v:inUse.length+' in use'},{v:String(totalHoldings),num:true},{v:inr(sum(inUse,function(p){return p.invested;}),0),num:true},
+          {v:inr(PLAT_PRICED,0),num:true},{v:'',num:true},{v:'',num:true},
+          {v:inr(sum(inUse,function(p){return p.charges;}),0),num:true},{v:pct(100),num:true},{v:''}],
+    mobile:function(p){ return { l1:esc(p.name), r1:p.value===null?unavail(p.withheld):inr(p.value,0),
+      l2:p.kind+' · '+p.holdings+' holding'+(p.holdings===1?'':'s'),
+      r2:p.xirr===null?'':'<span class="'+cls(p.xirr)+'">'+pctS(p.xirr)+'</span>' }; }
+  });
+
+  var states = '<div class="cols">'+
+    '<div><h3 style="margin-bottom:8px">Registered, holding nothing</h3>'+
+    idle.map(function(p){ return '<div class="mrow" style="padding-left:0;padding-right:0"><div class="l1">'+esc(p.name)+'</div>'+
+      '<div class="r1 muted">'+inr(0,0)+'</div><div class="l2">'+esc(p.kind)+'</div><div class="r2">'+esc(p.since)+'</div></div>'; }).join('')+
+    '<p class="note" style="margin-top:10px">A zero here is a claim: these accounts exist and hold nothing. '+
+    'They stay listed so a holding added later has somewhere to go.</p></div>'+
+    '<div><h3 style="margin-bottom:8px">Archived</h3>'+
+    archived.map(function(p){ return '<div class="mrow" style="padding-left:0;padding-right:0"><div class="l1">'+esc(p.name)+'</div>'+
+      '<div class="r1 muted">'+inr(0,0)+'</div><div class="l2">'+esc(p.kind)+'</div><div class="r2">'+esc(p.since)+'</div></div>'; }).join('')+
+    '<p class="note" style="margin-top:10px">Archived platforms keep their historical trades and realised gains but cannot receive new holdings. '+
+    'Unarchiving restores it to the list above.</p></div></div>';
+
+  h += '<div class="stack">'+
+    panel('Platforms', tbl, {flush:true, icon:'building'}) +
+    '<div class="cols">'+
+      panel('Concentration and exposure', conc, {chip:NEW, icon:'signal'}) +
+      panel('Return by platform', ret, {chip:NEW, icon:'trend'}) +
+    '</div>'+
+    '<div class="cols c2">'+
+      panel('Charges by platform', chg, {chip:NEW}) +
+      panel('Other states', states) +
+    '</div>'+
+    panel('Add a platform',
+      '<div class="fgrid">'+
+      '<div><label for="np-name">Platform</label><select id="np-name">'+
+        ['HDFC Bank','ICICI Bank','Zerodha','Groww','INDmoney','Upstox','Angel One','ICICI Direct','HDFC Sky','SafeGold','Augmont','MMTC-PAMP','Kuvera','Other…']
+        .map(function(n){ return '<option>'+n+'</option>'; }).join('')+'</select></div>'+
+      '<div><label for="np-kind">Kind</label><select id="np-kind"><option>Broker</option><option>MF platform</option><option>Digital metal</option><option>Bank</option></select></div>'+
+      '<div><label for="np-id">Client or folio id</label><input type="text" id="np-id" placeholder="ZD1234"></div>'+
+      '<div><label for="np-settle">Settlement account</label><select id="np-settle"><option>HDFC Savings ••1234</option><option>ICICI Savings ••5567</option></select></div>'+
+      '</div><div style="margin-top:14px"><button class="btn" type="button">Add platform</button></div>'+
+      '<p class="note" style="margin-top:10px">Platform, not broker — the same word covers a bank, a fund house and a metal vault.</p>') +
+  '</div>';
+  return h;
+};
+</script>
+<script>
+"use strict";
+/* ============ the record of a route that was retired ============ */
+SCREENS.decision = function(){
+  var dta = DEBT_TOTAL / HEADLINE.assets * 100;
+  var monthlyFloor = LOAN_EMI + CARD_MIN;
+
+  var h = ph('Debt overview', '/liabilities — retired',
+    'The five figures that cross cards and loans, and the record of why the route that used to hold them no longer exists.',
+    '<span class="bdg out-loss">Route retired 21 Oct 2026</span>');
+
+  h += '<div class="grid kpis">'+
+    tile('Total outstanding', inrC(DEBT_TOTAL), inr(CARD_OWED,0)+' cards + '+inr(LOAN_OWED,0)+' loans') +
+    tile('Blended rate', pct(BLENDED_LOANS), 'Loans only · weighted by balance',
+      {info:'Cards carry no stored rate, so they cannot enter a weighted average.'}) +
+    tile('Monthly outgo', inrC(monthlyFloor), inr(LOAN_EMI,0)+' instalments + '+inr(CARD_MIN,0)+' card minimums') +
+    tile('Debt to assets', pct(dta), inr(DEBT_TOTAL,0)+' against '+inr(HEADLINE.assets,0), {tone:'gain'}) +
+    tile('Debt-free', 'Oct <span class="u">2029</span>', 'At current instalments, nothing extra') +
+  '</div>';
+
+  h += '<div class="callout acc" style="margin-bottom:12px">'+
+    '<b>These five figures now live in two places, and this screen is not one of them.</b><br>'+
+    'They sit in the <b>Debt group header in the sidebar</b> (visible on every screen in the group — look left) '+
+    'and in the <b>/dashboard</b> tile row beside Net worth, Assets and Liquid, where the Liabilities tile already exists. '+
+    'Both are places you pass through anyway. A dedicated route was a place you had to decide to visit.</div>';
+
+  var decision =
+    '<div class="why" style="margin-bottom:14px"><b>Decision.</b> Retire <span class="mono">/liabilities</span>. '+
+    'Keep <span class="mono">/cards</span> and <span class="mono">/loans</span> as they are. '+
+    'Move the aggregate figures to the Debt nav group header and the dashboard tile row.</div>'+
+    dataTable({ id:'decision-log', sortable:false,
+      cols:[
+        {h:'', w:28, sortable:false, fmt:function(r,i){ return '<span class="muted">'+(i+1)+'</span>'; }},
+        {h:'Reason', w:220, sortable:false, fmt:function(r){ return '<span class="nm"><b>'+esc(r.t)+'</b></span>'; }},
+        {h:'What it rests on', sortable:false, fmt:function(r){ return '<span style="white-space:normal;display:block;max-width:62ch;line-height:18px">'+r.d+'</span>'; }}
+      ],
+      rows:[
+        { t:'Cards are a record, not an analysis',
+          d:'The user keeps card balances by hand: <i>"for credit cards i will update the values manually."</i> '+
+            'A hub earns its place by computing something across its children. Across a typed-in balance and an amortisation schedule '+
+            'there is nothing to compute that the two screens do not already show.' },
+        { t:'Five numbers are not a screen',
+          d:'Total owed, blended rate, monthly outgo, debt-to-asset, debt-free date. That is a header strip or a tile row. '+
+            'A route whose entire content is five derived figures is a route visited once.' },
+        { t:'The cross-product roadmap died with the card APR',
+          d:'The one feature only a hub could carry was ranking cards against loans by rate. '+
+            'That needed a card APR the app does not store and will not invent, so the roadmap was removed rather than faked.' },
+        { t:'Nothing is lost that was ever there',
+          d:'<span class="mono">/liabilities</span> shipped as an empty Phase-3 placeholder: four null stats and an empty table. '+
+            'Retiring it removes a promise, not a feature.' },
+        { t:'The nav gets shorter',
+          d:'The Wealth group is twelve flat items with duplicate icons. Dropping one and nesting Cards and Loans under a Debt group '+
+            'with a figures header is a net reduction in both items and ambiguity.' }
+      ],
+      mobile:function(r){ return { l1:esc(r.t), r1:'', l2:'', r2:'' }; }
+    });
+
+  var kept =
+    '<dl class="kv">'+
+    '<dt>Total outstanding</dt><dd>Debt group header + <span class="mono">/dashboard</span></dd>'+
+    '<dt>Blended rate</dt><dd>Debt group header</dd>'+
+    '<dt>Monthly outgo</dt><dd>Debt group header</dd>'+
+    '<dt>Debt to assets</dt><dd><span class="mono">/dashboard</span>, beside Liquid</dd>'+
+    '<dt>Debt-free date</dt><dd><span class="mono">/loans</span> KPI row</dd>'+
+    '<dt>Per-card mechanics</dt><dd><span class="mono">/cards</span></dd>'+
+    '<dt>Per-loan schedules</dt><dd><span class="mono">/loans</span></dd>'+
+    '<dt>Payoff ordering</dt><dd><span class="mono">/loans/payoff</span>, loans only</dd>'+
+    '</dl>'+
+    '<p class="note" style="margin-top:12px">The route itself should 301 to <span class="mono">/loans</span> rather than 404, '+
+    'because it is linked from the existing sidebar and anyone who bookmarked it wants debt, not an error.</p>';
+
+  var reversal =
+    '<p class="note" style="margin-bottom:12px">One fact would overturn this, and it is checkable rather than a matter of taste.</p>'+
+    '<div class="callout plain"><b>If a credit card is ever carried past its due date</b>, it starts accruing at a rate far above '+
+    'every loan here, and no screen in the app would rank it against them. At that point the order of work is: '+
+    'record a finance rate on the card, let it into <span class="mono">/loans/payoff</span>, and only then reconsider a hub. '+
+    'Until a card revolves, the hub has nothing to say.</div>'+
+    '<p class="note" style="margin-top:12px">Three design agents reached <i>retire</i> independently. '+
+    'This one got there last and for a different reason — the others argued redundancy, '+
+    'which is an argument about the route; the manual-entry decision is an argument about the data, and it is the stronger one.</p>';
+
+  h += '<div class="stack">'+
+    panel('Why the route was retired', decision, {flush:false, icon:'info'}) +
+    '<div class="cols c2">'+
+      panel('Where each figure went', kept, {icon:'list'}) +
+      panel('What would reverse this', reversal, {icon:'warn'}) +
+    '</div>'+
+  '</div>';
+  return h;
+};
+</script>
+<script>
+"use strict";
+var NAV = {
+  debt: [
+    { id:'cards',       label:'Cards',       route:'/cards',             icon:'card' },
+    { id:'cardDetail',  label:'One card',    route:'/cards/[id]',        icon:'card', sub:true },
+    { id:'loans',       label:'Loans',       route:'/loans',             icon:'loan' },
+    { id:'loanDetail',  label:'One loan',    route:'/loans/[id]',        icon:'loan', sub:true },
+    { id:'payoff',      label:'Payoff',      route:'/loans/payoff',      icon:'trend', sub:true },
+    { id:'decision',    label:'Debt overview', route:'/liabilities',     icon:'info' }
+  ],
+  assets: [
+    { id:'deposits',  label:'Deposits',  route:'/deposits',  icon:'fd' },
+    { id:'assets',    label:'Assets',    route:'/assets',    icon:'property' },
+    { id:'platforms', label:'Platforms', route:'/platforms', icon:'building' }
+  ]
+};
+var ALL_NAV = NAV.debt.concat(NAV.assets);
+var view = document.getElementById('view');
+var current = 'cards';
+
+function buildNav(){
+  ['debt','assets'].forEach(function(g){
+    document.getElementById('rail-'+g).innerHTML = NAV[g].map(function(n){
+      return '<button class="nvi'+(n.sub?' sub':'')+'" type="button" data-screen="'+n.id+'">'+
+        (n.sub?'':'<span class="ic"><i data-i="'+n.icon+'" data-s="15"></i></span>')+
+        '<span class="t">'+n.label+'</span><span class="rt">'+n.route+'</span></button>';
+    }).join('');
+  });
+  document.getElementById('grp-debt-figs').innerHTML =
+    '<dl>'+
+    '<dt>Outstanding</dt><dd>'+inr(DEBT_TOTAL,0)+'</dd>'+
+    '<dt>Blended rate</dt><dd>'+pct(BLENDED_LOANS)+'</dd>'+
+    '<dt>Monthly outgo</dt><dd>'+inr(LOAN_EMI+CARD_MIN,0)+'</dd>'+
+    '<dt>Debt to assets</dt><dd>'+pct(DEBT_TOTAL/HEADLINE.assets*100)+'</dd>'+
+    '<dt>Debt-free</dt><dd>Oct 2029</dd>'+
+    '</dl>'+
+    '<div class="cap">The figures that used to need their own route. Blended rate covers loans only.</div>';
+  document.getElementById('mobnav').innerHTML = ALL_NAV.map(function(n){
+    return '<button type="button" data-screen="'+n.id+'"><i data-i="'+n.icon+'" data-s="13"></i>'+n.label+'</button>';
+  }).join('');
+  paintIcons(document.querySelector('.rail'));
+  paintIcons(document.getElementById('mobnav'));
+  paintIcons(document.querySelector('.rail-foot'));
+}
+function go(id){
+  if (!SCREENS[id]) return;
+  current = id;
+  view.innerHTML = SCREENS[id]();
+  document.querySelectorAll('[data-screen]').forEach(function(b){
+    b.setAttribute('aria-current', b.dataset.screen === id ? 'true' : 'false');
+  });
+  wireSort(view);
+  paintIcons(view);
+  wireScreen(id);
+  try { location.hash = id; } catch(e){}
+  window.scrollTo(0,0);
+}
+document.addEventListener('click', function(e){
+  var n = e.target.closest('[data-screen]');
+  if (n){ go(n.dataset.screen); return; }
+  var g = e.target.closest('[data-goto]');
+  if (g){ go(g.dataset.goto); return; }
+  var t = e.target.closest('[data-theme]');
+  if (t){
+    var v = t.dataset.theme;
+    if (v === 'system') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', v);
+    t.parentNode.querySelectorAll('button').forEach(function(b){ b.setAttribute('aria-pressed', b===t ? 'true':'false'); });
+    try { localStorage.setItem('sm-theme', v); } catch(err){}
+    return;
+  }
+  var d = e.target.closest('[data-density]');
+  if (d){
+    document.body.setAttribute('data-density', d.dataset.density);
+    d.parentNode.querySelectorAll('button').forEach(function(b){ b.setAttribute('aria-pressed', b===d ? 'true':'false'); });
+    try { localStorage.setItem('sm-density', d.dataset.density); } catch(err){}
+  }
+});
+
+/* ---------------- per-screen interactivity ---------------- */
+function wireScreen(id){
+  if (id === 'cardDetail') wireCardDetail();
+  if (id === 'loanDetail') wireLoanDetail();
+  if (id === 'payoff') wirePayoff();
+  if (id === 'assets') wireAssets();
+}
+
+/* --- revolve projection + payment echo --- */
+function wireCardDetail(){
+  var c = CARDS[0];
+  var slider = document.getElementById('rev-pay');
+  var out = document.getElementById('revolve-out');
+  function render(){
+    var pay = +slider.value;
+    var bal = c.owed, months = 0, interest = 0, rows = [];
+    while (bal > 0.5 && months < 240){
+      months++;
+      var i = bal * c.financeMonthly/100;
+      var gst = i * 0.18;
+      interest += i + gst;
+      bal = bal + i + gst - Math.min(pay, bal + i + gst);
+      rows.push(bal);
+      if (pay <= i + gst) { months = null; break; }
+    }
+    var inFull = pay >= c.owed;
+    out.innerHTML =
+      '<dl class="kv"><dt>Monthly payment</dt><dd>'+inr(pay,0)+'</dd>'+
+      '<dt>Cleared in</dt><dd>'+(inFull ? '<span class="gain">this payment</span>'
+        : (months === null ? '<span class="loss">never — the payment is below the monthly charge</span>' : months+' months'))+'</dd>'+
+      '<dt>Interest and GST paid</dt><dd class="'+(interest>0?'loss':'gain')+'">'+(inFull ? inr(0,0) : inr(Math.round(interest),0))+'</dd>'+
+      '<dt>Total cost of '+inr(c.owed,0)+'</dt><dd>'+inr(Math.round(c.owed + (inFull?0:interest)),0)+'</dd></dl>'+
+      (inFull ? '<div class="callout" style="margin-top:12px;border-color:var(--gain);background:var(--gain-bg)">'+
+        '<b>Paid in full by '+c.dueOn+'. Interest is '+inr(0,0)+'.</b> That zero is a claim, not an absence — the grace period genuinely costs nothing.</div>'
+        : '<div class="callout" style="margin-top:12px"><b>Carrying a balance also ends the grace period on new spending.</b> '+
+          'Every purchase from the next swipe accrues from its transaction date, not from the next statement.</div>');
+  }
+  slider.addEventListener('input', render);
+  render();
+
+  var amt = document.getElementById('pay-amt'), preset = document.getElementById('pay-preset');
+  function echo(){
+    var v = +amt.value || 0;
+    document.getElementById('pay-echo').textContent = inr(v,0);
+    document.getElementById('pay-echo2').textContent = inr(v,0);
+  }
+  amt.addEventListener('input', echo);
+  preset.addEventListener('change', function(){ if (+preset.value) { amt.value = preset.value; echo(); } });
+}
+
+/* --- prepayment slider + amortisation schedule --- */
+function wireLoanDetail(){
+  var l = LOANS[0];
+  var base = buildSchedule(l.owed, l.rate, l.emi, 0);
+  var baseT = scheduleTotals(base);
+  var slider = document.getElementById('prepay');
+  var out = document.getElementById('prepay-out');
+  var sched = document.getElementById('sched-out');
+
+  function render(){
+    var lump = +slider.value;
+    var alt = buildSchedule(l.owed, l.rate, l.emi, lump);
+    var altT = scheduleTotals(alt);
+    var saved = baseT.interest - altT.interest;
+    var mSaved = baseT.months - altT.months;
+    out.innerHTML =
+      '<div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">'+
+      '<div class="tile" style="padding:12px"><div class="lab">Interest saved</div>'+
+        '<div class="val gain" style="font-size:20px;line-height:26px">'+(lump?inr(Math.round(saved),0):inr(0,0))+'</div>'+
+        '<div class="delta">of '+inr(Math.round(baseT.interest),0)+' remaining</div></div>'+
+      '<div class="tile" style="padding:12px"><div class="lab">Months saved</div>'+
+        '<div class="val gain" style="font-size:20px;line-height:26px">'+mSaved+'</div>'+
+        '<div class="delta">'+baseT.months+' → '+altT.months+' instalments</div></div></div>'+
+      '<dl class="kv" style="margin-top:12px"><dt>Lump sum today</dt><dd>'+inr(lump,0)+'</dd>'+
+      '<dt>Balance after prepayment</dt><dd>'+inr(Math.max(0,l.owed-lump),0)+'</dd>'+
+      '<dt>New payoff date</dt><dd>'+monthLabel(altT.months-1)+'</dd>'+
+      '<dt>Every rupee prepaid saves</dt><dd>'+(lump ? '₹'+(saved/lump).toFixed(2) : '—')+'</dd></dl>';
+    renderSchedule(alt, lump);
+  }
+
+  function renderSchedule(rows, lump){
+    var cum = 0;
+    var data = rows.map(function(r,i){
+      cum += r.interest;
+      return { m:i+1, when:monthLabel(i), fy:fyOf(i), payment:r.payment, principal:r.principal,
+               interest:r.interest, cum:cum, balance:r.balance, __today:i===0 };
+    });
+    sched.innerHTML =
+      (lump ? '<div class="callout acc" style="margin-bottom:12px"><b>'+inr(lump,0)+' prepaid today.</b> '+
+        'The schedule below is the one that results — '+rows.length+' instalments instead of '+baseT.months+
+        '. The instalment stays at '+inr(l.emi,0)+'; the term shortens.</div>' : '') +
+      stackedAreaWithLine({
+        points: data.filter(function(r,i){ return i%2===0 || i===data.length-1; })
+                    .map(function(r){ return { label:r.when, a:r.principal, b:r.interest, line:r.balance }; }),
+        w:760, h:250, every:4
+      }) +
+      legend(['Principal, per instalment','Interest, per instalment','Outstanding balance'],
+             ['var(--c3)','var(--c2)','var(--fg)']) +
+      '<div style="margin-top:14px">'+
+      dataTable({
+        id:'sched-table', tall:true,
+        cols:[
+          {h:'#', w:44, fmt:function(r){ return '<span class="muted" data-v="'+r.m+'">'+r.m+'</span>'; }},
+          {h:'Due', w:84, fmt:function(r){ return r.when; }},
+          {h:'FY', w:84, fmt:function(r){ return '<span class="sub2">'+r.fy+'</span>'; }},
+          {h:'Instalment', num:true, w:110, fmt:function(r){ return '<span data-v="'+r.payment+'">'+inr(r.payment)+'</span>'; }},
+          {h:'Principal', num:true, w:110, fmt:function(r){ return '<span data-v="'+r.principal+'">'+inr(r.principal)+'</span>'; }},
+          {h:'Interest', num:true, w:110, fmt:function(r){ return '<span class="loss" data-v="'+r.interest+'">'+inr(r.interest)+'</span>'; }},
+          {h:'Interest to date', num:true, w:130, fmt:function(r){ return '<span data-v="'+r.cum+'">'+inr(r.cum,0)+'</span>'; }},
+          {h:'Balance', num:true, w:120, fmt:function(r){ return '<span data-v="'+r.balance+'">'+inr(r.balance,0)+'</span>'; }}
+        ],
+        rows: data,
+        foot:[{v:rows.length+' instalments', span:3},
+              {v:inr(sum(data,function(r){return r.payment;}),0),num:true},
+              {v:inr(sum(data,function(r){return r.principal;}),0),num:true},
+              {v:inr(sum(data,function(r){return r.interest;}),0),num:true},
+              {v:'',num:true},{v:inr(0,0),num:true}],
+        mobile:function(r){ return { l1:'#'+r.m+' · '+r.when, r1:inr(r.payment),
+          l2:'Principal '+inr(r.principal,0)+' · interest '+inr(r.interest,0), r2:inr(r.balance,0)+' left' }; }
+      })+'</div>'+
+      '<p class="note" style="margin-top:10px">Sticky header, sticky totals, and the next instalment highlighted. '+
+      'Financial-year column so a year’s interest can be read off directly for a home-loan deduction claim.</p>';
+    wireSort(sched);
+    paintIcons(sched);
+  }
+
+  slider.addEventListener('input', render);
+  render();
+  document.getElementById('jump-today').addEventListener('click', function(){
+    var row = sched.querySelector('tr.today');
+    if (row) row.scrollIntoView({ block:'center' });
+  });
+}
+
+/* --- payoff: budget slider, avalanche vs snowball --- */
+function wirePayoff(){
+  var slider = document.getElementById('budget');
+  var numIn = document.getElementById('budget-num');
+  var out = document.getElementById('payoff-out');
+
+  function render(budget){
+    var av = payoffSim(PAYOFF_DEBTS, budget, BY_RATE);
+    var sn = payoffSim(PAYOFF_DEBTS, budget, BY_BALANCE);
+
+    if (av.fails){
+      out.innerHTML = '<div class="callout loss"><b>That budget will not clear the debts.</b><br>'+
+        'The three instalments total '+inr(av.minSum,0)+' a month. A budget of '+inr(budget,0)+' is '+
+        '<span class="loss">'+inr(av.short,0)+' short</span>, so at least one loan would fall into arrears before any strategy could apply. '+
+        'Raise the budget to '+inr(av.minSum,0)+' to see a comparison.</div>'+
+        '<div class="panel" style="margin-top:12px"><div class="panel-bd">'+
+        '<h3 style="margin-bottom:10px">What each loan needs</h3>'+
+        '<dl class="kv" style="max-width:460px">'+PAYOFF_DEBTS.map(function(d){
+          return '<dt>'+esc(d.name)+'</dt><dd>'+inr(d.min,0)+'</dd>'; }).join('')+
+        '<dt style="color:var(--fg);font-weight:600">Minimum viable budget</dt><dd style="font-weight:600">'+inr(av.minSum,0)+'</dd></dl></div></div>';
+      return;
+    }
+
+    var saves = sn.interest - av.interest;
+    var sooner = sn.months - av.months;
+    var surplus = budget - av.minSum;
+
+    var cmp = multiLine({
+      w:720, h:250,
+      series:[
+        { label:'Avalanche', color:'var(--c3)', pts: av.hist.map(function(p){return p.total;}) },
+        { label:'Snowball',  color:'var(--c2)', dash:true, pts: sn.hist.map(function(p){return p.total;}) }
+      ]
+    });
+
+    var orderRows = function(sim, strategyName){
+      return sim.order.map(function(o,i){
+        var d = PAYOFF_DEBTS.filter(function(x){return x.name===o.name;})[0];
+        return { pos:i+1, name:o.name, rate:d.rate, bal:d.bal, month:o.month, when:monthLabel(o.month-1) };
+      });
+    };
+    var avOrder = orderRows(av), snOrder = orderRows(sn);
+
+    out.innerHTML =
+      '<div class="grid kpis">'+
+        tile('Avalanche interest', inrC(Math.round(av.interest)), 'Highest rate first · '+av.months+' months') +
+        tile('Snowball interest', inrC(Math.round(sn.interest)), 'Smallest balance first · '+sn.months+' months') +
+        tile('Avalanche saves', inrS(Math.round(saves),0), 'Against snowball, same budget', {tone:saves>0?'gain':'flat'}) +
+        tile('And finishes', sooner+'<span class="u">months sooner</span>', sooner===0?'Both clear in the same month':'At '+inr(budget,0)+' a month') +
+        tile('Surplus over instalments', inrC(surplus), inr(av.minSum,0)+' is the floor') +
+      '</div>' +
+      '<div class="cols c2">'+
+        panel('Outstanding over time', cmp +
+          legend(['Avalanche — highest rate first','Snowball — smallest balance first'],['var(--c3)','var(--c2)']) +
+          '<p class="note" style="margin-top:8px">Total debt across all three loans, month by month, at '+inr(budget,0)+' a month. '+
+          'Snowball drops in visible steps as small balances vanish; avalanche is flatter early and then overtakes. '+
+          (saves>0 ? 'Avalanche wins by '+inr(Math.round(saves),0)+' here.'
+                   : 'At this budget the two orderings coincide, so neither wins.')+'</p>', {chip:NEW}) +
+        panel('Strategy comparison',
+          '<dl class="kv"><dt>Budget</dt><dd>'+inr(budget,0)+'</dd>'+
+          '<dt>Instalments due</dt><dd>'+inr(av.minSum,0)+'</dd>'+
+          '<dt>Surplus directed at one loan</dt><dd>'+inr(surplus,0)+'</dd>'+
+          '<dt>Avalanche finishes</dt><dd>'+monthLabel(av.months-1)+'</dd>'+
+          '<dt>Snowball finishes</dt><dd>'+monthLabel(sn.months-1)+'</dd>'+
+          '<dt>Interest difference</dt><dd class="'+(saves>0?'gain':'flat')+'">'+inrS(Math.round(saves),0)+'</dd></dl>'+
+          '<p class="note" style="margin-top:12px">Avalanche is always at least as cheap. Snowball clears individual debts sooner, '+
+          'which some people need to keep going. The app will not pick for you.</p>') +
+      '</div>' +
+      '<div class="cols">'+
+        panel('Avalanche — payoff order', payoffTable(avOrder,'av'), {flush:true, chip:NEW,
+          right:'<span class="note">By rate, highest first</span>'}) +
+        panel('Snowball — payoff order', payoffTable(snOrder,'sn'), {flush:true, chip:NEW,
+          right:'<span class="note">By balance, smallest first</span>'}) +
+      '</div>';
+    wireSort(out);
+    paintIcons(out);
+  }
+
+  function payoffTable(rows, key){
+    return dataTable({
+      id:'order-'+key,
+      cols:[
+        {h:'#', w:34, sortable:false, fmt:function(r){ return '<span class="muted">'+r.pos+'</span>'; }},
+        {h:'Loan', w:176, fmt:function(r){ return '<span class="nm">'+esc(r.name)+'</span>'; }},
+        {h:'Rate', num:true, w:76, fmt:function(r){ return pct(r.rate); }},
+        {h:'Balance today', num:true, w:116, fmt:function(r){ return inr(r.bal,0); }},
+        {h:'Cleared', num:true, w:96, fmt:function(r){ return r.when; }},
+        {h:'Months', num:true, w:72, fmt:function(r){ return String(r.month); }}
+      ],
+      rows: rows,
+      mobile:function(r){ return { l1:'#'+r.pos+' '+r.name, r1:inr(r.bal,0), l2:pct(r.rate), r2:'clears '+r.when }; }
+    });
+  }
+
+  slider.addEventListener('input', function(){ numIn.value = slider.value; render(+slider.value); });
+  numIn.addEventListener('input', function(){
+    var v = Math.max(+slider.min, Math.min(+slider.max, +numIn.value || 0));
+    slider.value = v; render(v);
+  });
+  render(+slider.value);
+}
+
+/* --- revaluation echo --- */
+function wireAssets(){
+  var sel = document.getElementById('rv-asset'), nv = document.getElementById('rv-new'),
+      echo = document.getElementById('reval-echo');
+  function render(){
+    var old = +sel.value, nw = +nv.value || 0, delta = nw - old;
+    var name = sel.options[sel.selectedIndex].text;
+    echo.innerHTML = '<b>'+esc(name)+'</b><br>'+
+      '<span class="mono">'+(delta>=0?'DEBIT&nbsp;':'CREDIT')+' Assets:Physical:'+esc(name.split('—')[0].trim())+'&nbsp;&nbsp; '+inr(Math.abs(delta),0)+'</span><br>'+
+      '<span class="mono">'+(delta>=0?'CREDIT':'DEBIT&nbsp;')+' Equity:Valuation adjustments&nbsp;&nbsp;&nbsp;&nbsp; '+inr(Math.abs(delta),0)+'</span><br>'+
+      inr(old,0)+' → '+inr(nw,0)+' · <span class="'+cls(delta)+'">'+inrS(delta,0)+' ('+pctS(old?delta/old*100:0)+')</span>. '+
+      'Net worth moves by exactly this delta; no income or expense is recorded.';
+  }
+  sel.addEventListener('change', render);
+  nv.addEventListener('input', render);
+  render();
+}
+
+function syncRange(input){
+  var wrap = input.closest('.rng'); if (!wrap) return;
+  var fill = wrap.querySelector('.fill'); if (!fill) return;
+  var min = +input.min || 0, max = +input.max || 100, v = +input.value;
+  fill.style.width = 'calc(' + ((v - min) / (max - min) * 100) + '% - ' + (((v - min) / (max - min)) * 14) + 'px + 7px)';
+}
+/* ---------------- boot ---------------- */
+(function(){
+  try {
+    var t = localStorage.getItem('sm-theme');
+    if (t && t !== 'system') document.documentElement.setAttribute('data-theme', t);
+    if (t) document.querySelectorAll('[data-theme]').forEach(function(b){
+      if (b.tagName === 'BUTTON') b.setAttribute('aria-pressed', b.dataset.theme === t ? 'true':'false'); });
+    var d = localStorage.getItem('sm-density');
+    if (d){
+      document.body.setAttribute('data-density', d);
+      document.querySelectorAll('[data-density]').forEach(function(b){
+        if (b.tagName === 'BUTTON') b.setAttribute('aria-pressed', b.dataset.density === d ? 'true':'false'); });
+    } else document.body.setAttribute('data-density','compact');
+  } catch(e){ document.body.setAttribute('data-density','compact'); }
+  buildNav();
+  var h = (location.hash||'').replace('#','');
+  go(SCREENS[h] ? h : 'cards');
+})();
+</script>
+
+</body></html>

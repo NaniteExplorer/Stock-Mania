@@ -1,0 +1,2365 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Stock-Mania Control Bench</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/* Layout concept: a specimen bench. A sticky section switcher over one column of bordered
+   specimen cards; each card body flips to the opposite theme in place, so every control is
+   judged against both grounds without leaving the page. */
+
+:root{
+  /* neutral ramp, hue ~250, faint cool cast. Theme-independent. */
+  --n-0:#FFFFFF; --n-25:#FBFCFD; --n-50:#F6F8FA; --n-100:#EFF2F5; --n-150:#E4E8ED;
+  --n-200:#D6DCE3; --n-300:#B9C2CC; --n-400:#8C98A6; --n-450:#808C9A; --n-500:#64707E;
+  --n-600:#49545F; --n-700:#343C45; --n-775:#2A323A; --n-800:#232A31; --n-850:#1A2026;
+  --n-900:#13181D; --n-950:#0C1014;
+
+  /* the four scales. No value in this page sits outside them. */
+  --h-xs:24px; --h-sm:28px; --h-md:32px; --h-lg:36px; --h-xl:40px;
+  --r-1:2px; --r-2:3px; --r-3:4px; --r-4:6px; --r-5:8px; --r-pill:999px;
+  --t-fast:90ms; --t:110ms; --ease:cubic-bezier(.2,0,.38,1);
+
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --gl:max(16px,env(safe-area-inset-left,0px));
+  --gr:max(16px,env(safe-area-inset-right,0px));
+}
+
+:root,.tf-light{
+  --bg-canvas:#F6F8FA; --bg-surface:#FFFFFF; --bg-raised:#FFFFFF; --bg-sunken:#F2F5F8;
+  --bg-subtle:#F2F5F8; --bg-hover:#F6F8FA; --bg-active:#EFF2F5; --bg-selected:#EEF2FF;
+  --border-subtle:#E4E8ED; --border:#D6DCE3; --border-control:#808C9A;
+  --border-hover:#64707E; --border-active:#49545F;
+  --fg:#13181D; --fg-secondary:#49545F; --fg-muted:#64707E; --fg-disabled:#7C8896;
+  --accent:#4F62D8; --accent-hover:#3F50BE; --accent-active:#36459F; --accent-on:#FFFFFF;
+  --accent-soft:#EEF2FF; --accent-soft-hover:#E0E7FF; --accent-line:#A5B4FC;
+  --gain:#0E7C66; --gain-bg:#E6F5F1; --gain-line:#8FD3C4;
+  --loss:#C0392B; --loss-bg:#FBEAE7; --loss-line:#EAA69E; --loss-on:#FFFFFF;
+  --flat:#64707E;
+  --warn:#B45309; --warn-bg:#FDF4E6; --warn-line:#E8C58A;
+  --info:#1D6FA5; --info-bg:#E9F3FA; --info-line:#9CC6E2;
+  --inner-hl:inset 0 -1px 0 rgb(19 24 29 / .07);
+  --inner-hl-2:inset 0 -1px 0 rgb(19 24 29 / .13);
+  --shadow-pop:0 4px 12px rgb(19 24 29 / .10), 0 0 0 1px rgb(19 24 29 / .04);
+  --shadow-modal:0 16px 48px rgb(19 24 29 / .20), 0 0 0 1px rgb(19 24 29 / .06);
+  --skel-a:#EFF2F5; --skel-b:#E0E5EA;
+  --tip-bg:#13181D; --tip-fg:#F6F8FA;
+  --c1:#5468D6; --c2:#1F94A8; --c3:#B5801F; --c4:#A14C9E; --c5:#4E7A3A; --c-other:#8C98A6;
+  --grid:#E4E8ED;
+  color-scheme:light;
+}
+
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg-canvas:#0C1014; --bg-surface:#13181D; --bg-raised:#1A2026; --bg-sunken:#0C1014;
+  --bg-subtle:#1A2026; --bg-hover:#232A31; --bg-active:#2A323A; --bg-selected:#1B2340;
+  --border-subtle:#232A31; --border:#343C45; --border-control:#64707E;
+  --border-hover:#8C98A6; --border-active:#B9C2CC;
+  --fg:#F6F8FA; --fg-secondary:#B9C2CC; --fg-muted:#8C98A6; --fg-disabled:#5C6875;
+  --accent:#7D8CEA; --accent-hover:#9AA6F0; --accent-active:#B2BBF5; --accent-on:#0C1014;
+  --accent-soft:#1B2340; --accent-soft-hover:#232C4E; --accent-line:#4F62D8;
+  --gain:#3FC9A6; --gain-bg:#0E2F29; --gain-line:#1F6B5B;
+  --loss:#FF7A6B; --loss-bg:#3A1A16; --loss-line:#8A3C33; --loss-on:#0C1014;
+  --flat:#8C98A6;
+  --warn:#F0B429; --warn-bg:#2E2411; --warn-line:#7A5E1B;
+  --info:#5BB0E8; --info-bg:#11252F; --info-line:#2E6888;
+  --inner-hl:inset 0 1px 0 rgb(255 255 255 / .055);
+  --inner-hl-2:inset 0 1px 0 rgb(255 255 255 / .10);
+  --shadow-pop:0 4px 12px rgb(0 0 0 / .45), 0 0 0 1px rgb(255 255 255 / .06);
+  --shadow-modal:0 16px 48px rgb(0 0 0 / .60), 0 0 0 1px rgb(255 255 255 / .08);
+  --skel-a:#1A2026; --skel-b:#272F37;
+  --tip-bg:#E4E8ED; --tip-fg:#13181D;
+  --c1:#8A7FE8; --c2:#2FA3BA; --c3:#B68530; --c4:#C76BA0; --c5:#6FA14E; --c-other:#64707E;
+  --grid:#232A31;
+  color-scheme:dark;
+}}
+
+:root[data-theme="dark"],.tf-dark{
+  --bg-canvas:#0C1014; --bg-surface:#13181D; --bg-raised:#1A2026; --bg-sunken:#0C1014;
+  --bg-subtle:#1A2026; --bg-hover:#232A31; --bg-active:#2A323A; --bg-selected:#1B2340;
+  --border-subtle:#232A31; --border:#343C45; --border-control:#64707E;
+  --border-hover:#8C98A6; --border-active:#B9C2CC;
+  --fg:#F6F8FA; --fg-secondary:#B9C2CC; --fg-muted:#8C98A6; --fg-disabled:#5C6875;
+  --accent:#7D8CEA; --accent-hover:#9AA6F0; --accent-active:#B2BBF5; --accent-on:#0C1014;
+  --accent-soft:#1B2340; --accent-soft-hover:#232C4E; --accent-line:#4F62D8;
+  --gain:#3FC9A6; --gain-bg:#0E2F29; --gain-line:#1F6B5B;
+  --loss:#FF7A6B; --loss-bg:#3A1A16; --loss-line:#8A3C33; --loss-on:#0C1014;
+  --flat:#8C98A6;
+  --warn:#F0B429; --warn-bg:#2E2411; --warn-line:#7A5E1B;
+  --info:#5BB0E8; --info-bg:#11252F; --info-line:#2E6888;
+  --inner-hl:inset 0 1px 0 rgb(255 255 255 / .055);
+  --inner-hl-2:inset 0 1px 0 rgb(255 255 255 / .10);
+  --shadow-pop:0 4px 12px rgb(0 0 0 / .45), 0 0 0 1px rgb(255 255 255 / .06);
+  --shadow-modal:0 16px 48px rgb(0 0 0 / .60), 0 0 0 1px rgb(255 255 255 / .08);
+  --skel-a:#1A2026; --skel-b:#272F37;
+  --tip-bg:#E4E8ED; --tip-fg:#13181D;
+  --c1:#8A7FE8; --c2:#2FA3BA; --c3:#B68530; --c4:#C76BA0; --c5:#6FA14E; --c-other:#64707E;
+  --grid:#232A31;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg-canvas);color:var(--fg);font-family:var(--sans);
+  font-size:14px;line-height:20px;font-feature-settings:"tnum" 1,"cv05" 1;-webkit-font-smoothing:antialiased}
+@media (prefers-reduced-motion:reduce){*{transition-duration:1ms!important;animation-duration:1ms!important;animation-iteration-count:1!important}}
+h1,h2,h3,h4{margin:0;font-weight:600;text-wrap:balance}
+p{margin:0}
+a{color:var(--accent)}
+button,input,select,textarea{font:inherit;color:inherit;margin:0}
+.tnum{font-variant-numeric:tabular-nums}
+code,.mono{font-family:var(--mono);font-variant-numeric:slashed-zero tabular-nums}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ---------------- chrome ---------------- */
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:60;background:var(--bg-surface)}
+.chrome{position:sticky;top:env(safe-area-inset-top,0px);z-index:50;background:var(--bg-surface);
+  border-bottom:1px solid var(--border);padding-block:9px;padding-left:var(--gl);padding-right:var(--gr);
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;white-space:nowrap;letter-spacing:-.005em}
+.mark{width:20px;height:20px;border:1.5px solid var(--accent);border-radius:var(--r-2);flex:none;position:relative}
+.mark::after{content:"";position:absolute;left:2.5px;right:2.5px;bottom:2.5px;height:6px;
+  background:linear-gradient(to right,var(--accent) 0 2px,transparent 2px 4px,var(--accent) 4px 7px,transparent 7px 9px,var(--accent) 9px 13px)}
+.secnav{display:flex;gap:1px;flex-wrap:wrap;flex:1;min-width:0}
+.secnav button{height:var(--h-sm);padding:0 9px;border:1px solid transparent;border-radius:var(--r-2);
+  background:none;font-size:12px;font-weight:500;color:var(--fg-muted);cursor:pointer;white-space:nowrap;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.secnav button:hover{background:var(--bg-hover);color:var(--fg)}
+.secnav button[aria-current="true"]{color:var(--accent);background:var(--accent-soft);font-weight:600}
+.chrome-r{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+/* ---------------- bench ---------------- */
+.bench{padding-left:var(--gl);padding-right:var(--gr);padding-block:22px 72px;max-width:1180px;margin:0 auto;
+  display:flex;flex-direction:column;gap:18px}
+.sec-head{display:flex;flex-direction:column;gap:7px}
+.sec-head h1{font-size:22px;line-height:28px;letter-spacing:-.012em}
+.sec-head p{font-size:13px;line-height:20px;color:var(--fg-secondary);max-width:72ch}
+.spec{border:1px solid var(--border);border-radius:var(--r-4);background:var(--bg-surface);overflow:hidden}
+.spec-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:9px 14px;
+  border-bottom:1px solid var(--border-subtle);background:var(--bg-subtle)}
+.spec-h h3{font-size:13px;line-height:18px;font-weight:600}
+.spec-h .sh-note{font-size:11px;line-height:16px;color:var(--fg-muted);flex:1;min-width:150px}
+.spec-b{padding:16px 14px;background:var(--bg-surface);color:var(--fg);display:flex;flex-direction:column;gap:14px;min-width:0}
+.ann{font-family:var(--mono);font-size:10.5px;line-height:16px;color:var(--fg-muted);font-variant-numeric:slashed-zero}
+.ann b{color:var(--fg-secondary);font-weight:500}
+.why{font-size:12px;line-height:18px;color:var(--fg-secondary);max-width:80ch;
+  border-left:2px solid var(--accent-line);padding-left:10px}
+.why b{font-weight:600;color:var(--fg)}
+.grp{display:flex;flex-direction:column;gap:8px;min-width:0}
+.grp > .lbl{font-size:11px;line-height:16px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:var(--fg-muted)}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row.tight{gap:6px}
+.row.vtop{align-items:flex-start}
+.cols{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(250px,1fr))}
+.cols2{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.hr{height:1px;background:var(--border-subtle);border:0;margin:2px 0}
+.muted{color:var(--fg-muted)}
+.gain{color:var(--gain)}.loss{color:var(--loss)}.flat{color:var(--flat)}
+
+.flip{display:inline-flex;height:var(--h-xs);border:1px solid var(--border);border-radius:var(--r-2);
+  overflow:hidden;background:var(--bg-surface);flex:none}
+.flip button{height:100%;padding:0 7px;border:0;background:none;font-size:10.5px;font-weight:500;
+  color:var(--fg-muted);cursor:pointer;letter-spacing:.02em;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.flip button + button{box-shadow:inset 1px 0 0 var(--border)}
+.flip button:hover{background:var(--bg-hover);color:var(--fg)}
+.flip button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.flip button[aria-pressed="true"],.flip button[aria-pressed="true"] + button{box-shadow:none}
+.flip button:focus-visible{outline-offset:-2px}
+
+/* ---------------- BUTTONS ---------------- */
+.btn{
+  --bh:var(--h-md); --bp:12px; --bf:13px; --br:var(--r-2);
+  position:relative;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  height:var(--bh);padding:0 var(--bp);font-size:var(--bf);font-weight:500;line-height:1;
+  letter-spacing:.004em;border:1px solid var(--border-control);border-radius:var(--br);
+  background:var(--bg-surface);color:var(--fg);box-shadow:var(--inner-hl);
+  cursor:pointer;white-space:nowrap;user-select:none;-webkit-tap-highlight-color:transparent;
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease),
+             color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.btn > *{transition:transform var(--t-fast) var(--ease)}
+.btn:hover{background:var(--bg-hover);border-color:var(--border-hover)}
+.btn:active{background:var(--bg-active);border-color:var(--border-active);box-shadow:none}
+.btn:active > *{transform:translateY(.5px)}
+.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.btn[disabled],.btn[aria-disabled="true"]{background:var(--bg-subtle);border-color:var(--border);
+  color:var(--fg-disabled);box-shadow:none;cursor:not-allowed}
+.btn[disabled]:active > *{transform:none}
+.btn-sm{--bh:var(--h-sm);--bp:10px;--bf:12px}
+.btn-lg{--bh:var(--h-lg);--bp:16px;--bf:14px;--br:var(--r-3)}
+.btn.lead{padding-left:calc(var(--bp) - 2px)}
+.btn.trail{padding-right:calc(var(--bp) - 2px)}
+.btn.chev{padding-right:calc(var(--bp) - 4px);gap:4px}
+.btn.only{width:var(--bh);padding:0;gap:0}
+.btn svg{flex:none;display:block}
+
+.btn-primary{background:var(--accent);border-color:var(--accent);color:var(--accent-on);box-shadow:var(--inner-hl-2)}
+.btn-primary:hover{background:var(--accent-hover);border-color:var(--accent-hover)}
+.btn-primary:active{background:var(--accent-active);border-color:var(--accent-active);box-shadow:none}
+.btn-primary[disabled]{background:var(--bg-subtle);border-color:var(--border);color:var(--fg-disabled);box-shadow:none}
+.btn-ghost{background:transparent;border-color:transparent;box-shadow:none;color:var(--fg-secondary)}
+.btn-ghost:hover{background:var(--bg-hover);border-color:transparent;color:var(--fg)}
+.btn-ghost:active{background:var(--bg-active);border-color:transparent}
+.btn-ghost[disabled]{background:transparent;border-color:transparent}
+.btn-danger{background:var(--loss);border-color:var(--loss);color:var(--loss-on);box-shadow:var(--inner-hl-2)}
+.btn-danger:hover{filter:brightness(.93) saturate(1.06);border-color:var(--loss)}
+.btn-danger:active{filter:brightness(.86) saturate(1.08);box-shadow:none}
+.btn-danger-quiet{background:var(--bg-surface);border-color:var(--loss-line);color:var(--loss)}
+.btn-danger-quiet:hover{background:var(--loss-bg);border-color:var(--loss)}
+.btn-danger-quiet:active{background:var(--loss-bg);border-color:var(--loss)}
+.btn-link{height:auto;padding:0;border:0;background:none;box-shadow:none;color:var(--accent);
+  text-decoration:underline;text-underline-offset:2px;text-decoration-thickness:1px;text-decoration-color:var(--accent-line)}
+.btn-link:hover{background:none;text-decoration-color:currentColor}
+.btn-link:active > *{transform:none}
+.btn-link[disabled]{background:none;border:0;box-shadow:none;color:var(--fg-disabled);text-decoration-color:var(--fg-disabled)}
+.btn[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent);box-shadow:none}
+.btn[aria-pressed="true"]:hover{background:var(--accent-soft-hover);border-color:var(--accent)}
+
+.btn.loading{pointer-events:none}
+.btn.loading > *{visibility:hidden}
+.btn.loading::after{content:"";position:absolute;width:14px;height:14px;border-radius:50%;
+  border:1.5px solid currentColor;border-top-color:transparent;animation:sp .62s linear infinite}
+.btn-sm.loading::after{width:12px;height:12px;border-width:1.25px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.btn.loading::after{animation:none;border-top-color:currentColor;border-style:dotted}}
+
+.split{display:inline-flex;align-items:stretch}
+.split > .btn:first-child{border-top-right-radius:0;border-bottom-right-radius:0}
+.split > .btn:last-child{border-top-left-radius:0;border-bottom-left-radius:0;width:var(--h-md);padding:0;margin-left:-1px}
+.split > .btn-primary:last-child{box-shadow:var(--inner-hl-2),inset 1px 0 0 rgb(255 255 255 / .20)}
+.split > .btn:hover,.split > .btn:focus-visible{z-index:1}
+
+.bgroup{display:inline-flex}
+.bgroup > .btn{border-radius:0;margin-left:-1px}
+.bgroup > .btn:first-child{border-radius:var(--r-2) 0 0 var(--r-2);margin-left:0}
+.bgroup > .btn:last-child{border-radius:0 var(--r-2) var(--r-2) 0}
+.bgroup > .btn:hover,.bgroup > .btn:focus-visible{z-index:1}
+
+.seg{display:inline-flex;height:var(--h-md);padding:2px;background:var(--bg-sunken);
+  border:1px solid var(--border);border-radius:var(--r-3)}
+.seg button{height:100%;padding:0 11px;border:0;border-radius:var(--r-2);background:none;
+  font-size:12px;font-weight:500;color:var(--fg-muted);cursor:pointer;white-space:nowrap;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.seg button:hover{color:var(--fg)}
+.seg button[aria-pressed="true"]{background:var(--bg-surface);color:var(--fg);font-weight:600;
+  box-shadow:0 1px 2px rgb(19 24 29 / .10),0 0 0 1px var(--border)}
+.seg button:focus-visible{outline-offset:-1px}
+.seg-sm{height:var(--h-sm)}
+.seg-sm button{padding:0 9px;font-size:11.5px}
+
+.segf{display:inline-flex;height:var(--h-md);border:1px solid var(--border-control);
+  border-radius:var(--r-2);overflow:hidden;background:var(--bg-surface)}
+.segf button{height:100%;padding:0 11px;border:0;background:none;font-size:12px;font-weight:500;
+  color:var(--fg-secondary);cursor:pointer;white-space:nowrap;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.segf button + button{box-shadow:inset 1px 0 0 var(--border)}
+.segf button:hover{background:var(--bg-hover);color:var(--fg)}
+.segf button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.segf button[aria-pressed="true"],.segf button[aria-pressed="true"] + button{box-shadow:none}
+.segf button:focus-visible{outline-offset:-2px}
+.segf-sm{height:var(--h-sm)}
+.segf-sm button{padding:0 9px;font-size:11.5px}
+
+/* ---------------- FORM CONTROLS ---------------- */
+.fld{display:flex;flex-direction:column;gap:5px;min-width:0}
+.fld > label,.fld > .lab{font-size:12px;line-height:16px;font-weight:500;color:var(--fg-secondary);
+  display:flex;align-items:center;gap:5px}
+.req{color:var(--loss);font-weight:600;line-height:1}
+.opt{color:var(--fg-muted);font-weight:400}
+.hint{font-size:11px;line-height:16px;color:var(--fg-muted)}
+.errtxt{font-size:11px;line-height:16px;color:var(--loss);display:flex;gap:5px;align-items:flex-start}
+.errtxt svg{flex:none;margin-top:1.5px}
+.cnt{margin-left:auto;font-size:11px;color:var(--fg-muted);font-variant-numeric:tabular-nums}
+.cnt.over{color:var(--loss);font-weight:500}
+
+/* the shell owns the border and the focus ring, so prefix, suffix and clear sit inside one boundary */
+.inw{--ih:var(--h-lg);display:flex;align-items:center;height:var(--ih);
+  background:var(--bg-surface);border:1px solid var(--border-control);border-radius:var(--r-3);
+  box-shadow:var(--inner-hl);min-width:0;
+  transition:border-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+.inw:hover{border-color:var(--border-hover)}
+.inw:focus-within{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px;box-shadow:none}
+.inw input,.inw textarea{flex:1;min-width:0;height:100%;border:0;background:none;padding:0 10px;
+  font-size:13px;color:var(--fg);outline:none}
+.inw input::placeholder{color:var(--fg-disabled)}
+.inw.md{--ih:var(--h-md);border-radius:var(--r-2)}
+.inw.md input{font-size:12.5px;padding:0 9px}
+.inw.sm{--ih:var(--h-sm);border-radius:var(--r-2)}
+.inw.sm input{font-size:12px;padding:0 8px}
+.inw.num input{text-align:right;font-variant-numeric:tabular-nums}
+.inw .afx{display:inline-flex;align-items:center;height:100%;padding:0 0 0 10px;font-size:13px;
+  color:var(--fg-muted);flex:none;user-select:none}
+.inw .afx.r{padding:0 10px 0 0}
+.inw .afx + input{padding-left:4px}
+.inw .ico{display:inline-flex;align-items:center;justify-content:center;width:30px;height:100%;color:var(--fg-muted);flex:none}
+.inw .ico + input{padding-left:0}
+.inw.err{border-color:var(--loss);background:var(--loss-bg)}
+.inw.err:focus-within{outline-color:var(--loss);border-color:var(--loss)}
+.inw.ro{background:var(--bg-subtle);border-color:var(--border);border-style:dashed;box-shadow:none}
+.inw.ro input{color:var(--fg-secondary);cursor:default}
+.inw.dis{background:var(--bg-subtle);border-color:var(--border);box-shadow:none}
+.inw.dis input,.inw.dis .afx,.inw.dis .ico{color:var(--fg-disabled);cursor:not-allowed}
+.clr{width:20px;height:20px;margin-right:6px;border:0;border-radius:var(--r-1);background:none;
+  color:var(--fg-muted);cursor:pointer;display:grid;place-items:center;flex:none;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.clr:hover{background:var(--bg-active);color:var(--fg)}
+.clr:focus-visible{outline-offset:0}
+
+.stepper{display:flex;flex-direction:column;height:100%;flex:none;border-left:1px solid var(--border)}
+.stepper button{flex:1;width:24px;border:0;background:none;color:var(--fg-muted);cursor:pointer;
+  display:grid;place-items:center;padding:0;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.stepper button:first-child{border-bottom:1px solid var(--border-subtle)}
+.stepper button:hover{background:var(--bg-active);color:var(--fg)}
+.stepper button:active{color:var(--accent)}
+.stepper button:focus-visible{outline-offset:-2px}
+
+textarea.ta{width:100%;min-height:76px;resize:vertical;padding:8px 10px;font-size:13px;line-height:20px;
+  background:var(--bg-surface);color:var(--fg);border:1px solid var(--border-control);border-radius:var(--r-3);
+  box-shadow:var(--inner-hl);outline:none;font-family:var(--sans);display:block;
+  transition:border-color var(--t-fast) var(--ease)}
+textarea.ta:hover{border-color:var(--border-hover)}
+textarea.ta:focus-visible{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px;box-shadow:none}
+textarea.ta::placeholder{color:var(--fg-disabled)}
+
+select.sel{height:var(--h-lg);padding:0 30px 0 10px;font-size:13px;background-color:var(--bg-surface);
+  color:var(--fg);border:1px solid var(--border-control);border-radius:var(--r-3);box-shadow:var(--inner-hl);
+  cursor:pointer;appearance:none;min-width:0;max-width:100%;
+  background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 15px) calc(50% + 1px),calc(100% - 11px) calc(50% + 1px);
+  background-size:4px 4px,4px 4px;background-repeat:no-repeat;
+  transition:border-color var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+select.sel:hover{border-color:var(--border-hover);background-color:var(--bg-hover)}
+select.sel:focus-visible{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px}
+select.sel:disabled{background-color:var(--bg-subtle);border-color:var(--border);color:var(--fg-disabled);cursor:not-allowed;box-shadow:none}
+
+/* custom listbox */
+.lb-wrap{position:relative;min-width:0}
+.lb-btn{display:flex;align-items:center;gap:8px;width:100%;height:var(--h-lg);padding:0 8px 0 10px;
+  background:var(--bg-surface);border:1px solid var(--border-control);border-radius:var(--r-3);
+  box-shadow:var(--inner-hl);cursor:pointer;font-size:13px;text-align:left;color:var(--fg);
+  transition:border-color var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+.lb-btn:hover{border-color:var(--border-hover);background:var(--bg-hover)}
+.lb-btn:focus-visible{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px}
+.lb-btn .v{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-btn .ph{color:var(--fg-disabled)}
+.lb-btn svg{color:var(--fg-muted);flex:none}
+.lb{position:absolute;z-index:30;top:calc(100% + 4px);left:0;min-width:100%;width:max-content;max-width:min(400px,84vw);
+  background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--r-4);
+  box-shadow:var(--shadow-pop);padding:4px;max-height:252px;overflow:auto;overscroll-behavior:contain}
+.lb-grp{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-muted);padding:7px 9px 4px}
+.lb-opt{display:flex;align-items:flex-start;gap:8px;padding:6px 9px;border-radius:var(--r-2);cursor:pointer;
+  font-size:13px;line-height:18px;color:var(--fg);transition:background-color var(--t-fast) var(--ease)}
+.lb-opt:hover{background:var(--bg-hover)}
+.lb-opt.act{background:var(--bg-hover);box-shadow:inset 2px 0 0 var(--accent)}
+.lb-opt[aria-selected="true"]{color:var(--accent);font-weight:500}
+.lb-opt .ck{width:14px;flex:none;display:grid;place-items:center;margin-top:2px;color:var(--accent);opacity:0}
+.lb-opt[aria-selected="true"] .ck{opacity:1}
+.lb-opt .tx{flex:1;min-width:0}
+.lb-opt .tx b{display:block;font-weight:inherit;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-opt .tx span{display:block;font-size:11px;line-height:15px;color:var(--fg-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lb-opt .rt{font-size:11px;color:var(--fg-muted);font-variant-numeric:tabular-nums;flex:none;margin-top:2px}
+.lb-sep{height:1px;background:var(--border-subtle);margin:4px 9px}
+.lb-foot{padding:7px 9px;border-top:1px solid var(--border-subtle);margin-top:4px;font-size:11px;
+  color:var(--fg-muted);display:flex;gap:10px;flex-wrap:wrap}
+.lb-empty{padding:18px 12px;text-align:center;font-size:12px;color:var(--fg-muted);line-height:18px}
+
+.tokfield{display:flex;flex-wrap:wrap;align-items:center;gap:4px;min-height:var(--h-lg);padding:3px 6px;
+  background:var(--bg-surface);border:1px solid var(--border-control);border-radius:var(--r-3);
+  box-shadow:var(--inner-hl);cursor:text;transition:border-color var(--t-fast) var(--ease)}
+.tokfield:hover{border-color:var(--border-hover)}
+.tokfield:focus-within{border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px;box-shadow:none}
+.tokfield input{flex:1;min-width:70px;border:0;background:none;outline:none;font-size:13px;height:24px;padding:0 3px}
+.tok{display:inline-flex;align-items:center;gap:3px;height:22px;padding:0 3px 0 7px;border-radius:var(--r-2);
+  background:var(--accent-soft);color:var(--accent);font-size:11.5px;font-weight:500;max-width:180px}
+.tok > span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tok button{width:16px;height:16px;border:0;border-radius:var(--r-1);background:none;color:inherit;
+  cursor:pointer;display:grid;place-items:center;opacity:.7;flex:none;
+  transition:opacity var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+.tok button:hover{opacity:1;background:var(--accent-soft-hover)}
+.tok button:focus-visible{outline-offset:0}
+
+/* checkbox / radio / switch */
+.ctl{display:inline-flex;align-items:flex-start;gap:8px;cursor:pointer;font-size:13px;line-height:18px;min-width:0}
+.ctl input{position:absolute;opacity:0;width:0;height:0}
+.ctl .bx{width:16px;height:16px;flex:none;margin-top:1px;border:1px solid var(--border-control);
+  border-radius:var(--r-1);background:var(--bg-surface);box-shadow:var(--inner-hl);
+  display:grid;place-items:center;color:var(--accent-on);
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.ctl .bx > *{opacity:0;grid-area:1/1;transition:opacity var(--t-fast) var(--ease)}
+.ctl:hover .bx{border-color:var(--border-hover)}
+.ctl input:checked + .bx,.ctl input:indeterminate + .bx{background:var(--accent);border-color:var(--accent);box-shadow:var(--inner-hl-2)}
+.ctl input:checked + .bx .ck{opacity:1}
+.ctl input:indeterminate + .bx .ck{opacity:0}
+.ctl input:indeterminate + .bx .ix{opacity:1}
+.ctl input:active + .bx{box-shadow:none}
+.ctl input:focus-visible + .bx{outline:2px solid var(--accent);outline-offset:2px}
+.ctl input:disabled + .bx{background:var(--bg-subtle);border-color:var(--border);box-shadow:none;color:var(--fg-disabled)}
+.ctl input:disabled ~ .tx{color:var(--fg-disabled)}
+.ctl.dis{cursor:not-allowed}
+.ctl.bad .bx{border-color:var(--loss)}
+.ctl.bad input:checked + .bx{background:var(--loss);border-color:var(--loss)}
+.ctl .rd{border-radius:var(--r-pill)}
+.ctl .rd::after{content:"";width:6px;height:6px;border-radius:var(--r-pill);background:var(--accent-on);
+  transform:scale(0);transition:transform var(--t-fast) var(--ease)}
+.ctl input:checked + .rd::after{transform:scale(1)}
+.ctl .tx{min-width:0}
+.ctl .tx b{display:block;font-weight:500}
+.ctl .tx span{display:block;font-size:11.5px;line-height:16px;color:var(--fg-muted)}
+
+.sw{position:relative;width:32px;height:18px;flex:none;margin-top:1px;border-radius:var(--r-pill);
+  background:var(--bg-sunken);border:1px solid var(--border-control);box-shadow:var(--inner-hl);
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease)}
+.sw::after{content:"";position:absolute;top:1px;left:1px;width:14px;height:14px;border-radius:var(--r-pill);
+  background:var(--bg-surface);border:1px solid var(--border-control);
+  box-shadow:0 1px 1px rgb(19 24 29 / .18), inset 0 1px 0 rgb(255 255 255 / .5);
+  transition:transform var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease)}
+.ctl:hover .sw{border-color:var(--border-hover)}
+.ctl input:checked + .sw{background:var(--accent);border-color:var(--accent)}
+.ctl input:checked + .sw::after{transform:translateX(14px);border-color:var(--accent-active)}
+.ctl input:focus-visible + .sw{outline:2px solid var(--accent);outline-offset:2px}
+.ctl input:disabled + .sw{background:var(--bg-subtle);border-color:var(--border);box-shadow:none}
+.ctl input:disabled + .sw::after{border-color:var(--border);box-shadow:none}
+
+/* dual-handle range with a distribution preview */
+.rng{position:relative;height:28px;display:flex;align-items:center;min-width:0}
+.rng .track{position:absolute;left:7px;right:7px;height:4px;border-radius:var(--r-pill);
+  background:var(--bg-sunken);box-shadow:inset 0 0 0 1px var(--border)}
+.rng .fill{position:absolute;height:4px;border-radius:var(--r-pill);background:var(--accent)}
+.rng input[type=range]{position:absolute;left:0;right:0;width:100%;height:28px;margin:0;background:none;
+  appearance:none;pointer-events:none}
+.rng input[type=range]::-webkit-slider-thumb{appearance:none;pointer-events:auto;width:14px;height:14px;
+  border-radius:var(--r-pill);background:var(--bg-surface);border:1px solid var(--border-active);
+  box-shadow:0 1px 2px rgb(19 24 29 / .22), inset 0 1px 0 rgb(255 255 255 / .55);cursor:grab}
+.rng input[type=range]::-moz-range-thumb{pointer-events:auto;width:14px;height:14px;border-radius:var(--r-pill);
+  background:var(--bg-surface);border:1px solid var(--border-active);box-shadow:0 1px 2px rgb(19 24 29 / .22);cursor:grab}
+.rng input[type=range]:focus-visible{outline:none}
+.rng input[type=range]:focus-visible::-webkit-slider-thumb{outline:2px solid var(--accent);outline-offset:2px}
+.rng input[type=range]:focus-visible::-moz-range-thumb{outline:2px solid var(--accent);outline-offset:2px}
+.histo{display:flex;align-items:flex-end;gap:1px;height:22px;margin:0 7px 2px}
+.histo i{flex:1;background:var(--border);border-radius:var(--r-1) var(--r-1) 0 0;min-height:2px;
+  transition:background-color var(--t-fast) var(--ease)}
+.histo i.on{background:var(--accent-line)}
+
+.drop{display:flex;flex-direction:column;align-items:center;gap:7px;padding:22px 16px;text-align:center;
+  border:1px dashed var(--border-control);border-radius:var(--r-4);background:var(--bg-sunken);cursor:pointer;
+  transition:border-color var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+.drop:hover{border-color:var(--border-hover);background:var(--bg-hover)}
+.drop.over{border-color:var(--accent);background:var(--accent-soft);border-style:solid}
+.drop:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.drop b{font-size:13px;font-weight:500}
+.drop span{font-size:11.5px;color:var(--fg-muted);line-height:16px}
+.drop svg{color:var(--fg-muted)}
+.drop.over svg,.drop.over b{color:var(--accent)}
+
+.dr{display:grid;grid-template-columns:minmax(0,154px) minmax(0,1fr);min-width:0;
+  border:1px solid var(--border);border-radius:var(--r-4);background:var(--bg-raised);box-shadow:var(--shadow-pop);overflow:hidden}
+@media(max-width:600px){.dr{grid-template-columns:minmax(0,1fr)}}
+.dr-pre{border-right:1px solid var(--border-subtle);padding:6px;display:flex;flex-direction:column;gap:1px;min-width:0}
+@media(max-width:600px){.dr-pre{border-right:0;border-bottom:1px solid var(--border-subtle)}}
+.dr-pre button{height:var(--h-sm);padding:0 8px;border:0;border-radius:var(--r-2);background:none;text-align:left;
+  font-size:12px;color:var(--fg-secondary);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.dr-pre button:hover{background:var(--bg-hover);color:var(--fg)}
+.dr-pre button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600;box-shadow:inset 2px 0 0 var(--accent)}
+.dr-pre .sep{height:1px;background:var(--border-subtle);margin:4px 8px}
+.dr-cal{padding:10px;min-width:0}
+.cal-h{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.cal-h b{font-size:12px;font-weight:600;flex:1;text-align:center}
+.cal{display:grid;grid-template-columns:repeat(7,1fr)}
+.cal span.dow{font-size:10px;font-weight:500;color:var(--fg-muted);text-align:center;padding:4px 0;letter-spacing:.02em}
+.cal button{height:26px;border:0;background:none;font-size:11.5px;color:var(--fg);cursor:pointer;
+  border-radius:var(--r-1);font-variant-numeric:tabular-nums;padding:0;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.cal button:hover{background:var(--bg-hover)}
+.cal button.out{color:var(--fg-disabled)}
+.cal button.inr{background:var(--accent-soft);border-radius:0}
+.cal button.e1{background:var(--accent);color:var(--accent-on);font-weight:600;border-radius:var(--r-1) 0 0 var(--r-1)}
+.cal button.e2{background:var(--accent);color:var(--accent-on);font-weight:600;border-radius:0 var(--r-1) var(--r-1) 0}
+.cal button:focus-visible{outline-offset:-2px}
+.dr-foot{grid-column:1/-1;border-top:1px solid var(--border-subtle);padding:8px 10px;display:flex;
+  align-items:center;gap:8px;flex-wrap:wrap;background:var(--bg-subtle)}
+
+/* ---------------- DATA DISPLAY ---------------- */
+.bdg{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:var(--r-2);
+  font-size:11px;font-weight:500;line-height:1;letter-spacing:.008em;white-space:nowrap;
+  border:1px solid transparent;background:var(--bg-subtle);color:var(--fg-secondary)}
+.bdg.lg{height:22px;padding:0 8px;font-size:11.5px}
+.bdg.sm{height:18px;padding:0 6px;font-size:10.5px}
+.bdg .dot{width:5px;height:5px;border-radius:var(--r-pill);background:currentColor;flex:none;opacity:.85}
+.bdg.pill{border-radius:var(--r-pill);padding:0 9px}
+.bdg.pill.sm{padding:0 7px}
+/* subtle = tinted fill, no border. solid = full fill. outline = border only. */
+.bdg.sub-gain{background:var(--gain-bg);color:var(--gain)}
+.bdg.sub-loss{background:var(--loss-bg);color:var(--loss)}
+.bdg.sub-warn{background:var(--warn-bg);color:var(--warn)}
+.bdg.sub-info{background:var(--info-bg);color:var(--info)}
+.bdg.sub-acc{background:var(--accent-soft);color:var(--accent)}
+.bdg.sol-gain{background:var(--gain);color:var(--bg-surface)}
+.bdg.sol-loss{background:var(--loss);color:var(--loss-on)}
+.bdg.sol-warn{background:var(--warn);color:var(--bg-surface)}
+.bdg.sol-info{background:var(--info);color:var(--bg-surface)}
+.bdg.sol-acc{background:var(--accent);color:var(--accent-on)}
+.bdg.out-gain{background:none;border-color:var(--gain-line);color:var(--gain)}
+.bdg.out-loss{background:none;border-color:var(--loss-line);color:var(--loss)}
+.bdg.out-warn{background:none;border-color:var(--warn-line);color:var(--warn)}
+.bdg.out-info{background:none;border-color:var(--info-line);color:var(--info)}
+.bdg.out-acc{background:none;border-color:var(--accent-line);color:var(--accent)}
+.bdg.out-n{background:none;border-color:var(--border);color:var(--fg-secondary)}
+.bdg.mono{font-family:var(--mono);font-size:10px;letter-spacing:0}
+.bdg.dash{background:none;border-style:dashed;border-color:var(--border-control);color:var(--fg-muted);
+  letter-spacing:.06em;font-size:10px;font-weight:600}
+
+.avat{width:28px;height:28px;border-radius:var(--r-pill);flex:none;display:grid;place-items:center;
+  background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:600;letter-spacing:.02em;
+  box-shadow:inset 0 0 0 1px var(--accent-line)}
+.avat.sq{border-radius:var(--r-2)}
+.avat.sm{width:22px;height:22px;font-size:9.5px}
+.avat.lg{width:36px;height:36px;font-size:13px}
+/* institution mark: a square plate so bank wordmarks of different widths align */
+.plate{width:24px;height:24px;border-radius:var(--r-2);flex:none;display:grid;place-items:center;
+  background:var(--bg-subtle);box-shadow:inset 0 0 0 1px var(--border);font-size:9.5px;font-weight:600;
+  color:var(--fg-secondary);letter-spacing:.01em;overflow:hidden}
+.plate.lg{width:30px;height:30px;font-size:11px}
+
+dl.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:0;margin:0;font-size:12.5px;min-width:0}
+dl.kv dt{color:var(--fg-muted);padding:6px 16px 6px 0;border-bottom:1px solid var(--border-subtle);white-space:nowrap}
+dl.kv dd{margin:0;padding:6px 0;border-bottom:1px solid var(--border-subtle);text-align:right;
+  font-variant-numeric:tabular-nums;min-width:0;overflow:hidden;text-overflow:ellipsis}
+dl.kv dt:last-of-type,dl.kv dd:last-of-type{border-bottom:0}
+
+.kpi{display:flex;flex-direction:column;gap:5px;padding:12px 14px 0;border:1px solid var(--border);
+  border-radius:var(--r-4);background:var(--bg-surface);text-align:left;cursor:pointer;min-width:0;
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease)}
+.kpi:hover{background:var(--bg-hover);border-color:var(--border-hover)}
+.kpi:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.kpi .kl{display:flex;align-items:center;gap:5px;font-size:12px;line-height:16px;font-weight:500;color:var(--fg-muted)}
+.kpi .kv{font-size:24px;line-height:30px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.016em;color:var(--fg)}
+.kpi .kv .u{font-size:11px;font-weight:500;color:var(--fg-muted);margin-left:2px;letter-spacing:0}
+.kpi .kd{font-size:11px;line-height:14px;font-weight:500;font-variant-numeric:tabular-nums}
+.kpi .spark{display:block;width:calc(100% + 28px);margin:3px -14px 0;height:30px}
+.kpi.flat-tile{padding-bottom:12px;cursor:default}
+.kpi.flat-tile:hover{background:var(--bg-surface);border-color:var(--border)}
+.info-i{width:13px;height:13px;border-radius:var(--r-pill);border:1px solid var(--border-control);
+  display:inline-grid;place-items:center;font-size:8.5px;font-weight:600;color:var(--fg-muted);
+  cursor:help;flex:none;line-height:1;font-style:normal}
+.info-i:hover{border-color:var(--border-hover);color:var(--fg)}
+
+.pbar{height:6px;border-radius:var(--r-pill);background:var(--bg-sunken);box-shadow:inset 0 0 0 1px var(--border);
+  overflow:hidden;min-width:60px}
+.pbar i{display:block;height:100%;border-radius:var(--r-pill);background:var(--accent);
+  transition:width var(--t) var(--ease)}
+.pbar.gain i{background:var(--gain)}.pbar.loss i{background:var(--loss)}.pbar.warn i{background:var(--warn)}
+.pbar.sm{height:4px}
+/* bullet bar: actual as the bar, budget as a vertical tick, pace-to-date as a lighter marker */
+.bullet{position:relative;height:14px;border-radius:var(--r-1);background:var(--bg-sunken);
+  box-shadow:inset 0 0 0 1px var(--border);min-width:120px}
+.bullet .act{position:absolute;top:3px;bottom:3px;left:0;border-radius:var(--r-1);background:var(--accent)}
+.bullet .act.over{background:var(--loss)}
+.bullet .pace{position:absolute;top:0;bottom:0;width:1px;background:var(--border-active);opacity:.55}
+.bullet .tgt{position:absolute;top:-2px;bottom:-2px;width:2px;background:var(--fg);border-radius:1px}
+.gauge{position:relative;height:8px;border-radius:var(--r-pill);background:var(--bg-sunken);
+  box-shadow:inset 0 0 0 1px var(--border);overflow:hidden;min-width:100px}
+.gauge i{position:absolute;top:0;bottom:0;left:0;border-radius:var(--r-pill)}
+.gauge .zone{position:absolute;top:0;bottom:0;width:1px;background:var(--bg-surface);opacity:.9}
+.delta{display:inline-flex;align-items:baseline;gap:3px;font-variant-numeric:tabular-nums;font-weight:500}
+.delta .ar{font-size:8px;line-height:1;transform:translateY(-1px)}
+.hp{position:relative;height:5px;border-radius:var(--r-pill);background:var(--bg-sunken);
+  box-shadow:inset 0 0 0 1px var(--border);min-width:72px;overflow:hidden}
+.hp i{position:absolute;top:0;bottom:0;left:0;background:var(--warn);border-radius:var(--r-pill)}
+.hp i.done{background:var(--gain)}
+
+table.dt{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
+table.dt th,table.dt td{padding:6px 12px;border-bottom:1px solid var(--border-subtle);white-space:nowrap;
+  height:32px;text-align:left;vertical-align:middle}
+table.dt thead th{position:sticky;top:0;z-index:2;background:var(--bg-surface);font-size:12px;font-weight:500;
+  letter-spacing:.015em;color:var(--fg-muted);box-shadow:inset 0 -1px 0 var(--border);border-bottom:0;
+  cursor:pointer;user-select:none;transition:color var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+table.dt thead th:hover{color:var(--fg);background:var(--bg-hover)}
+table.dt thead th:focus-visible{outline-offset:-2px}
+table.dt .num{text-align:right}
+table.dt tbody tr{transition:background-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+table.dt tbody tr:hover{background:var(--bg-hover)}
+table.dt tbody tr.sel{box-shadow:inset 2px 0 0 var(--accent)}
+table.dt tbody tr.kb{outline:2px solid var(--accent);outline-offset:-2px}
+table.dt tbody tr.exp{background:var(--bg-subtle);box-shadow:inset 2px 0 0 var(--border-active)}
+table.dt tbody tr.bad{background:var(--loss-bg);box-shadow:inset 3px 0 0 var(--loss)}
+table.dt tfoot td{background:var(--bg-subtle);font-weight:600;border-bottom:0;border-top:1px solid var(--border)}
+.sortw{display:inline-flex;align-items:center;gap:4px}
+.sortw .ord{font-size:9px;color:var(--accent);font-weight:600;vertical-align:super}
+.nm{display:flex;flex-direction:column;gap:0;max-width:230px;min-width:0}
+.nm b{font-weight:600;font-size:13px;line-height:17px;display:flex;align-items:center;gap:5px}
+.nm span{font-size:11.5px;line-height:15px;color:var(--fg-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stale{color:var(--fg-muted);text-decoration:underline dotted;text-underline-offset:3px;
+  text-decoration-color:var(--warn);cursor:help}
+.dash-cell{color:var(--fg-muted);text-decoration:underline dotted;text-underline-offset:3px;cursor:help;
+  border-radius:var(--r-1)}
+.dash-cell:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.tscroll{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r-4);background:var(--bg-surface)}
+
+/* ---------------- NAVIGATION ---------------- */
+.nvi{display:flex;align-items:center;gap:9px;height:var(--h-md);padding:0 9px;border-radius:var(--r-2);
+  color:var(--fg-secondary);text-decoration:none;font-size:13px;cursor:pointer;border:0;background:none;
+  width:100%;text-align:left;position:relative;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.nvi:hover{background:var(--bg-hover);color:var(--fg)}
+.nvi:active{background:var(--bg-active)}
+.nvi svg{flex:none;opacity:.82}
+.nvi .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.nvi[aria-current="page"]{background:var(--accent-soft);color:var(--accent);font-weight:600;
+  box-shadow:inset 2px 0 0 var(--accent)}
+.nvi[aria-current="page"] svg{opacity:1}
+.nvi:focus-visible{outline-offset:-2px}
+.nvi.coll{width:var(--h-md);padding:0;justify-content:center;gap:0}
+.nvi-grp{font-size:10.5px;line-height:16px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--fg-muted);padding:6px 9px 3px}
+
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);overflow-x:auto;scrollbar-width:thin}
+.tabs button{height:var(--h-lg);padding:0 12px;border:0;background:none;font-size:13px;font-weight:500;
+  color:var(--fg-muted);cursor:pointer;white-space:nowrap;position:relative;
+  box-shadow:inset 0 -1px 0 transparent;
+  transition:color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease),background-color var(--t-fast) var(--ease)}
+.tabs button:hover{color:var(--fg);background:var(--bg-hover);box-shadow:inset 0 -1px 0 var(--border-hover)}
+.tabs button[aria-selected="true"]{color:var(--accent);font-weight:600;box-shadow:inset 0 -2px 0 var(--accent)}
+.tabs button:focus-visible{outline-offset:-3px}
+.tabs .ct{margin-left:5px;font-size:11px;color:var(--fg-muted);font-variant-numeric:tabular-nums}
+.tabs button[aria-selected="true"] .ct{color:var(--accent)}
+
+.crumbs{display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:12px;color:var(--fg-muted);min-width:0}
+.crumbs a{color:var(--fg-muted);text-decoration:none;border-radius:var(--r-1);padding:1px 2px}
+.crumbs a:hover{color:var(--fg);text-decoration:underline;text-underline-offset:2px}
+.crumbs b{font-weight:600;color:var(--fg)}
+.crumbs .sl{color:var(--border-active);user-select:none}
+.fchip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 3px 0 8px;border-radius:var(--r-2);
+  background:var(--bg-subtle);box-shadow:inset 0 0 0 1px var(--border);font-size:11.5px;color:var(--fg-secondary);
+  max-width:230px;transition:box-shadow var(--t-fast) var(--ease)}
+.fchip:hover{box-shadow:inset 0 0 0 1px var(--border-hover)}
+.fchip > span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fchip em{font-style:normal;color:var(--fg-muted)}
+.fchip button{width:16px;height:16px;border:0;border-radius:var(--r-1);background:none;color:var(--fg-muted);
+  cursor:pointer;display:grid;place-items:center;flex:none;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.fchip button:hover{background:var(--bg-active);color:var(--fg)}
+.fchip button:focus-visible{outline-offset:0}
+
+.pag{display:flex;align-items:center;gap:3px;flex-wrap:wrap}
+.pag button{min-width:var(--h-sm);height:var(--h-sm);padding:0 7px;border:1px solid transparent;
+  border-radius:var(--r-2);background:none;font-size:12px;font-weight:500;color:var(--fg-secondary);
+  cursor:pointer;font-variant-numeric:tabular-nums;
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.pag button:hover{background:var(--bg-hover);color:var(--fg)}
+.pag button[aria-current="page"]{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent);font-weight:600}
+.pag button[disabled]{color:var(--fg-disabled);cursor:not-allowed;background:none}
+.pag .gap{color:var(--fg-disabled);padding:0 2px;user-select:none;font-size:12px}
+
+.stepr{display:flex;align-items:flex-start;gap:0;min-width:0;overflow-x:auto}
+.stepr .st{display:flex;align-items:flex-start;gap:8px;padding-right:14px;min-width:0;flex:none}
+.stepr .sn{width:20px;height:20px;border-radius:var(--r-pill);flex:none;display:grid;place-items:center;
+  font-size:10.5px;font-weight:600;background:var(--bg-sunken);color:var(--fg-muted);
+  box-shadow:inset 0 0 0 1px var(--border-control);font-variant-numeric:tabular-nums}
+.stepr .st.on .sn{background:var(--accent);color:var(--accent-on);box-shadow:none}
+.stepr .st.ok .sn{background:var(--gain-bg);color:var(--gain);box-shadow:inset 0 0 0 1px var(--gain-line)}
+.stepr .sx{display:flex;flex-direction:column;gap:1px;min-width:0}
+.stepr .sx b{font-size:12.5px;font-weight:500;color:var(--fg-muted);white-space:nowrap}
+.stepr .st.on .sx b{color:var(--fg);font-weight:600}
+.stepr .st.ok .sx b{color:var(--fg-secondary)}
+.stepr .sx span{font-size:11px;color:var(--fg-muted);white-space:nowrap}
+.stepr .bar{height:1px;background:var(--border);flex:1;min-width:24px;margin:10px 14px 0 0}
+.stepr .st.ok + .bar,.stepr .bar.ok{background:var(--gain-line)}
+
+.cmdrow{display:flex;align-items:center;gap:10px;height:var(--h-lg);padding:0 10px;border-radius:var(--r-2);
+  cursor:pointer;font-size:13px;color:var(--fg);transition:background-color var(--t-fast) var(--ease),box-shadow var(--t-fast) var(--ease)}
+.cmdrow:hover,.cmdrow.on{background:var(--bg-hover);box-shadow:inset 2px 0 0 var(--accent)}
+.cmdrow .sym{font-family:var(--mono);font-size:11.5px;color:var(--fg-secondary);min-width:82px;flex:none;
+  font-variant-numeric:slashed-zero}
+.cmdrow .nm2{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.cmdrow .rt{font-size:11.5px;color:var(--fg-muted);font-variant-numeric:tabular-nums;flex:none}
+.kbd{font-family:var(--mono);font-size:10.5px;height:18px;min-width:18px;padding:0 5px;
+  border:1px solid var(--border);border-bottom-width:2px;border-radius:var(--r-2);color:var(--fg-muted);
+  background:var(--bg-subtle);display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
+
+/* ---------------- OVERLAYS ---------------- */
+.pop{background:var(--bg-raised);border:1px solid var(--border);border-radius:var(--r-4);
+  box-shadow:var(--shadow-pop);min-width:0}
+.mnu{padding:4px;min-width:224px;max-width:300px}
+.mnu-sec{font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-muted);
+  padding:7px 9px 4px}
+.mnu-i{display:flex;align-items:center;gap:9px;height:var(--h-md);padding:0 9px;border-radius:var(--r-2);
+  cursor:pointer;font-size:13px;color:var(--fg);border:0;background:none;width:100%;text-align:left;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.mnu-i:hover,.mnu-i.on{background:var(--bg-hover)}
+.mnu-i:focus-visible{outline-offset:-2px}
+.mnu-i svg{flex:none;color:var(--fg-muted)}
+.mnu-i:hover svg{color:var(--fg-secondary)}
+.mnu-i .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.mnu-i .sc{font-family:var(--mono);font-size:10.5px;color:var(--fg-muted);flex:none;letter-spacing:.02em}
+.mnu-i.dgr{color:var(--loss)}
+.mnu-i.dgr svg{color:var(--loss)}
+.mnu-i.dgr:hover{background:var(--loss-bg)}
+.mnu-i[aria-disabled="true"]{color:var(--fg-disabled);cursor:not-allowed}
+.mnu-i[aria-disabled="true"] svg{color:var(--fg-disabled)}
+.mnu-i[aria-disabled="true"]:hover{background:none}
+.mnu-i .ck2{color:var(--accent);flex:none}
+/* separators stop 9px short of each edge; container edges stay full-bleed */
+.mnu-sep{height:1px;background:var(--border-subtle);margin:4px 9px;border:0}
+.submenu{position:relative}
+.submenu > .sub{position:absolute;left:calc(100% - 2px);top:-5px;display:none}
+.submenu:hover > .sub,.submenu:focus-within > .sub{display:block}
+
+.tip{display:inline-block;background:var(--tip-bg);color:var(--tip-fg);font-size:11.5px;line-height:16px;
+  padding:5px 8px;border-radius:var(--r-2);max-width:260px;box-shadow:var(--shadow-pop);position:relative}
+.tip b{font-weight:600;display:block}
+.tip .num{font-variant-numeric:tabular-nums}
+.tip::after{content:"";position:absolute;top:100%;left:14px;border:4px solid transparent;border-top-color:var(--tip-bg)}
+
+.pover{width:min(320px,86vw);padding:0}
+.pover-h{display:flex;align-items:center;gap:8px;padding:9px 12px;border-bottom:1px solid var(--border-subtle);
+  font-size:12px;font-weight:600}
+.pover-b{padding:12px;display:flex;flex-direction:column;gap:10px}
+.pover-f{display:flex;align-items:center;gap:8px;padding:9px 12px;border-top:1px solid var(--border-subtle);
+  background:var(--bg-subtle);flex-wrap:wrap}
+
+.scrim{position:relative;background:rgb(12 16 20 / .48);border-radius:var(--r-4);padding:20px 14px;
+  display:flex;justify-content:center}
+.modal{width:min(520px,100%);background:var(--bg-raised);border:1px solid var(--border);
+  border-radius:var(--r-5);box-shadow:var(--shadow-modal);overflow:hidden}
+.modal-h{display:flex;align-items:flex-start;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border-subtle)}
+.modal-h h4{font-size:15px;line-height:20px}
+.modal-h p{font-size:12px;line-height:17px;color:var(--fg-muted);margin-top:3px}
+.modal-b{padding:16px;display:flex;flex-direction:column;gap:12px;font-size:13px;line-height:19px}
+.modal-f{display:flex;align-items:center;gap:8px;padding:12px 16px;border-top:1px solid var(--border-subtle);
+  background:var(--bg-subtle);flex-wrap:wrap}
+.modal-f .sp{flex:1;min-width:0}
+.sheet{width:min(400px,100%);height:300px;background:var(--bg-raised);border-left:1px solid var(--border);
+  box-shadow:var(--shadow-modal);display:flex;flex-direction:column;margin-left:auto;border-radius:var(--r-5) 0 0 var(--r-5)}
+.sheet-h{display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border-subtle)}
+.sheet-b{flex:1;overflow:auto;padding:14px;display:flex;flex-direction:column;gap:12px}
+.sheet-f{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--border-subtle);background:var(--bg-subtle)}
+
+.toast{display:flex;gap:10px;align-items:flex-start;background:var(--bg-raised);border:1px solid var(--border);
+  border-left-width:2px;border-radius:var(--r-3);box-shadow:var(--shadow-pop);padding:10px 12px;
+  max-width:400px;min-width:0}
+.toast.ok{border-left-color:var(--accent)}
+.toast.wn{border-left-color:var(--warn)}
+.toast.er{border-left-color:var(--loss)}
+.toast.nu{border-left-color:var(--border-active)}
+.toast .ti{flex:none;margin-top:1px}
+.toast.ok .ti{color:var(--accent)}.toast.wn .ti{color:var(--warn)}.toast.er .ti{color:var(--loss)}.toast.nu .ti{color:var(--fg-muted)}
+.toast .tb{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.toast b{font-size:12.5px;font-weight:600}
+.toast p{font-size:11.5px;line-height:16px;color:var(--fg-muted)}
+
+.alrt{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-left-width:2px;
+  border-radius:var(--r-3);padding:11px 13px;min-width:0}
+.alrt.i{border-left-color:var(--info);background:var(--info-bg)}
+.alrt.w{border-left-color:var(--warn);background:var(--warn-bg)}
+.alrt.e{border-left-color:var(--loss);background:var(--loss-bg)}
+.alrt.s{border-left-color:var(--accent);background:var(--accent-soft)}
+.alrt .ai{flex:none;margin-top:1px}
+.alrt.i .ai{color:var(--info)}.alrt.w .ai{color:var(--warn)}.alrt.e .ai{color:var(--loss)}.alrt.s .ai{color:var(--accent)}
+.alrt .ab{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px}
+.alrt b{font-size:12.5px;font-weight:600;color:var(--fg)}
+.alrt p{font-size:12px;line-height:17px;color:var(--fg-secondary)}
+
+.inlc{border:1px solid var(--loss-line);border-radius:var(--r-3);background:var(--loss-bg);overflow:hidden}
+.inlc-h{display:flex;align-items:center;gap:9px;padding:9px 12px;font-size:12.5px}
+.inlc-b{padding:0 12px 11px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+
+/* ---------------- FEEDBACK ---------------- */
+.sk{display:block;border-radius:var(--r-1);background:linear-gradient(90deg,var(--skel-a) 0%,var(--skel-b) 50%,var(--skel-a) 100%);
+  background-size:200% 100%;animation:shim 1.25s linear infinite}
+@keyframes shim{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.sk{animation:none;background:var(--skel-a)}}
+.sk-row{display:flex;align-items:center;gap:12px;height:32px;padding:0 12px;border-bottom:1px solid var(--border-subtle)}
+.spin2{display:inline-block;border-radius:50%;border:1.5px solid var(--fg-muted);border-top-color:transparent;
+  animation:sp .62s linear infinite;flex:none}
+@media (prefers-reduced-motion:reduce){.spin2{animation:none;border-top-color:currentColor;border-style:dotted}}
+.empty{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:26px 16px}
+.empty b{font-size:15px;line-height:21px;font-weight:600}
+.empty p{font-size:12.5px;line-height:18px;color:var(--fg-muted);max-width:46ch}
+.empty .ea{display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:4px}
+.errpanel{border:1px solid var(--border);border-left:2px solid var(--loss);border-radius:var(--r-3);
+  padding:14px;display:flex;flex-direction:column;gap:8px;background:var(--bg-surface)}
+.errpanel b{font-size:13px}
+.errpanel p{font-size:12px;line-height:18px;color:var(--fg-secondary);max-width:70ch}
+
+/* ---------------- ICONS ---------------- */
+.icogrid{display:grid;gap:1px;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));
+  background:var(--border-subtle);border:1px solid var(--border-subtle);border-radius:var(--r-3);overflow:hidden}
+.icoc{background:var(--bg-surface);display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 4px 8px;
+  transition:background-color var(--t-fast) var(--ease)}
+.icoc:hover{background:var(--bg-hover)}
+.icoc .ib{display:grid;place-items:center;height:22px;color:var(--fg-secondary)}
+.icoc code{font-size:9.5px;color:var(--fg-muted);text-align:center;word-break:break-word;line-height:13px}
+.sizerow{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap}
+.sizeone{display:flex;flex-direction:column;align-items:center;gap:5px}
+.sizeone .ib{display:grid;place-items:center;color:var(--fg)}
+.sizeone code{font-size:9.5px;color:var(--fg-muted)}
+.gridshow{background-image:linear-gradient(var(--accent-line) 1px,transparent 1px),linear-gradient(90deg,var(--accent-line) 1px,transparent 1px);
+  background-size:4px 4px;background-position:-.5px -.5px;opacity:1}
+
+/* ---------------- COMPOSITIONS ---------------- */
+.tbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:9px 12px;border-bottom:1px solid var(--border-subtle);
+  background:var(--bg-surface);min-width:0}
+.tbar .sp{flex:1;min-width:0}
+.chipbar{display:flex;align-items:center;gap:6px;flex-wrap:wrap;padding:8px 12px;
+  border-bottom:1px solid var(--border-subtle);background:var(--bg-subtle);min-width:0}
+.cnt-line{font-size:11.5px;color:var(--fg-muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.kpirow{display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(176px,1fr))}
+.facet{display:flex;align-items:center;gap:8px;padding:5px 8px;border-radius:var(--r-2);cursor:pointer;
+  transition:background-color var(--t-fast) var(--ease)}
+.facet:hover{background:var(--bg-hover)}
+.facet .fn{flex:1;min-width:0;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.facet .fc{font-size:11px;color:var(--fg-muted);font-variant-numeric:tabular-nums;flex:none}
+
+@media(max-width:640px){
+  .spec-b{padding:14px 12px}
+  .kpi .kv{font-size:21px;line-height:27px}
+  .btn,.inw,.lb-btn,select.sel,.tokfield{min-height:0}
+  .touch .btn,.touch .inw,.touch .lb-btn{--bh:var(--h-xl);--ih:var(--h-xl)}
+}
+</style>
+
+<div class="chrome">
+  <span class="brand"><span class="mark" aria-hidden="true"></span>Stock-Mania&nbsp;kit</span>
+  <nav class="secnav" id="secnav" aria-label="Component sections">
+    <button data-s="found" aria-current="true">Foundations</button>
+    <button data-s="buttons">Buttons</button>
+    <button data-s="forms">Form controls</button>
+    <button data-s="data">Data display</button>
+    <button data-s="nav">Navigation</button>
+    <button data-s="overlays">Overlays</button>
+    <button data-s="feedback">Feedback</button>
+    <button data-s="icons">Icons</button>
+    <button data-s="comp">Compositions</button>
+  </nav>
+  <span class="chrome-r">
+    <span class="segf segf-sm" id="flipAll" role="group" aria-label="Pin every specimen to a theme">
+      <button data-fa="auto" aria-pressed="true">Page</button>
+      <button data-fa="light" aria-pressed="false">All light</button>
+      <button data-fa="dark" aria-pressed="false">All dark</button>
+    </span>
+    <span class="segf segf-sm" id="themeSeg" role="group" aria-label="Page theme">
+      <button data-t="system" aria-pressed="true">System</button>
+      <button data-t="light" aria-pressed="false">Light</button>
+      <button data-t="dark" aria-pressed="false">Dark</button>
+    </span>
+  </span>
+</div>
+
+<!-- ============================ FOUNDATIONS ============================ -->
+<main class="bench" id="s-found">
+  <div class="sec-head">
+    <h1>Foundations</h1>
+    <p>Four scales govern every control on this page: a five-step height rhythm, a six-step radius set, a five-step border ladder, and one transition. Nothing below picks a value outside them. Each specimen can be pinned Light or Dark in place — the control is judged against both grounds without leaving the page.</p>
+  </div>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Control height rhythm</h3><span class="sh-note">24 / 28 / 32 / 36 / 40 — a 4px step, so any two controls share a baseline</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="row" style="align-items:flex-end;gap:14px">
+        <div class="sizeone"><button class="btn btn-sm" style="--bh:var(--h-xs);--bp:8px;--bf:11px">24</button><code>--h-xs</code></div>
+        <div class="sizeone"><button class="btn btn-sm">28</button><code>--h-sm</code></div>
+        <div class="sizeone"><button class="btn">32</button><code>--h-md</code></div>
+        <div class="sizeone"><button class="btn btn-lg">36</button><code>--h-lg</code></div>
+        <div class="sizeone"><button class="btn btn-lg" style="--bh:var(--h-xl)">40</button><code>--h-xl</code></div>
+      </div>
+      <p class="why"><b>Why 32px is the default.</b> The table row at Compact density is 32px. A button, an input, a select and a badge row all resolve to 32px too, so a control dropped into a table cell does not change the row height. 24px exists only for controls that live inside another control (a chip's clear button, a stepper arm). 40px is the mobile touch size — below 640px every interactive control in a <code>.touch</code> region is promoted to it.</p>
+      <p class="ann"><b>heights</b> --h-xs 24px · --h-sm 28px · --h-md 32px (default) · --h-lg 36px (forms) · --h-xl 40px (touch)</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Radius set</h3><span class="sh-note">Radius is bound to control height, not chosen per component</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="row" style="gap:16px;align-items:flex-end">
+        <div class="sizeone"><span style="width:44px;height:28px;border:1px solid var(--border-control);border-radius:var(--r-1);background:var(--bg-subtle);display:block"></span><code>--r-1 2px</code></div>
+        <div class="sizeone"><span style="width:44px;height:28px;border:1px solid var(--border-control);border-radius:var(--r-2);background:var(--bg-subtle);display:block"></span><code>--r-2 3px</code></div>
+        <div class="sizeone"><span style="width:44px;height:28px;border:1px solid var(--border-control);border-radius:var(--r-3);background:var(--bg-subtle);display:block"></span><code>--r-3 4px</code></div>
+        <div class="sizeone"><span style="width:44px;height:28px;border:1px solid var(--border-control);border-radius:var(--r-4);background:var(--bg-subtle);display:block"></span><code>--r-4 6px</code></div>
+        <div class="sizeone"><span style="width:44px;height:28px;border:1px solid var(--border-control);border-radius:var(--r-5);background:var(--bg-subtle);display:block"></span><code>--r-5 8px</code></div>
+        <div class="sizeone"><span style="width:44px;height:28px;border:1px solid var(--border-control);border-radius:var(--r-pill);background:var(--bg-subtle);display:block"></span><code>--r-pill</code></div>
+      </div>
+      <p class="why"><b>Radius follows height.</b> A single 3px radius on a 40px control reads as a cut corner rather than a curve, because the eye judges the arc against the edge it interrupts. So: controls ≤32px take <code>--r-2</code> 3px, controls ≥36px take <code>--r-3</code> 4px, panels take <code>--r-4</code> 6px, modals and sheets <code>--r-5</code> 8px, elements nested inside a control (checkbox, chip close, swatch) take <code>--r-1</code> 2px, and status dots alone take <code>--r-pill</code>. Table cells stay at 0.</p>
+      <p class="ann"><b>radii</b> --r-1 2px · --r-2 3px · --r-3 4px · --r-4 6px · --r-5 8px · --r-pill 999px · table cell 0</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Border ladder, and two corrections</h3><span class="sh-note">One width (1px); strength is the only variable</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="cols">
+        <div class="grp">
+          <span class="lbl">The five steps</span>
+          <dl class="kv">
+            <dt><span style="display:inline-block;width:22px;height:0;border-top:1px solid var(--border-subtle);vertical-align:middle;margin-right:7px"></span>--border-subtle</dt><dd class="mono">dividers inside a surface</dd>
+            <dt><span style="display:inline-block;width:22px;height:0;border-top:1px solid var(--border);vertical-align:middle;margin-right:7px"></span>--border</dt><dd class="mono">container edges</dd>
+            <dt><span style="display:inline-block;width:22px;height:0;border-top:1px solid var(--border-control);vertical-align:middle;margin-right:7px"></span>--border-control</dt><dd class="mono">interactive boundary</dd>
+            <dt><span style="display:inline-block;width:22px;height:0;border-top:1px solid var(--border-hover);vertical-align:middle;margin-right:7px"></span>--border-hover</dt><dd class="mono">+1 step on hover</dd>
+            <dt><span style="display:inline-block;width:22px;height:0;border-top:1px solid var(--border-active);vertical-align:middle;margin-right:7px"></span>--border-active</dt><dd class="mono">+2 steps on press</dd>
+          </dl>
+        </div>
+        <div class="grp">
+          <span class="lbl">Hover darkens, never re-hues</span>
+          <div class="row">
+            <span class="btn" style="pointer-events:none">Rest</span>
+            <span class="btn" style="pointer-events:none;background:var(--bg-hover);border-color:var(--border-hover)">Hover</span>
+            <span class="btn" style="pointer-events:none;background:var(--bg-active);border-color:var(--border-active);box-shadow:none">Pressed</span>
+          </div>
+          <p class="ann">surface step <b>light</b> #FFFFFF → #F6F8FA → #EFF2F5 (6.4% then 11.6% luminance)<br>surface step <b>dark</b> #1A2026 → #232A31 → #2A323A<br>border step light #808C9A → #64707E → #49545F</p>
+        </div>
+      </div>
+      <hr class="hr">
+      <p class="why"><b>Correction 1 — the inherited control border failed WCAG 1.4.11.</b> Design-research §1.4 assigns <code>--border-strong</code> (light <code>#B9C2CC</code>, dark <code>#343C45</code>) to form-control boundaries and claims it meets the 3:1 non-text minimum. Measured, it is <b>1.80:1</b> in light and <b>1.60:1</b> in dark — an input's edge was effectively invisible as a boundary. A new token <code>--border-control</code> replaces it: light <code>#808C9A</code> at <b>3.42:1</b> on surface and 3.21:1 on canvas, dark <code>#64707E</code> at <b>3.54:1</b> on surface and 3.25:1 on raised. <code>--border-strong</code> survives only as decorative container chrome, renamed <code>--border</code>.</p>
+      <p class="why"><b>Correction 2 — the dark container hairline was invisible.</b> In a system where borders carry all elevation, dark <code>--border</code> at <code>--n-800 #232A31</code> measured 1.23:1 against the <code>#13181D</code> surface, so panels had no visible edge. Moved one step to <code>--n-700 #343C45</code> (1.60:1), which reads as a hairline without becoming a rule.</p>
+      <p class="ann"><b>new ramp steps</b> --n-450 #808C9A (light control border) · --n-775 #2A323A (dark pressed surface)</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Two more token corrections</h3><span class="sh-note">Both found by measuring, not by eye</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <p class="why"><b>Correction 3 — muted caption on a subtle fill.</b> <code>--fg-muted #64707E</code> on the old light <code>--bg-subtle #EFF2F5</code> measured <b>4.49:1</b> — a hair under AA. Rather than darken every caption, <code>--bg-subtle</code> moved from <code>#EFF2F5</code> to <code>#F2F5F8</code>, which lifts it to <b>4.61:1</b> and incidentally makes the subtle fill read as a tint of the canvas rather than a third grey.</p>
+      <p class="why"><b>Correction 4 — disabled text, and why contrast is not a state channel.</b> The inherited <code>--fg-disabled</code> measured 2.93:1 (light) and 2.31:1 (dark). WCAG exempts inactive controls, but relying on faintness alone is the lazy version of this state. Raised to <code>#7C8896</code> (<b>3.61:1</b>) and <code>#5C6875</code> (<b>3.14:1</b>), both still a clear step below <code>--fg-muted</code> — and disabled is carried by the <em>fill and border</em> instead: surface drops to <code>--bg-subtle</code>, the border weakens from <code>--border-control</code> to <code>--border</code>, the inner highlight is removed so the control sits flat, and the cursor becomes <code>not-allowed</code>.</p>
+      <div class="row vtop" style="gap:20px">
+        <div class="grp"><span class="lbl">Disabled, four channels at once</span>
+          <div class="row"><button class="btn" disabled>Post to ledger</button><button class="btn btn-primary" disabled>Confirm 7 rows</button></div>
+        </div>
+        <div class="grp"><span class="lbl">Against its enabled twin</span>
+          <div class="row"><button class="btn">Post to ledger</button><button class="btn btn-primary">Confirm 7 rows</button></div>
+        </div>
+      </div>
+      <p class="ann"><b>light</b> --fg #13181D 17.9:1 · --fg-secondary #49545F 7.7:1 · --fg-muted #64707E 5.1:1 · --fg-disabled #7C8896 3.6:1<br><b>dark</b> --fg #F6F8FA 16.8:1 · --fg-secondary #B9C2CC 9.9:1 · --fg-muted #8C98A6 6.1:1 · --fg-disabled #5C6875 3.1:1</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>The focus ring, and why it has a gap</h3><span class="sh-note">2px accent, 2px offset, on every interactive element</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="row" style="gap:18px">
+        <span class="btn" style="pointer-events:none;outline:2px solid var(--accent);outline-offset:2px">Outside a row</span>
+        <span class="btn" style="pointer-events:none;outline:2px solid var(--accent);outline-offset:-2px">Inset, in a tight row</span>
+      </div>
+      <p class="why"><b>Two offsets, one ring.</b> Standalone controls take <code>outline-offset:2px</code>: the 2px gap renders in whatever surface sits behind, which separates the ring from the control's own border so the two never read as one thick edge. Controls packed into a tight row — table headers, menu items, segment buttons, calendar days — take <code>outline-offset:-2px</code> instead, so the ring sits inside the hit area and cannot be clipped by a neighbour or a scroll container. The accent measures 5.16:1 on the light surface and 5.79:1 on the dark one, both well past the 3:1 non-text minimum. Input shells focus at <code>offset:1px</code> and simultaneously swap their border to the accent, so the boundary and the ring agree.</p>
+      <p class="ann"><b>ring</b> 2px solid var(--accent) · offset 2px standalone / −2px packed / 1px input shells<br>light #4F62D8 5.16:1 on #FFFFFF · dark #7D8CEA 5.79:1 on #13181D</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Typography</h3><span class="sh-note">Inter + IBM Plex Mono; hierarchy from weight and neutral step only</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div style="display:flex;flex-direction:column;gap:9px;min-width:0">
+        <div class="row" style="justify-content:space-between;gap:16px"><span style="font-size:30px;line-height:36px;font-weight:600;letter-spacing:-.018em" class="tnum">₹48,72,140</span><span class="ann">text-display 30/36 600 tnum — the single hero figure only</span></div>
+        <div class="row" style="justify-content:space-between;gap:16px"><span style="font-size:22px;line-height:28px;font-weight:600;letter-spacing:-.012em">Realised gains</span><span class="ann">text-h1 22/28 600 −0.012em</span></div>
+        <div class="row" style="justify-content:space-between;gap:16px"><span style="font-size:24px;line-height:30px;font-weight:600;letter-spacing:-.016em" class="tnum">+15.23%</span><span class="ann">text-kpi 24/30 600 tnum −0.016em</span></div>
+        <div class="row" style="justify-content:space-between;gap:16px"><span style="font-size:17px;line-height:24px;font-weight:600">Where it is</span><span class="ann">text-h2 17/24 600</span></div>
+        <div class="row" style="justify-content:space-between;gap:16px"><span style="font-size:14px;line-height:20px">Summed from journal postings at read time.</span><span class="ann">text-body 14/20 400</span></div>
+        <div class="row" style="justify-content:space-between;gap:16px"><span style="font-size:13px;line-height:18px" class="tnum">₹1,42,560.00</span><span class="ann">text-table 13/18 400 tnum</span></div>
+        <div class="row" style="justify-content:space-between;gap:16px"><span style="font-size:12px;line-height:16px;font-weight:500;letter-spacing:.015em;color:var(--fg-muted)">Market value</span><span class="ann">text-label 12/16 500 +0.015em</span></div>
+        <div class="row" style="justify-content:space-between;gap:16px"><span style="font-size:11px;line-height:14px;font-weight:500" class="tnum gain">+₹24,180 · +2.14% today</span><span class="ann">text-micro 11/14 500 tnum</span></div>
+        <div class="row" style="justify-content:space-between;gap:16px"><span class="mono" style="font-size:11.5px">INE002A01018 · 120503</span><span class="ann">mono 11.5px slashed-zero — ISIN, AMFI code, rule-set id only</span></div>
+      </div>
+      <p class="why"><b>Tracking is corrected per size, not inherited.</b> Inter's default tracking is tuned for body copy; at 24px and above it opens up. Display, h1 and KPI sizes pull in by −0.012em to −0.018em so a large figure keeps the same optical density as a 13px table cell, while the 12px label pushes out +0.015em because small caps-height text closes up. Tabular numerals are on globally via <code>font-feature-settings:"tnum" 1</code>; every money figure is right-aligned and signed with U+2212, never a hyphen.</p>
+      <p class="ann"><b>compare</b> hyphen −12.4% vs minus −12.4% — the minus sits at the digit's own x-height and width</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Optical correction, not nominal values</h3><span class="sh-note">Four places where the arithmetic answer is the wrong answer</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="cols2">
+        <div class="grp"><span class="lbl">1 · Leading-icon padding</span>
+          <div class="row"><button class="btn lead"><i data-i="plus"></i>Record a trade</button><button class="btn"><i data-i="plus"></i>Record a trade</button></div>
+          <p class="ann">left: <b>corrected</b> padding-left 10px — right: nominal 12px, reads left-heavy</p>
+        </div>
+        <div class="grp"><span class="lbl">2 · Trailing-chevron spacing</span>
+          <div class="row"><button class="btn chev">FY 2026-27<i data-i="chev-d"></i></button><button class="btn">FY 2026-27<i data-i="chev-d"></i></button></div>
+          <p class="ann">left: <b>corrected</b> gap 4px, padding-right 8px — right: nominal 6px/12px, chevron drifts</p>
+        </div>
+        <div class="grp"><span class="lbl">3 · Icon optically centred</span>
+          <div class="row"><button class="btn only" aria-label="Filter"><i data-i="filter"></i></button><button class="btn only" aria-label="Refresh"><i data-i="refresh"></i></button><button class="btn only" aria-label="More"><i data-i="more"></i></button></div>
+          <p class="ann">32×32 box, 16px icon on a 16 grid; the filter funnel's mass sits high, so its path is drawn 0.5px low rather than the box being nudged</p>
+        </div>
+        <div class="grp"><span class="lbl">4 · Baselines across adjacent controls</span>
+          <div class="row" style="align-items:center"><button class="btn btn-sm">Columns</button><span class="bdg sub-warn">Stale</span><span class="tnum" style="font-size:13px">₹1,42,560</span><span class="kbd">/</span></div>
+          <p class="ann">a 28px button, a 20px badge, a 13px figure and an 18px key cap all centre on one axis — none is baseline-aligned to the others by accident</p>
+        </div>
+      </div>
+      <p class="why"><b>Pressed shifts the label, not the button.</b> On <code>:active</code> the button's children translate 0.5px down while the box stays put — a button that moved as a whole would break alignment with the controls beside it. The inner highlight is removed at the same moment, so the control reads as seated rather than raised.</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Elevation and the inner highlight</h3><span class="sh-note">The highlight follows the light source, so it inverts between themes</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="row" style="gap:12px"><button class="btn">Secondary</button><button class="btn btn-primary">Primary</button><span class="pop" style="padding:9px 12px;font-size:12.5px">Floating layer · --shadow-pop</span></div>
+      <p class="why"><b>Light has no room above white.</b> A 1px white inner highlight on a <code>#FFFFFF</code> button is invisible, so in the light theme the raised control is seated with a 1px <em>bottom</em> inset instead — <code>inset 0 -1px 0 rgb(19 24 29 / .07)</code> — which reads as the control resting on the surface. In dark, the surface has room above it, so the token flips to a true top highlight, <code>inset 0 1px 0 rgb(255 255 255 / .055)</code>. One token name, <code>--inner-hl</code>, two opposite values; filled controls take <code>--inner-hl-2</code> at roughly double strength because a saturated fill swallows a faint edge.</p>
+      <p class="ann"><b>shadows</b> only on genuinely floating layers — menu/popover 0 4px 12px, modal/sheet 0 16px 48px. Everything else is a 1px border.</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Motion budget</h3><span class="sh-note">90ms, colour and transform only</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <p class="why">Every transition in this kit is <code>90ms cubic-bezier(.2, 0, .38, 1)</code> and animates only <code>background-color</code>, <code>border-color</code>, <code>color</code>, <code>box-shadow</code> and <code>transform</code>. Nothing animates width, height, opacity-on-load or position. Under <code>prefers-reduced-motion</code> all durations collapse to 1ms and the two spinners stop rotating, becoming a static dotted ring that still reads as busy beside <code>aria-busy="true"</code>.</p>
+      <p class="ann"><b>--t-fast</b> 90ms (state changes) · <b>--t</b> 110ms (bar and fill widths) · <b>--ease</b> cubic-bezier(.2,0,.38,1)</p>
+    </div>
+  </section>
+</main>
+
+<!-- ============================ BUTTONS ============================ -->
+<main class="bench" id="s-buttons" hidden>
+  <div class="sec-head">
+    <h1>Buttons</h1>
+    <p>Five variants, three sizes, nine states. Every state is a considered change — a surface step, a border step, an inner-highlight removal — never a hue swap. Hover and press the specimens; they are live.</p>
+  </div>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Variants · all nine states</h3><span class="sh-note">rest · hover · pressed · focus · selected · disabled · loading</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="tscroll"><table class="dt" style="min-width:680px">
+        <thead><tr><th style="cursor:default">Variant</th><th style="cursor:default">Rest</th><th style="cursor:default">Hover</th><th style="cursor:default">Pressed</th><th style="cursor:default">Focus-visible</th><th style="cursor:default">Disabled</th><th style="cursor:default">Loading</th></tr></thead>
+        <tbody id="btnMatrix"></tbody>
+      </table></div>
+      <p class="ann"><b>primary</b> fill --accent, --inner-hl-2 · <b>secondary</b> --bg-surface + --border-control · <b>ghost</b> no border until hover · <b>danger</b> fill --loss, --loss-on text · <b>link</b> underline at --accent-line, thickens to currentColor on hover</p>
+      <p class="why"><b>Loading keeps the button's width.</b> The label is set to <code>visibility:hidden</code> rather than removed, so it still occupies its box and the spinner is absolutely centred over it. A toolbar does not reflow when one action starts working. <code>aria-busy="true"</code> goes on the button and <code>pointer-events</code> are dropped so a second click cannot land.</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Sizes and icon treatments</h3><span class="sh-note">sm 28 · md 32 · lg 36, each with its own optical padding</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="grp"><span class="lbl">Small — 28px, toolbars and table rows</span>
+        <div class="row"><button class="btn btn-sm">Export</button><button class="btn btn-sm lead"><i data-i="download" data-s="14"></i>Export CSV</button><button class="btn btn-sm chev">Density<i data-i="chev-d" data-s="14"></i></button><button class="btn btn-sm only" aria-label="More actions"><i data-i="more" data-s="14"></i></button><button class="btn btn-sm btn-primary">Apply</button></div>
+      </div>
+      <div class="grp"><span class="lbl">Medium — 32px, the default</span>
+        <div class="row"><button class="btn">Reconcile</button><button class="btn lead"><i data-i="plus"></i>Record a trade</button><button class="btn trail">Open batch<i data-i="arrow-r"></i></button><button class="btn only" aria-label="Refresh prices"><i data-i="refresh"></i></button><button class="btn btn-primary lead"><i data-i="check"></i>Confirm 7 rows</button></div>
+      </div>
+      <div class="grp"><span class="lbl">Large — 36px, page headers and forms</span>
+        <div class="row"><button class="btn btn-lg">Cancel</button><button class="btn btn-lg btn-primary lead"><i data-i="plus" data-s="18"></i>Quick add</button><button class="btn btn-lg btn-danger-quiet lead"><i data-i="trash" data-s="18"></i>Close account</button></div>
+      </div>
+      <p class="ann"><b>sm</b> h28 fs12 px10 r3 · <b>md</b> h32 fs13 px12 r3 · <b>lg</b> h36 fs14 px16 r4 · icon-only width = height · gap 6px (4px before a chevron)</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Split button, group, segmented, toggle</h3><span class="sh-note">Four ways to pack buttons, each with its own hairline logic</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="cols2">
+        <div class="grp"><span class="lbl">Split — primary action plus its variants</span>
+          <div class="row">
+            <span class="split"><button class="btn btn-primary">Export CSV</button><button class="btn btn-primary" aria-label="Export options" aria-haspopup="menu"><i data-i="chev-d" data-s="14"></i></button></span>
+            <span class="split"><button class="btn">Post</button><button class="btn" aria-label="Post options" aria-haspopup="menu"><i data-i="chev-d" data-s="14"></i></button></span>
+          </div>
+          <p class="ann">the divider is a 1px inset light line on the caret half, not a border — a border would double against the shared edge</p>
+        </div>
+        <div class="grp"><span class="lbl">Button group — peer actions</span>
+          <div class="row"><span class="bgroup"><button class="btn btn-sm">Day</button><button class="btn btn-sm">Week</button><button class="btn btn-sm">Month</button></span></div>
+          <p class="ann">−1px margin collapses adjacent borders; hover and focus raise z-index so the active edge is never clipped</p>
+        </div>
+        <div class="grp"><span class="lbl">Segmented — raised thumb</span>
+          <div class="row"><span class="seg" role="group" aria-label="Density" data-seg><button aria-pressed="false">Comfortable</button><button aria-pressed="true">Compact</button><button aria-pressed="false">Dense</button></span></div>
+          <p class="ann">2px sunken track, the selected thumb lifts on --bg-surface with a 1px border ring</p>
+        </div>
+        <div class="grp"><span class="lbl">Segmented — flush hairline</span>
+          <div class="row"><span class="segf" role="group" aria-label="Price state" data-seg><button aria-pressed="true">All</button><button aria-pressed="false">Priced</button><button aria-pressed="false">Stale</button><button aria-pressed="false">Unpriced</button></span></div>
+          <p class="ann"><b>the hairline beside the selected segment is suppressed on both sides</b> — a divider touching a filled segment reads as a seam</p>
+        </div>
+        <div class="grp"><span class="lbl">Toggle buttons</span>
+          <div class="row"><button class="btn btn-sm lead" aria-pressed="true" data-toggle><i data-i="check" data-s="14"></i>Show ▲▼ glyphs</button><button class="btn btn-sm" aria-pressed="false" data-toggle>Split-adjusted</button><button class="btn btn-sm" aria-pressed="false" data-toggle>Accounting ( )</button></div>
+          <p class="ann">aria-pressed=true → --accent-soft fill, --accent-line border, no inner highlight (a pressed-in control is not raised)</p>
+        </div>
+        <div class="grp"><span class="lbl">Link</span>
+          <div class="row" style="font-size:13px"><button class="btn btn-link">Review the batch</button><span class="muted">·</span><button class="btn btn-link">Clear all filters</button></div>
+          <p class="ann">underline sits at --accent-line 1px, offset 2px; it thickens to currentColor on hover so the change is in weight, not hue</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ============================ FORM CONTROLS ============================ -->
+<main class="bench" id="s-forms" hidden>
+  <div class="sec-head">
+    <h1>Form controls</h1>
+    <p>The input shell owns the border and the focus ring, so a prefix, a suffix, a leading icon and a clear button all live inside one boundary rather than stacking their own. Every control here is operable by keyboard.</p>
+  </div>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Text input · affixes, icon, clear, counter</h3><span class="sh-note">36px shell, one border, one ring</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="cols">
+        <div class="fld"><label for="f-amt">Amount <span class="req" aria-hidden="true">*</span></label>
+          <div class="inw num"><span class="afx">₹</span><input id="f-amt" value="1,42,560.00" inputmode="decimal"></div>
+          <span class="hint">Full digits, en-IN grouping. Stored as BIGINT minor units.</span></div>
+        <div class="fld"><label for="f-rate">Marginal slab rate</label>
+          <div class="inw num"><input id="f-rate" value="30" inputmode="decimal"><span class="afx r">%</span></div>
+          <span class="hint">Applied to slab-rate disposals.</span></div>
+        <div class="fld"><label for="f-search">Search holdings</label>
+          <div class="inw"><span class="ico"><i data-i="search"></i></span><input id="f-search" value="HDFC" placeholder="Name, symbol or ISIN"><button class="clr" aria-label="Clear search"><i data-i="x" data-s="14"></i></button></div>
+          <span class="hint">Debounced 150ms, matches substring and acronym.</span></div>
+        <div class="fld"><label for="f-narr">Narration <span class="opt">optional</span><span class="cnt" id="narrCount">38 / 120</span></label>
+          <div class="inw"><input id="f-narr" value="HDFC Regalia card payment — October" maxlength="120"></div>
+          <span class="hint">Appears on the ledger line.</span></div>
+      </div>
+      <hr class="hr">
+      <div class="grp"><span class="lbl">Number input with stepper</span>
+        <div class="row">
+          <div class="fld" style="width:200px"><label for="f-units">Units</label>
+            <div class="inw num"><input id="f-units" value="1,842.317" inputmode="decimal"><span class="stepper"><button type="button" aria-label="Increase units" data-step="up"><i data-i="caret-u" data-s="10"></i></button><button type="button" aria-label="Decrease units" data-step="down"><i data-i="caret-d" data-s="10"></i></button></span></div>
+            <span class="hint">Mutual-fund units, 3 dp.</span></div>
+        </div>
+        <p class="ann">stepper arms are 24px on a 36px shell — two <b>--h-xs</b> controls stacked inside one <b>--h-lg</b> control, divided by --border-subtle, with the outer border owned by the shell</p>
+      </div>
+      <hr class="hr">
+      <div class="grp"><span class="lbl">States</span>
+        <div class="cols">
+          <div class="fld"><span class="lab">Rest</span><div class="inw"><input value="Zerodha" readonly></div></div>
+          <div class="fld"><span class="lab">Hover</span><div class="inw" style="border-color:var(--border-hover)"><input value="Zerodha" readonly></div></div>
+          <div class="fld"><span class="lab">Focus</span><div class="inw" style="border-color:var(--accent);outline:2px solid var(--accent);outline-offset:1px;box-shadow:none"><input value="Zerodha" readonly></div></div>
+          <div class="fld"><span class="lab">Error</span><div class="inw err"><input value="-25000" readonly></div><span class="errtxt"><i data-i="warn" data-s="13"></i>Units cannot be negative. Record a SELL instead.</span></div>
+          <div class="fld"><span class="lab">Read-only</span><div class="inw ro"><input value="india-fy2025" readonly class="mono"></div><span class="hint">Rule set is set by the tax engine.</span></div>
+          <div class="fld"><span class="lab">Disabled</span><div class="inw dis"><span class="afx">₹</span><input value="0.00" disabled></div><span class="hint">Needs an open account first.</span></div>
+        </div>
+        <p class="ann"><b>read-only vs disabled</b> — read-only keeps --fg-secondary ink and takes a <em>dashed</em> border so the value still reads as real data; disabled drops to --fg-disabled on --bg-subtle with the inner highlight removed</p>
+      </div>
+      <hr class="hr">
+      <div class="grp"><span class="lbl">Textarea</span>
+        <textarea class="ta" id="f-ta" placeholder="Why this adjustment was posted…">Reconciled against the HDFC statement for 1–31 Aug 2026. Difference of ₹412.00 posted to Equity:Adjustments.</textarea>
+        <p class="ann">resize:vertical only — horizontal resize breaks the form grid</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Select, listbox, multi-select, combobox</h3><span class="sh-note">A native select, then the custom one it is replaced by</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="cols">
+        <div class="fld"><label for="f-sel">Native select</label>
+          <select class="sel" id="f-sel"><option>FY 2026-27 (current)</option><option>FY 2025-26</option><option>FY 2024-25</option></select>
+          <span class="hint">Caret drawn from two gradients, so it inherits the text colour.</span></div>
+        <div class="fld"><span class="lab" id="lbl-plat">Platform</span>
+          <div class="lb-wrap" data-lb><button class="lb-btn" aria-haspopup="listbox" aria-expanded="false" aria-labelledby="lbl-plat"><span class="v">Zerodha</span><i data-i="chev-d" data-s="14"></i></button></div>
+          <span class="hint">Grouped, searchable, keyboard-operable.</span></div>
+        <div class="fld"><span class="lab">Asset class <span class="opt">3 selected</span></span>
+          <div class="tokfield" id="tokf"><span class="tok"><span>Listed equity</span><button aria-label="Remove Listed equity"><i data-i="x" data-s="11"></i></button></span><span class="tok"><span>Equity mutual fund</span><button aria-label="Remove Equity mutual fund"><i data-i="x" data-s="11"></i></button></span><span class="tok"><span>Gold</span><button aria-label="Remove Gold"><i data-i="x" data-s="11"></i></button></span><input placeholder="Add…" aria-label="Add asset class"></div>
+          <span class="hint">Backspace in an empty field removes the last token.</span></div>
+        <div class="fld"><label for="f-cb">Instrument <span class="opt">catalogue-backed</span></label>
+          <div class="lb-wrap"><div class="inw"><span class="ico"><i data-i="search"></i></span><input id="f-cb" value="HDFC" autocomplete="off" role="combobox" aria-expanded="true" aria-controls="cbList"></div>
+            <div class="lb" id="cbList" role="listbox" style="position:static;margin-top:4px;box-shadow:none;max-height:none"></div></div>
+        </div>
+      </div>
+      <hr class="hr">
+      <div class="cols">
+        <div class="grp"><span class="lbl">Combobox — loading</span>
+          <div class="lb" style="position:static;box-shadow:none;max-height:none"><div class="lb-opt" style="cursor:default"><span class="ck"></span><span class="tx"><b><span class="sk" style="width:120px;height:9px"></span></b><span class="sk" style="width:170px;height:8px;margin-top:4px"></span></span></div><div class="lb-opt" style="cursor:default"><span class="ck"></span><span class="tx"><b><span class="sk" style="width:94px;height:9px"></span></b><span class="sk" style="width:150px;height:8px;margin-top:4px"></span></span></div><div class="lb-foot"><span class="spin2" style="width:11px;height:11px"></span> Searching the AMFI catalogue…</div></div>
+        </div>
+        <div class="grp"><span class="lbl">Combobox — no results</span>
+          <div class="lb" style="position:static;box-shadow:none;max-height:none"><div class="lb-empty">No instrument matches <b>ZZZBANK</b>.<br><span style="color:var(--fg-secondary)">The catalogue covers NSE equities and AMFI schemes.</span><div style="margin-top:9px"><button class="btn btn-sm lead"><i data-i="plus" data-s="14"></i>Add it manually</button></div></div></div>
+        </div>
+      </div>
+      <p class="why"><b>The listbox is custom but behaves natively.</b> <kbd class="kbd">↑</kbd><kbd class="kbd">↓</kbd> move the active option and scroll it into view, <kbd class="kbd">Home</kbd>/<kbd class="kbd">End</kbd> jump to the ends, <kbd class="kbd">Enter</kbd> selects, <kbd class="kbd">Esc</kbd> closes and returns focus to the trigger, and typing jumps to the first match. The active option is marked by a 2px inset accent bar plus a hover fill — not by a filled row, which would compete with the selected option's check mark.</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Checkbox, radio, switch</h3><span class="sh-note">16px box, 32×18 switch, every state</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="cols">
+        <div class="grp"><span class="lbl">Checkbox</span>
+          <label class="ctl"><input type="checkbox"><span class="bx"><i data-i="ck" data-s="11" class="ck"></i><i data-i="ix" data-s="11" class="ix"></i></span><span class="tx">Unchecked</span></label>
+          <label class="ctl"><input type="checkbox" checked><span class="bx"><i data-i="ck" data-s="11" class="ck"></i><i data-i="ix" data-s="11" class="ix"></i></span><span class="tx">Checked</span></label>
+          <label class="ctl"><input type="checkbox" data-indet><span class="bx"><i data-i="ck" data-s="11" class="ck"></i><i data-i="ix" data-s="11" class="ix"></i></span><span class="tx">Indeterminate — 4 of 12 rows</span></label>
+          <label class="ctl dis"><input type="checkbox" disabled><span class="bx"><i data-i="ck" data-s="11" class="ck"></i><i data-i="ix" data-s="11" class="ix"></i></span><span class="tx">Disabled</span></label>
+          <label class="ctl dis"><input type="checkbox" checked disabled><span class="bx"><i data-i="ck" data-s="11" class="ck"></i><i data-i="ix" data-s="11" class="ix"></i></span><span class="tx">Disabled, checked</span></label>
+          <label class="ctl bad"><input type="checkbox"><span class="bx"><i data-i="ck" data-s="11" class="ck"></i><i data-i="ix" data-s="11" class="ix"></i></span><span class="tx"><b>Error</b><span>You must accept that tax figures are indicative.</span></span></label>
+        </div>
+        <div class="grp"><span class="lbl">Radio — cost-basis method</span>
+          <label class="ctl"><input type="radio" name="cb" checked><span class="bx rd"></span><span class="tx"><b>FIFO</b><span>Mandatory for Indian listed equity and equity funds.</span></span></label>
+          <label class="ctl"><input type="radio" name="cb"><span class="bx rd"></span><span class="tx"><b>LIFO</b><span>Comparison only; not permitted for filing.</span></span></label>
+          <label class="ctl"><input type="radio" name="cb"><span class="bx rd"></span><span class="tx"><b>HIFO</b><span>Comparison only.</span></span></label>
+          <label class="ctl dis"><input type="radio" name="cb" disabled><span class="bx rd"></span><span class="tx"><b>Specific ID</b><span>Needs per-lot selection at disposal.</span></span></label>
+        </div>
+        <div class="grp"><span class="lbl">Switch</span>
+          <label class="ctl"><input type="checkbox" role="switch" checked><span class="sw"></span><span class="tx"><b>Direction glyphs on deltas</b><span>Adds ▲ ▼ so gain and loss never rely on colour alone.</span></span></label>
+          <label class="ctl"><input type="checkbox" role="switch"><span class="sw"></span><span class="tx"><b>Accounting parentheses</b><span>Off: −₹12,340. On: (₹12,340).</span></span></label>
+          <label class="ctl dis"><input type="checkbox" role="switch" disabled><span class="sw"></span><span class="tx"><b>Live price streaming</b><span>Manual mode — there is no streaming feed.</span></span></label>
+        </div>
+      </div>
+      <p class="why"><b>The switch thumb carries its own border.</b> A plain white circle on an indigo track loses its edge at the track's light end; a 1px border in <code>--accent-active</code> keeps the thumb's silhouette intact at both ends of its 14px travel, and a 1px top highlight inside the thumb keeps it reading as a raised object rather than a hole. The checkbox check is a hand-drawn 11px polyline on the 16px box, inset 2.5px so its strokes never touch the 2px corner radius.</p>
+      <p class="ann"><b>box</b> 16×16 r2 · <b>radio dot</b> 6px · <b>switch</b> 32×18 r999, thumb 14px, travel 14px · all three focus at offset 2px</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Date range with Indian-FY presets</h3><span class="sh-note">FY is a first-class preset, never hidden inside Custom</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="row"><div class="fld" style="width:260px"><label for="f-date">Trade date</label><div class="inw"><span class="ico"><i data-i="calendar"></i></span><input id="f-date" value="19 Oct 2026"><span class="afx r mono" style="font-size:10.5px">DD MMM YYYY</span></div></div></div>
+      <div class="dr" id="drPicker" style="max-width:520px"></div>
+      <p class="ann"><b>presets</b> This FY (1 Apr 2026 – 31 Mar 2027) · Last FY · Q1–Q4 FY27 · This month · Last 90 days · YTD (calendar, secondary) · Custom<br>selected range: ends filled --accent, interior --accent-soft at radius 0 so the run reads as one bar</p>
+      <p class="why"><b>The quarters are Indian quarters.</b> Q1 is Apr–Jun, not Jan–Mar. Calendar YTD is present but sits below a divider and is labelled as the calendar year, because in a product where money meets tax the silent default must never be the calendar.</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Amount range, file drop, field assembly</h3><span class="sh-note">Dual handle over a distribution preview</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="cols2">
+        <div class="grp"><span class="lbl">Market value range</span>
+          <div class="histo" id="histo"></div>
+          <div class="rng" id="rng"><span class="track"></span><span class="fill" id="rngFill"></span><input type="range" id="rngA" min="0" max="100" value="18" aria-label="Minimum market value"><input type="range" id="rngB" min="0" max="100" value="74" aria-label="Maximum market value"></div>
+          <div class="row" style="gap:8px"><div class="inw sm num" style="width:124px"><span class="afx">₹</span><input id="rngMin" value="82,400" aria-label="Minimum"></div><span class="muted" style="font-size:12px">to</span><div class="inw sm num" style="width:124px"><span class="afx">₹</span><input id="rngMax" value="2,95,176" aria-label="Maximum"></div></div>
+          <p class="ann">the histogram behind the track is the real distribution of the 12 holdings; bars inside the range take --accent-line</p>
+        </div>
+        <div class="grp"><span class="lbl">File drop</span>
+          <div class="drop" id="dropz" tabindex="0" role="button"><i data-i="upload" data-s="20"></i><b>Drop a bank statement, or browse</b><span>CSV, XLS, XLSX or PDF · up to 10 MB<br>Four duplicate checks run before anything is staged.</span></div>
+          <p class="ann">dashed --border-control at rest; on drag-over the border turns solid --accent and the fill becomes --accent-soft</p>
+        </div>
+      </div>
+      <hr class="hr">
+      <div class="grp"><span class="lbl">Full field assembly</span>
+        <div class="cols">
+          <div class="fld"><label for="f-a1">Brokerage <span class="req" aria-hidden="true">*</span><span class="info-i" title="Charged per executed order, before GST.">i</span></label>
+            <div class="inw num"><span class="afx">₹</span><input id="f-a1" value="20.00"></div><span class="hint">Zerodha caps equity delivery at ₹0.</span></div>
+          <div class="fld"><label for="f-a2">STT <span class="req" aria-hidden="true">*</span></label>
+            <div class="inw err num"><span class="afx">₹</span><input id="f-a2" value="-58.42"></div><span class="errtxt"><i data-i="warn" data-s="13"></i>A charge cannot be negative. Use a REVERSAL to undo a posted charge.</span></div>
+          <div class="fld"><label for="f-a3">DP charges</label>
+            <div class="inw ro num"><span class="afx">₹</span><input id="f-a3" value="15.93" readonly></div><span class="hint">Set by the depository on SELL only.</span></div>
+        </div>
+        <p class="ann"><b>order</b> label (12/16 500) → control (36px) → helper or error (11/16) · required marker is a --loss asterisk, optional is the word, never both</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ============================ DATA DISPLAY ============================ -->
+<main class="bench" id="s-data" hidden>
+  <div class="sec-head">
+    <h1>Data display</h1>
+    <p>Badges carry the product's real vocabulary — Priced, Stale, Unpriced, FX unavailable, STCG, LTCG, Manual mode. Every figure is tabular, right-aligned, and signed with U+2212. An em-dash is an admission; a zero is a claim.</p>
+  </div>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Badges and pills · three fills, six tones</h3><span class="sh-note">20px, r3 — or r999 for the pill form</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="grp"><span class="lbl">Subtle — the default. Tinted fill, no border.</span>
+        <div class="row tight"><span class="bdg">Neutral</span><span class="bdg sub-acc">Accent</span><span class="bdg sub-gain">Gain</span><span class="bdg sub-loss">Loss</span><span class="bdg sub-warn">Warning</span><span class="bdg sub-info">Info</span></div></div>
+      <div class="grp"><span class="lbl">Solid — reserved for a count or a single emphatic state</span>
+        <div class="row tight"><span class="bdg sol-acc">7</span><span class="bdg sol-gain">Gain</span><span class="bdg sol-loss">Loss</span><span class="bdg sol-warn">Warning</span><span class="bdg sol-info">Info</span></div></div>
+      <div class="grp"><span class="lbl">Outline — when the badge sits on a tinted surface and a fill would muddy it</span>
+        <div class="row tight"><span class="bdg out-n">Neutral</span><span class="bdg out-acc">Accent</span><span class="bdg out-gain">Gain</span><span class="bdg out-loss">Loss</span><span class="bdg out-warn">Warning</span><span class="bdg out-info">Info</span></div></div>
+      <div class="grp"><span class="lbl">With a leading dot — for state that is live rather than categorical</span>
+        <div class="row tight"><span class="bdg sub-gain"><span class="dot"></span>Priced</span><span class="bdg sub-warn"><span class="dot"></span>Stale</span><span class="bdg"><span class="dot"></span>Unpriced</span><span class="bdg sub-info"><span class="dot"></span>Partial</span></div></div>
+      <hr class="hr">
+      <div class="grp"><span class="lbl">The real set</span>
+        <div class="row tight">
+          <span class="bdg sub-gain"><span class="dot"></span>Priced</span>
+          <span class="bdg sub-warn"><span class="dot"></span>Stale</span>
+          <span class="bdg out-n">Unpriced</span>
+          <span class="bdg sub-warn">FX unavailable</span>
+          <span class="bdg sub-warn">STCG</span>
+          <span class="bdg sub-gain">LTCG</span>
+          <span class="bdg out-n">SLAB</span>
+          <span class="bdg out-n">EXEMPT</span>
+          <span class="bdg dash">NEW</span>
+          <span class="bdg sub-acc">Manual mode</span>
+          <span class="bdg pill out-n">FY 2026-27</span>
+          <span class="bdg mono out-n">NSE</span>
+          <span class="bdg mono out-n">india-fy2025</span>
+          <span class="bdg sub-gain">B02 holds</span>
+          <span class="bdg sub-loss">B02 fails</span>
+          <span class="bdg sub-info">Indexed</span>
+        </div>
+        <p class="ann"><b>Unpriced is outline, not warning.</b> A missing price is an absence, not a fault — warning amber is reserved for Stale and FX unavailable, where a figure exists but should not be trusted as current. <b>LTCG is gain-green, STCG is warning-amber</b> because the long bucket is the favourable one, and the colour is doing work rather than decorating.</p>
+        <p class="ann"><b>badge</b> h20 (sm 18 · lg 22) · r3 (pill r999) · fs11 500 +0.008em · dot 5px · mono variant fs10 slashed-zero</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Avatar, institution plate, key-value list</h3><span class="sh-note">Identity marks that align across rows of different widths</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="cols">
+        <div class="grp"><span class="lbl">Avatar</span>
+          <div class="row"><span class="avat sm">DR</span><span class="avat">DR</span><span class="avat lg">DR</span><span class="avat sq">DR</span></div>
+          <p class="ann">22 / 28 / 36px · --accent-soft fill with a 1px inset --accent-line ring, so it survives on both themes without a shadow</p></div>
+        <div class="grp"><span class="lbl">Platform and institution</span>
+          <div class="row"><span class="plate">Z</span><span class="plate">GR</span><span class="plate">HDFC</span><span class="plate">SG</span><span class="plate">ICICI</span><span class="plate lg">AU</span></div>
+          <p class="ann">a fixed 24px square plate, not a free wordmark — "Z" and "ICICI" occupy the same box, so a platform column stays on one axis</p></div>
+      </div>
+      <hr class="hr">
+      <div class="cols2">
+        <div class="grp"><span class="lbl">Key-value list</span>
+          <dl class="kv">
+            <dt>ISIN</dt><dd class="mono">INE002A01018</dd>
+            <dt>Exchange</dt><dd>NSE · EQ</dd>
+            <dt>Units</dt><dd class="tnum">45</dd>
+            <dt>Invested</dt><dd class="tnum">₹58,423.50</dd>
+            <dt>Market value</dt><dd class="tnum">₹63,918.00</dd>
+            <dt>Unrealised</dt><dd class="tnum gain">+₹5,494.50</dd>
+            <dt>Realised</dt><dd class="muted">—</dd>
+          </dl>
+          <p class="ann">keys left in --fg-muted, values right and tabular; the last row's rule is removed so the list does not end on a hanging line</p></div>
+        <div class="grp"><span class="lbl">Delta indicator</span>
+          <div class="row" style="gap:18px">
+            <span class="delta gain" style="font-size:13px"><span class="ar">▲</span>+₹24,180 · +2.14%</span>
+            <span class="delta loss" style="font-size:13px"><span class="ar">▼</span>−₹18,450 · −1.14%</span>
+            <span class="delta flat" style="font-size:13px">±₹0 · 0.00%</span>
+          </div>
+          <p class="ann">the glyph is 8px and sits 1px above the baseline so it aligns to the digit's x-height, not its cap-height; sign + glyph + number means colour is never the only channel</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>KPI tile · full anatomy</h3><span class="sh-note">Label → value → delta with its period → context strip</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="kpirow" id="kpiRow"></div>
+      <p class="ann"><b>tile</b> padding 12px 14px 0 · r6 · label 12/16 500 muted · value 24/30 600 tnum −0.016em · unit 11px muted · delta 11/14 500 · sparkline 30px flush to the bottom edge, bleeding the full tile width</p>
+      <p class="why"><b>The sparkline bleeds past the padding.</b> Its container is <code>margin:0 -14px</code>, so the trend touches both edges of the tile and reads as the tile's own base rather than a small chart inside it. One end dot, 1.5px stroke, no axes, no fill. <b>Every delta names its period</b> — a naked delta is meaningless, so "this FY" or "today" is always attached in muted ink.</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Bars · progress, bullet, utilisation gauge, holding period</h3><span class="sh-note">Four shapes, four jobs, one radius language</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="cols2">
+        <div class="grp"><span class="lbl">Progress — one quantity against its whole</span>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div><div class="row" style="justify-content:space-between;font-size:11.5px"><span class="muted">Import batch</span><span class="tnum">7 of 42 reviewed</span></div><div class="pbar" style="margin-top:4px"><i style="width:17%"></i></div></div>
+            <div><div class="row" style="justify-content:space-between;font-size:11.5px"><span class="muted">LTCG exemption used, FY 2026-27</span><span class="tnum">₹68,420 of ₹1,25,000</span></div><div class="pbar gain" style="margin-top:4px"><i style="width:55%"></i></div></div>
+          </div></div>
+        <div class="grp"><span class="lbl">Bullet — actual vs budget vs pace</span>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div><div class="row" style="justify-content:space-between;font-size:11.5px"><span class="muted">Expenses:Food:Groceries</span><span class="tnum">₹8,420 / ₹12,000</span></div><div class="bullet" style="margin-top:4px"><span class="act" style="width:58%"></span><span class="pace" style="left:62%"></span><span class="tgt" style="left:82%"></span></div></div>
+            <div><div class="row" style="justify-content:space-between;font-size:11.5px"><span class="muted">Expenses:Housing:Rent</span><span class="tnum loss">₹38,000 / ₹36,000</span></div><div class="bullet" style="margin-top:4px"><span class="act over" style="width:92%"></span><span class="pace" style="left:62%"></span><span class="tgt" style="left:82%"></span></div></div>
+          </div>
+          <p class="ann">bar = actual, 2px dark tick = budget, faint hairline = pace-to-date; over-budget turns the bar --loss and the figure with it</p></div>
+      </div>
+      <hr class="hr">
+      <div class="cols2">
+        <div class="grp"><span class="lbl">Utilisation gauge — banded</span>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div><div class="row" style="justify-content:space-between;font-size:11.5px"><span class="muted">HDFC Regalia</span><span class="tnum">28.4% of ₹4,00,000</span></div><div class="gauge" style="margin-top:4px"><i style="width:28.4%;background:var(--gain)"></i><span class="zone" style="left:30%"></span><span class="zone" style="left:50%"></span></div></div>
+            <div><div class="row" style="justify-content:space-between;font-size:11.5px"><span class="muted">ICICI Amazon Pay</span><span class="tnum loss">71.2% of ₹1,50,000</span></div><div class="gauge" style="margin-top:4px"><i style="width:71.2%;background:var(--loss)"></i><span class="zone" style="left:30%"></span><span class="zone" style="left:50%"></span></div></div>
+          </div>
+          <p class="ann">zone ticks at 30% and 50% drawn in the surface colour, so they read as gaps cut into the fill rather than lines laid over it</p></div>
+        <div class="grp"><span class="lbl">Holding-period progress</span>
+          <div style="display:flex;flex-direction:column;gap:9px">
+            <div><div class="row" style="justify-content:space-between;font-size:11.5px"><span>RELIANCE · 11 Apr 2025</span><span class="bdg sub-gain sm">LTCG</span></div><div class="hp" style="margin-top:4px"><i class="done" style="width:100%"></i></div><span class="ann">held 557 days · long-term since 11 Apr 2026</span></div>
+            <div><div class="row" style="justify-content:space-between;font-size:11.5px"><span>120503 · 1 Oct 2026</span><span class="bdg sub-warn sm">LTCG in 347 d</span></div><div class="hp" style="margin-top:4px"><i style="width:5%"></i></div><span class="ann">held 18 days of 365 · equity-oriented fund, 12-month threshold</span></div>
+          </div></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Data-table row · seven states</h3><span class="sh-note">Compact 32px rows; selection is an inset bar, not a fill</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="tscroll"><table class="dt" style="min-width:760px"><thead><tr>
+        <th style="width:34px;cursor:default"><label class="ctl" style="margin:0"><input type="checkbox" data-indet aria-label="Select all rows"><span class="bx"><i data-i="ck" data-s="11" class="ck"></i><i data-i="ix" data-s="11" class="ix"></i></span></label></th>
+        <th data-sortable aria-sort="none">Holding</th><th data-sortable aria-sort="none">Platform</th>
+        <th class="num" data-sortable aria-sort="descending">Market value</th><th class="num" data-sortable aria-sort="none">Unrealised</th>
+        <th data-sortable aria-sort="none">Price state</th><th style="width:44px;cursor:default"></th></tr></thead>
+        <tbody id="rowStates"></tbody></table></div>
+      <p class="ann"><b>rest</b> 1px --border-subtle bottom rule, no fill · <b>hover</b> --bg-hover · <b>keyboard</b> 2px --accent outline inset −2px · <b>selected</b> inset 2px --accent bar, no fill · <b>expanded</b> --bg-subtle + inset 2px --border-active · <b>stale</b> figure in --fg-muted, dotted underline in --warn · <b>error</b> --loss-bg + inset 3px --loss</p>
+      <p class="why"><b>Why selection is a bar and not a fill.</b> A filled selected row competes with the hover fill and with the expanded row's fill, so three states collapse into one visual idea. A 2px inset accent bar on the leading edge is unmistakable, survives on both themes, costs no contrast against the text, and still lets the row show hover underneath it. Zebra striping is absent by design — a 1px bottom rule per row plus hover does the same job without fighting column groups.</p>
+    </div>
+  </section>
+</main>
+
+<!-- ============================ NAVIGATION ============================ -->
+<main class="bench" id="s-nav" hidden>
+  <div class="sec-head">
+    <h1>Navigation</h1>
+    <p>Active state is carried by a 2px inset bar plus an accent-soft fill in the rail, and by a 2px underline in tabs. Both are the same idea at two scales: the accent marks the edge the eye travels along.</p>
+  </div>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Sidebar item</h3><span class="sh-note">32px rows, grouped, with badge and collapsed variants</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="cols2">
+        <div class="grp"><span class="lbl">Expanded rail — 240px</span>
+          <div style="width:240px;max-width:100%;border:1px solid var(--border);border-radius:var(--r-4);padding:6px;background:var(--bg-surface)">
+            <div class="nvi-grp">Overview</div>
+            <a class="nvi" href="#s-nav" aria-current="page"><i data-i="grid"></i><span class="t">Net worth</span></a>
+            <a class="nvi" href="#s-nav"><i data-i="clock"></i><span class="t">History</span></a>
+            <div class="nvi-grp">Cash &amp; spending</div>
+            <a class="nvi" href="#s-nav"><i data-i="bank"></i><span class="t">Accounts</span></a>
+            <a class="nvi" href="#s-nav"><i data-i="list"></i><span class="t">Transactions</span></a>
+            <a class="nvi" href="#s-nav"><i data-i="upload"></i><span class="t">Import</span><span class="bdg sol-warn sm">7</span></a>
+            <div class="nvi-grp">Investments</div>
+            <a class="nvi" href="#s-nav"><i data-i="chart-line"></i><span class="t">Portfolio</span></a>
+            <a class="nvi" href="#s-nav"><i data-i="signal"></i><span class="t">Market data</span><span class="bdg dash sm">NEW</span></a>
+          </div>
+          <p class="ann">row h32 · icon 16 at 0.82 opacity, full opacity when current · group label 10.5px 600 +0.07em uppercase</p></div>
+        <div class="grp"><span class="lbl">Collapsed rail — 44px</span>
+          <div style="width:44px;border:1px solid var(--border);border-radius:var(--r-4);padding:6px;background:var(--bg-surface);display:flex;flex-direction:column;gap:1px">
+            <button class="nvi coll" aria-current="page" aria-label="Net worth"><i data-i="grid"></i></button>
+            <button class="nvi coll" aria-label="History"><i data-i="clock"></i></button>
+            <button class="nvi coll" aria-label="Accounts"><i data-i="bank"></i></button>
+            <button class="nvi coll" aria-label="Import, 7 rows awaiting review" style="position:relative"><i data-i="upload"></i><span style="position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:999px;background:var(--warn);box-shadow:0 0 0 1.5px var(--bg-surface)"></span></button>
+          </div>
+          <p class="ann">collapsed, the count badge becomes a 6px dot with a 1.5px surface-coloured ring so it reads over the icon; the full count moves into aria-label</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Tabs · underline and segmented</h3><span class="sh-note">Underline for page sections, segmented for a filtered view of one set</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="grp"><span class="lbl">Underline — the investments sub-nav</span>
+        <div class="tabs" role="tablist" data-tabs>
+          <button role="tab" aria-selected="true">Overview</button>
+          <button role="tab" aria-selected="false">Holdings<span class="ct">34</span></button>
+          <button role="tab" aria-selected="false">Performance</button>
+          <button role="tab" aria-selected="false">Analysis</button>
+          <button role="tab" aria-selected="false">Market data<span class="ct">2</span></button>
+          <button role="tab" aria-selected="false">Realised gains</button>
+        </div>
+        <p class="ann">36px tab, 2px inset-bottom accent when selected; hover shows a 1px --border-hover underline so the affordance exists before the commitment</p></div>
+      <div class="grp"><span class="lbl">Segmented — a filtered view of one table</span>
+        <div class="row"><span class="segf" role="group" aria-label="Saved view" data-seg><button aria-pressed="true">All holdings</button><button aria-pressed="false">Equity</button><button aria-pressed="false">Underwater</button><button aria-pressed="false">LTCG-eligible</button></span></div>
+      </div>
+      <hr class="hr">
+      <div class="grp"><span class="lbl">Breadcrumbs with active filters</span>
+        <div class="crumbs"><a href="#s-nav">Investments</a><span class="sl">/</span><a href="#s-nav">Holdings</a><span class="sl">/</span><b>Equity</b></div>
+        <div class="row tight" style="margin-top:6px">
+          <span class="fchip"><em>Platform:</em><span>Zerodha</span><button aria-label="Remove platform filter"><i data-i="x" data-s="11"></i></button></span>
+          <span class="fchip"><em>Value ≥</em><span class="tnum">₹1,00,000</span><button aria-label="Remove value filter"><i data-i="x" data-s="11"></i></button></span>
+          <span class="fchip"><em>State:</em><span>Priced</span><button aria-label="Remove price-state filter"><i data-i="x" data-s="11"></i></button></span>
+          <button class="btn btn-link" style="font-size:11.5px">Clear all</button>
+          <span class="cnt-line" style="margin-left:auto">Showing 6 of 34</span>
+        </div>
+        <p class="ann">chip h22 · the dimension name is --fg-muted and the value is --fg-secondary, so a strip of chips scans as label:value pairs rather than a wall of equal text</p></div>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Pagination, stepper, command-palette row</h3><span class="sh-note">Server-paged tables only; everything else virtualises</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="grp"><span class="lbl">Pagination</span>
+        <div class="row" style="justify-content:space-between"><span class="cnt-line">Page 3 of 18 · 1,847 transactions</span>
+          <span class="pag" data-pag><button disabled aria-label="First page"><i data-i="chev-l" data-s="13"></i><i data-i="chev-l" data-s="13" style="margin-left:-5px"></i></button><button aria-label="Previous page"><i data-i="chev-l" data-s="13"></i></button><button>1</button><button>2</button><button aria-current="page">3</button><button>4</button><button>5</button><span class="gap">…</span><button>18</button><button aria-label="Next page"><i data-i="chev-r" data-s="13"></i></button></span></div>
+      </div>
+      <hr class="hr">
+      <div class="grp"><span class="lbl">Stepper — recording a trade</span>
+        <div class="stepr"><div class="st ok"><span class="sn"><i data-i="ck" data-s="11"></i></span><span class="sx"><b>Instrument</b><span>RELIANCE · NSE</span></span></div><span class="bar ok"></span><div class="st on"><span class="sn">2</span><span class="sx"><b>Trade details</b><span>45 units · ₹1,298.30</span></span></div><span class="bar"></span><div class="st"><span class="sn">3</span><span class="sx"><b>Charges</b><span>Indian charge stack</span></span></div><span class="bar"></span><div class="st"><span class="sn">4</span><span class="sx"><b>Review</b><span>Before it reaches the ledger</span></span></div></div>
+        <p class="ann">completed steps take a --gain-bg disc with a check and a --gain-line connector; the connector is 1px and sits on the disc's centre line</p></div>
+      <hr class="hr">
+      <div class="grp"><span class="lbl">Command-palette rows</span>
+        <div class="pop" style="padding:4px;max-width:460px">
+          <div class="lb-grp">Holdings</div>
+          <div class="cmdrow on"><span class="sym">RELIANCE</span><span class="nm2">Reliance Industries Ltd</span><span class="rt tnum">₹63,918</span></div>
+          <div class="cmdrow"><span class="sym">120503</span><span class="nm2">Parag Parikh Flexi Cap — Direct Growth</span><span class="rt tnum">₹1,89,312</span></div>
+          <div class="mnu-sep"></div>
+          <div class="lb-grp">Actions</div>
+          <div class="cmdrow"><i data-i="plus" data-s="14" style="color:var(--fg-muted)"></i><span class="nm2">Record a trade</span><span class="kbd">T</span></div>
+          <div class="cmdrow"><i data-i="refresh" data-s="14" style="color:var(--fg-muted)"></i><span class="nm2">Refresh prices</span><span class="kbd">R</span></div>
+        </div>
+        <p class="ann">the symbol column is a fixed 82px mono block so names start on one axis; the active row takes the same 2px inset accent bar as a selected table row</p></div>
+    </div>
+  </section>
+</main>
+
+<!-- ============================ OVERLAYS ============================ -->
+<main class="bench" id="s-overlays" hidden>
+  <div class="sec-head">
+    <h1>Overlays</h1>
+    <p>Only genuinely floating layers get a shadow: menus and popovers at <code>0 4px 12px</code>, modals and sheets at <code>0 16px 48px</code>. Each also carries a hairline border, because a shadow alone disappears on a dark canvas.</p>
+  </div>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Dropdown menu</h3><span class="sh-note">Sections, icons, shortcuts, a submenu, a destructive item</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="row vtop" style="gap:16px">
+        <div class="pop mnu">
+          <div class="mnu-sec">Row</div>
+          <button class="mnu-i"><i data-i="expand" data-s="15"></i><span class="t">Expand lots</span><span class="sc">Enter</span></button>
+          <button class="mnu-i"><i data-i="edit" data-s="15"></i><span class="t">Edit holding</span><span class="sc">E</span></button>
+          <button class="mnu-i"><i data-i="copy" data-s="15"></i><span class="t">Copy as TSV</span><span class="sc">⌘C</span></button>
+          <div class="mnu-sep"></div>
+          <div class="mnu-sec">Export</div>
+          <div class="submenu"><button class="mnu-i"><i data-i="download" data-s="15"></i><span class="t">Export…</span><i data-i="chev-r" data-s="13"></i></button>
+            <div class="pop mnu sub" style="min-width:208px">
+              <button class="mnu-i"><span class="t">Visible columns</span></button>
+              <button class="mnu-i"><span class="t">All columns</span></button>
+              <div class="mnu-sep"></div>
+              <button class="mnu-i"><span class="t">Raw values, ISO dates</span></button>
+            </div></div>
+          <button class="mnu-i" aria-disabled="true"><i data-i="external" data-s="15"></i><span class="t">Open on NSE</span></button>
+          <div class="mnu-sep"></div>
+          <button class="mnu-i dgr"><i data-i="trash" data-s="15"></i><span class="t">Delete holding</span></button>
+        </div>
+        <div class="pop mnu" style="min-width:200px">
+          <div class="mnu-sec">Sort by</div>
+          <button class="mnu-i"><i data-i="ck" data-s="14" class="ck2"></i><span class="t">Market value</span><i data-i="sort-desc" data-s="13"></i></button>
+          <button class="mnu-i"><span style="width:14px;flex:none"></span><span class="t">Unrealised</span></button>
+          <button class="mnu-i"><span style="width:14px;flex:none"></span><span class="t">Weight</span></button>
+          <div class="mnu-sep"></div>
+          <button class="mnu-i"><span style="width:14px;flex:none"></span><span class="t">Clear sort</span><span class="sc">Esc</span></button>
+        </div>
+      </div>
+      <p class="ann"><b>menu</b> min-width 224 · item h32 · r6 panel, r3 items · separator inset 9px each side · shortcut in mono 10.5px --fg-muted</p>
+      <p class="why"><b>The separators stop short; the panel edge does not.</b> A divider that runs the full width reads as a cut through the surface and makes a short menu look like three menus. Inset 9px — matching the item's own padding — it reads as a pause between groups. The panel's own border stays full-bleed, because that edge <em>is</em> the object's boundary. Destructive items take <code>--loss</code> ink and a <code>--loss-bg</code> hover rather than a red fill, so the menu does not acquire a block of colour at rest.</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Tooltip and popover</h3><span class="sh-note">Tooltip inverts the surface; popover keeps it</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="row vtop" style="gap:22px">
+        <div class="grp"><span class="lbl">Tooltip</span>
+          <div style="padding-bottom:10px"><span class="tip"><b>Priced from 16 Oct 2026</b>Three sessions old. The exact value is <span class="num">₹1,08,900.00</span>.</span></div>
+          <p class="ann">inverted surface (--n-900 in light, --n-200 in dark) so it never reads as another panel; 4px caret, max-width 260px</p></div>
+        <div class="grp"><span class="lbl">Popover</span>
+          <div class="pop pover">
+            <div class="pover-h"><i data-i="info" data-s="14" style="color:var(--fg-muted)"></i>XIRR, since inception</div>
+            <div class="pover-b"><p style="font-size:12px;line-height:18px;color:var(--fg-secondary)">The money-weighted return on your actual dated cashflows. It answers "how am I doing", not "how did the strategy do".</p>
+              <dl class="kv"><dt>Cashflows</dt><dd class="tnum">34</dd><dt>First</dt><dd class="tnum">11 Apr 2023</dd><dt>NPV tolerance</dt><dd class="mono">1e-9</dd></dl></div>
+            <div class="pover-f"><button class="btn btn-sm btn-primary">Compare with TWR</button><button class="btn btn-sm btn-ghost">Dismiss</button></div>
+          </div>
+          <p class="ann">popover keeps --bg-raised because it holds interactive controls; a tooltip holds none, so it may invert</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Modal · plain and typed-confirm</h3><span class="sh-note">r8, 0 16px 48px, a sticky header and a subtle footer</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="scrim"><div class="modal">
+        <div class="modal-h"><div style="flex:1;min-width:0"><h4>Reconcile HDFC Savings ••1234</h4><p>Assert the balance your bank shows. The difference posts to Equity:Adjustments.</p></div><button class="btn btn-sm only btn-ghost" aria-label="Close"><i data-i="x" data-s="15"></i></button></div>
+        <div class="modal-b">
+          <div class="cols"><div class="fld"><label for="m-bal">Balance as at 19 Oct 2026</label><div class="inw num"><span class="afx">₹</span><input id="m-bal" value="2,14,318.40"></div></div>
+            <div class="fld"><span class="lab">In the journal</span><div class="inw ro num"><span class="afx">₹</span><input value="2,13,906.40" readonly></div></div></div>
+          <div class="alrt i"><i data-i="info" data-s="15" class="ai"></i><div class="ab"><b>An adjustment of +₹412.00 will be posted.</b><p>It appears in the register as kind <b>Adjustment</b> and can be undone with a reversal.</p></div></div>
+        </div>
+        <div class="modal-f"><span class="sp"></span><button class="btn btn-ghost">Cancel</button><button class="btn btn-primary">Post adjustment</button></div>
+      </div></div>
+
+      <div class="scrim"><div class="modal" style="width:min(460px,100%)">
+        <div class="modal-h"><div style="flex:1;min-width:0"><h4>Delete 12 holdings</h4><p>This removes the holdings and every trade behind them. It cannot be undone.</p></div></div>
+        <div class="modal-b">
+          <div class="alrt e"><i data-i="warn" data-s="15" class="ai"></i><div class="ab"><b>₹14,18,157 of recorded market value will be removed.</b><p>Realised gains already stamped to FY 2025-26 will no longer reconcile against your tax statement.</p></div></div>
+          <div class="fld"><label for="m-typed">Type <b class="mono" style="color:var(--fg)">delete 12 holdings</b> to confirm</label><div class="inw"><input id="m-typed" placeholder="delete 12 holdings" autocomplete="off" data-typed-target="delete 12 holdings"></div></div>
+        </div>
+        <div class="modal-f"><span class="sp"></span><button class="btn btn-ghost">Cancel</button><button class="btn btn-danger" id="typedBtn" disabled>Delete holdings</button></div>
+      </div></div>
+      <p class="ann">the destructive button stays disabled until the typed phrase matches exactly — try it above</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Slide-over sheet, toasts, alerts, inline confirm</h3><span class="sh-note">The four non-blocking surfaces</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="cols2">
+        <div class="grp"><span class="lbl">Slide-over sheet</span>
+          <div class="scrim" style="padding:0;border-radius:var(--r-4);overflow:hidden"><div class="sheet">
+            <div class="sheet-h"><div style="flex:1;min-width:0"><b style="font-size:13px">Columns</b><div class="ann" style="margin-top:1px">14 of 22 shown</div></div><button class="btn btn-sm only btn-ghost" aria-label="Close"><i data-i="x" data-s="15"></i></button></div>
+            <div class="sheet-b">
+              <div class="inw sm"><span class="ico"><i data-i="search" data-s="14"></i></span><input placeholder="Find a column" aria-label="Find a column"></div>
+              <div class="lb-grp" style="padding:2px 0">Market</div>
+              <label class="ctl"><input type="checkbox" checked><span class="bx"><i data-i="ck" data-s="11" class="ck"></i><i data-i="ix" data-s="11" class="ix"></i></span><span class="tx">Market value</span></label>
+              <label class="ctl"><input type="checkbox" checked><span class="bx"><i data-i="ck" data-s="11" class="ck"></i><i data-i="ix" data-s="11" class="ix"></i></span><span class="tx">Day change</span></label>
+              <label class="ctl"><input type="checkbox"><span class="bx"><i data-i="ck" data-s="11" class="ck"></i><i data-i="ix" data-s="11" class="ix"></i></span><span class="tx">Weight %</span></label>
+            </div>
+            <div class="sheet-f"><button class="btn btn-sm btn-ghost">Reset to default</button><span style="flex:1"></span><button class="btn btn-sm btn-primary">Done</button></div>
+          </div></div></div>
+        <div class="grp"><span class="lbl">Toasts</span>
+          <div class="toast ok"><i data-i="check" data-s="15" class="ti"></i><div class="tb"><b>7 rows posted to the ledger</b><p>HDFC Bank, 1–31 Aug 2026.</p></div><button class="btn btn-link" style="font-size:11.5px">Undo</button></div>
+          <div class="toast wn"><i data-i="warn" data-s="15" class="ti"></i><div class="tb"><b>3 of 40 prices are stale</b><p>Last refresh 16 Oct 2026, 15:30 IST.</p></div><button class="btn btn-link" style="font-size:11.5px">Refresh</button></div>
+          <div class="toast er"><i data-i="warn" data-s="15" class="ti"></i><div class="tb"><b>Could not reach the AMFI NAV file</b><p>Request <span class="mono">a41f-9c02</span>. Nothing was written.</p></div><button class="btn btn-link" style="font-size:11.5px">Retry</button></div>
+          <div class="toast nu"><span class="spin2 ti" style="width:14px;height:14px"></span><div class="tb"><b>Refreshing 34 prices…</b><p>NSE close, then AMFI NAV.</p></div></div>
+        </div>
+      </div>
+      <hr class="hr">
+      <div class="grp"><span class="lbl">Inline alerts</span>
+        <div class="alrt i"><i data-i="info" data-s="15" class="ai"></i><div class="ab"><b>Manual mode is active.</b><p>Your entries change only when you edit them or request a price refresh.</p></div></div>
+        <div class="alrt w"><i data-i="warn" data-s="15" class="ai"></i><div class="ab"><b>This statement cannot check itself.</b><p>The file carries no closing balance, so the import cannot be reconciled against the bank's own total. Review the staged rows before posting.</p></div></div>
+        <div class="alrt e"><i data-i="warn" data-s="15" class="ai"></i><div class="ab"><b>The portfolio total is withheld.</b><p>1 holding is unpriced and 1 has no FX rate for its last quote date. A total across incomplete inputs would be a claim the data does not support.</p></div></div>
+        <div class="alrt s"><i data-i="check" data-s="15" class="ai"></i><div class="ab"><b>B02 holds.</b><p>Assets − liabilities = equity + income − expenses, re-checked on this load.</p></div></div>
+        <p class="ann"><b>success uses --accent, never --gain.</b> Green means money up in this product; borrowing it for "saved successfully" would make a confirmation look like a profit.</p></div>
+      <hr class="hr">
+      <div class="grp"><span class="lbl">Inline confirmation — expands in place, no dialog</span>
+        <div class="inlc"><div class="inlc-h"><i data-i="warn" data-s="15" style="color:var(--loss)"></i><span style="flex:1;min-width:0"><b>Close ICICI FD ••9087?</b> Accrued interest of ₹4,112.00 will be booked first.</span></div>
+          <div class="inlc-b"><button class="btn btn-sm btn-danger">Close the deposit</button><button class="btn btn-sm btn-ghost">Keep it open</button></div></div>
+        <p class="ann">for a reversible single-row action, an inline expand keeps the row's context on screen; a modal is reserved for actions that span rows or cannot be undone</p></div>
+    </div>
+  </section>
+</main>
+
+<!-- ============================ FEEDBACK ============================ -->
+<main class="bench" id="s-feedback" hidden>
+  <div class="sec-head">
+    <h1>Feedback</h1>
+    <p>Loading never blanks data you already have. Empty-because-there-is-nothing and empty-because-the-filters-exclude-everything are different screens with different copy and different actions.</p>
+  </div>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Skeletons at real row heights</h3><span class="sh-note">32px rows, real column widths — never a centred spinner over a table</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="tscroll"><table class="dt" style="min-width:600px"><thead><tr><th style="cursor:default">Holding</th><th style="cursor:default">Platform</th><th class="num" style="cursor:default">Market value</th><th class="num" style="cursor:default">Unrealised</th><th style="cursor:default">Price state</th></tr></thead><tbody id="skelRows"></tbody></table></div>
+      <p class="ann">8 rows at the live 32px height with the live column widths, so the table does not jump when data lands; the toolbar above renders immediately and is interactive-disabled</p>
+      <div class="grp"><span class="lbl">Refreshing data you already have</span>
+        <div style="border:1px solid var(--border);border-radius:var(--r-4);overflow:hidden">
+          <div class="tbar" style="border-bottom:0"><span class="cnt-line">Updated 14:32 IST · refreshing…</span><span class="sp"></span><span class="spin2" style="width:12px;height:12px"></span></div>
+          <div style="height:2px;background:var(--bg-sunken);overflow:hidden"><div style="height:100%;width:34%;background:var(--accent)"></div></div>
+          <table class="dt"><tbody><tr><td>RELIANCE</td><td class="num tnum">₹63,918.00</td></tr><tr><td>INFY</td><td class="num tnum">₹88,722.00</td></tr></tbody></table>
+        </div>
+        <p class="ann">existing rows stay at full opacity; a 2px indeterminate bar sits under the toolbar. Fading live figures to 50% would make real numbers look unreliable.</p></div>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Spinners and the two empty states</h3><span class="sh-note">14 / 18 / 24px</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="row" style="gap:18px;align-items:center"><span class="spin2" style="width:14px;height:14px"></span><span class="spin2" style="width:18px;height:18px;border-width:2px"></span><span class="spin2" style="width:24px;height:24px;border-width:2px"></span><span class="ann">1.5px stroke at 14px, 2px at 18 and 24 — the stroke grows one step, not proportionally, so the ring keeps its weight</span></div>
+      <hr class="hr">
+      <div class="cols2">
+        <div class="grp"><span class="lbl">Empty — nothing recorded yet</span>
+          <div style="border:1px solid var(--border);border-radius:var(--r-4)"><div class="empty"><b>No holdings yet</b><p>Record a trade, or import a broker contract note. Every holding carries its own lots, charges and price state.</p><div class="ea"><button class="btn btn-sm btn-primary lead"><i data-i="plus" data-s="14"></i>Record a trade</button><button class="btn btn-sm">Import a statement</button></div></div></div></div>
+        <div class="grp"><span class="lbl">Empty — filters exclude everything</span>
+          <div style="border:1px solid var(--border);border-radius:var(--r-4)"><div class="empty"><b>No holding matches these filters</b><p>34 holdings exist. <b style="color:var(--fg)">Platform: Zerodha</b> and <b style="color:var(--fg)">Value ≥ ₹5,00,000</b> exclude all of them — your largest Zerodha holding is ₹1,42,560.</p><div class="ea"><button class="btn btn-sm">Clear value filter</button><button class="btn btn-sm btn-ghost">Clear all filters</button></div></div></div></div>
+      </div>
+      <p class="why"><b>The second state echoes the filters and names the near miss.</b> "No results" tells the user nothing; "your largest Zerodha holding is ₹1,42,560" tells them exactly which filter to relax. The two states share no copy and offer different actions — this distinction is not optional.</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Error panel and the "unavailable, and why" treatment</h3><span class="sh-note">An em-dash is an admission; a zero is a claim</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="errpanel"><b>Could not load realised gains for FY 2025-26</b>
+        <p>The tax rule set <span class="mono">india-fy2025</span> loaded, but three disposals reference lots that no longer exist, so the FIFO match cannot complete. Nothing was written and your ledger is unchanged.</p>
+        <div class="row"><button class="btn btn-sm btn-primary">Retry</button><button class="btn btn-sm">Show the three disposals</button><span class="ann" style="margin-left:auto">request <b>a41f-9c02-7b31</b></span></div></div>
+      <hr class="hr">
+      <div class="grp"><span class="lbl">Unavailable, with the reason on hover <em>and</em> on keyboard focus</span>
+        <div class="tscroll"><table class="dt" style="min-width:560px"><thead><tr><th style="cursor:default">Holding</th><th class="num" style="cursor:default">Market value</th><th class="num" style="cursor:default">Unrealised</th><th style="cursor:default">Price state</th></tr></thead><tbody>
+          <tr><td><span class="nm"><b>AAPL <span class="bdg mono out-n">NASDAQ</span></b><span>Apple Inc.</span></span></td>
+            <td class="num"><span class="dash-cell" tabindex="0" title="Last USD price is 17 Oct 2026, but no USD→INR rate is stored for that date. Market value is withheld rather than converted at today's rate.">—</span></td>
+            <td class="num"><span class="dash-cell" tabindex="0" title="Unrealised gain needs a market value, which is withheld.">—</span></td>
+            <td><span class="bdg sub-warn">FX unavailable</span></td></tr>
+          <tr><td><span class="nm"><b>ITC <span class="bdg mono out-n">NSE</span></b><span>ITC Ltd</span></span></td>
+            <td class="num"><span class="dash-cell" tabindex="0" title="No quote stored for ITC since 12 Oct 2026. Market value is withheld rather than shown as zero.">—</span></td>
+            <td class="num"><span class="dash-cell" tabindex="0" title="Unrealised gain needs a market value, which is withheld.">—</span></td>
+            <td><span class="bdg out-n">Unpriced</span></td></tr>
+          <tr><td><span class="nm"><b>TATAMOTORS <span class="bdg mono out-n">NSE</span></b><span>Tata Motors Ltd</span></span></td>
+            <td class="num"><span class="stale" tabindex="0" title="Priced from the close of 16 Oct 2026 — three sessions old. Exact value ₹1,08,900.00.">₹1,08,900</span></td>
+            <td class="num loss">−₹4,350</td>
+            <td><span class="bdg sub-warn"><span class="dot"></span>Stale</span></td></tr>
+        </tbody></table></div>
+        <p class="ann">the em-dash is <b>tabindex=0</b> with a dotted underline, so the reason is reachable without a pointer; a stale figure keeps its ink but drops to --fg-muted with a --warn dotted underline, never styled as if it were current</p></div>
+      <div class="grp"><span class="lbl">A metric that is always unavailable</span>
+        <div class="kpi flat-tile" style="max-width:300px"><span class="kl">TWR (time-weighted) <span class="info-i" title="Needs a valuation at each cashflow boundary.">i</span></span><span class="kv muted">—</span><span class="kd muted">Daily valuations exist only from 1 Apr 2026</span><p class="ann" style="padding-bottom:12px"><b>TWR_BOUNDARY_VALUATIONS_UNAVAILABLE</b></p></div>
+        <p class="ann">the real error key is surfaced in mono, so the refusal is traceable rather than decorative</p></div>
+    </div>
+  </section>
+</main>
+
+<!-- ============================ ICONS ============================ -->
+<main class="bench" id="s-icons" hidden>
+  <div class="sec-head">
+    <h1>Icons</h1>
+    <p>Hand-authored inline SVG on a 16×16 grid at a single 1.3px stroke, round caps and joins. No icon font, no library. Every path lands on a half-pixel so the 1.3px stroke renders crisp at 16px without hinting.</p>
+  </div>
+
+  <section class="spec">
+    <div class="spec-h"><h3>One icon, three sizes, with the grid shown</h3><span class="sh-note">14 / 16 / 20px off the same 16-unit viewBox</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="sizerow">
+        <div class="sizeone"><span class="ib" style="height:26px"><i data-i="chart-line" data-s="14"></i></span><code>14px</code></div>
+        <div class="sizeone"><span class="ib" style="height:26px"><i data-i="chart-line" data-s="16"></i></span><code>16px · default</code></div>
+        <div class="sizeone"><span class="ib" style="height:26px"><i data-i="chart-line" data-s="20"></i></span><code>20px</code></div>
+        <div class="sizeone"><span class="ib gridshow" style="height:64px;width:64px;border:1px solid var(--accent-line)"><i data-i="chart-line" data-s="64"></i></span><code>the 4px grid</code></div>
+        <div class="sizeone"><span class="ib gridshow" style="height:64px;width:64px;border:1px solid var(--accent-line)"><i data-i="bank" data-s="64"></i></span><code>alignment check</code></div>
+      </div>
+      <p class="why"><b>One stroke weight, scaled by the viewBox.</b> The stroke is declared at 1.3 units in a 16-unit box, so at 14px it renders 1.14px, at 16px 1.3px and at 20px 1.63px. Optical weight therefore stays constant relative to the icon's own size — the alternative, a fixed 1.5px stroke at every size, makes 14px icons look heavy and 20px icons look thin. Terminals and verticals land on the 4px grid shown above; only the diagonals and the chart paths break it, because snapping a trend line to the grid would make it a staircase.</p>
+      <p class="ann"><b>grid</b> 16 units, 4px major · <b>stroke</b> 1.3 units, round cap, round join · <b>fill</b> none on every path · default render 16px</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Navigation</h3><span class="sh-note">One icon per destination — no duplicates</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b"><div class="icogrid" data-icoset="nav"></div>
+      <p class="ann">the shipped app used PiggyBank twice and Landmark twice; here Budgets takes the envelope, Deposits the vault, Accounts the columns and Loans the amortising balance</p></div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Actions</h3><span class="sh-note">Sort states, table controls, row actions</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b"><div class="icogrid" data-icoset="action"></div>
+      <p class="ann"><b>sort-none</b> is a dimmed pair of opposed carets, not an absent icon — the header keeps its width through all three sort states so the column does not shift on click</p></div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Domain</h3><span class="sh-note">Asset classes and account kinds</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b"><div class="icogrid" data-icoset="domain"></div>
+      <p class="why"><b>Drawn from the instrument, not from a metaphor.</b> Equity is an OHLC bar, because that is how a listed price is actually quoted. ETF is a basket of three bars inside one frame — a traded wrapper around holdings. Mutual fund is the same basket without the frame, since it is not exchange-traded. Gold is a single cast ingot and silver is two thinner ones, which distinguishes them without colour. SGB carries the bond's seal over the ingot. FD is a clock in a rounded vessel: a deposit that matures.</p></div>
+  </section>
+</main>
+
+<!-- ============================ COMPOSITIONS ============================ -->
+<main class="bench" id="s-comp" hidden>
+  <div class="sec-head">
+    <h1>Compositions</h1>
+    <p>Three real fragments assembled only from the parts above, to prove the kit holds together in situ. Everything here is live — sort the table, open the filter popover, change the density.</p>
+  </div>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Table toolbar</h3><span class="sh-note">Search · facets · chips · density · columns · export</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b" style="gap:0">
+      <div style="border:1px solid var(--border);border-radius:var(--r-4);overflow:hidden;background:var(--bg-surface)">
+        <div class="tbar">
+          <span class="segf segf-sm" role="group" aria-label="Saved view" data-seg><button aria-pressed="true">All holdings</button><button aria-pressed="false">Equity</button><button aria-pressed="false">Underwater</button></span>
+          <div class="inw sm" style="width:216px;max-width:100%"><span class="ico"><i data-i="search" data-s="14"></i></span><input placeholder="Name, symbol or ISIN" aria-label="Search holdings" id="tbSearch"></div>
+          <button class="btn btn-sm chev" id="facetBtn" aria-haspopup="dialog" aria-expanded="false"><i data-i="filter" data-s="14"></i>Platform<span class="bdg sol-acc sm" style="margin-left:1px">1</span><i data-i="chev-d" data-s="13"></i></button>
+          <button class="btn btn-sm chev"><i data-i="filter" data-s="14"></i>Price state<i data-i="chev-d" data-s="13"></i></button>
+          <span class="sp"></span>
+          <span class="seg seg-sm" role="group" aria-label="Density" data-seg id="densSeg"><button aria-pressed="false" data-d="36">Comfortable</button><button aria-pressed="true" data-d="32">Compact</button><button aria-pressed="false" data-d="28">Dense</button></span>
+          <button class="btn btn-sm chev"><i data-i="columns" data-s="14"></i>Columns<span class="ann" style="margin-left:3px">14/22</span><i data-i="chev-d" data-s="13"></i></button>
+          <span class="split"><button class="btn btn-sm lead"><i data-i="download" data-s="14"></i>Export</button><button class="btn btn-sm" style="width:var(--h-sm)" aria-label="Export options"><i data-i="chev-d" data-s="13"></i></button></span>
+        </div>
+        <div class="chipbar">
+          <span class="fchip"><em>Platform:</em><span>Zerodha</span><button aria-label="Remove platform filter"><i data-i="x" data-s="11"></i></button></span>
+          <span class="fchip"><em>Sorted by:</em><span>Market value ↓</span><button aria-label="Clear sort"><i data-i="x" data-s="11"></i></button></span>
+          <button class="btn btn-link" style="font-size:11.5px">Clear all</button>
+          <span class="cnt-line" style="margin-left:auto" id="tbCount" aria-live="polite">Showing 3 of 12</span>
+        </div>
+        <div class="tscroll" style="border:0;border-radius:0"><table class="dt" id="compTable" style="min-width:720px"></table></div>
+      </div>
+      <p class="ann" style="margin-top:10px"><b>one 28px rhythm across the whole bar</b> — the view segmented control, the search shell, every facet button, the density control, Columns and the Export split are all --h-sm, so the toolbar has a single top and bottom edge rather than a ragged one</p>
+      <p class="why"><b>The chip row is a second band, not a wrap.</b> Active filters and the sort chip sit on <code>--bg-subtle</code> below the controls, separated by a hairline. Letting them wrap into the toolbar makes the bar's height jump as filters are added and removed; a dedicated band keeps the control row fixed and gives the row count a stable home on the right, where a live region announces it.</p>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>Filter popover</h3><span class="sh-note">Faceted multi-select with counts and a range</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="row vtop" style="gap:16px">
+        <div class="pop pover" style="width:296px">
+          <div class="pover-h"><i data-i="filter" data-s="14" style="color:var(--fg-muted)"></i>Platform<span style="margin-left:auto"><button class="btn btn-link" style="font-size:11px">Reset</button></span></div>
+          <div class="pover-b" style="gap:6px">
+            <div class="inw sm"><span class="ico"><i data-i="search" data-s="14"></i></span><input placeholder="Find a platform" aria-label="Find a platform"></div>
+            <div style="display:flex;flex-direction:column;gap:0;max-height:168px;overflow:auto;margin:0 -4px">
+              <label class="facet"><input type="checkbox" checked class="vh"><span class="bx" style="width:15px;height:15px;flex:none;border:1px solid var(--border-control);border-radius:var(--r-1);background:var(--accent);display:grid;place-items:center;color:var(--accent-on)"><i data-i="ck" data-s="10"></i></span><span class="fn">Zerodha</span><span class="fc">4</span></label>
+              <label class="facet"><span class="bx" style="width:15px;height:15px;flex:none;border:1px solid var(--border-control);border-radius:var(--r-1);background:var(--bg-surface)"></span><span class="fn">Groww</span><span class="fc">2</span></label>
+              <label class="facet"><span class="bx" style="width:15px;height:15px;flex:none;border:1px solid var(--border-control);border-radius:var(--r-1);background:var(--bg-surface)"></span><span class="fn">Kuvera</span><span class="fc">1</span></label>
+              <label class="facet"><span class="bx" style="width:15px;height:15px;flex:none;border:1px solid var(--border-control);border-radius:var(--r-1);background:var(--bg-surface)"></span><span class="fn">SafeGold</span><span class="fc">1</span></label>
+              <label class="facet"><span class="bx" style="width:15px;height:15px;flex:none;border:1px solid var(--border-control);border-radius:var(--r-1);background:var(--bg-surface)"></span><span class="fn">ICICI Direct</span><span class="fc">1</span></label>
+              <label class="facet"><span class="bx" style="width:15px;height:15px;flex:none;border:1px solid var(--border-control);border-radius:var(--r-1);background:var(--bg-surface)"></span><span class="fn">INDmoney</span><span class="fc">1</span></label>
+              <label class="facet"><span class="bx" style="width:15px;height:15px;flex:none;border:1px solid var(--border-control);border-radius:var(--r-1);background:var(--bg-surface)"></span><span class="fn">Angel One</span><span class="fc">1</span></label>
+            </div>
+            <div class="lb-sep" style="margin:4px 0"></div>
+            <span class="lbl" style="font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-muted)">Market value</span>
+            <div class="histo" style="height:18px"><i style="height:30%"></i><i class="on" style="height:62%"></i><i class="on" style="height:100%"></i><i class="on" style="height:78%"></i><i class="on" style="height:44%"></i><i style="height:26%"></i><i style="height:14%"></i></div>
+            <div class="rng" style="height:22px"><span class="track"></span><span class="fill" style="left:14%;right:28%"></span><input type="range" min="0" max="100" value="14" aria-label="Minimum market value"><input type="range" min="0" max="100" value="72" aria-label="Maximum market value"></div>
+            <div class="row tight"><div class="inw sm num" style="flex:1;min-width:0"><span class="afx">₹</span><input value="82,400" aria-label="Minimum"></div><div class="inw sm num" style="flex:1;min-width:0"><span class="afx">₹</span><input value="2,95,176" aria-label="Maximum"></div></div>
+          </div>
+          <div class="pover-f"><span class="cnt-line">4 of 12 match</span><span style="flex:1"></span><button class="btn btn-sm btn-ghost">Cancel</button><button class="btn btn-sm btn-primary">Apply</button></div>
+        </div>
+        <div class="grp" style="flex:1;min-width:230px">
+          <p class="ann"><b>facet row</b> h28, 15px box, count right in --fg-muted tnum<br><b>counts are of the filtered set</b>, so a facet showing 0 is disabled rather than hidden — hiding it makes the list jump as other filters change</p>
+          <p class="why"><b>The histogram is the range control's label.</b> Min and max inputs alone give no sense of where the data actually sits. Seven bars behind the track show the real distribution of the twelve holdings, and the bars inside the selected span take <code>--accent-line</code> — so dragging a handle shows how many rows the move will cost before Apply is pressed.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="spec">
+    <div class="spec-h"><h3>KPI row</h3><span class="sh-note">Six tiles, one grid, every delta carrying its period</span><span class="flip" role="group" aria-label="Specimen theme"></span></div>
+    <div class="spec-b">
+      <div class="kpirow" id="kpiRow2"></div>
+      <p class="ann"><b>grid</b> repeat(auto-fit, minmax(176px, 1fr)), gap 10px — at phone width it folds to one column and the sparklines keep their full bleed</p>
+      <p class="why"><b>Not every tile earns a sparkline.</b> TWR has no series to draw, so its context strip is the refusal and its error key instead of a flat line at zero — which would be a claim. The Today's change tile names its own period because it cannot obey the page's range control, exactly as the range contract requires.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+/* ======================= ICONS — hand-authored, 16-unit grid, 1.3 stroke ======================= */
+var ICON = {
+/* --- navigation --- */
+grid:'<rect x="2.5" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="9" y="2.5" width="4.5" height="4.5" rx="1"/><rect x="2.5" y="9" width="4.5" height="4.5" rx="1"/><rect x="9" y="9" width="4.5" height="4.5" rx="1"/>',
+clock:'<circle cx="8" cy="8" r="5.5"/><path d="M8 4.8V8l2.4 1.4"/>',
+bank:'<path d="M2 6.5 8 2.6l6 3.9"/><path d="M4.5 7.5v4.5M8 7.5v4.5M11.5 7.5v4.5"/><path d="M2 13.5h12"/>',
+list:'<path d="M3 4.5h10M3 8h10M3 11.5h6.5"/>',
+rows:'<rect x="2.5" y="3" width="11" height="3" rx="1"/><rect x="2.5" y="10" width="11" height="3" rx="1"/>',
+wallet:'<rect x="2" y="4" width="12" height="8.5" rx="1.6"/><path d="M2 6.6h12"/><circle cx="11.2" cy="9.6" r=".85" fill="currentColor" stroke="none"/>',
+upload:'<path d="M8 10.5V3.2M5.4 5.8 8 3.2l2.6 2.6"/><path d="M2.8 10.8v2.2h10.4v-2.2"/>',
+'chart-line':'<path d="M2.5 12.2 6 8.4l2.6 2.1L13.5 4"/><path d="M10.9 4h2.6v2.6"/>',
+trend:'<path d="M2.5 11.6 6.2 7l2.6 2.4 4.7-5.2"/><path d="M11 4.2h2.5v2.5"/>',
+building:'<rect x="3" y="2.5" width="10" height="11" rx="1.2"/><path d="M5.6 5.4h1.6M8.8 5.4h1.6M5.6 8h1.6M8.8 8h1.6"/><path d="M6.6 13.5v-2.6h2.8v2.6"/>',
+signal:'<path d="M3 12.4V9.6M6.3 12.4V6.2M9.7 12.4V8.4M13 12.4V3.6"/>',
+vault:'<rect x="2.5" y="2.8" width="11" height="10.4" rx="1.4"/><circle cx="8" cy="8" r="2.6"/><path d="M8 3.9v1.5M8 10.6v1.5"/>',
+gem:'<path d="M4.6 3.2h6.8L14 6.6 8 13.1 2 6.6z"/><path d="M2 6.6h12"/>',
+card:'<rect x="2" y="3.8" width="12" height="8.4" rx="1.4"/><path d="M2 6.7h12"/>',
+loan:'<rect x="2.2" y="2.8" width="11.6" height="10.4" rx="1.3"/><path d="M4.6 11.2h2.4V8.8h2.6V6.2h3"/>',
+gear:'<circle cx="8" cy="8" r="2.4"/><path d="M8 2.2v1.6M8 12.2v1.6M13.8 8h-1.6M3.8 8H2.2M12.1 3.9l-1.1 1.1M5 11l-1.1 1.1M12.1 12.1 11 11M5 5 3.9 3.9"/>',
+/* --- actions --- */
+'sort-asc':'<path d="M5.5 6.8 8 4.3l2.5 2.5"/><path d="M5.5 9.2 8 11.7l2.5-2.5" opacity=".3"/>',
+'sort-desc':'<path d="M5.5 6.8 8 4.3l2.5 2.5" opacity=".3"/><path d="M5.5 9.2 8 11.7l2.5-2.5"/>',
+'sort-none':'<path d="M5.5 6.8 8 4.3l2.5 2.5" opacity=".35"/><path d="M5.5 9.2 8 11.7l2.5-2.5" opacity=".35"/>',
+filter:'<path d="M2.6 3.9h10.8l-4.2 5v4.2l-2.4-1.3V8.9z"/>',
+columns:'<rect x="2.3" y="3" width="11.4" height="10" rx="1.2"/><path d="M6.1 3v10M9.9 3v10"/>',
+density:'<path d="M3 3.8h10M3 6.6h10M3 9.4h10M3 12.2h10"/>',
+download:'<path d="M8 3.2v7.3M5.4 7.9 8 10.5l2.6-2.6"/><path d="M2.8 10.8v2.2h10.4v-2.2"/>',
+expand:'<path d="M9.6 2.8h3.6v3.6M13.2 2.8 9.9 6.1"/><path d="M6.4 13.2H2.8V9.6M2.8 13.2 6.1 9.9"/>',
+search:'<circle cx="7.1" cy="7.1" r="4.3"/><path d="M10.3 10.3 13.4 13.4"/>',
+plus:'<path d="M8 3.4v9.2M3.4 8h9.2"/>',
+edit:'<path d="M10.4 2.9 13.1 5.6 5.7 13H3v-2.7z"/><path d="M9.1 4.2 11.8 6.9"/>',
+trash:'<path d="M2.9 4.4h10.2"/><path d="M4.4 4.4V3.1h7.2v1.3"/><path d="M4.1 4.4 4.7 13h6.6l.6-8.6"/><path d="M6.7 6.8v3.8M9.3 6.8v3.8"/>',
+refresh:'<path d="M12.6 6.6A4.9 4.9 0 1 0 13 9.4"/><path d="M13.2 3.2v3.4h-3.4"/>',
+info:'<circle cx="8" cy="8" r="5.5"/><path d="M8 7.3v3.6"/><circle cx="8" cy="5.3" r=".75" fill="currentColor" stroke="none"/>',
+warn:'<path d="M8 2.6 14 13H2z"/><path d="M8 6.6v3"/><circle cx="8" cy="11.2" r=".75" fill="currentColor" stroke="none"/>',
+external:'<path d="M12.4 9.1v3.1a1.2 1.2 0 0 1-1.2 1.2H3.8a1.2 1.2 0 0 1-1.2-1.2V4.8a1.2 1.2 0 0 1 1.2-1.2h3.1"/><path d="M9.8 2.7h3.5v3.5M13.3 2.7 7.6 8.4"/>',
+check:'<path d="M3.2 8.4 6.4 11.6 12.8 4.8"/>',
+ck:'<path d="M3.4 8.3 6.3 11.2 12.6 4.9"/>',
+ix:'<path d="M4.2 8h7.6"/>',
+'chev-d':'<path d="M4.4 6.3 8 9.9l3.6-3.6"/>',
+'chev-u':'<path d="M4.4 9.7 8 6.1l3.6 3.6"/>',
+'chev-l':'<path d="M9.7 4.4 6.1 8l3.6 3.6"/>',
+'chev-r':'<path d="M6.3 4.4 9.9 8l-3.6 3.6"/>',
+'caret-u':'<path d="M4 9.6 8 5.6l4 4"/>',
+'caret-d':'<path d="M4 6.4 8 10.4l4-4"/>',
+'arrow-r':'<path d="M3 8h10M9.4 4.4 13 8l-3.6 3.6"/>',
+more:'<circle cx="3.6" cy="8" r=".95" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r=".95" fill="currentColor" stroke="none"/><circle cx="12.4" cy="8" r=".95" fill="currentColor" stroke="none"/>',
+x:'<path d="M4.2 4.2 11.8 11.8M11.8 4.2 4.2 11.8"/>',
+copy:'<rect x="5.4" y="5.4" width="7.8" height="7.8" rx="1.2"/><path d="M10.6 5.4V4a1.2 1.2 0 0 0-1.2-1.2H4a1.2 1.2 0 0 0-1.2 1.2v5.4a1.2 1.2 0 0 0 1.2 1.2h1.4"/>',
+calendar:'<rect x="2.4" y="3.5" width="11.2" height="10.1" rx="1.3"/><path d="M2.4 6.5h11.2"/><path d="M5.5 2.3v2.3M10.5 2.3v2.3"/>',
+/* --- domain --- */
+equity:'<path d="M8 2.6v10.8"/><path d="M8 5.6H5.1M8 10.4h2.9"/>',
+etf:'<rect x="2.3" y="2.9" width="11.4" height="10.2" rx="1.3"/><path d="M5.6 10.6V7.4M8 10.6V5.4M10.4 10.6V8.6"/>',
+'mutual-fund':'<path d="M5.1 9.9V6.4M8 9.9V4.3M10.9 9.9V7.5"/><path d="M3.4 12.3h9.2"/>',
+gold:'<path d="M2.6 11.4 4.4 6.3h7.2l1.8 5.1z"/><path d="M4.4 8.6h7.2"/>',
+silver:'<path d="M3.1 13.2 4.3 10h7.4l1.2 3.2z"/><path d="M4.6 8.1 5.5 5.4h5l.9 2.7z"/>',
+bond:'<rect x="2.3" y="3.2" width="11.4" height="9.6" rx="1.2"/><path d="M4.7 6.2h5M4.7 8.4h3.2"/><circle cx="11" cy="9.8" r="1.7"/>',
+fd:'<rect x="2.6" y="3.1" width="10.8" height="9.8" rx="1.5"/><circle cx="8" cy="8" r="2.8"/><path d="M8 6.3V8l1.4.9"/>',
+cash:'<rect x="1.9" y="4.2" width="12.2" height="7.6" rx="1.2"/><circle cx="8" cy="8" r="1.9"/><path d="M4.3 6.3v0M11.7 9.7v0"/><path d="M4.1 6.5h.4M11.5 9.5h.4"/>',
+property:'<path d="M2 7.6 8 2.6l6 5"/><path d="M3.6 7.1v6.3h8.8V7.1"/><path d="M6.6 13.4V9.9h2.8v3.5"/>'
+};
+function svg(name,size){
+  var s=size||16, body=ICON[name]||'';
+  return '<svg width="'+s+'" height="'+s+'" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">'+body+'</svg>';
+}
+function paintIcons(root){
+  (root||document).querySelectorAll('i[data-i]').forEach(function(el){
+    var w=document.createElement('span');
+    w.className=el.className; w.setAttribute('aria-hidden','true');
+    w.style.display='inline-flex'; w.style.flex='none';
+    w.innerHTML=svg(el.getAttribute('data-i'), parseInt(el.getAttribute('data-s')||'16',10));
+    el.replaceWith(w);
+  });
+}
+
+/* ======================= THEME ======================= */
+var root=document.documentElement, themeMode='system';
+try{ var sv=localStorage.getItem('sm-kit-theme'); if(sv) themeMode=sv; }catch(e){}
+function applyTheme(){
+  if(themeMode==='system') root.removeAttribute('data-theme');
+  else root.setAttribute('data-theme',themeMode);
+  document.querySelectorAll('#themeSeg button').forEach(function(b){
+    b.setAttribute('aria-pressed', String(b.dataset.t===themeMode));
+  });
+  try{ localStorage.setItem('sm-kit-theme',themeMode); }catch(e){}
+}
+
+/* ======================= SPECIMEN THEME FLIP ======================= */
+function buildFlips(){
+  document.querySelectorAll('.flip').forEach(function(f){
+    if(f.children.length) return;
+    [['auto','Page'],['light','Light'],['dark','Dark']].forEach(function(p){
+      var b=document.createElement('button');
+      b.type='button'; b.dataset.f=p[0]; b.textContent=p[1];
+      b.setAttribute('aria-pressed', String(p[0]==='auto'));
+      f.appendChild(b);
+    });
+  });
+}
+function setFlip(specHeader, mode){
+  var body=specHeader.parentElement.querySelector('.spec-b');
+  if(!body) return;
+  body.classList.remove('tf-light','tf-dark');
+  if(mode==='light') body.classList.add('tf-light');
+  if(mode==='dark') body.classList.add('tf-dark');
+  specHeader.querySelectorAll('.flip button').forEach(function(b){
+    b.setAttribute('aria-pressed', String(b.dataset.f===mode));
+  });
+}
+
+/* ======================= DATA ======================= */
+var HOLD=[
+ {sym:'RELIANCE',name:'Reliance Industries Ltd',ex:'NSE',plat:'Zerodha',mv:63918,inv:58423.5,st:'Priced'},
+ {sym:'HDFCBANK',name:'HDFC Bank Ltd',ex:'NSE',plat:'Groww',mv:142560,inv:130240,st:'Priced'},
+ {sym:'120503',name:'Parag Parikh Flexi Cap — Direct Growth',ex:'AMFI',plat:'Kuvera',mv:189312.4,inv:150000,st:'Priced'},
+ {sym:'GOLD-SG',name:'Digital Gold (24K)',ex:'SafeGold',plat:'SafeGold',mv:331845,inv:295176,st:'Priced'},
+ {sym:'TATAMOTORS',name:'Tata Motors Ltd',ex:'NSE',plat:'Upstox',mv:108900,inv:113250,st:'Stale'},
+ {sym:'ITC',name:'ITC Ltd',ex:'NSE',plat:'Angel One',mv:null,inv:82400,st:'Unpriced'}
+];
+var nf=function(d){ return new Intl.NumberFormat('en-IN',{minimumFractionDigits:d,maximumFractionDigits:d}); };
+function rupee(v){ if(v==null) return null; var a=Math.abs(v), dp=a>=100000?0:2;
+  return (v<0?'−':'')+'₹'+nf(dp).format(a); }
+function rupeeSigned(v){ if(v==null) return null; var a=Math.abs(v), dp=a>=100000?0:2;
+  return (v<0?'−':'+')+'₹'+nf(dp).format(a); }
+function trunc2(x){ return Math.trunc(x*100)/100; }
+function compact(v,signed){ if(v==null) return null;
+  var s=v<0?'−':(signed?'+':''), a=Math.abs(v);
+  if(a>=10000000) return s+'₹'+nf(2).format(trunc2(a/10000000))+'<span class="u">Cr</span>';
+  if(a>=100000)   return s+'₹'+nf(2).format(trunc2(a/100000))+'<span class="u">L</span>';
+  return s+'₹'+nf(a>=1000?0:2).format(a); }
+function pctS(v){ return (v<0?'−':'+')+nf(2).format(Math.abs(v))+'%'; }
+function sgn(v){ return v>0?'gain':(v<0?'loss':'flat'); }
+function stBadge(s){
+  if(s==='Priced')  return '<span class="bdg sub-gain"><span class="dot"></span>Priced</span>';
+  if(s==='Stale')   return '<span class="bdg sub-warn"><span class="dot"></span>Stale</span>';
+  if(s==='Unpriced')return '<span class="bdg out-n">Unpriced</span>';
+  return '<span class="bdg sub-warn">FX unavailable</span>';
+}
+
+/* ======================= BUTTON STATE MATRIX ======================= */
+var VARIANTS=[
+ ['Primary','btn-primary','Confirm'],
+ ['Secondary','','Reconcile'],
+ ['Ghost','btn-ghost','Cancel'],
+ ['Danger','btn-danger','Delete'],
+ ['Danger quiet','btn-danger-quiet','Close account'],
+ ['Link','btn-link','Review batch']
+];
+function btnMatrix(){
+  var tb=document.getElementById('btnMatrix'); if(!tb) return;
+  tb.innerHTML=VARIANTS.map(function(v){
+    var cls='btn btn-sm '+v[1], lbl=v[2];
+    function cell(extraStyle,extraCls){
+      return '<td><span class="'+cls+(extraCls||'')+'" style="pointer-events:none;'+(extraStyle||'')+'"><span>'+lbl+'</span></span></td>';
+    }
+    var hoverStyle = v[1]==='btn-primary' ? 'background:var(--accent-hover);border-color:var(--accent-hover)'
+      : v[1]==='btn-ghost' ? 'background:var(--bg-hover);color:var(--fg)'
+      : v[1]==='btn-danger' ? 'filter:brightness(.93) saturate(1.06)'
+      : v[1]==='btn-danger-quiet' ? 'background:var(--loss-bg);border-color:var(--loss)'
+      : v[1]==='btn-link' ? 'text-decoration-color:currentColor'
+      : 'background:var(--bg-hover);border-color:var(--border-hover)';
+    var pressStyle = v[1]==='btn-primary' ? 'background:var(--accent-active);border-color:var(--accent-active);box-shadow:none'
+      : v[1]==='btn-ghost' ? 'background:var(--bg-active)'
+      : v[1]==='btn-danger' ? 'filter:brightness(.86) saturate(1.08);box-shadow:none'
+      : v[1]==='btn-danger-quiet' ? 'background:var(--loss-bg);border-color:var(--loss);box-shadow:none'
+      : v[1]==='btn-link' ? ''
+      : 'background:var(--bg-active);border-color:var(--border-active);box-shadow:none';
+    return '<tr><td style="font-weight:500">'+v[0]+'</td>'+
+      '<td><button class="'+cls+'">'+lbl+'</button></td>'+
+      cell(hoverStyle)+
+      '<td><span class="'+cls+'" style="pointer-events:none;'+pressStyle+'"><span style="display:inline-block;transform:translateY(.5px)">'+lbl+'</span></span></td>'+
+      cell('outline:2px solid var(--accent);outline-offset:2px')+
+      '<td><button class="'+cls+'" disabled>'+lbl+'</button></td>'+
+      '<td>'+(v[1]==='btn-link'?'<span class="ann">n/a</span>':'<span class="'+cls+' loading" aria-busy="true"><span>'+lbl+'</span></span>')+'</td></tr>';
+  }).join('');
+}
+
+/* ======================= KPI TILES ======================= */
+function spark(vals,tone,id){
+  var w=200,h=30,p=3;
+  var mn=Math.min.apply(null,vals), mx=Math.max.apply(null,vals), sp=(mx-mn)||1;
+  var pts=vals.map(function(v,i){ return [p+i*(w-2*p)/(vals.length-1), h-p-((v-mn)/sp)*(h-2*p)]; });
+  var d=pts.map(function(pt,i){ return (i?'L':'M')+pt[0].toFixed(1)+' '+pt[1].toFixed(1); }).join(' ');
+  var c = tone==='gain'?'var(--gain)':tone==='loss'?'var(--loss)':'var(--fg-secondary)';
+  var last=pts[pts.length-1];
+  return '<svg class="spark" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none" aria-hidden="true">'+
+    '<path d="'+d+'" fill="none" stroke="'+c+'" stroke-width="1.5" vector-effect="non-scaling-stroke"/>'+
+    '<circle cx="'+last[0].toFixed(1)+'" cy="'+last[1].toFixed(1)+'" r="2" fill="'+c+'"/></svg>';
+}
+var KPIS=[
+ {l:'Net worth', i:'Assets minus liabilities, summed from journal postings at read time, never stored.',
+  v:compact(4872140), d:'<span class="gain">+₹1.42L · +3.01%</span> <span class="muted">this FY</span>',
+  s:[38.4,39.1,39.8,40.5,41.3,42.4,43.5,44.2,45.3,46.1,47.3,48.72], t:'gain'},
+ {l:'Invested / Market value', i:'The portfolio-only subset of net worth.',
+  v:compact(1610000), d:'<span class="muted">Invested ₹14.26L · ₹1.92L at last known value</span>',
+  s:[13.9,14.2,14.0,14.6,14.4,15.0,15.3,15.1,15.6,15.8,16.3,16.10], t:'gain'},
+ {l:'Unrealised gain / loss', i:'Market value minus invested cost, priced holdings only.',
+  v:'<span class="gain">'+compact(184000,true)+'</span>', d:'<span class="gain">+12.90%</span> <span class="muted">on invested cost</span>',
+  s:[0.9,1.0,0.8,1.2,1.1,1.3,1.5,1.4,1.6,1.7,1.9,1.84], t:'gain'},
+ {l:'XIRR (since inception)', i:'Money-weighted return on your actual dated cashflows.',
+  v:'<span class="gain">+15.23%</span>', d:'<span class="muted">34 cashflows · first 11 Apr 2023</span>',
+  s:[11.2,10.4,12.1,12.8,11.9,13.4,14.0,13.2,14.4,14.8,15.6,15.23], t:'gain'},
+ {l:'Today’s change', i:'Derived from the previous stored close per holding.', isNew:true,
+  v:'<span class="loss">'+compact(-18450,true)+'</span>', d:'<span class="loss">−1.14%</span> <span class="muted">Markets closed · 15:30 IST</span>',
+  s:[0.4,-0.2,0.6,0.1,-0.5,0.3,0.2,-0.4,0.5,0.1,0.3,-0.18], t:'loss'},
+ {l:'TWR (time-weighted)', i:'Needs a valuation at every cashflow boundary.',
+  v:'<span class="muted">—</span>', d:'<span class="muted">Daily valuations exist only from 1 Apr 2026</span>',
+  err:'TWR_BOUNDARY_VALUATIONS_UNAVAILABLE'}
+];
+function kpiHTML(){
+  return KPIS.map(function(k){
+    return '<button class="kpi">'+
+      '<span class="kl">'+k.l+(k.isNew?' <span class="bdg dash sm">NEW</span>':'')+
+        '<span class="info-i" title="'+k.i+'" role="img" aria-label="About this metric">i</span></span>'+
+      '<span class="kv">'+k.v+'</span>'+
+      '<span class="kd">'+k.d+'</span>'+
+      (k.err ? '<span class="ann" style="padding-bottom:12px">'+k.err+'</span>'
+             : spark(k.s,k.t))+
+      '</button>';
+  }).join('');
+}
+
+/* ======================= ROW STATES ======================= */
+var ROWSTATES=[
+ ['', 'Rest'],
+ ['', 'Hover', 'background:var(--bg-hover)'],
+ ['kb','Keyboard-focused'],
+ ['sel','Selected'],
+ ['exp','Expanded'],
+ ['', 'Stale figure'],
+ ['bad','Error']
+];
+function rowStates(){
+  var tb=document.getElementById('rowStates'); if(!tb) return;
+  var h=HOLD[1];
+  tb.innerHTML=ROWSTATES.map(function(r,i){
+    var cls=r[0], note=r[1], style=r[2]||'';
+    var checked = (cls==='sel') ? ' checked' : '';
+    var mv, pnl, st;
+    if(note==='Stale figure'){
+      mv='<span class="stale" tabindex="0" title="Priced from the close of 16 Oct 2026 — three sessions old.">'+rupee(108900)+'</span>';
+      pnl='<span class="loss">'+rupeeSigned(-4350)+'</span>'; st=stBadge('Stale');
+    } else if(cls==='bad'){
+      mv='<span class="dash-cell" tabindex="0" title="The FIFO match for this holding references a lot that no longer exists.">—</span>';
+      pnl='<span class="dash-cell" tabindex="0" title="Unavailable while the lot match is broken.">—</span>';
+      st='<span class="bdg sub-loss">Lot mismatch</span>';
+    } else {
+      mv=rupee(h.mv); pnl='<span class="gain">'+rupeeSigned(h.mv-h.inv)+'</span>'; st=stBadge('Priced');
+    }
+    var main='<tr class="'+cls+'" style="'+style+'">'+
+      '<td><label class="ctl" style="margin:0"><input type="checkbox"'+checked+' aria-label="Select row"><span class="bx"><i data-i="ck" data-s="11" class="ck"></i><i data-i="ix" data-s="11" class="ix"></i></span></label></td>'+
+      '<td><span class="nm"><b>'+(cls==='bad'?'INFY':(note==='Stale figure'?'TATAMOTORS':h.sym))+' <span class="bdg mono out-n">NSE</span></b><span>'+(cls==='bad'?'Infosys Ltd':(note==='Stale figure'?'Tata Motors Ltd':h.name))+'</span></span></td>'+
+      '<td>'+(note==='Stale figure'?'Upstox':h.plat)+'</td>'+
+      '<td class="num">'+mv+'</td><td class="num">'+pnl+'</td><td>'+st+'</td>'+
+      '<td><button class="btn btn-sm only btn-ghost" aria-label="Row actions"><i data-i="more" data-s="14"></i></button></td></tr>';
+    var caption='<tr><td colspan="7" style="height:auto;padding:2px 12px 8px;border-bottom:1px solid var(--border)"><span class="ann"><b>'+note+'</b> — '+
+      (note==='Rest'?'1px --border-subtle rule, no fill':
+       note==='Hover'?'--bg-hover only; nothing else moves':
+       note==='Keyboard-focused'?'2px --accent outline at offset −2px, inside the row':
+       note==='Selected'?'inset 2px --accent bar, no fill, so hover still reads underneath':
+       note==='Expanded'?'--bg-subtle with an inset 2px --border-active bar':
+       note==='Stale figure'?'figure drops to --fg-muted with a --warn dotted underline; the row itself is unstyled':
+       '--loss-bg with an inset 3px --loss bar')+'</span></td></tr>';
+    var expansion = (cls==='exp') ? '<tr><td colspan="7" style="background:var(--bg-subtle);height:auto;padding:12px;border-bottom:1px solid var(--border)">'+
+      '<div class="row" style="gap:20px;align-items:flex-start"><dl class="kv" style="min-width:200px"><dt>Lot 1 · 18 Jun 2025</dt><dd class="tnum">80 @ ₹1,628.00</dd><dt>Holding period</dt><dd class="tnum">489 days</dd><dt>Bucket</dt><dd><span class="bdg sub-gain sm">LTCG</span></dd></dl>'+
+      '<div style="flex:1;min-width:140px"><span class="ann">90d trend</span><div style="margin-top:4px">'+spark([1.30,1.33,1.29,1.36,1.34,1.38,1.41,1.39,1.43,1.42],'gain')+'</div></div></div></td></tr>' : '';
+    return main+expansion+caption;
+  }).join('');
+}
+
+/* ======================= SKELETONS ======================= */
+function skelRows(){
+  var tb=document.getElementById('skelRows'); if(!tb) return;
+  var widths=[[130,96],[104,78],[118,88],[142,104],[96,70],[126,92],[112,84],[134,98]];
+  tb.innerHTML=widths.map(function(w){
+    return '<tr>'+
+      '<td><span class="sk" style="width:'+w[0]+'px;height:9px"></span><span class="sk" style="width:'+w[1]+'px;height:7px;margin-top:3px"></span></td>'+
+      '<td><span class="sk" style="width:62px;height:9px"></span></td>'+
+      '<td class="num"><span class="sk" style="width:76px;height:9px;margin-left:auto"></span></td>'+
+      '<td class="num"><span class="sk" style="width:64px;height:9px;margin-left:auto"></span></td>'+
+      '<td><span class="sk" style="width:54px;height:16px;border-radius:3px"></span></td></tr>';
+  }).join('');
+}
+
+/* ======================= ICON GRIDS ======================= */
+var ICOSETS={
+ nav:['grid','clock','bank','list','wallet','upload','chart-line','rows','trend','building','signal','vault','gem','card','loan','gear'],
+ action:['sort-asc','sort-desc','sort-none','filter','columns','density','download','expand','search','plus','edit','trash','refresh','info','warn','external','check','chev-d','chev-u','chev-l','chev-r','more','x','copy','calendar'],
+ domain:['equity','mutual-fund','etf','gold','silver','bond','fd','card','loan','bank','wallet','cash','property']
+};
+function iconGrids(){
+  document.querySelectorAll('[data-icoset]').forEach(function(g){
+    g.innerHTML=ICOSETS[g.dataset.icoset].map(function(n){
+      return '<div class="icoc"><span class="ib">'+svg(n,20)+'</span><code>'+n+'</code></div>';
+    }).join('');
+  });
+}
+
+/* ======================= LISTBOX ======================= */
+var LBDATA=[
+ {g:'Discount brokers', o:[
+   {v:'Zerodha', d:'4 holdings · ₹2,76,540', r:'4'},
+   {v:'Groww', d:'2 holdings · ₹2,24,734', r:'2'},
+   {v:'Upstox', d:'1 holding · ₹1,08,900', r:'1'},
+   {v:'Angel One', d:'1 holding · unpriced', r:'1'}]},
+ {g:'Full-service', o:[
+   {v:'ICICI Direct', d:'1 holding · ₹1,56,200', r:'1'},
+   {v:'HDFC Sky', d:'no holdings', r:'0'}]},
+ {g:'Fund platforms', o:[
+   {v:'Kuvera', d:'1 holding · ₹1,89,312', r:'1'},
+   {v:'INDmoney', d:'1 holding · FX unavailable', r:'1'}]},
+ {g:'Metal vaults', o:[
+   {v:'SafeGold', d:'1 holding · ₹3,31,845', r:'1'},
+   {v:'Augmont', d:'1 holding · ₹1,30,625', r:'1'}]}
+];
+function initListbox(wrap){
+  var btn=wrap.querySelector('.lb-btn'), open=false, active=0, sel='Zerodha', list=null;
+  var flat=[]; LBDATA.forEach(function(g){ g.o.forEach(function(o){ flat.push(o); }); });
+  function render(){
+    var h='';
+    LBDATA.forEach(function(g){
+      h+='<div class="lb-grp">'+g.g+'</div>';
+      g.o.forEach(function(o){
+        var idx=flat.indexOf(o);
+        h+='<div class="lb-opt'+(idx===active?' act':'')+'" role="option" aria-selected="'+(o.v===sel)+'" data-idx="'+idx+'">'+
+           '<span class="ck">'+svg('ck',13)+'</span><span class="tx"><b>'+o.v+'</b><span>'+o.d+'</span></span><span class="rt">'+o.r+'</span></div>';
+      });
+    });
+    h+='<div class="lb-foot"><span>↑↓ move</span><span>Enter select</span><span>Esc close</span></div>';
+    list.innerHTML=h;
+  }
+  function openIt(){
+    if(open) return; open=true;
+    list=document.createElement('div'); list.className='lb'; list.setAttribute('role','listbox');
+    wrap.appendChild(list); render(); btn.setAttribute('aria-expanded','true');
+    var a=list.querySelector('.lb-opt.act'); if(a) a.scrollIntoView({block:'nearest'});
+  }
+  function closeIt(){ if(!open) return; open=false; if(list) list.remove(); list=null; btn.setAttribute('aria-expanded','false'); }
+  function choose(i){ sel=flat[i].v; btn.querySelector('.v').textContent=sel; closeIt(); btn.focus(); }
+  btn.addEventListener('click', function(){ open?closeIt():openIt(); });
+  btn.addEventListener('keydown', function(e){
+    if(e.key==='ArrowDown'||e.key==='ArrowUp'||e.key==='Enter'||e.key===' '){
+      if(!open){ e.preventDefault(); openIt(); return; }
+    }
+    if(!open) return;
+    if(e.key==='ArrowDown'){ e.preventDefault(); active=Math.min(flat.length-1,active+1); render(); list.querySelector('.lb-opt.act').scrollIntoView({block:'nearest'}); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); active=Math.max(0,active-1); render(); list.querySelector('.lb-opt.act').scrollIntoView({block:'nearest'}); }
+    else if(e.key==='Home'){ e.preventDefault(); active=0; render(); }
+    else if(e.key==='End'){ e.preventDefault(); active=flat.length-1; render(); }
+    else if(e.key==='Enter'||e.key===' '){ e.preventDefault(); choose(active); }
+    else if(e.key==='Escape'){ e.preventDefault(); closeIt(); }
+  });
+  wrap.addEventListener('click', function(e){
+    var o=e.target.closest('.lb-opt'); if(o){ choose(parseInt(o.dataset.idx,10)); }
+  });
+  document.addEventListener('click', function(e){ if(!wrap.contains(e.target)) closeIt(); });
+}
+
+/* ======================= COMBOBOX LIST ======================= */
+function comboList(){
+  var el=document.getElementById('cbList'); if(!el) return;
+  var rows=[
+    {b:'HDFCBANK', s:'HDFC Bank Ltd · NSE · EQ', r:'₹1,42,560'},
+    {b:'119533', s:'HDFC Corporate Bond Fund — Direct Growth', r:'₹82,174'},
+    {b:'HDFCLIFE', s:'HDFC Life Insurance Co Ltd · NSE · EQ', r:'not held'},
+    {b:'HDFCAMC', s:'HDFC Asset Management Co Ltd · NSE · EQ', r:'not held'}
+  ];
+  el.innerHTML=rows.map(function(r,i){
+    return '<div class="lb-opt'+(i===0?' act':'')+'" role="option" aria-selected="'+(i===0)+'">'+
+      '<span class="ck">'+svg('ck',13)+'</span><span class="tx"><b>'+r.b+'</b><span>'+r.s+'</span></span><span class="rt">'+r.r+'</span></div>';
+  }).join('')+'<div class="lb-foot"><span>4 of 2,184 catalogue entries</span><span style="margin-left:auto">AMFI + NSE</span></div>';
+}
+
+/* ======================= DATE RANGE ======================= */
+function datePicker(){
+  var el=document.getElementById('drPicker'); if(!el) return;
+  var presets=[['This FY','',true],['Last FY',''],
+    ['Q1 FY27 · Apr–Jun',''],['Q2 FY27 · Jul–Sep',''],['Q3 FY27 · Oct–Dec',''],['Q4 FY27 · Jan–Mar',''],
+    ['SEP',''],['This month',''],['Last 90 days',''],
+    ['SEP',''],['YTD (calendar)',''],['Custom…','']];
+  var ph='';
+  presets.forEach(function(p){
+    if(p[0]==='SEP'){ ph+='<div class="sep"></div>'; return; }
+    ph+='<button type="button" aria-pressed="'+(p[2]?'true':'false')+'">'+p[0]+'</button>';
+  });
+  // October 2026: 1 Oct is a Thursday; week starts Monday
+  var lead=3, days=31, cells='';
+  ['M','T','W','T','F','S','S'].forEach(function(d,i){ cells+='<span class="dow">'+d+'</span>'; });
+  for(var i=0;i<lead;i++){ cells+='<button type="button" class="out" tabindex="-1">'+(28+i)+'</button>'; }
+  for(var d=1;d<=days;d++){
+    var c=''; if(d===1) c='e1'; else if(d===19) c='e2'; else if(d>1&&d<19) c='inr';
+    cells+='<button type="button" class="'+c+'">'+d+'</button>';
+  }
+  el.innerHTML='<div class="dr-pre">'+ph+'</div>'+
+    '<div class="dr-cal"><div class="cal-h"><button class="btn btn-sm only btn-ghost" aria-label="Previous month">'+svg('chev-l',14)+'</button><b>October 2026</b><button class="btn btn-sm only btn-ghost" aria-label="Next month">'+svg('chev-r',14)+'</button></div><div class="cal">'+cells+'</div></div>'+
+    '<div class="dr-foot"><span class="cnt-line">1 Oct 2026 – 19 Oct 2026 · 19 days</span><span style="flex:1"></span><button class="btn btn-sm btn-ghost">Cancel</button><button class="btn btn-sm btn-primary">Apply</button></div>';
+  el.querySelector('.dr-pre').addEventListener('click', function(e){
+    var b=e.target.closest('button'); if(!b) return;
+    el.querySelectorAll('.dr-pre button').forEach(function(x){ x.setAttribute('aria-pressed','false'); });
+    b.setAttribute('aria-pressed','true');
+  });
+}
+
+/* ======================= RANGE + HISTOGRAM ======================= */
+var HBARS=[8,14,22,31,27,19,24,16,11,7,5,3];
+function histo(){
+  var el=document.getElementById('histo'); if(!el) return;
+  el.innerHTML=HBARS.map(function(v){ return '<i style="height:'+(v/31*100)+'%"></i>'; }).join('');
+  syncRange();
+}
+function syncRange(){
+  var a=document.getElementById('rngA'), b=document.getElementById('rngB'),
+      f=document.getElementById('rngFill'), h=document.getElementById('histo');
+  if(!a||!b||!f) return;
+  var lo=Math.min(+a.value,+b.value), hi=Math.max(+a.value,+b.value);
+  f.style.left='calc(7px + '+lo+'% - '+(lo*14/100)+'px)';
+  f.style.width='calc('+(hi-lo)+'% - '+((hi-lo)*14/100)+'px)';
+  if(h) Array.prototype.forEach.call(h.children, function(bar,i){
+    var mid=(i+0.5)/HBARS.length*100;
+    bar.classList.toggle('on', mid>=lo && mid<=hi);
+  });
+  var mn=document.getElementById('rngMin'), mx=document.getElementById('rngMax');
+  if(mn) mn.value=nf(0).format(Math.round(82400+(lo/100)*(295176-82400)));
+  if(mx) mx.value=nf(0).format(Math.round(82400+(hi/100)*(295176-82400)));
+}
+
+/* ======================= COMPOSITION TABLE ======================= */
+var sortKey='mv', sortDir=-1, density=32;
+function compTable(){
+  var t=document.getElementById('compTable'); if(!t) return;
+  var cols=[{k:'sym',l:'Holding'},{k:'plat',l:'Platform'},{k:'inv',l:'Invested',n:1},
+            {k:'mv',l:'Market value',n:1},{k:'pnl',l:'Unrealised',n:1},{k:'st',l:'Price state'}];
+  function val(h,k){ if(k==='pnl') return h.mv==null?null:h.mv-h.inv; return h[k]; }
+  var rows=HOLD.slice().sort(function(x,y){
+    var a=val(x,sortKey), b=val(y,sortKey);
+    if(a==null&&b==null) return 0; if(a==null) return 1; if(b==null) return -1;
+    var c = (typeof a==='string') ? a.localeCompare(b) : (a-b);
+    return c*sortDir;
+  });
+  var head=cols.map(function(c){
+    var on=c.k===sortKey;
+    var icon = on ? (sortDir===1?'sort-asc':'sort-desc') : 'sort-none';
+    var arrow='<span class="sortw" style="'+(on?'':'opacity:.55')+'">'+svg(icon,13)+'</span>';
+    return '<th class="'+(c.n?'num':'')+'" data-k="'+c.k+'" tabindex="0" role="columnheader" aria-sort="'+(on?(sortDir===1?'ascending':'descending'):'none')+'">'+
+      (c.n?arrow+' '+c.l:c.l+' '+arrow)+'</th>';
+  }).join('');
+  var body=rows.map(function(h){
+    var pnl=h.mv==null?null:h.mv-h.inv;
+    var mv = h.mv==null ? '<span class="dash-cell" tabindex="0" title="No quote stored for ITC since 12 Oct 2026. Market value is withheld rather than shown as zero.">—</span>'
+      : (h.st==='Stale' ? '<span class="stale" tabindex="0" title="Priced from the close of 16 Oct 2026 — three sessions old. Exact value '+rupee(h.mv)+'.">'+rupee(h.mv)+'</span>' : rupee(h.mv));
+    var pn = pnl==null ? '<span class="dash-cell" tabindex="0" title="Unrealised gain needs a market value, which is withheld.">—</span>'
+      : '<span class="'+sgn(pnl)+'">'+rupeeSigned(pnl)+'</span>';
+    return '<tr><td><span class="nm"><b>'+h.sym+' <span class="bdg mono out-n">'+h.ex+'</span></b><span title="'+h.name+'">'+h.name+'</span></span></td>'+
+      '<td>'+h.plat+'</td><td class="num">'+rupee(h.inv)+'</td><td class="num">'+mv+'</td>'+
+      '<td class="num">'+pn+'</td><td>'+stBadge(h.st)+'</td></tr>';
+  }).join('');
+  var priced=rows.filter(function(h){ return h.mv!=null; });
+  var si=priced.reduce(function(a,h){ return a+h.inv; },0), sm=priced.reduce(function(a,h){ return a+h.mv; },0);
+  t.innerHTML='<thead><tr>'+head+'</tr></thead><tbody>'+body+'</tbody>'+
+    '<tfoot><tr><td>Subtotal · 5 priced of 6</td><td></td><td class="num">'+rupee(si)+'</td><td class="num">'+rupee(sm)+
+    '</td><td class="num '+sgn(sm-si)+'">'+rupeeSigned(sm-si)+'</td><td></td></tr></tfoot>';
+  t.style.setProperty('--row-h', density+'px');
+  t.querySelectorAll('th,td').forEach(function(c){ c.style.height=density+'px';
+    c.style.padding = density===36?'8px 12px':density===28?'4px 10px':'6px 12px'; });
+}
+
+/* ======================= BOOT ======================= */
+function boot(){
+  buildFlips();
+  btnMatrix();
+  var k1=document.getElementById('kpiRow'); if(k1) k1.innerHTML=kpiHTML();
+  var k2=document.getElementById('kpiRow2'); if(k2) k2.innerHTML=kpiHTML();
+  rowStates(); skelRows(); iconGrids(); comboList(); datePicker(); compTable();
+  paintIcons();
+  histo();
+  applyTheme();
+
+  document.querySelectorAll('[data-indet]').forEach(function(c){ c.indeterminate=true; });
+  document.querySelectorAll('[data-lb]').forEach(initListbox);
+
+  /* section nav */
+  document.getElementById('secnav').addEventListener('click', function(e){
+    var b=e.target.closest('button'); if(!b) return;
+    document.querySelectorAll('#secnav button').forEach(function(x){ x.setAttribute('aria-current', String(x===b)); });
+    ['found','buttons','forms','data','nav','overlays','feedback','icons','comp'].forEach(function(id){
+      var el=document.getElementById('s-'+id); if(el) el.hidden = (id!==b.dataset.s);
+    });
+    window.scrollTo(0,0);
+  });
+
+  /* theme */
+  document.getElementById('themeSeg').addEventListener('click', function(e){
+    var b=e.target.closest('button'); if(!b) return; themeMode=b.dataset.t; applyTheme();
+  });
+  document.getElementById('flipAll').addEventListener('click', function(e){
+    var b=e.target.closest('button'); if(!b) return;
+    document.querySelectorAll('#flipAll button').forEach(function(x){ x.setAttribute('aria-pressed', String(x===b)); });
+    document.querySelectorAll('.spec-h').forEach(function(h){ setFlip(h, b.dataset.fa); });
+  });
+
+  /* delegated interactions */
+  document.addEventListener('click', function(e){
+    var fb=e.target.closest('.flip button');
+    if(fb){ setFlip(fb.closest('.spec-h'), fb.dataset.f); return; }
+
+    var sb=e.target.closest('[data-seg] button');
+    if(sb){ sb.parentElement.querySelectorAll('button').forEach(function(x){ x.setAttribute('aria-pressed', String(x===sb)); });
+      if(sb.dataset.d){ density=parseInt(sb.dataset.d,10); compTable(); paintIcons(document.getElementById('compTable')); }
+      return; }
+
+    var tg=e.target.closest('[data-toggle]');
+    if(tg){ tg.setAttribute('aria-pressed', tg.getAttribute('aria-pressed')==='true'?'false':'true'); return; }
+
+    var tab=e.target.closest('[data-tabs] button');
+    if(tab){ tab.parentElement.querySelectorAll('button').forEach(function(x){ x.setAttribute('aria-selected', String(x===tab)); }); return; }
+
+    var pg=e.target.closest('[data-pag] button');
+    if(pg && !pg.disabled && pg.textContent.trim().match(/^\d+$/)){
+      pg.parentElement.querySelectorAll('button').forEach(function(x){ x.removeAttribute('aria-current'); });
+      pg.setAttribute('aria-current','page'); return; }
+
+    var th=e.target.closest('#compTable th');
+    if(th && th.dataset.k){
+      if(sortKey===th.dataset.k) sortDir=-sortDir; else { sortKey=th.dataset.k; sortDir=-1; }
+      compTable(); paintIcons(document.getElementById('compTable')); return; }
+
+    var tok=e.target.closest('.tok button');
+    if(tok){ tok.closest('.tok').remove(); return; }
+    var fch=e.target.closest('.fchip button');
+    if(fch){ fch.closest('.fchip').remove(); return; }
+    var clr=e.target.closest('.clr');
+    if(clr){ var inp=clr.parentElement.querySelector('input'); if(inp){ inp.value=''; inp.focus(); } return; }
+
+    var stp=e.target.closest('[data-step]');
+    if(stp){
+      var f=stp.closest('.inw').querySelector('input');
+      var n=parseFloat(String(f.value).replace(/,/g,''))||0;
+      n += (stp.dataset.step==='up'?1:-1);
+      f.value=nf(3).format(Math.max(0,n)); return; }
+  });
+
+  /* table header keyboard */
+  document.addEventListener('keydown', function(e){
+    if(e.key==='Enter' || e.key===' '){
+      var th=e.target.closest('#compTable th');
+      if(th && th.dataset.k){ e.preventDefault(); th.click(); }
+    }
+  });
+
+  /* character counter */
+  var narr=document.getElementById('f-narr'), nc=document.getElementById('narrCount');
+  if(narr&&nc) narr.addEventListener('input', function(){
+    nc.textContent=narr.value.length+' / 120';
+    nc.classList.toggle('over', narr.value.length>110);
+  });
+
+  /* typed confirm */
+  var typed=document.querySelector('[data-typed-target]'), tbtn=document.getElementById('typedBtn');
+  if(typed&&tbtn) typed.addEventListener('input', function(){
+    tbtn.disabled = typed.value.trim() !== typed.dataset.typedTarget;
+  });
+
+  /* range */
+  ['rngA','rngB'].forEach(function(id){
+    var el=document.getElementById(id); if(el) el.addEventListener('input', syncRange);
+  });
+
+  /* drop zone */
+  var dz=document.getElementById('dropz');
+  if(dz){
+    ['dragenter','dragover'].forEach(function(ev){ dz.addEventListener(ev, function(e){ e.preventDefault(); dz.classList.add('over'); }); });
+    ['dragleave','drop'].forEach(function(ev){ dz.addEventListener(ev, function(e){ e.preventDefault(); dz.classList.remove('over'); }); });
+    dz.addEventListener('click', function(){ dz.classList.toggle('over'); });
+  }
+
+  /* toolbar search filters the live count */
+  var ts=document.getElementById('tbSearch'), tc=document.getElementById('tbCount');
+  if(ts&&tc) ts.addEventListener('input', function(){
+    var q=ts.value.trim().toLowerCase();
+    var n=HOLD.filter(function(h){ return !q || h.sym.toLowerCase().indexOf(q)>-1 || h.name.toLowerCase().indexOf(q)>-1; }).length;
+    tc.textContent='Showing '+n+' of 12';
+  });
+}
+if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',boot); else boot();
+</script>
+
+</body></html>

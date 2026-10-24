@@ -1,0 +1,722 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Stock-Mania Elevation Pass</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/* Layout concept: one set of markup, two skins. Everything that differs between the shipped
+   surface and the elevated one is a custom property on .stage, so Before/After is a single
+   attribute flip and the owner can see exactly which decisions changed. Tokens below are the
+   corrected v2 set, carried over unmodified — no colour is invented on this page. */
+
+:root{
+  --n-0:#FFFFFF; --n-50:#F6F8FA; --n-100:#EFF2F5; --n-150:#E4E8ED; --n-200:#D6DCE3;
+  --n-300:#B9C2CC; --n-400:#8C98A6; --n-450:#808C9A; --n-500:#64707E; --n-600:#49545F;
+  --n-700:#343C45; --n-775:#2A323A; --n-800:#232A31; --n-850:#1A2026; --n-900:#13181D; --n-950:#0C1014;
+
+  --h-sm:28px; --h-md:32px; --h-lg:36px;
+  --r-1:2px; --r-2:3px; --r-3:4px; --r-4:6px; --r-5:8px; --r-pill:999px;
+  --t-fast:90ms; --t:110ms; --ease:cubic-bezier(.2,0,.38,1);
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --gl:max(16px,env(safe-area-inset-left,0px));
+  --gr:max(16px,env(safe-area-inset-right,0px));
+
+  --bg-canvas:#F6F8FA; --bg-surface:#FFFFFF; --bg-sunken:#F2F5F8; --bg-subtle:#F2F5F8;
+  --bg-hover:#F6F8FA; --bg-active:#EFF2F5;
+  --border-subtle:#E4E8ED; --border:#D6DCE3; --border-control:#808C9A;
+  --border-hover:#64707E; --border-active:#49545F;
+  --fg:#13181D; --fg-secondary:#49545F; --fg-muted:#64707E; --fg-disabled:#7C8896;
+  --accent:#4F62D8; --accent-hover:#3F50BE; --accent-on:#FFFFFF;
+  --accent-soft:#EEF2FF; --accent-line:#A5B4FC;
+  --gain:#0E7C66; --gain-bg:#E6F5F1; --gain-line:#8FD3C4;
+  --loss:#C0392B; --loss-bg:#FBEAE7; --loss-line:#EAA69E;
+  --warn:#B45309; --warn-bg:#FDF4E6; --warn-line:#E8C58A;
+  --inner-hl:inset 0 -1px 0 rgb(19 24 29 / .07);
+  --c1:#5468D6; --c2:#1F94A8; --c3:#B5801F; --c4:#A14C9E; --c5:#4E7A3A; --c-other:#8C98A6;
+  --grid:#E4E8ED;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg-canvas:#0C1014; --bg-surface:#13181D; --bg-sunken:#0C1014; --bg-subtle:#1A2026;
+  --bg-hover:#232A31; --bg-active:#2A323A;
+  --border-subtle:#232A31; --border:#343C45; --border-control:#64707E;
+  --border-hover:#8C98A6; --border-active:#B9C2CC;
+  --fg:#F6F8FA; --fg-secondary:#B9C2CC; --fg-muted:#8C98A6; --fg-disabled:#5C6875;
+  --accent:#7D8CEA; --accent-hover:#9AA6F0; --accent-on:#0C1014;
+  --accent-soft:#1B2340; --accent-line:#4F62D8;
+  --gain:#3FC9A6; --gain-bg:#0E2F29; --gain-line:#1F6B5B;
+  --loss:#FF7A6B; --loss-bg:#3A1A16; --loss-line:#8A3C33;
+  --warn:#F0B429; --warn-bg:#2E2411; --warn-line:#7A5E1B;
+  --inner-hl:inset 0 1px 0 rgb(255 255 255 / .055);
+  --c1:#8A7FE8; --c2:#2FA3BA; --c3:#B68530; --c4:#C76BA0; --c5:#6FA14E; --c-other:#64707E;
+  --grid:#232A31;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg-canvas:#0C1014; --bg-surface:#13181D; --bg-sunken:#0C1014; --bg-subtle:#1A2026;
+  --bg-hover:#232A31; --bg-active:#2A323A;
+  --border-subtle:#232A31; --border:#343C45; --border-control:#64707E;
+  --border-hover:#8C98A6; --border-active:#B9C2CC;
+  --fg:#F6F8FA; --fg-secondary:#B9C2CC; --fg-muted:#8C98A6; --fg-disabled:#5C6875;
+  --accent:#7D8CEA; --accent-hover:#9AA6F0; --accent-on:#0C1014;
+  --accent-soft:#1B2340; --accent-line:#4F62D8;
+  --gain:#3FC9A6; --gain-bg:#0E2F29; --gain-line:#1F6B5B;
+  --loss:#FF7A6B; --loss-bg:#3A1A16; --loss-line:#8A3C33;
+  --warn:#F0B429; --warn-bg:#2E2411; --warn-line:#7A5E1B;
+  --inner-hl:inset 0 1px 0 rgb(255 255 255 / .055);
+  --c1:#8A7FE8; --c2:#2FA3BA; --c3:#B68530; --c4:#C76BA0; --c5:#6FA14E; --c-other:#64707E;
+  --grid:#232A31;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg-canvas);color:var(--fg);font-family:var(--sans);
+  font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+@media (prefers-reduced-motion:reduce){*{transition-duration:1ms!important;animation-duration:1ms!important}}
+h1,h2,h3{margin:0;font-weight:600;text-wrap:balance}
+p{margin:0}
+button{font:inherit;color:inherit;margin:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero}
+
+/* ============ chrome ============ */
+.chrome{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--bg-surface);
+  border-bottom:1px solid var(--border);padding-block:10px;padding-left:var(--gl);padding-right:var(--gr)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg-surface)}
+.chrome-in{display:flex;flex-wrap:wrap;align-items:center;gap:10px;max-width:1360px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:9px;margin-right:4px}
+.mark{width:22px;height:22px;border:1.5px solid var(--accent);border-radius:var(--r-2);flex:none;position:relative}
+.mark::after{content:"";position:absolute;left:2.5px;right:2.5px;bottom:2.5px;height:6px;
+  background:linear-gradient(to right,var(--accent) 0 2px,transparent 2px 4px,var(--accent) 4px 7px,transparent 7px 9px,var(--accent) 9px 13px)}
+.brand b{font-size:13.5px;font-weight:600;letter-spacing:-.008em}
+.seg{display:inline-flex;height:var(--h-md);border:1px solid var(--border-control);border-radius:var(--r-2);
+  overflow:hidden;background:var(--bg-surface);box-shadow:var(--inner-hl)}
+.seg button{height:30px;padding:0 11px;border:0;background:none;font-size:12px;font-weight:500;
+  color:var(--fg-secondary);cursor:pointer;white-space:nowrap;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.seg button+button{box-shadow:inset 1px 0 0 var(--border)}
+.seg button:hover{background:var(--bg-hover);color:var(--fg)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.seg button[aria-pressed="true"],.seg button[aria-pressed="true"]+button{box-shadow:none}
+.seg button:focus-visible{outline-offset:-2px}
+.ab{border-color:var(--border-control)}
+.ab button{padding:0 14px;font-family:var(--mono);font-size:11.5px;letter-spacing:.04em}
+.spacer{margin-left:auto}
+.btn{display:inline-flex;align-items:center;gap:6px;height:var(--h-md);padding:0 12px;font-size:12.5px;
+  font-weight:500;border:1px solid var(--border-control);border-radius:var(--r-2);background:var(--bg-surface);
+  color:var(--fg);box-shadow:var(--inner-hl);cursor:pointer;white-space:nowrap;
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease)}
+.btn:hover{background:var(--bg-hover);border-color:var(--border-hover)}
+.modenote{width:100%;font-size:11.5px;line-height:16px;color:var(--fg-muted);max-width:92ch}
+.modenote b{color:var(--fg);font-weight:600}
+
+/* ============ the two skins ============ */
+.stage{padding-block:0 72px;padding-left:var(--gl);padding-right:var(--gr);max-width:1360px;margin:0 auto}
+.screen{display:none;flex-direction:column;gap:var(--gap-screen);padding-top:var(--gap-screen)}
+.screen.on{display:flex}
+
+.stage[data-mode="before"]{
+  --fig-face:var(--sans); --fig-vn:tabular-nums;
+  --fs-hero:30px; --lh-hero:36px; --fw-hero:600; --ls-hero:-.016em;
+  --fs-kpi:24px; --lh-kpi:30px; --fw-kpi:600;
+  --fs-h1:22px; --lh-h1:28px; --ls-h1:-.012em;
+  --fs-sec:14px;
+  --fs-lab:12px; --ls-lab:0; --tt-lab:none; --fw-lab:500; --col-lab:var(--fg-muted);
+  --gap-screen:18px; --gap-block:12px; --gap-kpi:10px;
+  --pad-panel:14px; --pad-panel-h:11px 14px;
+  --kpi-pad:12px 14px; --kpi-bd:1px solid var(--border); --kpi-r:var(--r-4);
+  --kpi-bg:var(--bg-surface); --kpi-rule:none;
+  --hero-bd:1px solid var(--border); --hero-bg:var(--bg-surface); --hero-pad:14px; --hero-r:var(--r-4);
+  --hero-tick:none;
+  --kpi-cols:repeat(6,minmax(0,1fr));
+  --num-face:var(--sans); --num-size:13px;
+  --row-h:32px; --cell-pad:6px 12px;
+}
+.stage[data-mode="after"]{
+  --fig-face:var(--mono); --fig-vn:tabular-nums slashed-zero;
+  --fs-hero:clamp(40px,7.2vw,56px); --lh-hero:1.02; --fw-hero:500; --ls-hero:-.022em;
+  --fs-kpi:22px; --lh-kpi:28px; --fw-kpi:500;
+  --fs-h1:20px; --lh-h1:26px; --ls-h1:-.014em;
+  --fs-sec:13px;
+  --fs-lab:11px; --ls-lab:.085em; --tt-lab:uppercase; --fw-lab:500; --col-lab:var(--fg-muted);
+  --gap-screen:40px; --gap-block:16px; --gap-kpi:0px;
+  --pad-panel:20px 24px; --pad-panel-h:14px 24px;
+  --kpi-pad:14px 20px 2px 0; --kpi-bd:0; --kpi-r:0;
+  --kpi-bg:transparent; --kpi-rule:1px solid var(--border-control);
+  --hero-bd:0; --hero-bg:transparent; --hero-pad:8px 0 0; --hero-r:0;
+  --hero-tick:block;
+  --kpi-cols:repeat(auto-fit,minmax(154px,1fr));
+  --num-face:var(--mono); --num-size:12.5px;
+  --row-h:34px; --cell-pad:7px 12px;
+}
+
+/* ============ shared components ============ */
+.lbl{font-size:var(--fs-lab);line-height:16px;font-weight:var(--fw-lab);letter-spacing:var(--ls-lab);
+  text-transform:var(--tt-lab);color:var(--col-lab)}
+.h1{font-size:var(--fs-h1);line-height:var(--lh-h1);font-weight:600;letter-spacing:var(--ls-h1)}
+.sub{font-size:12px;line-height:17px;color:var(--fg-muted)}
+.sechead{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px}
+.sechead .rule{flex:1;min-width:24px;height:1px;background:var(--border-subtle)}
+.stage[data-mode="before"] .sechead .rule{display:none}
+
+.fig{font-family:var(--fig-face);font-variant-numeric:var(--fig-vn)}
+.cur,.unit{color:var(--fg-muted);font-weight:400}
+.hero-fig .cur{font-size:.46em;margin-right:.1em;letter-spacing:0}
+.hero-fig .unit{font-size:.40em;letter-spacing:.06em;margin-left:.12em}
+.stage[data-mode="before"] .hero-fig .cur,.stage[data-mode="before"] .hero-fig .unit{
+  font-size:1em;color:inherit;letter-spacing:inherit;margin:0;font-weight:inherit}
+
+.panel{border:1px solid var(--border);border-radius:var(--r-4);background:var(--bg-surface);overflow:hidden}
+.panel-h{display:flex;align-items:flex-start;flex-wrap:wrap;gap:12px;padding:var(--pad-panel-h);
+  border-bottom:1px solid var(--border-subtle)}
+.panel-h h2{font-size:var(--fs-sec);line-height:20px;font-weight:600}
+.panel-h p{font-size:11.5px;line-height:16px;color:var(--fg-muted);max-width:74ch}
+.panel-b{padding:var(--pad-panel)}
+.panel-h .spacer{margin-left:auto}
+
+/* masthead */
+.mast{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--gap-block) 40px;
+  border:var(--hero-bd);background:var(--hero-bg);border-radius:var(--hero-r);padding:var(--hero-pad)}
+.mast-main{display:flex;flex-direction:column;gap:6px;min-width:0}
+.mast .tick{display:var(--hero-tick);width:34px;height:2px;background:var(--accent);margin-bottom:4px}
+.hero-fig{font-family:var(--fig-face);font-variant-numeric:var(--fig-vn);
+  font-size:var(--fs-hero);line-height:var(--lh-hero);font-weight:var(--fw-hero);letter-spacing:var(--ls-hero)}
+.mast-side{display:flex;flex-wrap:wrap;gap:var(--gap-block) 32px;align-items:flex-end}
+.side-i{display:flex;flex-direction:column;gap:3px;min-width:0}
+.side-i .v{font-family:var(--fig-face);font-variant-numeric:var(--fig-vn);font-size:16px;
+  line-height:22px;font-weight:var(--fw-kpi)}
+.stage[data-mode="before"] .side-i .v{font-size:15px;font-weight:600}
+
+/* kpi strip */
+.kpis{display:grid;grid-template-columns:var(--kpi-cols);gap:var(--gap-kpi)}
+.kpi{display:flex;flex-direction:column;gap:5px;padding:var(--kpi-pad);border:var(--kpi-bd);
+  border-radius:var(--kpi-r);background:var(--kpi-bg);border-top:var(--kpi-rule);min-width:0}
+.stage[data-mode="before"] .kpi{border:1px solid var(--border)}
+.kpi .kv{font-family:var(--fig-face);font-variant-numeric:var(--fig-vn);font-size:var(--fs-kpi);
+  line-height:var(--lh-kpi);font-weight:var(--fw-kpi);letter-spacing:-.012em}
+.kpi .kd{font-size:11px;line-height:15px;font-variant-numeric:tabular-nums;color:var(--fg-secondary)}
+.kpi .kv .cur{font-size:.6em}
+.kpi .kv .unit{font-size:.56em;letter-spacing:.04em;margin-left:.1em}
+.stage[data-mode="before"] .kpi .kv .cur,.stage[data-mode="before"] .kpi .kv .unit{font-size:1em;color:inherit;font-weight:inherit}
+
+.gain{color:var(--gain)}.loss{color:var(--loss)}
+.muted{color:var(--fg-muted)}
+.dir{font-size:.8em;margin-right:.18em;color:var(--fg-muted)}
+
+/* badges */
+.bdg{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:var(--r-2);
+  font-size:11px;font-weight:500;line-height:1;white-space:nowrap;border:1px solid transparent;
+  background:var(--bg-subtle);color:var(--fg-secondary)}
+.bdg .dot{width:5px;height:5px;border-radius:var(--r-pill);background:currentColor;flex:none;opacity:.85}
+.bdg.warn{background:var(--warn-bg);color:var(--warn)}
+.bdg.okl{background:none;border-color:var(--gain-line);color:var(--gain)}
+.bdg.outn{background:none;border-color:var(--border);color:var(--fg-secondary)}
+/* in After, the Priced badge is dropped from every row — priced is the norm, not news */
+.stage[data-mode="after"] .bdg.okl{display:none}
+/* After: the sign glyph carries direction in the register, so the amounts give up their colour */
+.stage[data-mode="after"] .amt{color:var(--fg)}
+
+/* table */
+.tscroll{overflow-x:auto}
+table.dt{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}
+table.dt th,table.dt td{padding:var(--cell-pad);border-bottom:1px solid var(--border-subtle);
+  white-space:nowrap;height:var(--row-h);text-align:left;vertical-align:middle}
+table.dt thead th{position:sticky;top:0;z-index:2;background:var(--bg-surface);font-weight:500;
+  color:var(--fg-muted);box-shadow:inset 0 -1px 0 var(--border);border-bottom:0;
+  font-size:var(--fs-lab);letter-spacing:var(--ls-lab);text-transform:var(--tt-lab)}
+.stage[data-mode="after"] table.dt thead th{font-size:10.5px;letter-spacing:.085em;padding-block:9px}
+table.dt .num{text-align:right;font-family:var(--num-face);font-size:var(--num-size);
+  font-variant-numeric:tabular-nums slashed-zero}
+table.dt tbody tr:hover{background:var(--bg-hover)}
+table.dt tfoot td{background:var(--bg-subtle);font-weight:600;border-bottom:0;border-top:1px solid var(--border)}
+.stage[data-mode="after"] table.dt tfoot td{background:transparent;border-top:1px solid var(--border-control);
+  padding-top:11px;padding-bottom:11px}
+.nm{display:flex;flex-direction:column;max-width:240px;min-width:0}
+.nm b{font-weight:600;font-size:13px;line-height:17px}
+.nm span{font-size:11.5px;line-height:15px;color:var(--fg-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stage[data-mode="after"] .nm b{font-size:13px;font-weight:500;letter-spacing:.002em}
+.stage[data-mode="after"] .nm .sym{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;
+  color:var(--fg-muted);text-transform:none}
+.sym{display:none}
+.stage[data-mode="after"] .sym{display:block}
+.stage[data-mode="after"] .nm > span:not(.sym){display:none}
+
+/* the unavailable figure */
+.dash{color:var(--fg-muted);text-decoration:underline dotted;text-underline-offset:3px;cursor:help;
+  border-radius:var(--r-1);font-family:var(--mono)}
+.dash:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.why{display:none}
+.stage[data-mode="after"] .why{display:block;font-family:var(--mono);font-size:9.5px;line-height:13px;
+  letter-spacing:.03em;color:var(--fg-muted);text-transform:uppercase}
+.stage[data-mode="after"] .dash{text-decoration-color:var(--border-control)}
+
+/* allocation */
+.stack{display:flex;width:100%;height:26px;border-radius:var(--r-2);overflow:hidden;gap:2px;background:var(--bg-sunken)}
+.stage[data-mode="after"] .stack{height:8px;border-radius:0;gap:1px;background:transparent}
+.stack div{min-width:2px}
+.alloc-rows{display:flex;flex-direction:column;margin-top:14px}
+.ar{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:4px 18px;align-items:baseline;
+  padding:8px 0;border-bottom:1px solid var(--border-subtle)}
+.ar:last-child{border-bottom:0}
+.ar .n{display:flex;align-items:center;gap:8px;font-size:13px;min-width:0}
+.ar .n i{width:9px;height:9px;border-radius:2px;flex:none}
+.stage[data-mode="after"] .ar .n i{width:3px;height:14px;border-radius:0}
+.ar .v{font-family:var(--num-face);font-size:var(--num-size);font-variant-numeric:tabular-nums slashed-zero}
+.ar .w{font-family:var(--mono);font-size:12px;font-variant-numeric:tabular-nums;color:var(--fg-muted);min-width:56px;text-align:right}
+.stage[data-mode="after"] .ar .w{color:var(--fg-secondary)}
+
+.two{display:grid;grid-template-columns:1fr 1fr;gap:var(--gap-block)}
+.stage[data-mode="after"] .two{gap:32px}
+.legend{display:flex;flex-wrap:wrap;gap:4px 16px;margin-top:10px;font-size:12px}
+.legend span{display:inline-flex;align-items:center;gap:6px;color:var(--fg-secondary)}
+.legend i{width:9px;height:9px;border-radius:var(--r-1);flex:none}
+.stage[data-mode="after"] .legend{display:none}
+svg text{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* notes screen */
+.notes{max-width:76ch;display:flex;flex-direction:column;gap:22px}
+.notes h2{font-size:18px;line-height:24px;letter-spacing:-.01em}
+.notes h3{font-size:13.5px;line-height:19px}
+.notes p,.notes li{font-size:13.5px;line-height:21px;color:var(--fg-secondary)}
+.notes ol,.notes ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:9px}
+.notes strong{color:var(--fg);font-weight:600}
+.notes code{font-family:var(--mono);font-size:11.5px;background:var(--bg-subtle);padding:1px 5px;border-radius:var(--r-2)}
+.notes .card{border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--r-4);
+  padding:14px 16px;display:flex;flex-direction:column;gap:7px}
+.notes table{border-collapse:collapse;width:100%;font-size:12.5px}
+.notes table th,.notes table td{text-align:left;padding:7px 10px 7px 0;border-bottom:1px solid var(--border-subtle);vertical-align:top}
+.notes table th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-muted);font-weight:500}
+.notes table td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+@media (max-width:1100px){.stage[data-mode="before"]{--kpi-cols:repeat(3,minmax(0,1fr))}}
+@media (max-width:760px){
+  .stage[data-mode="before"]{--kpi-cols:repeat(2,minmax(0,1fr))}
+  .two{grid-template-columns:1fr}
+  .mast{align-items:flex-start}
+}
+</style>
+
+<header class="chrome">
+  <div class="chrome-in">
+    <div class="brand"><div class="mark" aria-hidden="true"></div><b>Stock-Mania</b></div>
+    <div class="seg" role="group" aria-label="Screen">
+      <button data-screen="dash" aria-pressed="true">Dashboard</button>
+      <button data-screen="hold" aria-pressed="false">Holdings</button>
+      <button data-screen="reg" aria-pressed="false">Register</button>
+      <button data-screen="notes" aria-pressed="false">What changed</button>
+    </div>
+    <div class="seg ab" role="group" aria-label="Design version">
+      <button id="mBefore" aria-pressed="false">Before</button>
+      <button id="mAfter" aria-pressed="true">After</button>
+    </div>
+    <button class="btn spacer" id="themeBtn">Theme: <b id="themeName">System</b></button>
+    <p class="modenote" id="modenote"></p>
+  </div>
+</header>
+
+<div class="stage" id="stage" data-mode="after">
+  <section class="screen on" id="s-dash"></section>
+  <section class="screen" id="s-hold"></section>
+  <section class="screen" id="s-reg"></section>
+  <section class="screen" id="s-notes"></section>
+</div>
+
+<script>
+/* ---------- data: §6 of ui-redesign-v2-research.md is authoritative ---------- */
+var HOLDINGS=[
+ {sym:"RELIANCE",name:"Reliance Industries Ltd",kind:"Equity",plat:"Zerodha",units:45,ud:0,inv:58423.50,mv:63918.00,state:"Priced",day:0.84},
+ {sym:"INFY",name:"Infosys Ltd",kind:"Equity",plat:"Zerodha",units:60,ud:0,inv:91386.00,mv:88722.00,state:"Priced",day:-0.42},
+ {sym:"HDFCBANK",name:"HDFC Bank Ltd",kind:"Equity",plat:"Groww",units:80,ud:0,inv:130240.00,mv:142560.00,state:"Priced",day:0.31},
+ {sym:"TATAMOTORS",name:"Tata Motors Ltd",kind:"Equity",plat:"Upstox",units:150,ud:0,inv:113250.00,mv:108900.00,state:"Stale",day:null},
+ {sym:"NIFTYBEES",name:"Nippon India ETF Nifty 50 BeES",kind:"ETF",plat:"Zerodha",units:420,ud:0,inv:112560.00,mv:123900.00,state:"Priced",day:0.52},
+ {sym:"120503",name:"Parag Parikh Flexi Cap — Direct Growth",kind:"Mutual fund",plat:"Kuvera",units:1842.317,ud:3,inv:150000.00,mv:189312.40,state:"Priced",day:0.47},
+ {sym:"119533",name:"HDFC Corporate Bond — Direct Growth",kind:"Mutual fund",plat:"Groww",units:2410.882,ud:3,inv:75000.00,mv:82174.30,state:"Priced",day:0.03},
+ {sym:"SGBAUG32",name:"Sovereign Gold Bond 2024-25 Series II",kind:"SGB",plat:"ICICI Direct",units:20,ud:0,inv:139400.00,mv:156200.00,state:"Priced",day:0.19},
+ {sym:"GOLD-SG",name:"Digital Gold (24K)",kind:"Digital gold",plat:"SafeGold",units:38.4210,ud:4,sfx:" g",inv:295176.00,mv:331845.00,state:"Priced",day:0.22},
+ {sym:"SILVER-AUG",name:"Digital Silver",kind:"Digital metal",plat:"Augmont",units:1250.000,ud:3,sfx:" g",inv:118750.00,mv:130625.00,state:"Priced",day:-0.61},
+ {sym:"AAPL",name:"Apple Inc.",kind:"Equity",plat:"INDmoney",units:12,ud:0,inv:214560.00,mv:null,state:"FX unavailable",day:null,why:"NO FX RATE"},
+ {sym:"ITC",name:"ITC Ltd",kind:"Equity",plat:"Angel One",units:200,ud:0,inv:82400.00,mv:null,state:"Unpriced",day:null,why:"NO QUOTE"}
+];
+var REG=[
+ {d:"01 Oct",n:"Salary — October",c:"Income:Salary",a:"HDFC Savings ••1234",v:185000.00,k:"Receipt"},
+ {d:"02 Oct",n:"BigBasket groceries",c:"Expenses:Food:Groceries",a:"HDFC Savings ••1234",v:-2450.00,k:"Spend"},
+ {d:"03 Oct",n:"SIP — Parag Parikh Flexi Cap",c:null,a:"Assets:Broker:Kuvera",v:-25000.00,k:"Transfer"},
+ {d:"05 Oct",n:"Rent — October",c:"Expenses:Housing:Rent",a:"HDFC Savings ••1234",v:-38000.00,k:"Spend"},
+ {d:"07 Oct",n:"HDFC Regalia card payment",c:null,a:"HDFC Savings ••1234",v:-24318.40,k:"Transfer"},
+ {d:"09 Oct",n:"Zerodha brokerage + GST",c:"Expenses:Investing:Charges",a:"Assets:Broker:Zerodha",v:-391.00,k:"Charge"},
+ {d:"12 Oct",n:"Dividend — ITC Ltd",c:"Income:Dividends",a:"HDFC Savings ••1234",v:2800.00,k:"Receipt"},
+ {d:"14 Oct",n:"Electricity — BESCOM",c:"Expenses:Utilities",a:"HDFC Savings ••1234",v:-1860.00,k:"Spend"},
+ {d:"18 Oct",n:"FD interest accrual — ICICI 7.1%",c:"Income:Interest",a:"ICICI FD ••9087",v:4112.00,k:"Receipt"},
+ {d:"19 Oct",n:"Opening balance — Cash in hand",c:null,a:"Cash in hand",v:12000.00,k:"Opening balance"}
+];
+var ALLOC=[
+ {n:"Gold & silver",v:618670.00},{n:"Indian equity",v:404100.00},
+ {n:"Mutual funds",v:271486.70},{n:"ETF",v:123900.00}
+];
+var MONTHS=["Nov","Dec","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct"];
+var CONTRIB=[0.72,0.68,0.95,0.70,0.74,1.10,0.66,0.72,0.69,0.75,0.71,0.80];
+var GROWTH =[0.31,-0.44,0.58,0.22,-0.61,0.40,0.35,-0.28,0.52,0.18,0.44,-0.57];
+var OPENING=38.40;
+
+/* ---------- en-IN formatting ---------- */
+function nf(d){return new Intl.NumberFormat("en-IN",{minimumFractionDigits:d,maximumFractionDigits:d});}
+function money(v,signed){
+  if(v==null)return null;
+  var a=Math.abs(v),dp=(a>=100000&&Math.round(a)===a)?0:2;
+  var s=v<0?"−":(signed?"+":"");
+  return s+'<span class="cur">₹</span>'+nf(dp).format(a);
+}
+function trunc2(x){return Math.trunc(x*100)/100;}
+function compact(v,signed){
+  if(v==null)return null;
+  var s=v<0?"−":(signed?"+":""),a=Math.abs(v);
+  if(a>=1e7) return s+'<span class="cur">₹</span>'+nf(2).format(trunc2(a/1e7))+'<span class="unit">Cr</span>';
+  if(a>=1e5) return s+'<span class="cur">₹</span>'+nf(2).format(trunc2(a/1e5))+'<span class="unit">L</span>';
+  return s+'<span class="cur">₹</span>'+nf(a>=1000?0:2).format(a);
+}
+function pctS(v,d){return (v<0?"−":"+")+nf(d===undefined?2:d).format(Math.abs(v))+"%";}
+function pct(v,d){return nf(d===undefined?2:d).format(v)+"%";}
+function sgn(v){return v>0?"gain":(v<0?"loss":"muted");}
+function esc(s){return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/"/g,"&quot;");}
+
+/* ---------- totals, derived so they always reconcile ---------- */
+var P=HOLDINGS.filter(function(h){return h.mv!==null;});
+var MV=P.reduce(function(s,h){return s+h.mv;},0);
+var INV=P.reduce(function(s,h){return s+h.inv;},0);
+var UNREAL=MV-INV, UNREAL_PCT=UNREAL/INV*100;
+var WITHHELD=HOLDINGS.filter(function(h){return h.mv===null;});
+var ALLOC_T=ALLOC.reduce(function(s,r){return s+r.v;},0);
+
+/* ---------- theme ---------- */
+var root=document.documentElement,themeMode="system";
+try{var t=localStorage.getItem("sm-el-theme");if(t)themeMode=t;}catch(e){}
+function applyTheme(){
+  if(themeMode==="system")root.removeAttribute("data-theme");else root.setAttribute("data-theme",themeMode);
+  document.getElementById("themeName").textContent=themeMode[0].toUpperCase()+themeMode.slice(1);
+  try{localStorage.setItem("sm-el-theme",themeMode);}catch(e){}
+}
+document.getElementById("themeBtn").addEventListener("click",function(){
+  themeMode=themeMode==="system"?"light":themeMode==="light"?"dark":"system";applyTheme();
+});
+applyTheme();
+
+/* ---------- mode ---------- */
+var stage=document.getElementById("stage"),mode="after";
+var NOTE={
+  before:"<b>Before</b> — the shipped Institutional Shell, rendered from its own measured values: thirteen type sizes with ten of them between 9 and 15px, every container padded 9–18px, the figures set in Inter, and one border strength used for every box.",
+  after:"<b>After</b> — the same markup, same data, same tokens. Six type sizes; IBM Plex Mono carries every figure; spacing runs 4 / 8 / 16 / 24 / 40; border strength is spent as three ranks of hierarchy. No colour was invented, and the four measured token corrections are untouched."
+};
+function setMode(m){
+  mode=m;stage.setAttribute("data-mode",m);
+  document.getElementById("mBefore").setAttribute("aria-pressed",String(m==="before"));
+  document.getElementById("mAfter").setAttribute("aria-pressed",String(m==="after"));
+  document.getElementById("modenote").innerHTML=NOTE[m];
+  renderChart();
+}
+document.getElementById("mBefore").addEventListener("click",function(){setMode("before");});
+document.getElementById("mAfter").addEventListener("click",function(){setMode("after");});
+
+/* ---------- screens ---------- */
+var SCREENS=["dash","hold","reg","notes"];
+Array.prototype.forEach.call(document.querySelectorAll("[data-screen]"),function(b){
+  b.addEventListener("click",function(){
+    var k=b.getAttribute("data-screen");
+    Array.prototype.forEach.call(document.querySelectorAll("[data-screen]"),function(x){
+      x.setAttribute("aria-pressed",String(x===b));});
+    SCREENS.forEach(function(s){document.getElementById("s-"+s).classList.toggle("on",s===k);});
+    window.scrollTo(0,0);
+    if(k==="dash")renderChart();
+  });
+});
+
+/* ---------- dashboard ---------- */
+function kpi(label,value,detail){
+  return '<div class="kpi"><div class="lbl">'+label+'</div>'+
+    '<div class="kv fig">'+value+'</div>'+
+    (detail?'<div class="kd">'+detail+'</div>':'')+'</div>';
+}
+document.getElementById("s-dash").innerHTML=
+ '<div class="mast">'+
+   '<div class="mast-main">'+
+     '<span class="tick" aria-hidden="true"></span>'+
+     '<div class="lbl">Net worth</div>'+
+     '<div class="hero-fig">'+compact(4872000)+'</div>'+
+     '<div class="sub">19 Oct 2026, 15:30 IST · markets closed · prices from the last session</div>'+
+   '</div>'+
+   '<div class="mast-side">'+
+     '<div class="side-i"><div class="lbl">Assets</div><div class="v fig">'+compact(5618000)+'</div></div>'+
+     '<div class="side-i"><div class="lbl">Liabilities</div><div class="v fig">'+compact(746000)+'</div></div>'+
+     '<div class="side-i"><div class="lbl">Liquid</div><div class="v fig">'+compact(934000)+'</div></div>'+
+     '<div class="side-i"><div class="lbl">Runway</div><div class="v fig">6.2<span class="unit"> mo</span></div></div>'+
+   '</div>'+
+ '</div>'+
+
+ '<div class="kpis">'+
+   kpi("Market value",money(MV),"12 holdings · 10 priced")+
+   kpi("Invested",money(INV),"cost of the priced 10")+
+   kpi("Unrealised",'<span class="'+sgn(UNREAL)+'">'+money(UNREAL,true)+'</span>',
+       '<span class="'+sgn(UNREAL)+'">'+pctS(UNREAL_PCT)+'</span> on cost')+
+   kpi("XIRR","+15.23<span class=\"unit\">%</span>","since 11 Apr 2025")+
+   kpi("Realised FY25-26",money(68420,true),"booked gains")+
+   kpi("Max drawdown","−12.4<span class=\"unit\">%</span>","peak to trough")+
+ '</div>'+
+
+ '<div class="sechead"><h2 class="h1">Where it came from</h2><span class="rule"></span>'+
+   '<span class="sub">12 months to 19 Oct 2026</span></div>'+
+ '<div class="panel"><div class="panel-b" id="chartBox"></div></div>'+
+
+ '<div class="two">'+
+   '<div>'+
+     '<div class="sechead" style="margin-bottom:var(--gap-block)"><h2 class="h1">Allocation</h2>'+
+       '<span class="rule"></span><span class="sub">by asset class</span></div>'+
+     '<div class="panel"><div class="panel-b">'+allocBlock()+'</div></div>'+
+   '</div>'+
+   '<div>'+
+     '<div class="sechead" style="margin-bottom:var(--gap-block)"><h2 class="h1">Withheld</h2>'+
+       '<span class="rule"></span><span class="sub">'+WITHHELD.length+' holdings</span></div>'+
+     '<div class="panel"><div class="panel-b">'+withheldBlock()+'</div></div>'+
+   '</div>'+
+ '</div>';
+
+function allocBlock(){
+  var hues=["var(--c3)","var(--c1)","var(--c2)","var(--c5)"];
+  var bar=ALLOC.map(function(r,i){
+    return '<div style="flex:'+r.v+' 0 0;background:'+hues[i]+'" title="'+esc(r.n)+'"></div>';
+  }).join("");
+  var rows=ALLOC.map(function(r,i){
+    return '<div class="ar"><span class="n"><i style="background:'+hues[i]+'"></i>'+esc(r.n)+'</span>'+
+      '<span class="v">'+money(r.v)+'</span><span class="w">'+pct(r.v/ALLOC_T*100,1)+'</span></div>';
+  }).join("");
+  return '<div class="stack" role="img" aria-label="'+ALLOC.map(function(r){
+      return r.n+" "+(r.v/ALLOC_T*100).toFixed(1)+"%";}).join(", ")+'">'+bar+'</div>'+
+    '<div class="alloc-rows">'+rows+
+    '<div class="ar" style="border-top:1px solid var(--border);border-bottom:0;margin-top:2px">'+
+    '<span class="n" style="font-weight:600">Priced total</span><span class="v">'+money(ALLOC_T)+
+    '</span><span class="w">100.0%</span></div></div>';
+}
+function withheldBlock(){
+  return WITHHELD.map(function(h){
+    return '<div class="ar"><span class="n" style="flex-direction:column;align-items:flex-start;gap:1px">'+
+      '<b style="font-weight:500">'+esc(h.name)+'</b>'+
+      '<span class="why">'+esc(h.why)+'</span>'+
+      '<span class="sub" style="font-size:11px">'+esc(h.state)+' · cost '+money(h.inv)+'</span></span>'+
+      '<span class="v"><span class="dash" tabindex="0" title="'+esc(h.name)+
+      ': market value is withheld rather than printed as a zero. '+
+      (h.state==="Unpriced"?"No quote stored since 12 Oct 2026.":"Last USD price is 17 Oct 2026 but no USD→INR rate is stored for that date.")+
+      '">—</span></span><span class="w">—</span></div>';
+  }).join("")+
+  '<p class="sub" style="margin-top:12px;max-width:52ch">These two are excluded from every figure above. '+
+  'An uncomputable number is shown as an em-dash carrying its reason, never as a zero.</p>';
+}
+
+/* ---------- chart ---------- */
+function renderChart(){
+  var box=document.getElementById("chartBox");if(!box)return;
+  var base=OPENING,cc=0,cg=0,pts=[];
+  for(var i=0;i<12;i++){cc+=CONTRIB[i];cg+=GROWTH[i];pts.push({m:MONTHS[i],nw:base+cc+cg,cc:cc,cg:cg});}
+  var W=900,H=260,L=56,R=16,T=16,B=30,iw=W-L-R,ih=H-T-B;
+  var top=55,y=function(v){return T+ih-(v/top)*ih;};
+  var step=iw/12,cx=function(i){return L+step*i+step/2;};
+  var g="",bars="";
+  if(mode==="before"){
+    for(var t2=0;t2<=top;t2+=10){
+      g+='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(t2).toFixed(1)+'" y2="'+y(t2).toFixed(1)+'" stroke="var(--grid)" stroke-width="1"/>'+
+         '<text x="'+(L-8)+'" y="'+(y(t2)+4).toFixed(1)+'" text-anchor="end" font-size="11" fill="var(--fg-muted)">₹'+t2+'L</text>';
+    }
+    var bw=Math.min(40,step*0.6);
+    pts.forEach(function(p,i){
+      var x=cx(i)-bw/2,yB=y(base),yC=y(base+p.cc),yG=y(p.nw);
+      bars+='<rect x="'+x.toFixed(1)+'" y="'+yB.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(0,T+ih-yB).toFixed(1)+'" fill="var(--bg-sunken)" stroke="var(--border)" stroke-width="1"/>';
+      bars+='<rect x="'+x.toFixed(1)+'" y="'+yC.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(0,yB-yC-2).toFixed(1)+'" fill="var(--c-other)" rx="2"/>';
+      var gh=yC-yG;
+      bars+=gh>=0?'<rect x="'+x.toFixed(1)+'" y="'+yG.toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(0,gh-2).toFixed(1)+'" fill="var(--gain)" rx="2"/>'
+                 :'<rect x="'+x.toFixed(1)+'" y="'+(yC+2).toFixed(1)+'" width="'+bw.toFixed(1)+'" height="'+Math.max(0,-gh-2).toFixed(1)+'" fill="var(--loss)" rx="2"/>';
+      bars+='<text x="'+cx(i).toFixed(1)+'" y="'+(H-9)+'" text-anchor="middle" font-size="11" fill="var(--fg-muted)">'+p.m+'</text>';
+    });
+  }else{
+    /* After: one baseline at the opening figure, the series, two labelled values, nothing else. */
+    g='<line x1="'+L+'" x2="'+(W-R)+'" y1="'+y(base).toFixed(1)+'" y2="'+y(base).toFixed(1)+'" stroke="var(--border-control)" stroke-width="1" stroke-dasharray="2 3"/>';
+    var area=pts.map(function(p,i){return (i?"L":"M")+cx(i).toFixed(1)+" "+y(p.nw).toFixed(1);}).join(" ")+
+      " L"+cx(11).toFixed(1)+" "+y(base).toFixed(1)+" L"+cx(0).toFixed(1)+" "+y(base).toFixed(1)+" Z";
+    bars='<path d="'+area+'" fill="var(--accent)" fill-opacity="0.07"/>';
+    bars+=pts.map(function(p,i){
+      return '<text x="'+cx(i).toFixed(1)+'" y="'+(H-9)+'" text-anchor="middle" font-size="10" letter-spacing="0.7" fill="var(--fg-muted)">'+p.m.toUpperCase()+'</text>';
+    }).join("");
+    bars+='<text x="'+L+'" y="'+(y(base)-9).toFixed(1)+'" font-size="11" fill="var(--fg-muted)">₹38.40L opening</text>';
+  }
+  var line=pts.map(function(p,i){return (i?"L":"M")+cx(i).toFixed(1)+" "+y(p.nw).toFixed(1);}).join(" ");
+  var dots=mode==="before"
+    ? pts.map(function(p,i){return '<circle cx="'+cx(i).toFixed(1)+'" cy="'+y(p.nw).toFixed(1)+'" r="2.6" fill="var(--bg-surface)" stroke="var(--fg)" stroke-width="1.5"/>';}).join("")
+    : '<circle cx="'+cx(11).toFixed(1)+'" cy="'+y(pts[11].nw).toFixed(1)+'" r="3.4" fill="var(--accent)"/>'+
+      '<text x="'+(cx(11)-8).toFixed(1)+'" y="'+(y(pts[11].nw)-12).toFixed(1)+'" text-anchor="end" font-size="14" font-weight="500" fill="var(--fg)">₹48.72L</text>';
+  var last=pts[11];
+  box.innerHTML='<svg viewBox="0 0 '+W+' '+H+'" width="100%" height="260" role="img" aria-label="Net worth rose from ₹38.40 lakh to ₹48.72 lakh over twelve months; ₹9.22 lakh came from contributions and ₹1.10 lakh from market growth.">'+
+    g+bars+'<path d="'+line+'" fill="none" stroke="'+(mode==="before"?"var(--fg)":"var(--accent)")+'" stroke-width="'+(mode==="before"?2:1.75)+'" stroke-linejoin="round"/>'+dots+'</svg>'+
+    (mode==="before"
+     ? '<div class="legend"><span><i style="background:var(--bg-sunken);box-shadow:inset 0 0 0 1px var(--border)"></i>Carried in ₹38.40L</span>'+
+       '<span><i style="background:var(--c-other)"></i>Net contributions +₹9.22L</span>'+
+       '<span><i style="background:var(--gain)"></i>Market growth +₹1.10L</span>'+
+       '<span><i style="background:var(--fg)"></i>Net worth</span></div>'
+     : '<div style="display:flex;flex-wrap:wrap;gap:10px 40px;margin-top:18px;padding-top:16px;border-top:1px solid var(--border-subtle)">'+
+       '<div class="side-i"><div class="lbl">You put in</div><div class="v fig">'+compact(last.cc*1e5,true)+'</div></div>'+
+       '<div class="side-i"><div class="lbl">The market added</div><div class="v fig">'+compact(last.cg*1e5,true)+'</div></div>'+
+       '<div class="side-i"><div class="lbl">Share from contributions</div><div class="v fig">'+pct(last.cc/(last.cc+last.cg)*100,1)+'</div></div></div>');
+}
+renderChart();
+
+/* ---------- holdings ---------- */
+function stateCell(s){
+  if(s==="Priced")return '<span class="bdg okl"><span class="dot"></span>Priced</span>';
+  if(s==="Stale")return '<span class="bdg warn"><span class="dot"></span>Stale</span>';
+  if(s==="Unpriced")return '<span class="bdg outn">Unpriced</span>';
+  return '<span class="bdg warn"><span class="dot"></span>FX unavailable</span>';
+}
+function unavailCell(h,what){
+  return '<span class="dash" tabindex="0" title="'+esc(what)+' is withheld rather than shown as zero. '+
+    (h.state==="Unpriced"?"No quote stored for "+esc(h.sym)+" since 12 Oct 2026."
+                         :"Last USD price is 17 Oct 2026 but no USD→INR rate is stored for that date.")+
+    '">—</span><span class="why">'+esc(h.why)+'</span>';
+}
+document.getElementById("s-hold").innerHTML=
+ '<div class="sechead"><h2 class="h1">Holdings</h2><span class="rule"></span>'+
+   '<span class="sub">All 12 · 10 priced, 2 withheld</span></div>'+
+ '<div class="panel"><div class="tscroll"><table class="dt"><thead><tr>'+
+   '<th>Holding</th><th>Platform</th><th class="num">Units</th><th class="num">Invested</th>'+
+   '<th class="num">Market value</th><th class="num">Unrealised</th><th class="num">Day</th>'+
+   '<th class="num">Weight</th><th>Price state</th></tr></thead><tbody>'+
+ HOLDINGS.map(function(h){
+   var pnl=h.mv===null?null:h.mv-h.inv;
+   var wt=h.mv===null?null:h.mv/MV*100;
+   return '<tr><td><span class="nm"><b>'+esc(h.name)+'</b>'+
+     '<span class="sym">'+esc(h.sym)+' · '+esc(h.kind)+'</span>'+
+     '<span>'+esc(h.kind)+'</span></span></td>'+
+     '<td>'+esc(h.plat)+'</td>'+
+     '<td class="num">'+nf(h.ud).format(h.units)+(h.sfx||"")+'</td>'+
+     '<td class="num">'+money(h.inv)+'</td>'+
+     '<td class="num">'+(h.mv===null?unavailCell(h,"Market value"):money(h.mv))+'</td>'+
+     '<td class="num">'+(pnl===null?unavailCell(h,"Unrealised gain"):'<span class="'+sgn(pnl)+'">'+money(pnl,true)+'</span>')+'</td>'+
+     '<td class="num">'+(h.day===null?'<span class="dash" tabindex="0" title="No current session price for this holding.">—</span>'
+       :'<span class="dir">'+(h.day>0?"▲":h.day<0?"▼":"–")+'</span>'+nf(2).format(Math.abs(h.day))+'%')+'</td>'+
+     '<td class="num">'+(wt===null?'<span class="dash" tabindex="0" title="Weight needs a market value.">—</span>':pct(wt,2))+'</td>'+
+     '<td class="state-cell">'+stateCell(h.state)+'</td></tr>';
+ }).join("")+
+ '</tbody><tfoot><tr><td>Priced total</td><td></td><td></td>'+
+   '<td class="num">'+money(INV)+'</td><td class="num">'+money(MV)+'</td>'+
+   '<td class="num"><span class="'+sgn(UNREAL)+'">'+money(UNREAL,true)+'</span></td>'+
+   '<td class="num muted">—</td><td class="num">100.00%</td><td></td></tr></tfoot>'+
+ '</table></div></div>'+
+ '<p class="sub" style="max-width:62ch">Totals cover the ten priced rows only. Apple and ITC are carried at cost and '+
+ 'excluded from market value, unrealised gain and weight until a price — and for Apple an FX rate — exists.</p>';
+
+/* ---------- register ---------- */
+document.getElementById("s-reg").innerHTML=
+ '<div class="sechead"><h2 class="h1">Register</h2><span class="rule"></span>'+
+   '<span class="sub">October 2026 · 10 entries</span></div>'+
+ '<div class="panel"><div class="tscroll"><table class="dt"><thead><tr>'+
+   '<th>Date</th><th>Narration</th><th>Category</th><th>Account</th><th class="num">Amount</th><th>Kind</th>'+
+ '</tr></thead><tbody>'+
+ REG.map(function(r){
+   var colour=r.v<0?"loss":"gain";
+   return '<tr><td class="num" style="text-align:left">'+esc(r.d)+'</td>'+
+     '<td><span class="nm" style="max-width:280px"><b>'+esc(r.n)+'</b></span></td>'+
+     '<td class="muted" style="font-size:12px">'+(r.c?esc(r.c):'<span class="dash" tabindex="0" title="A transfer moves money between your own accounts, so it has no spending category. This is an absence, not a missing value.">—</span>')+'</td>'+
+     '<td style="font-size:12px">'+esc(r.a)+'</td>'+
+     '<td class="num"><span class="amt '+colour+'">'+money(r.v,true)+'</span></td>'+
+     '<td><span class="bdg">'+esc(r.k)+'</span></td></tr>';
+ }).join("")+
+ '</tbody></table></div></div>'+
+ '<p class="sub" style="max-width:62ch">In the elevated version the amounts drop their colour: the sign glyph already '+
+ 'carries direction, so green and red add nothing here and spend the page’s colour budget on the wrong number. '+
+ 'Colour stays on the portfolio, where gain and loss are the subject.</p>';
+
+/* ---------- notes ---------- */
+document.getElementById("s-notes").innerHTML=
+'<div class="notes">'+
+ '<div>'+
+  '<h2 class="h1">What the deficit actually was</h2>'+
+  '<p style="margin-top:10px">The components were not the problem. Rebuilding them was the right fix for the first '+
+  'verdict, and the control bench is good work. The verdict came back because the <strong>composition layer</strong> '+
+  'was never touched: the same scales, the same spacing, the same uniform chrome as before the rebuild. Better '+
+  'buttons arranged flatly still read flat.</p>'+
+ '</div>'+
+
+ '<div class="card">'+
+  '<h3>The evidence, read out of the shipped stylesheet</h3>'+
+  '<table><thead><tr><th>Channel</th><th>What the CSS actually does</th></tr></thead><tbody>'+
+  '<tr><td class="n">Type</td><td><strong>Thirteen sizes, ten of them between 9px and 15px</strong> (9, 10, 10.5, 11, 11.5, 12, 12.5, 13, 14, 15), then a jump to 22 / 24 / 30. That is not a scale, it is a cloud. Ten near-identical steps cannot express rank, so nothing leads.</td></tr>'+
+  '<tr><td class="n">Figures</td><td><code>code,.mono{font-size:11.5px}</code> pins the mono face at 11.5px. The mono face is therefore used only for chrome — badges, keycaps, annotations — while every real number is set in Inter. In a money product that is exactly backwards.</td></tr>'+
+  '<tr><td class="n">Hero</td><td>The largest figure on the page is 30px against a 13px body: a ratio of 2.3×. It also sits inside a bordered, rounded panel identical to every other panel, which makes the most important number on the screen look like a form field.</td></tr>'+
+  '<tr><td class="n">Space</td><td>Every container pads between 9px and 18px — panel 14, panel header 11/14, KPI 12/14, toolbar 9/14, page gap 18. One interval, repeated. A composition needs at least two: generous outside a group, tight inside it.</td></tr>'+
+  '<tr><td class="n">Surfaces</td><td>Five border strengths are defined and two are used structurally: <code>--border</code> on every box, <code>--border-subtle</code> on every divider. The hierarchy channel exists and is not being spent.</td></tr>'+
+  '</tbody></table>'+
+ '</div>'+
+
+ '<div>'+
+  '<h2 class="h1">The four moves, in priority order</h2>'+
+  '<ol style="margin-top:12px">'+
+   '<li><strong>Give the figures to IBM Plex Mono, and give them room.</strong> Every number on these screens is now mono '+
+   'with <code>tabular-nums slashed-zero</code>; the rupee sign and the L / Cr unit drop to 0.46em and 0.40em in '+
+   '<code>--fg-muted</code>, so the digits — the part that carries meaning — are what the eye lands on. Inter becomes '+
+   'chrome. This single change does most of the work, and it costs nothing: both faces were already loaded.</li>'+
+   '<li><strong>Six type sizes instead of thirteen.</strong> 11 / 13 / 20 in Inter; 13 / 22 / 52 in Plex Mono. The hero-to-body '+
+   'ratio goes from 2.3× to 4.0×, so the page announces its own hierarchy before a word is read.</li>'+
+   '<li><strong>Spacing becomes 4 / 8 / 16 / 24 / 40, with the large intervals actually used.</strong> Section gaps go '+
+   '18px → 40px; panel padding 14px → 20/24px; the figures inside a group stay tight. Space between things, not inside them.</li>'+
+   '<li><strong>Spend border strength as three ranks.</strong> The net-worth figure loses its panel entirely and sits on the '+
+   'canvas with a 34×2px accent tick — the page’s one signature mark. The KPI strip loses its boxes and takes a single '+
+   '<code>--border-control</code> top rule. Tables keep the full bordered box. Three ranks where there was one.</li>'+
+  '</ol>'+
+ '</div>'+
+
+ '<div>'+
+  '<h2 class="h1">Two smaller moves worth keeping</h2>'+
+  '<ul style="margin-top:12px">'+
+   '<li><strong>The withheld figure states its reason on the row.</strong> The em-dash keeps its dotted underline and '+
+   '<code>tabindex="0"</code>, and gains a 9.5px mono caption — <code>NO FX RATE</code>, <code>NO QUOTE</code> — so it reads as '+
+   'a decision the product made, not as data that failed to load. The house rule becomes visible instead of merely operable.</li>'+
+   '<li><strong>Colour contracts to where it means something.</strong> The <em>Priced</em> badge disappears from all ten rows '+
+   'that carry it — priced is the normal case, and a badge on every row is noise that makes the two exceptions harder to find. '+
+   'In the register the signed amounts lose their green and red, because <code>+</code> and <code>−</code> already carry '+
+   'direction. Day change uses ▲ / ▼ in muted ink rather than colour, which also stops it encoding by colour alone.</li>'+
+  '</ul>'+
+ '</div>'+
+
+ '<div>'+
+  '<h2 class="h1">What I deliberately did not change</h2>'+
+  '<ul style="margin-top:12px">'+
+   '<li><strong>The four measured token corrections.</strong> Untouched, and no new colour is introduced anywhere on this '+
+   'page. Every pair the elevated direction relies on was recomputed from the hex values: the hero figure measures '+
+   '<strong>16.77:1</strong> light and <strong>17.94:1</strong> dark on the canvas; the muted currency and unit glyphs '+
+   '<strong>4.74:1</strong> and <strong>6.51:1</strong>; the new KPI top rule uses <code>--border-control</code>, which '+
+   'measures <strong>3.21:1</strong> light and <strong>3.78:1</strong> dark against the canvas and so clears the 3:1 '+
+   'non-text floor. Nothing got fainter.</li>'+
+   '<li><strong>Borders over shadows.</strong> No shadows were added, and no gradients or glass. The elevated version '+
+   'actually leans on hairlines <em>less</em>, because the hero and the KPI strip now sit directly on the canvas.</li>'+
+   '<li><strong>Inter + IBM Plex Mono.</strong> No font change is proposed. What was wrong was the division of labour '+
+   'between them, not the faces.</li>'+
+   '<li><strong>The 32px compact row and the dense ledger.</strong> Density is correct for a register; a finance product '+
+   'should show a lot of rows. Rows go to 34px for breathing room and stop there. Elegance here is not fewer rows.</li>'+
+   '<li><strong>Neutral chrome, coloured data.</strong> The existing principle is right. The deficit was never too little '+
+   'colour, and adding colour would have made the verdict worse.</li>'+
+   '<li><strong>The state vocabulary, the icon set, the em-dash rule, the keyboard model.</strong> All correct, all kept.</li>'+
+  '</ul>'+
+ '</div>'+
+
+ '<div class="card" style="border-left-color:var(--warn)">'+
+  '<h3>What I could not verify</h3>'+
+  '<p>No browser or screenshot tool was available in this session, so <strong>no frame of this page has been seen by eye</strong>. '+
+  'Specifically unverified: how the <code>clamp(40px, 7.2vw, 56px)</code> hero renders between roughly 420px and 760px wide; '+
+  'whether the nine-column holdings table crowds its headers at the new 10.5px uppercase letter-spacing; how IBM Plex Mono’s '+
+  'weight 500 reads against the dark canvas at 52px, where mono faces often look heavier than intended; and whether the '+
+  '9.5px withheld-reason caption is legible in practice rather than merely contrast-compliant. The contrast figures are '+
+  'computed, not estimated — those I stand behind.</p>'+
+ '</div>'+
+'</div>';
+
+setMode("after");
+</script>
+
+</body></html>

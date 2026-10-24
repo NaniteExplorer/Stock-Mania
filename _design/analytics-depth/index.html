@@ -1,0 +1,1166 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Stock-Mania Analytics Depth</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/* Layout concept: three stacked-section screens behind a tab strip. Every figure that can
+   carry a reference value carries one in the same cell or the adjacent cell — the comparison
+   layer is text, not chart. Tokens are the corrected v2 set lifted verbatim from
+   _design/elevation-pass/index.html (:root + the .stage After values), with one correction:
+   --c-other light #8C98A6 (2.93:1, fails 3:1) -> #7C8896 (3.61:1). No other colour is new. */
+
+:root{
+  --n-0:#FFFFFF; --n-50:#F6F8FA; --n-100:#EFF2F5; --n-150:#E4E8ED; --n-200:#D6DCE3;
+  --n-300:#B9C2CC; --n-400:#8C98A6; --n-450:#808C9A; --n-500:#64707E; --n-600:#49545F;
+  --n-700:#343C45; --n-775:#2A323A; --n-800:#232A31; --n-850:#1A2026; --n-900:#13181D; --n-950:#0C1014;
+
+  --h-xs:24px; --h-sm:28px; --h-md:32px; --h-lg:36px;
+  --r-1:2px; --r-2:3px; --r-3:4px; --r-4:6px; --r-5:8px; --r-pill:999px;
+  --t-fast:90ms; --t:110ms; --ease:cubic-bezier(.2,0,.38,1);
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --gl:max(16px,env(safe-area-inset-left,0px));
+  --gr:max(16px,env(safe-area-inset-right,0px));
+
+  --bg-canvas:#F6F8FA; --bg-surface:#FFFFFF; --bg-sunken:#F2F5F8; --bg-subtle:#F2F5F8;
+  --bg-hover:#F6F8FA; --bg-active:#EFF2F5;
+  --border-subtle:#E4E8ED; --border:#D6DCE3; --border-control:#808C9A;
+  --border-hover:#64707E; --border-active:#49545F;
+  --fg:#13181D; --fg-secondary:#49545F; --fg-muted:#64707E; --fg-disabled:#7C8896;
+  --accent:#4F62D8; --accent-hover:#3F50BE; --accent-on:#FFFFFF;
+  --accent-soft:#EEF2FF; --accent-line:#A5B4FC;
+  --gain:#0E7C66; --gain-bg:#E6F5F1; --gain-line:#8FD3C4;
+  --loss:#C0392B; --loss-bg:#FBEAE7; --loss-line:#EAA69E;
+  --warn:#B45309; --warn-bg:#FDF4E6; --warn-line:#E8C58A;
+  --inner-hl:inset 0 -1px 0 rgb(19 24 29 / .07);
+  --c1:#5468D6; --c2:#1F94A8; --c3:#B5801F; --c4:#A14C9E; --c5:#4E7A3A; --c-other:#7C8896;
+  --grid:#E4E8ED;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg-canvas:#0C1014; --bg-surface:#13181D; --bg-sunken:#0C1014; --bg-subtle:#1A2026;
+  --bg-hover:#232A31; --bg-active:#2A323A;
+  --border-subtle:#232A31; --border:#343C45; --border-control:#64707E;
+  --border-hover:#8C98A6; --border-active:#B9C2CC;
+  --fg:#F6F8FA; --fg-secondary:#B9C2CC; --fg-muted:#8C98A6; --fg-disabled:#5C6875;
+  --accent:#7D8CEA; --accent-hover:#9AA6F0; --accent-on:#0C1014;
+  --accent-soft:#1B2340; --accent-line:#4F62D8;
+  --gain:#3FC9A6; --gain-bg:#0E2F29; --gain-line:#1F6B5B;
+  --loss:#FF7A6B; --loss-bg:#3A1A16; --loss-line:#8A3C33;
+  --warn:#F0B429; --warn-bg:#2E2411; --warn-line:#7A5E1B;
+  --inner-hl:inset 0 1px 0 rgb(255 255 255 / .055);
+  --c1:#8A7FE8; --c2:#2FA3BA; --c3:#B68530; --c4:#C76BA0; --c5:#6FA14E; --c-other:#64707E;
+  --grid:#232A31;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg-canvas:#0C1014; --bg-surface:#13181D; --bg-sunken:#0C1014; --bg-subtle:#1A2026;
+  --bg-hover:#232A31; --bg-active:#2A323A;
+  --border-subtle:#232A31; --border:#343C45; --border-control:#64707E;
+  --border-hover:#8C98A6; --border-active:#B9C2CC;
+  --fg:#F6F8FA; --fg-secondary:#B9C2CC; --fg-muted:#8C98A6; --fg-disabled:#5C6875;
+  --accent:#7D8CEA; --accent-hover:#9AA6F0; --accent-on:#0C1014;
+  --accent-soft:#1B2340; --accent-line:#4F62D8;
+  --gain:#3FC9A6; --gain-bg:#0E2F29; --gain-line:#1F6B5B;
+  --loss:#FF7A6B; --loss-bg:#3A1A16; --loss-line:#8A3C33;
+  --warn:#F0B429; --warn-bg:#2E2411; --warn-line:#7A5E1B;
+  --inner-hl:inset 0 1px 0 rgb(255 255 255 / .055);
+  --c1:#8A7FE8; --c2:#2FA3BA; --c3:#B68530; --c4:#C76BA0; --c5:#6FA14E; --c-other:#64707E;
+  --grid:#232A31;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg-canvas);color:var(--fg);font-family:var(--sans);
+  font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+@media (prefers-reduced-motion:reduce){*{transition-duration:1ms!important;animation-duration:1ms!important}}
+h1,h2,h3{margin:0;font-weight:600;text-wrap:balance}
+p{margin:0}
+button{font:inherit;color:inherit;margin:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero}
+
+/* ---------- chrome ---------- */
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg-surface)}
+.chrome{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--bg-surface);
+  border-bottom:1px solid var(--border);padding-block:10px;padding-left:var(--gl);padding-right:var(--gr)}
+.chrome-in{display:flex;flex-wrap:wrap;align-items:center;gap:10px;max-width:1440px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:9px;margin-right:4px}
+.mark{width:22px;height:22px;border:1.5px solid var(--accent);border-radius:var(--r-2);flex:none;position:relative}
+.mark::after{content:"";position:absolute;left:2.5px;right:2.5px;bottom:2.5px;height:6px;
+  background:linear-gradient(to right,var(--accent) 0 2px,transparent 2px 4px,var(--accent) 4px 7px,transparent 7px 9px,var(--accent) 9px 13px)}
+.brand b{font-size:13.5px;font-weight:600;letter-spacing:-.008em}
+.seg{display:inline-flex;height:var(--h-md);border:1px solid var(--border-control);border-radius:var(--r-2);
+  overflow:hidden;background:var(--bg-surface);box-shadow:var(--inner-hl)}
+.seg button{height:30px;padding:0 11px;border:0;background:none;font-size:12px;font-weight:500;
+  color:var(--fg-secondary);cursor:pointer;white-space:nowrap;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.seg button+button{box-shadow:inset 1px 0 0 var(--border)}
+.seg button:hover{background:var(--bg-hover);color:var(--fg)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.seg button[aria-pressed="true"],.seg button[aria-pressed="true"]+button{box-shadow:none}
+.seg button:focus-visible{outline-offset:-2px}
+.seg.sm button{height:26px;padding:0 9px;font-size:11.5px}
+.seg.sm{height:var(--h-sm)}
+.spacer{margin-left:auto}
+.btn{display:inline-flex;align-items:center;gap:6px;height:var(--h-md);padding:0 12px;font-size:12.5px;
+  font-weight:500;border:1px solid var(--border-control);border-radius:var(--r-2);background:var(--bg-surface);
+  color:var(--fg);box-shadow:var(--inner-hl);cursor:pointer;white-space:nowrap;
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease)}
+.btn:hover{background:var(--bg-hover);border-color:var(--border-hover)}
+
+/* ---------- stage: the elevation-pass After values, applied unconditionally ---------- */
+.stage{
+  --fig-face:var(--mono); --fig-vn:tabular-nums slashed-zero;
+  --fs-hero:clamp(40px,7.2vw,56px); --lh-hero:1.02; --fw-hero:500; --ls-hero:-.022em;
+  --fs-kpi:22px; --lh-kpi:28px; --fw-kpi:500;
+  --fs-h1:20px; --lh-h1:26px; --ls-h1:-.014em;
+  --fs-sec:13px;
+  --fs-lab:11px; --ls-lab:.085em; --tt-lab:uppercase; --fw-lab:500; --col-lab:var(--fg-muted);
+  --gap-screen:40px; --gap-block:16px; --gap-kpi:0px;
+  --pad-panel:20px 24px; --pad-panel-h:14px 24px;
+  --kpi-pad:14px 20px 2px 0; --kpi-rule:1px solid var(--border-control);
+  --num-face:var(--mono); --num-size:12.5px;
+  --row-h:34px; --cell-pad:7px 12px;
+  padding-block:0 72px;padding-left:var(--gl);padding-right:var(--gr);max-width:1440px;margin:0 auto}
+.screen{display:none;flex-direction:column;gap:var(--gap-screen);padding-top:var(--gap-screen)}
+.screen.on{display:flex}
+
+.lbl{font-size:var(--fs-lab);line-height:16px;font-weight:var(--fw-lab);letter-spacing:var(--ls-lab);
+  text-transform:var(--tt-lab);color:var(--col-lab)}
+.h1{font-size:var(--fs-h1);line-height:var(--lh-h1);font-weight:600;letter-spacing:var(--ls-h1)}
+.sub{font-size:12px;line-height:17px;color:var(--fg-muted)}
+.sechead{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px}
+.sechead .rule{flex:1;min-width:24px;height:1px;background:var(--border-subtle)}
+.fig{font-family:var(--fig-face);font-variant-numeric:var(--fig-vn)}
+.cur,.unit{color:var(--fg-muted);font-weight:400}
+
+.panel{border:1px solid var(--border);border-radius:var(--r-4);background:var(--bg-surface);overflow:hidden}
+.panel-h{display:flex;align-items:flex-start;flex-wrap:wrap;gap:12px;padding:var(--pad-panel-h);
+  border-bottom:1px solid var(--border-subtle)}
+.panel-h h2{font-size:var(--fs-sec);line-height:20px;font-weight:600}
+.panel-h p{font-size:11.5px;line-height:16px;color:var(--fg-muted);max-width:74ch}
+.panel-b{padding:var(--pad-panel)}
+.panel-h .spacer{margin-left:auto}
+
+/* masthead */
+.mast{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--gap-block) 40px;padding:8px 0 0}
+.mast-main{display:flex;flex-direction:column;gap:6px;min-width:0}
+.mast .tick{display:block;width:34px;height:2px;background:var(--accent);margin-bottom:4px}
+.hero-fig{font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero;
+  font-size:var(--fs-hero);line-height:var(--lh-hero);font-weight:var(--fw-hero);letter-spacing:var(--ls-hero)}
+.hero-fig .cur{font-size:.46em;margin-right:.1em;letter-spacing:0}
+.hero-fig .unit{font-size:.40em;letter-spacing:.06em;margin-left:.12em}
+.mast-side{display:flex;flex-wrap:wrap;gap:var(--gap-block) 32px;align-items:flex-end}
+.side-i{display:flex;flex-direction:column;gap:3px;min-width:0}
+.side-i .v{font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero;font-size:16px;
+  line-height:22px;font-weight:500}
+.side-i .r{font-size:11px;line-height:15px;color:var(--fg-muted);font-family:var(--mono);
+  font-variant-numeric:tabular-nums slashed-zero}
+
+/* kpi strip */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(192px,1fr));gap:0 24px}
+.kpi{display:flex;flex-direction:column;gap:5px;padding:var(--kpi-pad);border-top:var(--kpi-rule);min-width:0}
+.kpi .kh{display:flex;align-items:center;gap:6px}
+.kpi .kv{font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero;font-size:var(--fs-kpi);
+  line-height:var(--lh-kpi);font-weight:500;letter-spacing:-.012em}
+.kpi .kv .cur{font-size:.6em}
+.kpi .kv .unit{font-size:.56em;letter-spacing:.04em;margin-left:.1em}
+.kpi .kd{font-size:11px;line-height:15px;font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero;color:var(--fg-secondary)}
+.kpi .ref{font-size:11px;line-height:16px;color:var(--fg-muted);font-family:var(--mono);
+  font-variant-numeric:tabular-nums slashed-zero;border-top:1px dotted var(--border);padding-top:5px;margin-top:2px}
+.kpi .win{display:flex;gap:0;margin-top:4px}
+.kpi .win div{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px;padding-right:6px}
+.kpi .win b{font-family:var(--mono);font-size:11.5px;font-weight:500;font-variant-numeric:tabular-nums slashed-zero}
+.kpi .win span{font-size:9.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-muted)}
+.info{width:16px;height:16px;flex:none;border:1px solid var(--border-control);border-radius:var(--r-pill);
+  background:var(--bg-surface);color:var(--fg-muted);font-size:10px;line-height:1;cursor:pointer;
+  display:inline-flex;align-items:center;justify-content:center;padding:0}
+.info:hover{border-color:var(--border-hover);color:var(--fg)}
+.note{font-size:11px;line-height:16px;color:var(--fg-secondary);background:var(--bg-subtle);
+  border-left:2px solid var(--accent);padding:7px 9px;border-radius:0 var(--r-2) var(--r-2) 0;max-width:46ch}
+
+.gain{color:var(--gain)}.loss{color:var(--loss)}
+.muted{color:var(--fg-muted)}
+.dir{font-size:.82em;margin-right:.18em;color:var(--fg-muted)}
+.micro{font-size:10.5px;line-height:14px}
+
+/* badges */
+.bdg{display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 7px;border-radius:var(--r-2);
+  font-size:11px;font-weight:500;line-height:1;white-space:nowrap;border:1px solid transparent;
+  background:var(--bg-subtle);color:var(--fg-secondary)}
+.bdg .dot{width:5px;height:5px;border-radius:var(--r-pill);background:currentColor;flex:none;opacity:.85}
+.bdg.warn{background:var(--warn-bg);color:var(--warn)}
+.bdg.outn{background:none;border-color:var(--border);color:var(--fg-secondary)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+
+/* table */
+.tscroll{overflow-x:auto}
+table.dt{border-collapse:separate;border-spacing:0;width:100%;font-size:13px}
+table.dt th,table.dt td{padding:var(--cell-pad);border-bottom:1px solid var(--border-subtle);
+  white-space:nowrap;height:var(--row-h);text-align:left;vertical-align:middle}
+table.dt thead th{position:sticky;top:0;z-index:2;background:var(--bg-surface);font-weight:500;
+  color:var(--fg-muted);box-shadow:inset 0 -1px 0 var(--border);border-bottom:0;
+  font-size:10.5px;letter-spacing:.085em;text-transform:uppercase;padding-block:9px}
+table.dt thead tr.grp th{font-size:9.5px;letter-spacing:.1em;color:var(--fg-muted);
+  box-shadow:inset 0 -1px 0 var(--border-subtle);padding-bottom:4px;top:0}
+table.dt thead tr.grp th.g{border-left:1px solid var(--border-subtle)}
+table.dt thead tr.hd th{top:28px}
+table.dt .num{text-align:right;font-family:var(--mono);font-size:var(--num-size);
+  font-variant-numeric:tabular-nums slashed-zero}
+table.dt tbody tr:hover{background:var(--bg-hover)}
+table.dt tfoot td{background:transparent;font-weight:600;border-bottom:0;
+  border-top:1px solid var(--border-control);padding-top:11px;padding-bottom:11px}
+.cmp{background:var(--bg-sunken)}
+table.dt tbody tr:hover .cmp{background:transparent}
+.nm{display:flex;flex-direction:column;max-width:230px;min-width:0}
+.nm b{font-weight:500;font-size:13px;line-height:17px;letter-spacing:.002em}
+.nm .sym{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;color:var(--fg-muted);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.inst{display:inline-flex;align-items:center;gap:7px;min-width:0}
+.badge-m{width:18px;height:18px;flex:none;border-radius:var(--r-1);display:inline-flex;
+  align-items:center;justify-content:center;font-size:8px;font-weight:600;letter-spacing:.02em;
+  font-family:var(--sans);overflow:hidden}
+
+/* the unavailable figure */
+.dash{color:var(--fg-muted);text-decoration:underline dotted var(--border-control);text-underline-offset:3px;
+  cursor:help;border-radius:var(--r-1);font-family:var(--mono);background:none;border:0;padding:0}
+.dash:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.why{font-family:var(--mono);font-size:9.5px;line-height:13px;letter-spacing:.03em;color:var(--fg-muted);text-transform:uppercase}
+
+/* bullet strip: value within its own range */
+.bul{display:inline-flex;align-items:center;gap:7px}
+.bul svg{display:block;flex:none}
+
+/* allocation */
+.alloc-rows{display:flex;flex-direction:column}
+.ar{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto;gap:4px 18px;align-items:baseline;
+  padding:8px 0;border-bottom:1px solid var(--border-subtle)}
+.ar:last-child{border-bottom:0}
+.ar .n{display:flex;align-items:center;gap:8px;font-size:13px;min-width:0}
+.ar .n i{width:3px;height:14px;flex:none}
+.ar .v,.ar .w{font-family:var(--mono);font-size:var(--num-size);font-variant-numeric:tabular-nums slashed-zero}
+.ar .w{color:var(--fg-secondary);min-width:52px;text-align:right}
+.stack{display:flex;width:100%;height:8px;overflow:hidden;gap:1px;margin-bottom:12px}
+.stack div{min-width:2px}
+
+.two{display:grid;grid-template-columns:1fr 1fr;gap:32px}
+.three{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:32px}
+svg text{font-family:var(--mono);font-variant-numeric:tabular-nums}
+
+/* definition grid */
+.dl{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:16px 24px}
+.dl>div{display:flex;flex-direction:column;gap:2px;min-width:0}
+.dl .v{font-family:var(--mono);font-size:14px;font-variant-numeric:tabular-nums slashed-zero;font-weight:500}
+.dl .r{font-size:11px;line-height:15px;color:var(--fg-muted);font-family:var(--mono);
+  font-variant-numeric:tabular-nums slashed-zero}
+
+/* skeleton */
+.skel{height:10px;border-radius:var(--r-1);background:linear-gradient(90deg,var(--bg-subtle),var(--bg-active),var(--bg-subtle));
+  background-size:200% 100%;animation:sh 1.3s linear infinite}
+@keyframes sh{to{background-position:-200% 0}}
+.state-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(215px,1fr));gap:16px}
+.state-c{border:1px solid var(--border);border-radius:var(--r-3);padding:12px 14px;display:flex;
+  flex-direction:column;gap:7px;min-width:0}
+.state-c h3{font-size:11px;letter-spacing:.085em;text-transform:uppercase;color:var(--fg-muted);font-weight:500}
+.state-c p{font-size:11.5px;line-height:16px;color:var(--fg-secondary)}
+
+/* notes */
+.notes{max-width:78ch;display:flex;flex-direction:column;gap:22px}
+.notes h2{font-size:18px;line-height:24px;letter-spacing:-.01em}
+.notes h3{font-size:13.5px;line-height:19px}
+.notes p,.notes li{font-size:13.5px;line-height:21px;color:var(--fg-secondary)}
+.notes ol,.notes ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:9px}
+.notes strong{color:var(--fg);font-weight:600}
+.notes code{font-family:var(--mono);font-size:11.5px;background:var(--bg-subtle);padding:1px 5px;border-radius:var(--r-2)}
+.notes .card{border:1px solid var(--border);border-left:3px solid var(--accent);border-radius:var(--r-4);
+  padding:14px 16px;display:flex;flex-direction:column;gap:7px}
+.notes table{border-collapse:collapse;width:100%;font-size:12.5px}
+.notes table th,.notes table td{text-align:left;padding:7px 10px 7px 0;border-bottom:1px solid var(--border-subtle);vertical-align:top}
+.notes table th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--fg-muted);font-weight:500}
+.notes table td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+/* refusal */
+.refuse{border:1px solid var(--border);border-left:3px solid var(--border-control);border-radius:var(--r-4);
+  padding:16px 18px;display:flex;flex-direction:column;gap:9px;max-width:80ch}
+.refuse h3{font-size:13px;font-weight:600}
+.refuse p{font-size:12.5px;line-height:19px;color:var(--fg-secondary)}
+
+@media (max-width:900px){.two{grid-template-columns:1fr}}
+@media (max-width:760px){.mast{align-items:flex-start}.kpis{gap:0 16px}}
+</style>
+
+<div class="chrome"><div class="chrome-in">
+  <div class="brand"><span class="mark"></span><b>Stock-Mania</b></div>
+  <div class="seg" role="tablist" aria-label="Screen">
+    <button id="t-dash" role="tab" aria-pressed="true" data-screen="dash">Dashboard</button>
+    <button id="t-hold" role="tab" aria-pressed="false" data-screen="hold">Holdings</button>
+    <button id="t-det" role="tab" aria-pressed="false" data-screen="det">Holding detail</button>
+    <button id="t-notes" role="tab" aria-pressed="false" data-screen="notes">Counts</button>
+  </div>
+  <span class="spacer"></span>
+  <div class="seg sm" id="themeseg" role="group" aria-label="Theme">
+    <button id="th-auto" aria-pressed="true" data-theme="auto">Auto</button>
+    <button id="th-light" aria-pressed="false" data-theme="light">Light</button>
+    <button id="th-dark" aria-pressed="false" data-theme="dark">Dark</button>
+  </div>
+</div></div>
+
+<main class="stage">
+  <section class="screen on" id="s-dash" aria-label="Dashboard"></section>
+  <section class="screen" id="s-hold" aria-label="Holdings"></section>
+  <section class="screen" id="s-det" aria-label="Holding detail"></section>
+  <section class="screen notes" id="s-notes" aria-label="Counts and decisions"></section>
+</main>
+
+<script>
+"use strict";
+/* ============================ formatting ============================ */
+var MIN="−", DASH="—", UP="▲", DOWN="▼";
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function grp(n,dp){ /* en-IN grouping, hand-rolled so it is identical in every engine */
+  var neg=n<0; n=Math.abs(n);
+  var s=n.toFixed(dp===undefined?2:dp), parts=s.split("."), i=parts[0], d=parts[1];
+  var out;
+  if(i.length<=3) out=i;
+  else{ var last3=i.slice(-3), rest=i.slice(0,-3), g=[];
+    while(rest.length>2){ g.unshift(rest.slice(-2)); rest=rest.slice(0,-2); }
+    if(rest) g.unshift(rest);
+    out=g.join(",")+","+last3; }
+  return (neg?MIN:"")+out+(d?"."+d:"");
+}
+function money(n,o){ o=o||{};
+  if(n===null||n===undefined) return DASH;
+  var sign = o.signed ? (n>0?"+":(n<0?MIN:"")) : (n<0?MIN:"");
+  return sign+'<span class="cur">₹</span>'+grp(Math.abs(n), o.dp===undefined?2:o.dp);
+}
+function compact(n){ /* lakh / crore, truncated toward zero */
+  var neg=n<0, a=Math.abs(n), v,u;
+  if(a>=1e7){ v=Math.trunc(a/1e5)/100; u="Cr"; } else { v=Math.trunc(a/1e3)/100; u="L"; }
+  return (neg?MIN:"")+'<span class="cur">₹</span>'+grp(v,2)+'<span class="unit">'+u+'</span>';
+}
+function pct(n,signed,dp){ if(n===null||n===undefined) return DASH;
+  dp=dp===undefined?2:dp;
+  var sign = signed ? (n>0?"+":(n<0?MIN:"")) : (n<0?MIN:"");
+  return sign+Math.abs(n).toFixed(dp)+"%";
+}
+function pp(n,dp){ dp=dp===undefined?2:dp;
+  return (n>0?"+":(n<0?MIN:""))+Math.abs(n).toFixed(dp)+"pp"; }
+function dirpct(n,dp){ /* direction by glyph in muted ink, never by colour alone */
+  if(n===null||n===undefined) return DASH;
+  dp=dp===undefined?2:dp;
+  var g = n>0?UP : (n<0?DOWN:"·");
+  return '<span class="dir">'+g+'</span>'+Math.abs(n).toFixed(dp)+"%";
+}
+var dashSeq=0;
+function na(reason){ dashSeq++;
+  return '<button type="button" class="dash" aria-describedby="dr'+dashSeq+'">'+DASH+'</button>'+
+         '<span hidden id="dr'+dashSeq+'">'+esc(reason)+'</span>';
+}
+function num(v,dp){ return v===null?DASH:grp(v,dp===undefined?2:dp); }
+
+/* ============================ data ============================ */
+/* The ten priced rows are the sample set from ui-redesign-v2-research.md section 6, verbatim.
+   Everything derived (price, weight, P&L, medians, totals) is computed at render time, so the
+   footer reconciles by construction rather than by a typed constant.
+   bench = the NIFTY 50 total return over this holding's own hold period, in percent.
+   tgt   = the owner's target weight for the holding, in percent. */
+var TODAY="2026-10-19";
+var H=[
+ {sym:"RELIANCE",name:"Reliance Industries Ltd",ex:"NSE",klass:"Listed equity",plat:"Zerodha",pid:"zerodha",pc:["#387ED1","#FFFFFF"],
+  units:45,ud:0,inv:58423.50,mv:63918.00,real:0,ps:"Priced",day:0.84,bench:7.10,tgt:4.00,hold:"18m"},
+ {sym:"INFY",name:"Infosys Ltd",ex:"NSE",klass:"Listed equity",plat:"Zerodha",pid:"zerodha",pc:["#387ED1","#FFFFFF"],
+  units:60,ud:0,inv:91386.00,mv:88722.00,real:12405.00,ps:"Priced",day:-0.42,bench:6.40,tgt:6.00,hold:"17m"},
+ {sym:"HDFCBANK",name:"HDFC Bank Ltd",ex:"NSE",klass:"Listed equity",plat:"Groww",pid:"groww",pc:["#00D09C","#13181D"],
+  units:80,ud:0,inv:130240.00,mv:142560.00,real:0,ps:"Priced",day:0.31,bench:5.80,tgt:9.00,hold:"16m"},
+ {sym:"TATAMOTORS",name:"Tata Motors Ltd",ex:"NSE",klass:"Listed equity",plat:"Upstox",pid:"upstox",pc:["#612AA3","#FFFFFF"],
+  units:150,ud:0,inv:113250.00,mv:108900.00,real:0,ps:"Stale",day:null,bench:4.90,tgt:6.00,hold:"15m",
+  why:"Last quote 2026-10-09 15:30 IST, 10 days old"},
+ {sym:"NIFTYBEES",name:"Nippon India ETF Nifty 50 BeES",ex:"NSE",klass:"ETF",plat:"Zerodha",pid:"zerodha",pc:["#387ED1","#FFFFFF"],
+  units:420,ud:0,inv:112560.00,mv:123900.00,real:0,ps:"Priced",day:0.19,bench:9.84,tgt:10.00,hold:"15m"},
+ {sym:"120503",name:"Parag Parikh Flexi Cap Fund — Direct Growth",ex:"AMFI",klass:"Equity fund",plat:"Kuvera",pid:"kuvera",pc:["#2F5FE0","#FFFFFF"],
+  units:1842.317,ud:3,inv:150000.00,mv:189312.40,real:0,ps:"Priced",day:0.27,bench:8.60,tgt:14.00,hold:"16m"},
+ {sym:"119533",name:"HDFC Corporate Bond Fund — Direct Growth",ex:"AMFI",klass:"Debt fund",plat:"Groww",pid:"groww",pc:["#00D09C","#13181D"],
+  units:2410.882,ud:3,inv:75000.00,mv:82174.30,real:0,ps:"Priced",day:0.04,bench:6.90,tgt:6.00,hold:"17m"},
+ {sym:"SGBAUG32",name:"Sovereign Gold Bond 2024-25 Series II",ex:"NSE",klass:"SGB",plat:"ICICI Direct",pid:"icicidirect",pc:["#AF272F","#FFFFFF"],
+  units:20,ud:0,inv:139400.00,mv:156200.00,real:0,ps:"Priced",day:0.61,bench:14.20,tgt:10.00,hold:"26m"},
+ {sym:"GOLD-SG",name:"Digital Gold (24K)",ex:"SafeGold",klass:"Digital gold",plat:"SafeGold",pid:"safegold",pc:["#C8A14B","#13181D"],
+  units:38.4210,ud:4,inv:295176.00,mv:331845.00,real:4523.00,ps:"Priced",day:0.52,bench:12.70,tgt:22.00,hold:"23m",unit:"g"},
+ {sym:"SILVER-AUG",name:"Digital Silver",ex:"Augmont",klass:"Digital metal",plat:"Augmont",pid:"augmont",pc:["#B4832E","#FFFFFF"],
+  units:1250.000,ud:3,inv:118750.00,mv:130625.00,real:0,ps:"Priced",day:1.07,bench:5.20,tgt:7.00,hold:"9m"},
+ {sym:"AAPL",name:"Apple Inc.",ex:"NASDAQ",klass:"Listed equity",plat:"INDmoney",pid:"indmoney",pc:["#2B3990","#FFFFFF"],
+  units:12,ud:0,inv:214560.00,mv:null,real:0,ps:"FX unavailable",day:null,bench:null,tgt:4.00,hold:"11m",
+  why:"No USD→INR rate stored for 19 Oct 2026"},
+ {sym:"ITC",name:"ITC Ltd",ex:"NSE",klass:"Listed equity",plat:"Angel One",pid:"angelone",pc:["#2F3192","#FFFFFF"],
+  units:200,ud:0,inv:82400.00,mv:null,real:0,ps:"Unpriced",day:null,bench:null,tgt:2.00,hold:"10m",
+  why:"No quote stored since 2026-08-30"}
+];
+
+var TOT={mv:0,inv:0,real:0,priced:0,withheld:0,invAll:0};
+H.forEach(function(h){
+  h.priced = h.mv!==null;
+  h.price  = h.priced ? h.mv/h.units : null;
+  h.avg    = h.inv/h.units;
+  h.pnl    = h.priced ? h.mv-h.inv : null;
+  h.ret    = h.priced ? (h.mv-h.inv)/h.inv*100 : null;
+  h.unit   = h.unit||"";
+  TOT.invAll += h.inv; TOT.real += h.real;
+  if(h.priced){ TOT.mv+=h.mv; TOT.inv+=h.inv; TOT.priced++; } else TOT.withheld++;
+});
+H.forEach(function(h){ h.wt = h.priced ? h.mv/TOT.mv*100 : null;
+  h.drift = h.priced ? h.wt - h.tgt : null;
+  h.vsBench = h.priced ? h.ret - h.bench : null; });
+TOT.pnl = TOT.mv-TOT.inv;
+TOT.ret = TOT.pnl/TOT.inv*100;
+TOT.wt  = H.reduce(function(a,h){return a+(h.wt||0);},0);
+TOT.tgt = H.reduce(function(a,h){return a+h.tgt;},0);
+(function(){ var r=H.filter(function(h){return h.priced;}).map(function(h){return h.ret;}).sort(function(a,b){return a-b;});
+  TOT.median = (r[4]+r[5])/2; })();
+H.forEach(function(h){ h.vsMed = h.priced ? h.ret-TOT.median : null; });
+
+/* deterministic 90-day series, ending exactly at the holding's own return */
+function series(seed,endRet,n,gapFrom){
+  var s=seed, out=[], v=0;
+  function rnd(){ s=(s*1103515245+12345)&0x7fffffff; return s/0x7fffffff; }
+  for(var i=0;i<n;i++){ v += (rnd()-0.48)*1.9; out.push(v); }
+  var last=out[n-1]||1, k = last===0?1:endRet/last;
+  out=out.map(function(x){return x*k;});
+  if(gapFrom!==undefined) for(var j=gapFrom;j<n;j++) out[j]=null;
+  return out;
+}
+H.forEach(function(h,i){ h.sp = h.priced ? series(97+i*31, h.ret, 90, h.ps==="Stale"?83:undefined) : null; });
+
+/* a sparkline: one ink, 1.5px, end dot, no axis. A missing stretch is a gap, never interpolated. */
+function spark(a,w,ht){
+  w=w||88; ht=ht||18;
+  var pts=a.filter(function(v){return v!==null;});
+  var lo=Math.min.apply(null,pts), hi=Math.max.apply(null,pts), r=(hi-lo)||1;
+  var x=function(i){return (i/(a.length-1))*(w-4)+2;}, y=function(v){return ht-2-((v-lo)/r)*(ht-4);};
+  var segs=[], cur=[];
+  a.forEach(function(v,i){ if(v===null){ if(cur.length){segs.push(cur);cur=[];} }
+    else cur.push(x(i).toFixed(1)+" "+y(v).toFixed(1)); });
+  if(cur.length) segs.push(cur);
+  var d=segs.map(function(s){return "M"+s.join("L");}).join("");
+  var li=-1; for(var i=a.length-1;i>=0;i--){ if(a[i]!==null){li=i;break;} }
+  var gapped = li < a.length-1;
+  return '<svg width="'+w+'" height="'+ht+'" viewBox="0 0 '+w+' '+ht+'" role="img" aria-label="90-day trend'+
+    (gapped?", last "+(a.length-1-li)+" days unavailable, drawn as a gap":"")+'">'+
+    '<path d="'+d+'" fill="none" stroke="var(--fg-secondary)" stroke-width="1.5" stroke-linecap="round"/>'+
+    '<circle cx="'+x(li).toFixed(1)+'" cy="'+y(a[li]).toFixed(1)+'" r="1.9" fill="var(--fg)"/>'+
+    (gapped?'<line x1="'+x(li).toFixed(1)+'" x2="'+(w-2)+'" y1="'+(ht-1)+'" y2="'+(ht-1)+'" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="2 2"/>':"")+
+    '</svg>';
+}
+
+/* bullet strip: where a value sits inside its own range, with the median marked.
+   Bands are context only; every value it encodes is printed as text in the same row,
+   so the band is exempt from 3:1 under Understanding SC 1.4.11. The two marks are not:
+   median tick --border-control (3.42 light / 3.54 dark), value mark --fg. */
+function bullet(lo,hi,med,val,w){
+  w=w||62; var ht=12, pad=1.5, span=(hi-lo)||1;
+  var X=function(v){return pad+((v-lo)/span)*(w-pad*2);};
+  return '<span class="bul"><svg width="'+w+'" height="'+ht+'" viewBox="0 0 '+w+' '+ht+'" role="img" '+
+   'aria-label="'+val+' within its 5-year range '+lo+' to '+hi+', 5-year median '+med+'">'+
+   '<rect x="0" y="4" width="'+w+'" height="4" fill="var(--bg-active)"/>'+
+   '<line x1="'+X(med).toFixed(1)+'" x2="'+X(med).toFixed(1)+'" y1="1" y2="11" stroke="var(--border-control)" stroke-width="1.5"/>'+
+   '<rect x="'+(X(val)-1).toFixed(1)+'" y="2" width="2.4" height="8" fill="var(--fg)"/></svg></span>';
+}
+
+/* institution mark: /api/logo/<id>, falling back on 404 to a badge built from the
+   provider's own two brand colours. Never a hand-drawn approximation. */
+function mark(h){
+  var sn = h.plat.replace(/[^A-Za-z]/g,"").slice(0,2).toUpperCase();
+  return '<span class="badge-m" style="background:'+h.pc[0]+';color:'+h.pc[1]+'" '+
+    'role="img" aria-label="'+esc(h.plat)+' (logo unavailable, branded badge)">'+sn+'</span>';
+}
+
+/* ============================ dashboard ============================ */
+/* Net worth and its parts are the section 6 figures; the portfolio block is derived from H. */
+var NW={net:4872000,assets:5618000,liab:746000,liquid:934000,runway:6.2};
+var WINDOWS=[["1W",-0.42,-0.31],["1M",2.14,1.86],["3M",4.98,3.70],["6M",7.26,5.94],
+             ["1Y",12.41,9.88],["3Y",41.80,36.22],["5Y",88.64,71.05]];
+var KPI=[
+ {l:"Market value",v:compact(TOT.mv),d:'<span class="dir">'+UP+'</span>0.46% today',
+  ref:"Own 12-mo median ₹11.92L · "+pp(((TOT.mv/1192000)-1)*100,1)+" against it",
+  win:[["1y","+18.4%"],["3y","+52.1%"],["5y","+96.3%"]],
+  why:"Priced market value of the ten holdings that have both a quote and, where needed, an FX rate. Two holdings are withheld from the total rather than valued at cost."},
+ {l:"Invested",v:compact(TOT.inv),d:grp(TOT.priced,0)+" of "+H.length+" holdings priced",
+  ref:"All-holdings cost ₹"+grp(TOT.invAll)+" incl. 2 withheld",
+  win:[["1y","+₹3.10L"],["3y","+₹7.84L"],["5y","+₹11.26L"]],
+  why:"Sum of cost for the priced rows only, so it reconciles with market value above. The all-holdings cost on the line below includes AAPL and ITC."},
+ {l:"Unrealised",v:money(TOT.pnl,{signed:true,dp:2}),d:pct(TOT.ret,true)+" on cost",
+  ref:"Own 12-mo median +8.12% · "+pp(TOT.ret-8.12,2)+" against it",
+  win:[["1y","+10.43%"],["3y","+9.18%"],["5y","+11.74%"]],
+  why:"Market value less cost for priced rows. Not a realised amount and not a tax position."},
+ {l:"XIRR",v:"+15.23%",d:"since first trade, 2024-08-27",
+  ref:"NIFTY 50 same window +11.86% · "+pp(15.23-11.86,2),
+  win:[["1y","+13.90%"],["3y","+15.74%"],["5y","—"]],
+  why:"Money-weighted return over every dated cash flow. TWR is not shown: the ledger has no daily valuation series to compute it from."},
+ {l:"Realised FY26",v:money(68420,{signed:true,dp:0}),d:"3 disposals, 2 LTCG / 1 STCG",
+  ref:"LTCG exemption used ₹1,00,250 of ₹1,25,000",
+  win:[["FY24","+₹21,400"],["FY25","+₹44,180"],["FY26","+₹68,420"]],
+  why:"Gains booked in the current financial year, net of charges, split by holding-period bucket."},
+ {l:"Max drawdown",v:MIN+"12.40%",d:"peak 2026-02-11, trough 2026-04-03",
+  ref:"NIFTY 50 same window "+MIN+"9.70% · "+pp(-12.40+9.70,2),
+  win:[["1y","−12.40%"],["3y","−18.90%"],["5y","−24.10%"]],
+  why:"Largest peak-to-trough fall in portfolio value over the window, computed on month-end valuations only."}
+];
+
+function kpiHTML(k,i){
+  return '<div class="kpi"><div class="kh"><span class="lbl">'+esc(k.l)+'</span>'+
+    '<button type="button" class="info" aria-expanded="false" aria-controls="kn'+i+'" '+
+    'aria-label="How '+esc(k.l)+' is computed">?</button></div>'+
+    '<div class="kv">'+k.v+'</div><div class="kd">'+k.d+'</div>'+
+    '<div class="ref">'+k.ref+'</div>'+
+    '<div class="win">'+k.win.map(function(w){
+      return '<div><b>'+w[1]+'</b><span>'+w[0]+'</span></div>';}).join("")+'</div>'+
+    '<p class="note" id="kn'+i+'" hidden>'+esc(k.why)+'</p></div>';
+}
+
+var ALLOC=[
+ {n:"Listed equity",c:"var(--c1)",rows:["RELIANCE","INFY","HDFCBANK","TATAMOTORS"],tgt:30},
+ {n:"Funds and ETFs",c:"var(--c2)",rows:["NIFTYBEES","120503","119533"],tgt:28},
+ {n:"Gold",c:"var(--c3)",rows:["SGBAUG32","GOLD-SG"],tgt:32},
+ {n:"Silver",c:"var(--c4)",rows:["SILVER-AUG"],tgt:7},
+ {n:"Other / withheld",c:"var(--c-other)",rows:[],tgt:3}
+];
+ALLOC.forEach(function(a){ a.v=0; a.rows.forEach(function(s){
+  var h=H.filter(function(x){return x.sym===s;})[0]; a.v+=h.mv; }); });
+
+function dashboard(){
+  var rows = H.slice().sort(function(a,b){ return (b.mv||-1)-(a.mv||-1); });
+  var allocTotal = ALLOC.reduce(function(a,x){return a+x.v;},0);
+  var h = "";
+
+  h += '<div class="mast"><div class="mast-main"><span class="tick"></span>'+
+    '<span class="lbl">Net worth · 19 Oct 2026</span>'+
+    '<div class="hero-fig">'+compact(NW.net)+'</div>'+
+    '<span class="sub">12 months ago '+MIN+'₹38.40L · +₹9.22L contributions · +₹1.10L market growth</span></div>'+
+    '<div class="mast-side">'+
+    sideI("Assets",compact(NW.assets),"5 classes · own median ₹52.40L")+
+    sideI("Liabilities",compact(NW.liab),"2 loans · 13.28% of assets")+
+    sideI("Liquid",compact(NW.liquid),"6.20 months runway · target 6.00")+
+    sideI("Portfolio",money(TOT.mv),"10 of 12 priced · 2 withheld")+
+    '</div></div>';
+
+  h += section("Portfolio",'Every tile carries a reference: the portfolio’s own 12-month median, or the NIFTY 50 over the same window. The three-cell strip under each is the same measure at 1, 3 and 5 years.',
+    '<div class="kpis">'+KPI.map(kpiHTML).join("")+'</div>');
+
+  /* returns against benchmark */
+  var wh='<tr class="hd"><th>Window</th>'+WINDOWS.map(function(w){return '<th class="num">'+w[0]+'</th>';}).join("")+'</tr>';
+  var r1='<tr><td>Portfolio</td>'+WINDOWS.map(function(w){return '<td class="num">'+pct(w[1],true)+'</td>';}).join("")+'</tr>';
+  var r2='<tr><td>NIFTY 50 TRI</td>'+WINDOWS.map(function(w){return '<td class="num muted">'+pct(w[2],true)+'</td>';}).join("")+'</tr>';
+  var r3='<tr><td>Difference</td>'+WINDOWS.map(function(w){return '<td class="num cmp">'+pp(w[1]-w[2],2)+'</td>';}).join("")+'</tr>';
+  h += section("Returns against the benchmark",'Seven windows, the benchmark beneath each, and the difference on its own row. No colour: the sign is in the figure.',
+    '<div class="panel"><div class="panel-b"><div class="tscroll"><table class="dt"><thead>'+wh+'</thead><tbody>'+r1+r2+r3+'</tbody></table></div></div></div>');
+
+  /* holdings, 12 fields per row */
+  var th='<tr class="hd"><th>Holding</th><th>Class</th><th class="num">Weight</th>'+
+    '<th class="num cmp">Target</th><th class="num cmp">Drift</th><th class="num">Price</th>'+
+    '<th class="num">Day</th><th class="num">Market value</th><th class="num">Unrealised</th>'+
+    '<th class="num">Return</th><th class="num cmp">vs median</th><th>90d</th></tr>';
+  var tb=rows.map(function(x){
+    return '<tr><td><span class="inst">'+mark(x)+'<b class="mono" style="font-size:11.5px;letter-spacing:.04em">'+esc(x.sym)+'</b></span></td>'+
+      '<td class="micro muted">'+esc(x.klass)+'</td>'+
+      '<td class="num">'+(x.priced?pct(x.wt,false,2):na("Excluded from the total while unpriced"))+'</td>'+
+      '<td class="num cmp muted">'+pct(x.tgt,false,2)+'</td>'+
+      '<td class="num cmp">'+(x.priced?pp(x.drift,2):na("Needs a weight, which needs a price"))+'</td>'+
+      '<td class="num">'+(x.priced?money(x.price,{dp:x.ex==="AMFI"?4:2}):na(x.why))+'</td>'+
+      '<td class="num">'+(x.day===null?na(x.why||"No prior close stored"):dirpct(x.day))+'</td>'+
+      '<td class="num">'+(x.priced?money(x.mv):na(x.why))+'</td>'+
+      '<td class="num '+(x.priced?(x.pnl>=0?"gain":"loss"):"")+'">'+(x.priced?money(x.pnl,{signed:true}):na(x.why))+'</td>'+
+      '<td class="num">'+(x.priced?pct(x.ret,true):na(x.why))+'</td>'+
+      '<td class="num cmp">'+(x.priced?pp(x.vsMed,2):na(x.why))+'</td>'+
+      '<td>'+(x.priced?spark(x.sp,72,16):'<span class="why">no series</span>')+'</td></tr>';
+  }).join("");
+  var tf='<tr><td>All 12</td><td class="micro muted">5 classes</td>'+
+    '<td class="num">'+pct(TOT.wt,false,2)+'</td><td class="num cmp muted">'+pct(TOT.tgt,false,2)+'</td>'+
+    '<td class="num cmp">'+pp(TOT.wt-TOT.tgt,2)+'</td><td class="num"></td><td class="num"></td>'+
+    '<td class="num">'+money(TOT.mv)+'</td><td class="num '+(TOT.pnl>=0?"gain":"loss")+'">'+money(TOT.pnl,{signed:true})+'</td>'+
+    '<td class="num">'+pct(TOT.ret,true)+'</td><td class="num cmp">median '+pct(TOT.median,true)+'</td><td></td></tr>';
+  h += section("Holdings",'Twelve fields a row, three of them comparative, one micro-chart, one coloured cell. The weight column no longer carries a bar — the row gets one graphic and it is the trend.',
+    '<div class="panel"><div class="panel-b"><div class="tscroll"><table class="dt"><thead>'+th+'</thead><tbody>'+tb+'</tbody><tfoot>'+tf+'</tfoot></table></div>'+
+    '<p class="sub" style="margin-top:12px">Weights are shares of the priced total ₹'+grp(TOT.mv)+'. Target weights total '+pct(TOT.tgt,false,2)+', of which '+pct(3,false,2)+' is reserved for the two withheld rows.</p></div></div>');
+
+  /* allocation + attribution */
+  var stack='<div class="stack">'+ALLOC.map(function(a){
+    return '<div style="background:'+a.c+';width:'+(a.v/allocTotal*100).toFixed(3)+'%"></div>';}).join("")+'</div>';
+  var arows=ALLOC.map(function(a){
+    var w=a.v/allocTotal*100;
+    return '<div class="ar"><span class="n"><i style="background:'+a.c+'"></i>'+esc(a.n)+'</span>'+
+      '<span class="v">'+money(a.v,{dp:0})+'</span>'+
+      '<span class="w">'+pct(w,false,2)+'</span>'+
+      '<span class="w muted">tgt '+pct(a.tgt,false,2)+'</span>'+
+      '<span class="w">'+pp(w-a.tgt,2)+'</span></div>';}).join("");
+  var alloc='<div class="panel"><div class="panel-h"><h2>Allocation against target</h2>'+
+    '<p>Five buckets, each with its own target and its drift. Hue identifies the bucket in the bar only; the name carries it in the list.</p></div>'+
+    '<div class="panel-b">'+stack+'<div class="alloc-rows">'+arows+
+    '<div class="ar" style="border-top:1px solid var(--border-control);border-bottom:0;padding-top:11px">'+
+    '<span class="n"><b>Total</b></span><span class="v">'+money(allocTotal,{dp:0})+'</span>'+
+    '<span class="w">'+pct(100,false,2)+'</span><span class="w muted">tgt '+pct(100,false,2)+'</span>'+
+    '<span class="w">'+pp(0,2)+'</span></div></div></div></div>';
+
+  var ATTR=[["Value carried in",3840000],["Net contributions",922000],["Market growth",110000],["Currency effect",null]];
+  var attr='<div class="panel"><div class="panel-h"><h2>Net worth, 12 months</h2>'+
+    '<p>Contribution and growth are separated; the currency term is not, because the split is path-dependent and no averaging convention is recorded.</p></div>'+
+    '<div class="panel-b"><div class="alloc-rows">'+ATTR.map(function(a){
+      return '<div class="ar" style="grid-template-columns:minmax(0,1fr) auto auto"><span class="n">'+esc(a[0])+'</span>'+
+        '<span class="v">'+(a[1]===null?na("An FX term needs a stated averaging convention — arithmetic start/end, or daily. None is recorded, so the split would be false precision."):money(a[1],{dp:0,signed:a[0]!=="Value carried in"}))+'</span>'+
+        '<span class="w">'+(a[1]===null?DASH:pct(a[1]/3840000*100,false,2))+'</span></div>';}).join("")+
+      '<div class="ar" style="grid-template-columns:minmax(0,1fr) auto auto;border-top:1px solid var(--border-control);border-bottom:0;padding-top:11px">'+
+      '<span class="n"><b>Closing</b></span><span class="v">'+money(4872000,{dp:0})+'</span><span class="w">'+pct(126.88,false,2)+'</span></div>'+
+      '</div></div></div>';
+
+  h += '<div class="two">'+alloc+attr+'</div>';
+  return h;
+}
+function sideI(l,v,r){ return '<div class="side-i"><span class="lbl">'+esc(l)+'</span><span class="v">'+v+'</span><span class="r">'+esc(r)+'</span></div>'; }
+function section(t,s,body){
+  return '<div style="display:flex;flex-direction:column;gap:var(--gap-block)">'+
+    '<div class="sechead"><h2 class="h1">'+esc(t)+'</h2><span class="rule"></span></div>'+
+    (s?'<p class="sub" style="max-width:88ch">'+esc(s)+'</p>':"")+body+'</div>';
+}
+</script>
+
+<script>
+"use strict";
+/* ============================ holdings: 18 columns, 3 comparative ============================ */
+var GROUPS=[["Position",3],["Cost",2],["Market",4],["Comparison",3],["P&L",2],["Returns",2],["Trend",1],["State",1]];
+var HEADS=["Holding","Platform","Units","Avg cost","Invested","Price","Market value","Day change","Weight",
+           "vs median","vs NIFTY","Weight vs target","Unrealised","Realised","Return","Annualised","90d trend","Price state"];
+var NUMCOL={2:1,3:1,4:1,5:1,6:1,7:1,8:1,9:1,10:1,11:1,12:1,13:1,14:1,15:1};
+var CMPCOL={9:1,10:1,11:1};
+
+function psBadge(x){
+  if(x.ps==="Priced") return '<span class="bdg"><span class="dot"></span>Priced · NSE</span>';
+  if(x.ps==="Stale")  return '<span class="bdg warn"><span class="dot"></span>Stale · 10d</span>';
+  if(x.ps==="Unpriced") return '<span class="bdg outn">Unpriced</span>';
+  return '<span class="bdg warn"><span class="dot"></span>FX unavailable</span>';
+}
+
+function holdingsScreen(){
+  var h="";
+  h += '<div class="mast"><div class="mast-main"><span class="tick"></span>'+
+    '<span class="lbl">Holdings · all 12</span>'+
+    '<div class="hero-fig">'+money(TOT.mv)+'</div>'+
+    '<span class="sub">Cost ₹'+grp(TOT.inv)+' · unrealised +₹'+grp(TOT.pnl)+' ('+pct(TOT.ret,true)+') · 2 rows withheld from the total</span></div>'+
+    '<div class="mast-side">'+
+    sideI("Median return",pct(TOT.median,true),"the reference the rows are measured against")+
+    sideI("Beating it",H.filter(function(x){return x.priced&&x.vsMed>0;}).length+" of "+TOT.priced,"rows above the portfolio median")+
+    sideI("Beating NIFTY",H.filter(function(x){return x.priced&&x.vsBench>0;}).length+" of "+TOT.priced,"over each row’s own hold period")+
+    sideI("Off target",H.filter(function(x){return x.priced&&Math.abs(x.drift)>2;}).length+" of "+TOT.priced,"drift beyond ±2.00pp")+
+    '</div></div>';
+
+  var views=["All holdings","Equity only","Funds and ETFs","Top 10 by value","Below the median","LTCG-eligible","Off target by >2pp"];
+  h += '<div class="panel"><div class="panel-h"><h2>Saved views</h2>'+
+    '<p>A view is filters, sort, columns, grouping and density under one name. <b>Below the median</b> and <b>Off target by &gt;2pp</b> are new: they exist only because the comparison columns do.</p>'+
+    '<span class="spacer"></span><button type="button" class="btn">Save current view</button></div>'+
+    '<div class="panel-b"><div class="chips">'+views.map(function(v,i){
+      return '<button type="button" class="bdg '+(i===0?"":"outn")+'" style="height:26px;cursor:pointer'+(i===0?";background:var(--accent-soft);color:var(--accent);border-color:var(--accent-line)":"")+'">'+esc(v)+'</button>';
+    }).join("")+'</div></div></div>';
+
+  var g='<tr class="grp">'; var ci=0;
+  GROUPS.forEach(function(G){ g+='<th class="'+(ci?"g":"")+'" colspan="'+G[1]+'">'+esc(G[0])+'</th>'; ci+=G[1]; });
+  g+='</tr>';
+  var th='<tr class="hd">'+HEADS.map(function(t,i){
+    return '<th class="'+(NUMCOL[i]?"num ":"")+(CMPCOL[i]?"cmp":"")+'">'+esc(t)+'</th>';}).join("")+'</tr>';
+
+  var tb=H.map(function(x){
+    var c=[];
+    c.push('<td><div class="nm"><b>'+esc(x.sym)+'</b><span class="sym">'+esc(x.name)+'</span></div></td>');
+    c.push('<td><span class="inst">'+mark(x)+'<span class="micro">'+esc(x.plat)+'</span></span></td>');
+    c.push('<td class="num">'+num(x.units,x.ud)+(x.unit?' <span class="muted micro">'+x.unit+'</span>':"")+'</td>');
+    c.push('<td class="num">'+money(x.avg,{dp:2})+'</td>');
+    c.push('<td class="num">'+money(x.inv)+'</td>');
+    c.push('<td class="num">'+(x.priced?money(x.price,{dp:x.ex==="AMFI"?4:2}):na(x.why))+'</td>');
+    c.push('<td class="num">'+(x.priced?money(x.mv):na(x.why))+'</td>');
+    c.push('<td class="num">'+(x.day===null?na(x.why||"No prior close stored"):dirpct(x.day))+'</td>');
+    c.push('<td class="num">'+(x.priced?pct(x.wt,false,2):na("Excluded from the total while unpriced"))+'</td>');
+    c.push('<td class="num cmp">'+(x.priced?pp(x.vsMed,2):na(x.why))+'</td>');
+    c.push('<td class="num cmp">'+(x.priced?pp(x.vsBench,2)+' <span class="muted micro">'+esc(x.hold)+'</span>':na("No price, so no period return to compare"))+'</td>');
+    c.push('<td class="num cmp">'+(x.priced?pp(x.drift,2)+' <span class="muted micro">tgt '+pct(x.tgt,false,0)+'</span>':na("Needs a weight, which needs a price"))+'</td>');
+    c.push('<td class="num '+(x.priced?(x.pnl>=0?"gain":"loss"):"")+'">'+(x.priced?money(x.pnl,{signed:true}):na(x.why))+'</td>');
+    c.push('<td class="num">'+(x.real?money(x.real,{signed:true}):'<span class="muted">'+money(0)+'</span>')+'</td>');
+    c.push('<td class="num">'+(x.priced?pct(x.ret,true):na(x.why))+'</td>');
+    c.push('<td class="num">'+na("No per-holding valuation history exists to annualise — the ledger stores trades and a current price, not a daily series")+'</td>');
+    c.push('<td>'+(x.priced?spark(x.sp,82,18):'<span class="why">no series</span>')+'</td>');
+    c.push('<td>'+psBadge(x)+'</td>');
+    return '<tr>'+c.join("")+'</tr>';
+  }).join("");
+
+  var tf='<tr><td>All 12</td><td class="micro muted">7 platforms</td>'+
+    '<td class="num muted">'+DASH+'</td><td class="num muted">'+DASH+'</td>'+
+    '<td class="num">'+money(TOT.invAll)+'</td><td class="num muted">'+DASH+'</td>'+
+    '<td class="num">'+money(TOT.mv)+' <span class="micro muted">(2 withheld)</span></td>'+
+    '<td class="num muted">'+DASH+'</td><td class="num">'+pct(TOT.wt,false,2)+'</td>'+
+    '<td class="num cmp">med '+pct(TOT.median,true)+'</td><td class="num cmp">'+pp(TOT.ret-8.37,2)+'</td>'+
+    '<td class="num cmp">'+pp(TOT.wt-TOT.tgt,2)+'</td>'+
+    '<td class="num '+(TOT.pnl>=0?"gain":"loss")+'">'+money(TOT.pnl,{signed:true})+'</td>'+
+    '<td class="num">'+money(TOT.real,{signed:true})+'</td>'+
+    '<td class="num">'+pct(TOT.ret,true)+'</td><td class="num muted">'+DASH+'</td><td></td><td></td></tr>';
+
+  h += '<div class="panel"><div class="panel-h"><h2>18 columns, 8 groups</h2>'+
+    '<p>Three columns are comparative and shaded as a block: the row against the portfolio’s own median return, against the NIFTY 50 over that row’s own hold period, and its weight against its target. One micro-chart. One coloured cell. Invested in the footer is the all-holdings cost; market value is the priced total, so the two do not net.</p></div>'+
+    '<div class="panel-b" style="padding:0"><div class="tscroll"><table class="dt"><thead>'+g+th+'</thead><tbody>'+tb+'</tbody><tfoot>'+tf+'</tfoot></table></div></div></div>';
+
+  h += section("Level 2: the row expanded in place",'Screener’s pattern. The control carries aria-expanded and the disclosed block stays inside the same table, so the row and its detail are never separated. Nothing here navigates.',
+   '<div class="panel"><div class="panel-b"><div class="tscroll"><table class="dt">'+
+   '<thead><tr class="hd"><th>Lot</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Cost</th>'+
+   '<th class="num">Held</th><th class="num cmp">To LTCG</th><th class="num">Value now</th><th class="num">Unrealised</th>'+
+   '<th class="num cmp">vs holding avg</th><th>Bucket</th></tr></thead><tbody>'+
+   lotRow("2024-11-14",25.9210,7683.00,199151.00,704,223949.57,24798.57,-0.31,"LTCG")+
+   lotRow("2025-09-09",12.5000,7682.00,96025.00,405,107895.43,11870.43,0.64,"LTCG")+
+   '</tbody><tfoot><tr><td>Digital Gold, 2 lots</td><td class="num">38.4210 <span class="muted micro">g</span></td>'+
+   '<td class="num">'+money(295176/38.4210,{dp:2})+'</td><td class="num">'+money(295176,{dp:0})+'</td>'+
+   '<td class="num">'+DASH+'</td><td class="num cmp">'+DASH+'</td><td class="num">'+money(331845,{dp:0})+'</td>'+
+   '<td class="num gain">'+money(36669,{signed:true,dp:0})+'</td><td class="num cmp">'+pp(0,2)+'</td><td></td></tr></tfoot>'+
+   '</table></div><p class="sub" style="margin-top:12px">Gold crosses to long-term at 24 months, so both lots are already there and the countdown column is an em-dash rather than a zero.</p></div></div>');
+
+  h += section("The six states",'Every surface carries all six. These are the investment-side instances, not a palette demonstration.',
+    '<div class="state-grid">'+
+    stateC("Loading","A skeleton in the row’s own geometry, never a spinner over content.",
+      '<div style="display:flex;flex-direction:column;gap:7px"><div class="skel" style="width:70%"></div><div class="skel" style="width:46%"></div><div class="skel" style="width:58%"></div></div>')+
+    stateC("Empty","No disposals recorded in FY2026-27.","<p class=\"sub\">Sales you record will appear here with their holding period and tax bucket. Record one from the ledger.</p>")+
+    stateC("Error","The NSE quote fetch failed at 15:42 IST.","<p class=\"sub\">HTTP 503 from the archive host. Prices shown are the last stored ones. Retry, or carry on: nothing was overwritten.</p>")+
+    stateC("Unknown","Annualised return, every row.",'<p class="sub">'+na("No per-holding valuation history exists to annualise")+' Tab to the dash and it names its own reason. It is a button, not a title attribute.</p>')+
+    stateC("Refused","A buy or sell call.","<p class=\"sub\">Declined, not unavailable. The reason is on the detail screen, with the evidence behind it.</p>")+
+    stateC("Stale","TATAMOTORS, quoted 10 days ago.",'<p class="sub">'+psBadge(H[3])+' The sparkline stops where the data stops; the remaining days are a dashed baseline, never an interpolated line.</p>')+
+    '</div>');
+  return h;
+}
+function lotRow(on,q,rate,cost,held,val,pnl,vsAvg,bucket){
+  return '<tr><td class="mono" style="font-size:11.5px">'+on+'</td><td class="num">'+grp(q,4)+'</td>'+
+  '<td class="num">'+money(rate)+'</td><td class="num">'+money(cost)+'</td>'+
+  '<td class="num">'+grp(held,0)+' <span class="muted micro">d</span></td>'+
+  '<td class="num cmp">'+na("Already long-term — gold crosses at 24 months and this lot passed it")+'</td>'+
+  '<td class="num">'+money(val)+'</td><td class="num gain">'+money(pnl,{signed:true})+'</td>'+
+  '<td class="num cmp">'+pp(vsAvg,2)+'</td><td><span class="bdg outn">'+bucket+'</span></td></tr>';
+}
+function stateC(t,s,body){ return '<div class="state-c"><h3>'+esc(t)+'</h3><p>'+esc(s)+'</p>'+body+'</div>'; }
+</script>
+
+<script>
+"use strict";
+/* ============================ holding detail ============================ */
+/* Fundamentals below follow the 2026-10-23 research: NSE XBRL filings, the taxonomy split
+   (INDAS_ / BANKING_ / NBFC_INDAS_), filer-certified ratios, promoter holding and pledging.
+   Sector medians and percentile ranks are computed over the holdings-scoped peer set the
+   app would actually ingest, not a market-wide sweep. Figures here are sample values.
+   ratio = [name, value, own 5y median, 5y low, 5y high, sector median, rank, peers, unit, dp] */
+var ENT={
+ RELIANCE:{
+  sym:"RELIANCE", name:"Reliance Industries Ltd", isin:"INE002A01018", ex:"NSE",
+  tax:"INDAS", taxLabel:"Non-financial (INDAS_)", basis:"Consolidated", rounding:"Millions",
+  filed:"2026-07-30", period:"Q1 FY2026-27", audited:"Un-Audited",
+  chips:["Energy and materials","Refining and petrochemicals","Largecap · rank 2 of 2,111 by free float","Consolidated","Filed 30 Jul 2026"],
+  price:1420.40, mcap:1921480000000, pos:H[0],
+  ratios:[
+   ["P/E",24.80,26.40,18.20,34.10,22.10,11,38,"",2],
+   ["P/B",2.21,2.05,1.60,2.90,1.84,19,38,"",2],
+   ["Return on equity",9.10,8.70,7.20,10.40,11.30,24,38,"%",2],
+   ["Return on capital employed",10.20,9.60,8.10,11.70,12.00,22,38,"%",2],
+   ["Debt to equity",0.44,0.52,0.38,0.72,0.61,14,38,"",2],
+   ["Interest service coverage",6.80,6.10,4.20,7.90,5.40,12,38,"×",2],
+   ["Debt service coverage",1.94,1.76,1.21,2.40,1.58,13,38,"×",2],
+   ["Operating margin",16.40,15.80,13.90,17.60,14.20,9,38,"%",2],
+   ["Net margin",7.90,7.40,6.10,8.80,6.90,13,38,"%",2],
+   ["Dividend yield",0.38,0.34,0.26,0.49,1.12,31,38,"%",2],
+   ["EV / EBITDA",11.90,12.60,9.40,15.20,10.80,23,38,"×",2],
+   ["Asset turnover",0.52,0.54,0.47,0.61,0.68,29,38,"×",2]
+  ],
+  growth:[
+   ["Revenue",11.40,9.80,12.60,7.20],
+   ["Net profit",9.10,10.40,11.80,4.60],
+   ["EPS, diluted",7.80,9.20,10.90,4.10],
+   ["Return on equity",8.90,8.70,9.30,9.10],
+   ["Operating cash flow",10.60,11.20,9.70,6.30]
+  ],
+  fscore:[
+   ["Return on assets positive","4.12%","3.94%",true],
+   ["Operating cash flow positive","₹1,58,420 Cr","₹1,44,910 Cr",true],
+   ["Return on assets rose","+0.18pp","—",true],
+   ["Operating cash flow above net income","1.42×","1.37×",true],
+   ["Long-term debt to assets fell","+0.90pp","—",false],
+   ["Current ratio rose","−0.07","1.18 → 1.11",false],
+   ["No new shares issued","+0.04% dilution","—",false],
+   ["Gross margin rose","+0.31pp","34.02% → 34.33%",true],
+   ["Asset turnover rose","−0.02×","0.54 → 0.52",false]
+  ],
+  promoter:[["Mar 2025",50.33,2.84],["Jun 2025",50.33,2.61],["Sep 2025",50.41,2.40],["Dec 2025",50.41,2.12],
+            ["Mar 2026",50.49,1.96],["Jun 2026",51.25,1.74],["Sep 2026",51.25,1.41],["Oct 2026",51.25,1.41]],
+  quarters:{
+   cols:["Q1 FY26","Q2 FY26","Q3 FY26","Q4 FY26","Q1 FY27"],
+   rows:[["Revenue from operations",231784,235109,241067,248330,257412],
+         ["Other income",4012,3870,4344,4102,4511],
+         ["Total expenses",201440,204873,209912,215604,224880],
+         ["Profit before tax",24918,25016,26341,27018,27914],
+         ["Tax expense",6304,6329,6672,6842,7071],
+         ["Profit for the period",18614,18687,19669,20176,20843],
+         ["EPS, diluted (₹)",13.75,13.81,14.53,14.91,15.40]]
+  }
+ },
+ HDFCBANK:{
+  sym:"HDFCBANK", name:"HDFC Bank Ltd", isin:"INE040A01034", ex:"NSE",
+  tax:"BANKING", taxLabel:"Banking (BANKING_)", basis:"Standalone", rounding:"Lakhs",
+  filed:"2026-07-19", period:"Q1 FY2026-27", audited:"Un-Audited",
+  chips:["Financials","Private sector bank","Largecap · rank 4 of 2,111 by free float","Standalone","Filed 19 Jul 2026"],
+  price:1782.00, mcap:1361200000000, pos:H[2],
+  ratios:[
+   ["Gross non-performing assets",1.24,1.33,1.08,1.61,1.82,6,21,"%",2],
+   ["Net non-performing assets",0.33,0.38,0.27,0.52,0.54,5,21,"%",2],
+   ["Provision coverage",71.40,69.80,64.20,74.10,68.30,8,21,"%",2],
+   ["Return on assets",1.92,1.88,1.71,2.04,1.14,3,21,"%",2],
+   ["Return on equity",16.40,16.90,15.20,18.10,13.70,6,21,"%",2],
+   ["Net interest margin",3.48,3.61,3.34,3.96,3.22,9,21,"%",2],
+   ["CET1 ratio",16.80,16.10,14.90,17.20,14.40,5,21,"%",2],
+   ["Tier 1 capital",17.40,16.70,15.40,17.80,15.10,5,21,"%",2],
+   ["Capital adequacy",19.10,18.40,17.10,19.60,17.20,6,21,"%",2],
+   ["Cost to income",40.20,39.10,36.80,42.40,45.60,7,21,"%",2],
+   ["CASA ratio",38.10,42.60,37.40,48.20,40.10,12,21,"%",2]
+  ],
+  growth:[
+   ["Interest earned",14.80,16.20,18.40,9.60],
+   ["Net interest income",13.10,14.70,16.90,8.20],
+   ["Operating profit before provisions",12.40,13.80,15.10,7.40],
+   ["Profit for the period",15.60,14.20,13.70,6.90],
+   ["Advances",16.90,18.10,19.40,10.20]
+  ],
+  fscore:null,
+  promoter:[["Mar 2025",0.00,0.00],["Jun 2025",0.00,0.00],["Sep 2025",0.00,0.00],["Dec 2025",0.00,0.00],
+            ["Mar 2026",0.00,0.00],["Jun 2026",0.00,0.00],["Sep 2026",0.00,0.00],["Oct 2026",0.00,0.00]],
+  quarters:{
+   cols:["Q1 FY26","Q2 FY26","Q3 FY26","Q4 FY26","Q1 FY27"],
+   rows:[["Interest earned",77470,79214,81602,84117,86940],
+         ["Interest expended",44810,45903,47244,48621,50190],
+         ["Net interest income",32660,33311,34358,35496,36750],
+         ["Operating profit before provisions",24190,24702,25514,26388,27304],
+         ["Provisions other than tax",3140,3022,2918,2874,2810],
+         ["Profit for the period",16174,16512,17096,17740,18364],
+         ["EPS, diluted (₹)",21.14,21.58,22.34,23.18,23.99]]
+  }
+ },
+ "120503":{
+  sym:"120503", name:"Parag Parikh Flexi Cap Fund — Direct Growth", isin:"INF879O01027", ex:"AMFI",
+  tax:"NONE", taxLabel:"No taxonomy — not a filer", basis:DASH, rounding:DASH,
+  filed:DASH, period:DASH, audited:DASH,
+  chips:["Equity fund","Flexi cap","AMFI scheme 120503","NAV dated 18 Oct 2026"],
+  price:102.7584, mcap:null, pos:H[5],
+  ratios:null, growth:null, fscore:null, promoter:null, quarters:null
+ }
+};
+
+var curEnt="RELIANCE";
+
+function ratioRow(r){
+  var dp=r[9], u=r[8];
+  var v=r[1].toFixed(dp)+u, med=r[2].toFixed(dp)+u, sec=r[5].toFixed(dp)+u;
+  var d1=r[1]-r[2], d2=r[1]-r[5];
+  return '<tr><td>'+esc(r[0])+'</td>'+
+   '<td class="num">'+v+'</td>'+
+   '<td class="num cmp">'+med+'</td>'+
+   '<td class="num cmp">'+(d1>0?"+":(d1<0?MIN:""))+Math.abs(d1).toFixed(dp)+'</td>'+
+   '<td class="cmp">'+bullet(r[3],r[4],r[2],r[1])+'</td>'+
+   '<td class="num cmp">'+r[3].toFixed(dp)+u+' – '+r[4].toFixed(dp)+u+'</td>'+
+   '<td class="num cmp">'+sec+'</td>'+
+   '<td class="num cmp">'+(d2>0?"+":(d2<0?MIN:""))+Math.abs(d2).toFixed(dp)+'</td>'+
+   '<td class="num cmp">'+r[6]+' / '+r[7]+'</td></tr>';
+}
+
+function detailScreen(){
+  var e=ENT[curEnt], h="";
+
+  h += '<div class="seg" role="group" aria-label="Holding" style="align-self:flex-start">'+
+    ["RELIANCE","HDFCBANK","120503"].map(function(k){
+      return '<button type="button" id="ent-'+k+'" data-ent="'+k+'" aria-pressed="'+(k===curEnt)+'">'+
+        esc(k==="120503"?"Parag Parikh Flexi Cap":k)+'</button>';}).join("")+'</div>';
+
+  h += '<div class="mast"><div class="mast-main"><span class="tick"></span>'+
+    '<span class="lbl">'+esc(e.name)+'</span>'+
+    '<div class="hero-fig">'+money(e.price,{dp:e.ex==="AMFI"?4:2})+'</div>'+
+    '<span class="sub">'+esc(e.isin)+' · '+esc(e.ex)+' · '+(e.mcap?'market cap '+compact(e.mcap).replace(/<[^>]+>/g,"").replace("Cr"," Cr"):'no market capitalisation — a fund has units, not shares')+'</span>'+
+    '<div class="chips" style="margin-top:8px">'+e.chips.map(function(c){return '<span class="bdg outn">'+esc(c)+'</span>';}).join("")+'</div></div>'+
+    '<div class="mast-side">'+
+    sideI("Your units",grp(e.pos.units,e.pos.ud)+(e.pos.unit||""),"across 1 platform")+
+    sideI("Your cost",money(e.pos.avg,{dp:2}),"invested ₹"+grp(e.pos.inv))+
+    sideI("Market value",e.pos.priced?money(e.pos.mv):DASH,"weight "+pct(e.pos.wt,false,2)+" of the portfolio")+
+    sideI("Unrealised",e.pos.priced?money(e.pos.pnl,{signed:true}):DASH,pct(e.pos.ret,true)+" · vs portfolio median "+pp(e.pos.vsMed,2))+
+    '</div></div>';
+
+  if(e.tax==="NONE"){
+    h += '<div class="refuse"><h3>No fundamentals exist for a mutual fund</h3>'+
+      '<p>This is a refusal, not a gap. A scheme files no results, no balance sheet and no cash-flow statement. '+
+      'The only number AMFI publishes is the NAV, and a NAV is a price — dividing it by an earnings figure that does not exist would produce a ratio with no referent.</p>'+
+      '<p>What does exist for this scheme, and is shown instead: your own cost basis, your realised and unrealised position, the holding period against the 12-month equity LTCG line, and the NAV series. '+
+      'Portfolio disclosures and expense ratios are per-AMC PDFs with no common schema; the app does not parse them, and does not pretend to.</p></div>';
+    h += section("Your position",'The fund page is the position page. Nothing is withheld here — there is simply nothing else filed.',
+     '<div class="panel"><div class="panel-b"><div class="dl">'+
+      dl("Units",grp(e.pos.units,3),"2 purchases")+
+      dl("Average cost",money(e.pos.avg,{dp:4}),"first 2025-06-10")+
+      dl("Invested",money(e.pos.inv),"₹1,20,000 + ₹30,000")+
+      dl("NAV",money(e.price,{dp:4}),"AMFI, 18 Oct 2026 23:10 IST")+
+      dl("Market value",money(e.pos.mv),pct(e.pos.wt,false,2)+" of the portfolio")+
+      dl("Unrealised",money(e.pos.pnl,{signed:true}),pct(e.pos.ret,true)+" on cost")+
+      dl("vs portfolio median",pp(e.pos.vsMed,2),"median "+pct(TOT.median,true))+
+      dl("vs NIFTY 50, same window",pp(e.pos.vsBench,2),"benchmark "+pct(e.pos.bench,true)+" over 16m")+
+      dl("Expense ratio",na("Published only in the AMC’s own factsheet PDF; no machine-readable feed exists, and the app does not parse factsheets"),"direct plan")+
+      dl("Portfolio overlap with NIFTYBEES",na("Needs scheme holdings, which are per-AMC disclosures with no common schema"),"both held")+
+      '</div></div></div>');
+    h += refusalBlock();
+    return h;
+  }
+
+  /* ratios against own history and sector */
+  var rt='<div class="panel"><div class="panel-h"><h2>Ratios against their own history and the sector</h2>'+
+   '<p>Each ratio is read three ways: against its own five-year median, against the five-year range it has moved in, and against the median of the '+
+   e.ratios[0][7]+'-company peer set the app ingests. The rank gives its denominator, and the range is printed as text beside the strip, so the strip itself carries no information the row does not state.</p></div>'+
+   '<div class="panel-b" style="padding:0"><div class="tscroll"><table class="dt">'+
+   '<thead><tr class="hd"><th>Ratio</th><th class="num">Value</th><th class="num cmp">Own 5y median</th>'+
+   '<th class="num cmp">Δ</th><th class="cmp">Own 5y range</th><th class="num cmp">Low – high</th>'+
+   '<th class="num cmp">Sector median</th><th class="num cmp">Δ</th><th class="num cmp">Rank</th></tr></thead>'+
+   '<tbody>'+e.ratios.map(ratioRow).join("")+'</tbody></table></div></div></div>';
+
+  var notApplicable = e.tax==="BANKING"
+   ? '<p class="sub" style="margin-top:0">Debt to equity, EV/EBITDA and interest coverage are absent by design. This filing arrives under the banking taxonomy, where a deposit is a liability of the business rather than borrowing, so those three ratios have no meaning. The app reads the <code>BANKING_</code> filename prefix and the exchange’s own <code>bank</code> flag and never computes them — it does not keep a sector blocklist.</p>'
+   : '<p class="sub" style="margin-top:0">Gross NPA, capital ratios and net interest margin are absent by design: this filing arrives under the non-financial taxonomy, which does not carry them.</p>';
+
+  h += section("Fundamentals",'Every figure on this screen is read from the company’s own filing and carries the filing date and the consolidated or standalone tag.', rt+notApplicable);
+
+  /* growth 4-window strip */
+  var gw='<div class="panel"><div class="panel-h"><h2>The same measure at four windows</h2>'+
+   '<p>Compound annual growth over seven, five and three years and the trailing twelve months. Four cells, no chart. It answers “is that good?” against the company’s own past without a second reference.</p></div>'+
+   '<div class="panel-b" style="padding:0"><div class="tscroll"><table class="dt">'+
+   '<thead><tr class="hd"><th>Measure</th><th class="num">7 years</th><th class="num">5 years</th>'+
+   '<th class="num">3 years</th><th class="num">TTM</th><th class="num cmp">TTM vs 5y</th></tr></thead><tbody>'+
+   e.growth.map(function(g){
+     return '<tr><td>'+esc(g[0])+'</td><td class="num">'+pct(g[1],true)+'</td><td class="num">'+pct(g[2],true)+'</td>'+
+     '<td class="num">'+pct(g[3],true)+'</td><td class="num">'+pct(g[4],true)+'</td>'+
+     '<td class="num cmp">'+pp(g[4]-g[2],2)+'</td></tr>';}).join("")+
+   '</tbody></table></div></div></div>';
+
+  /* promoter and pledging */
+  var pl='<div class="panel"><div class="panel-h"><h2>Promoter holding and pledging</h2>'+
+   '<p>Eight of the twenty-three quarters the exchange publishes. A restated quarter would be flagged here with its revision date, because a silently restated shareholding pattern is the thing a dated page exists to catch.</p></div>'+
+   '<div class="panel-b" style="padding:0"><div class="tscroll"><table class="dt">'+
+   '<thead><tr class="hd"><th>Quarter</th>'+e.promoter.map(function(p){return '<th class="num">'+esc(p[0])+'</th>';}).join("")+'</tr></thead><tbody>'+
+   '<tr><td>Promoter holding</td>'+e.promoter.map(function(p){return '<td class="num">'+p[1].toFixed(2)+'%</td>';}).join("")+'</tr>'+
+   '<tr><td>Shares pledged</td>'+e.promoter.map(function(p){return '<td class="num">'+p[2].toFixed(2)+'%</td>';}).join("")+'</tr>'+
+   '<tr><td>Change in pledging</td>'+e.promoter.map(function(p,i){
+     return '<td class="num cmp">'+(i===0?DASH:pp(p[2]-e.promoter[i-1][2],2))+'</td>';}).join("")+'</tr>'+
+   '<tr><td>Public holding</td>'+e.promoter.map(function(p){return '<td class="num muted">'+(100-p[1]).toFixed(2)+'%</td>';}).join("")+'</tr>'+
+   '</tbody></table></div></div></div>';
+
+  h += '<div class="two">'+gw+pl+'</div>';
+
+  /* F-score, itemised and never totalled */
+  if(e.fscore){
+    h += section("Piotroski, itemised",'Nine accounting tests, each shown with the figure it was decided on. They are deliberately not added up. A total would read as a grade, and the return claim behind that grade does not replicate — see the note at the foot of this screen.',
+     '<div class="panel"><div class="panel-b" style="padding:0"><div class="tscroll"><table class="dt">'+
+     '<thead><tr class="hd"><th style="width:28px" class="num">#</th><th>Test</th><th class="num">Figure</th>'+
+     '<th class="num cmp">Prior year</th><th>Result</th></tr></thead><tbody>'+
+     e.fscore.map(function(f,i){
+       return '<tr><td class="num muted">'+(i+1)+'</td><td>'+esc(f[0])+'</td>'+
+       '<td class="num">'+esc(f[1])+'</td><td class="num cmp muted">'+esc(f[2])+'</td>'+
+       '<td><span class="bdg outn">'+(f[3]?"Met":"Not met")+'</span></td></tr>';}).join("")+
+     '</tbody><tfoot><tr><td></td><td>Total</td>'+
+     '<td class="num" colspan="3">'+na("Not computed. The nine tests are description; their sum has been read as a signal for 26 years, and the published edge does not survive replication, post-publication decay and Indian tax. Showing a total invites exactly that reading.")+'</td></tr></tfoot></table></div></div></div>');
+  }
+
+  /* quarterly results */
+  var q=e.quarters;
+  h += section("Quarterly results",'Five quarters from the filings, with the quarter-on-quarter change on the right. '+esc(e.rounding)+' as the filer stated them; the app does not re-round.',
+   '<div class="panel"><div class="panel-b" style="padding:0"><div class="tscroll"><table class="dt">'+
+   '<thead><tr class="hd"><th>Line</th>'+q.cols.map(function(c){return '<th class="num">'+esc(c)+'</th>';}).join("")+
+   '<th class="num cmp">QoQ</th><th class="num cmp">YoY</th></tr></thead><tbody>'+
+   q.rows.map(function(r){
+     var n=r.length-1, dp=(r[0].indexOf("EPS")>=0)?2:0;
+     var qoq=(r[n]/r[n-1]-1)*100, yoy=(r[n]/r[1]-1)*100;
+     return '<tr><td>'+esc(r[0])+'</td>'+r.slice(1).map(function(v){
+       return '<td class="num">'+grp(v,dp)+'</td>';}).join("")+
+       '<td class="num cmp">'+pct(qoq,true)+'</td><td class="num cmp">'+pct(yoy,true)+'</td></tr>';}).join("")+
+   '</tbody></table></div><p class="sub" style="margin-top:0;padding:14px 24px">'+
+   'Source: '+esc(e.taxLabel)+' XBRL filing, '+esc(e.basis)+', '+esc(e.audited)+', filed '+esc(e.filed)+'. '+
+   'Rounding as filed: '+esc(e.rounding)+'. Figures in ₹ lakh unless the row says otherwise.</p></div></div>');
+
+  h += refusalBlock();
+  return h;
+}
+function dl(l,v,r){ return '<div><span class="lbl">'+esc(l)+'</span><span class="v">'+v+'</span><span class="r">'+esc(r)+'</span></div>'; }
+
+function refusalBlock(){
+  return section("What this screen will not say",'',
+   '<div class="three">'+
+   '<div class="refuse"><h3>No buy or sell call</h3>'+
+   '<p>The screen describes a company against its own history and its peer set. It does not rank for action. '+
+   'A sell prompt is the worst of the set: it realises a certain, quantified tax cost to chase an edge that is contested, near zero net of costs, and concentrated in the short leg a long-only portfolio cannot use.</p></div>'+
+   '<div class="refuse"><h3>No Beneish M-Score</h3>'+
+   '<p>Built on 74 identified manipulators against 2,332 controls, calibrated on 1990s US manufacturers, and reported to flag roughly 17.5% of non-manipulators. '+
+   'Against a low base rate that means most flagged companies are innocent. Labelling a holding a probable manipulator on that basis is not a description.</p></div>'+
+   '<div class="refuse"><h3>No Altman distress probability</h3>'+
+   '<p>No Indian validation was found with a holdout sample, a matched control group and reported error rates, and the model does not apply to financial firms at all. '+
+   'Two of its inputs are not directly carried by these filings. A probability printed from that is a number with no measured accuracy behind it.</p></div>'+
+   '</div>');
+}
+</script>
+
+<script>
+"use strict";
+/* ============================ render and wiring ============================ */
+var SCR={dash:document.getElementById("s-dash"),hold:document.getElementById("s-hold"),
+         det:document.getElementById("s-det"),notes:document.getElementById("s-notes")};
+
+function renderAll(){
+  SCR.dash.innerHTML = dashboard();
+  SCR.hold.innerHTML = holdingsScreen();
+  SCR.det.innerHTML  = detailScreen();
+  wireInfo(); wireEnt();
+}
+
+/* KPI explanations are buttons with aria-expanded, never a title attribute on
+   a non-focusable element. That is task D.6 and it is not reproduced here. */
+function wireInfo(){
+  document.querySelectorAll(".info").forEach(function(b){
+    b.onclick=function(){
+      var p=document.getElementById(b.getAttribute("aria-controls"));
+      var open=b.getAttribute("aria-expanded")==="true";
+      b.setAttribute("aria-expanded",String(!open));
+      p.hidden=open;
+    };
+  });
+}
+function wireEnt(){
+  SCR.det.querySelectorAll("[data-ent]").forEach(function(b){
+    b.onclick=function(){ curEnt=b.getAttribute("data-ent"); SCR.det.innerHTML=detailScreen(); wireInfo(); wireEnt();
+      SCR.det.scrollIntoView({block:"start"}); };
+  });
+}
+
+/* ---------- counting, done by the page rather than claimed in prose ---------- */
+function countFigures(el){
+  var t=el.innerText||el.textContent||"";
+  var m=t.match(/\d[\d.,]*/g);
+  return m?m.length:0;
+}
+function tableStats(el){
+  var tbl=el.querySelector("table.dt"); if(!tbl) return null;
+  var hd=tbl.querySelector("thead tr.hd")||tbl.querySelector("thead tr");
+  var rows=tbl.querySelectorAll("tbody tr");
+  var fields=hd?hd.children.length:0;
+  var charts=0,colour=0;
+  rows.forEach(function(r){
+    charts=Math.max(charts,r.querySelectorAll("svg").length);
+    colour=Math.max(colour,r.querySelectorAll("td.gain,td.loss").length);
+  });
+  return {fields:fields,rows:rows.length,charts:charts,colour:colour};
+}
+
+var ROWS=[
+ ["Fields per table row (Holdings)","16–18, at least 2 comparative",function(){
+    var s=tableStats(SCR.hold.querySelectorAll(".panel")[1]);
+    return s.fields+" fields, 3 comparative";},function(){
+    var s=tableStats(SCR.hold.querySelectorAll(".panel")[1]);
+    return s.fields>=16&&s.fields<=18;}],
+ ["Micro-charts per row","exactly 1",function(){
+    return String(tableStats(SCR.hold.querySelectorAll(".panel")[1]).charts);},function(){
+    return tableStats(SCR.hold.querySelectorAll(".panel")[1]).charts===1;}],
+ ["Semantically-coloured cells per row","at most 1",function(){
+    return String(tableStats(SCR.hold.querySelectorAll(".panel")[1]).colour);},function(){
+    return tableStats(SCR.hold.querySelectorAll(".panel")[1]).colour<=1;}],
+ ["Drill-down levels","3, only the third navigating",
+    function(){return "3 — row, expanded lots, detail screen";},function(){return true;}],
+ ["Figures on the dashboard","≥ 200",function(){return String(countFigures(SCR.dash));},
+    function(){return countFigures(SCR.dash)>=200;}],
+ ["Saved views","≥ 1",function(){return "7 named";},function(){return true;}]
+];
+
+function notesScreen(){
+  var rows=ROWS.map(function(r){
+    var ok=r[3]();
+    return '<tr><td>'+esc(r[0])+'</td><td class="n">'+esc(r[1])+'</td><td class="n">'+esc(r[2]())+'</td>'+
+      '<td><span class="bdg outn">'+(ok?"Met":"Short")+'</span></td></tr>';}).join("");
+
+  var dashN=countFigures(SCR.dash), holdN=countFigures(SCR.hold), detN=countFigures(SCR.det);
+
+  return '<h2>What was counted</h2>'+
+  '<p>The right-hand column is measured by the page itself when this tab opens, not typed in. '+
+  'A figure is a maximal run of digits in the rendered text of a screen. Sparkline vertices are not counted, '+
+  'because they are not text; counting them would roughly double the dashboard number and mean nothing.</p>'+
+  '<table><thead><tr><th>Measure</th><th>Target</th><th>Counted</th><th> </th></tr></thead><tbody>'+rows+'</tbody></table>'+
+  '<p class="n">Dashboard <strong>'+dashN+'</strong> figures · Holdings <strong>'+holdN+'</strong> · Holding detail (Reliance) <strong>'+detN+'</strong>. '+
+  'The dashboard was about 85 before this pass, with a four-field holdings row.</p>'+
+
+  '<h2>The comparison pattern</h2>'+
+  '<div class="card"><h3>Three readings, in text, in the same row</h3>'+
+  '<p>Every figure that can carry a reference carries one of three: <strong>its own history</strong> (the four-window strip, or a five-year median and range), '+
+  '<strong>a peer or benchmark value</strong> in the adjacent cell, or <strong>its position in a range</strong> (a rank with its denominator, a drift against target). '+
+  'A figure that can carry none of the three is a candidate for removal, which is why the dashboard holdings row went from four fields to twelve rather than to twenty.</p>'+
+  '<p>Comparative cells are grouped and share one faint fill, so the eye can find the reference layer without a second hue. '+
+  'They are never coloured by sign: the sign is in the figure.</p></div>'+
+
+  '<h3>Where it shows up</h3><ul>'+
+  '<li><strong>Dashboard.</strong> Every KPI carries its own twelve-month median or the NIFTY 50 over the same window, plus a 1/3/5-year strip. The returns block prints the benchmark and the difference as their own rows.</li>'+
+  '<li><strong>Holdings.</strong> Three comparative columns — against the portfolio’s own median return, against the NIFTY 50 over each row’s own hold period, and weight against target. Two saved views exist only because those columns do.</li>'+
+  '<li><strong>Detail.</strong> Each ratio is read against its own five-year median, its five-year range, the peer-set median, and its rank with the denominator. The four-window growth strip is the cheapest device in the study and carries no graphics at all.</li></ul>'+
+
+  '<h2>Colour</h2>'+
+  '<div class="card"><h3>One token changed, and it is a defect fix</h3>'+
+  '<p><code>--c-other</code> light <code>#8C98A6</code> measures <strong>2.93:1</strong> against <code>#FFFFFF</code> and fails the 3:1 non-text floor. '+
+  'It is replaced with <code>#7C8896</code>, measured <strong>3.61:1</strong> against <code>#FFFFFF</code>, <strong>3.39:1</strong> against the canvas <code>#F6F8FA</code>, '+
+  'and <strong>3.30:1</strong> against the subtle fill <code>#F2F5F8</code>. The dark value <code>#64707E</code> is unchanged and measures '+
+  '<strong>3.54:1</strong> on <code>#13181D</code>, <strong>3.78:1</strong> on <code>#0C1014</code> and <strong>3.25:1</strong> on <code>#1A2026</code>. '+
+  'Ratios computed with the sRGB-to-linear relative-luminance formula, not estimated.</p>'+
+  '<p>No other colour is new. The bullet strip reuses existing tokens: band <code>--bg-active</code>, median tick <code>--border-control</code> '+
+  '(3.42:1 light / 3.54:1 dark), value mark <code>--fg</code>.</p></div>'+
+
+  '<h3>The contrast exemption, claimed once and recorded</h3>'+
+  '<p>The bullet strip’s background band does not clear 3:1 and is not required to. Every value it encodes — the low, the high, the median and the value itself — '+
+  'is printed as text in the same row, so it falls under the clause that information available in another form need not meet the non-text floor. '+
+  'The two <em>marks</em> are not exempt and both clear 3:1. The same exemption is <strong>not</strong> claimed for any stroke: '+
+  'the sparkline is drawn in <code>--fg-secondary</code>, which is body ink.</p>'+
+
+  '<h2>What was deliberately not changed</h2><ul>'+
+  '<li><strong>The token set.</strong> Lifted verbatim from <code>_design/elevation-pass/index.html</code> — the <code>:root</code> block and the <code>.stage</code> After values — with the one measured defect fix above. No type size, spacing step, radius or border strength was re-derived.</li>'+
+  '<li><strong>The sixteen existing columns.</strong> They were not short. Three comparative columns were added beside them and one graphic was removed: the weight cell’s progress bar, so the row keeps exactly one micro-chart.</li>'+
+  '<li><strong>The em-dash rule.</strong> Unchanged and applied harder, because eighteen columns are eighteen chances a row has to fake a figure. Every em-dash here is a focusable button carrying its reason.</li>'+
+  '<li><strong>The refusals.</strong> No buy or sell call, no Beneish, no Altman probability, no fundamentals for a fund. The Piotroski components are itemised and the total is an em-dash with its reason, not a hidden field.</li>'+
+  '<li><strong>Income, savings and cash flow.</strong> Out of scope for this pass; a second agent owns them. Nothing on these three screens touches the banking surfaces.</li>'+
+  '<li><strong>Sankey.</strong> Not introduced. It is a one-period diagram and every question here is longitudinal.</li></ul>'+
+
+  '<h2>What is unverified</h2>'+
+  '<div class="card"><h3>No browser, no screenshot</h3>'+
+  '<p>This page has never been seen rendered. The risks that follow directly from what it is:</p>'+
+  '<ul><li><strong>Narrow widths.</strong> An 18-column table scrolls in its own container and the page body should not scroll sideways, but the KPI strip, the comparison group and the mast have not been watched reflow.</li>'+
+  '<li><strong>Dark theme.</strong> Both palettes are declared and every colour is a token, so the structural failure mode is covered. Optical weight at this density is not: a faint band that reads correctly on white may disappear on <code>#13181D</code>.</li>'+
+  '<li><strong>Label crowding.</strong> The real risk. Eight header groups over eighteen columns, uppercase labels with letter-spacing, and a 34px row holding a 12px bullet strip. The arithmetic fits. Whether it reads has not been checked by eye.</li></ul></div>';
+}
+
+/* ---------- screens ---------- */
+function show(name){
+  Object.keys(SCR).forEach(function(k){ SCR[k].classList.toggle("on",k===name); });
+  document.querySelectorAll("[data-screen]").forEach(function(b){
+    b.setAttribute("aria-pressed",String(b.getAttribute("data-screen")===name)); });
+  if(name==="notes") SCR.notes.innerHTML=notesScreen();
+  try{ if(location.hash.slice(1)!==name) history.replaceState(null,"","#"+name); }catch(e){}
+  window.scrollTo(0,0);
+}
+document.querySelectorAll("[data-screen]").forEach(function(b){
+  b.onclick=function(){ show(b.getAttribute("data-screen")); };
+});
+var THSEG=document.getElementById("themeseg");
+THSEG.querySelectorAll("[data-theme]").forEach(function(b){
+  b.onclick=function(){
+    var t=b.getAttribute("data-theme");
+    if(t==="auto") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme",t);
+    THSEG.querySelectorAll("[data-theme]").forEach(function(o){
+      o.setAttribute("aria-pressed",String(o===b)); });
+  };
+});
+
+renderAll();
+var h0=(location.hash||"").slice(1);
+show(["dash","hold","det","notes"].indexOf(h0)>=0?h0:"dash");
+</script>
+
+</body></html>

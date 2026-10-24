@@ -4,7 +4,7 @@
 > *Done when* condition holds — not when the code is written. Each phase ends with a
 > gate that must be green before the next phase starts. Progress table at the bottom.
 
-> **This file is the single source of truth for progress.** It lives in the repository on
+> **This file is the source of truth for architecture rebuild progress.** It lives in the repository on
 > purpose: any engineer or agent can open it, read the last ticked box, and continue from
 > exactly that point with no other context. Do not keep a second copy anywhere.
 >
@@ -23,6 +23,17 @@
 >    the one failure mode this document exists to prevent.
 > 5. **Never tick a box you did not verify.** An unticked box costs an hour; a falsely
 >    ticked one costs the trust in every other tick on the page.
+
+**Authority correction (2026-10-24):** this plan retains the rebuild's progress and
+historical evidence. `TASKS.md` owns the subsequent F/P0–P6 programme, with reasoning in
+`_architecture/requirements/financial-health-scoring.md`. Do not duplicate its checkboxes
+here. Historical statements in this plan are not a fresh audit or permission to build
+features excluded by current PRODUCT-REQUIREMENT.md and RULES.md.
+
+The older instructions above to tick/amend in the same commit are superseded by
+RULES.md §5.1: never stage or commit without explicit owner instruction. Update the
+applicable plan in the working tree alongside the work and preserve pre-existing staged
+changes. Current task ownership, approvals and independent QA gates still apply.
 
 ---
 
@@ -2068,8 +2079,11 @@ Update the status cell to `◐ In progress` / `✔ Complete (n/n)` as phases lan
 
 ### What is built
 
-Everything a household actually uses is built, on a double-entry ledger in exact integer
-money, with 42 spec files and ~2,080 assertions green.
+Historical rebuild snapshot: the capabilities below were recorded on a double-entry
+ledger in exact integer money, with 42 spec files and ~2,080 assertions green at that
+checkpoint. This is not a claim that the newer TASKS.md programme is complete or that
+those checks were rerun during the 2026-10-24 document reconciliation. Older card and
+integration capabilities below do not override today's narrower product scope.
 
   - **The core** — `Money`/`Quantity`/`UnitPrice`/`Percentage`/`Rate`/`CalendarDate`, and a
     three-layer float prohibition (types, three ESLint rules, a schema-integrity spec).

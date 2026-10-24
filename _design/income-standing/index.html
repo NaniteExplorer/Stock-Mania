@@ -1,0 +1,1261 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Stock-Mania Income &amp; Standing</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+/* Layout concept: a sticky chrome over three stacked screens, each a column of full-bleed
+   sections separated by 40px and hairlines rather than cards. Density lives in one wide
+   table per screen (34px rows, mono figures, horizontal scroll in its own container) with
+   every figure placed beside a reference value. Tokens below are the corrected v2 set,
+   lifted verbatim from _design/elevation-pass/index.html — no colour is invented here. */
+
+:root{
+  --n-0:#FFFFFF; --n-50:#F6F8FA; --n-100:#EFF2F5; --n-150:#E4E8ED; --n-200:#D6DCE3;
+  --n-300:#B9C2CC; --n-400:#8C98A6; --n-450:#808C9A; --n-500:#64707E; --n-600:#49545F;
+  --n-700:#343C45; --n-775:#2A323A; --n-800:#232A31; --n-850:#1A2026; --n-900:#13181D; --n-950:#0C1014;
+
+  --h-xs:24px; --h-sm:28px; --h-md:32px; --h-lg:36px; --h-xl:40px;
+  --r-1:2px; --r-2:3px; --r-3:4px; --r-4:6px; --r-5:8px; --r-pill:999px;
+  --t-fast:90ms; --t:110ms; --ease:cubic-bezier(.2,0,.38,1);
+  --sans:"Inter",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  --gl:max(16px,env(safe-area-inset-left,0px));
+  --gr:max(16px,env(safe-area-inset-right,0px));
+
+  --bg-canvas:#F6F8FA; --bg-surface:#FFFFFF; --bg-sunken:#F2F5F8; --bg-subtle:#F2F5F8;
+  --bg-hover:#F6F8FA; --bg-active:#EFF2F5;
+  --border-subtle:#E4E8ED; --border:#D6DCE3; --border-control:#808C9A;
+  --border-hover:#64707E; --border-active:#49545F;
+  --fg:#13181D; --fg-secondary:#49545F; --fg-muted:#64707E; --fg-disabled:#7C8896;
+  --accent:#4F62D8; --accent-hover:#3F50BE; --accent-on:#FFFFFF;
+  --accent-soft:#EEF2FF; --accent-line:#A5B4FC;
+  --gain:#0E7C66; --gain-bg:#E6F5F1; --gain-line:#8FD3C4;
+  --loss:#C0392B; --loss-bg:#FBEAE7; --loss-line:#EAA69E;
+  --warn:#B45309; --warn-bg:#FDF4E6; --warn-line:#E8C58A;
+  --inner-hl:inset 0 -1px 0 rgb(19 24 29 / .07);
+  --c1:#5468D6; --c2:#1F94A8; --c3:#B5801F; --c4:#A14C9E; --c5:#4E7A3A; --c-other:#8C98A6;
+  --grid:#E4E8ED;
+  --skel-a:#EFF2F5; --skel-b:#E4E8ED;
+  color-scheme:light;
+
+  /* Not part of the lifted block. One alias, no new hex: every micro-chart stroke and every
+     "long tail / Other" fill draws from --fg-muted instead of --c-other, which measures
+     2.93:1 in light and fails the 3:1 non-text floor (DESIGN.md §1.2 class of defect, D.5). */
+  --spark:var(--fg-muted);
+}
+@media (prefers-color-scheme:dark){ :root:not([data-theme="light"]){
+  --bg-canvas:#0C1014; --bg-surface:#13181D; --bg-sunken:#0C1014; --bg-subtle:#1A2026;
+  --bg-hover:#232A31; --bg-active:#2A323A;
+  --border-subtle:#232A31; --border:#343C45; --border-control:#64707E;
+  --border-hover:#8C98A6; --border-active:#B9C2CC;
+  --fg:#F6F8FA; --fg-secondary:#B9C2CC; --fg-muted:#8C98A6; --fg-disabled:#5C6875;
+  --accent:#7D8CEA; --accent-hover:#9AA6F0; --accent-on:#0C1014;
+  --accent-soft:#1B2340; --accent-line:#4F62D8;
+  --gain:#3FC9A6; --gain-bg:#0E2F29; --gain-line:#1F6B5B;
+  --loss:#FF7A6B; --loss-bg:#3A1A16; --loss-line:#8A3C33;
+  --warn:#F0B429; --warn-bg:#2E2411; --warn-line:#7A5E1B;
+  --inner-hl:inset 0 1px 0 rgb(255 255 255 / .055);
+  --c1:#8A7FE8; --c2:#2FA3BA; --c3:#B68530; --c4:#C76BA0; --c5:#6FA14E; --c-other:#64707E;
+  --grid:#232A31;
+  --skel-a:#1A2026; --skel-b:#232A31;
+  color-scheme:dark;
+}}
+:root[data-theme="dark"]{
+  --bg-canvas:#0C1014; --bg-surface:#13181D; --bg-sunken:#0C1014; --bg-subtle:#1A2026;
+  --bg-hover:#232A31; --bg-active:#2A323A;
+  --border-subtle:#232A31; --border:#343C45; --border-control:#64707E;
+  --border-hover:#8C98A6; --border-active:#B9C2CC;
+  --fg:#F6F8FA; --fg-secondary:#B9C2CC; --fg-muted:#8C98A6; --fg-disabled:#5C6875;
+  --accent:#7D8CEA; --accent-hover:#9AA6F0; --accent-on:#0C1014;
+  --accent-soft:#1B2340; --accent-line:#4F62D8;
+  --gain:#3FC9A6; --gain-bg:#0E2F29; --gain-line:#1F6B5B;
+  --loss:#FF7A6B; --loss-bg:#3A1A16; --loss-line:#8A3C33;
+  --warn:#F0B429; --warn-bg:#2E2411; --warn-line:#7A5E1B;
+  --inner-hl:inset 0 1px 0 rgb(255 255 255 / .055);
+  --c1:#8A7FE8; --c2:#2FA3BA; --c3:#B68530; --c4:#C76BA0; --c5:#6FA14E; --c-other:#64707E;
+  --grid:#232A31;
+  --skel-a:#1A2026; --skel-b:#232A31;
+  color-scheme:dark;
+}
+
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg-canvas);color:var(--fg);font-family:var(--sans);
+  font-size:14px;line-height:20px;-webkit-font-smoothing:antialiased}
+@media (prefers-reduced-motion:reduce){*{transition-duration:1ms!important;animation-duration:1ms!important}}
+h1,h2,h3{margin:0;font-weight:600;text-wrap:balance}
+p{margin:0}
+button,input,select{font:inherit;color:inherit;margin:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono,.fig{font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero}
+
+/* ---- chrome ---- */
+.chrome{position:sticky;top:env(safe-area-inset-top,0px);z-index:9;background:var(--bg-surface);
+  border-bottom:1px solid var(--border);padding-block:10px;padding-left:var(--gl);padding-right:var(--gr)}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--bg-surface)}
+.chrome-in{display:flex;flex-wrap:wrap;align-items:center;gap:10px;max-width:1440px;margin:0 auto}
+.brand{display:flex;align-items:center;gap:9px;margin-right:4px}
+.mark{width:22px;height:22px;border:1.5px solid var(--accent);border-radius:var(--r-2);flex:none;position:relative}
+.mark::after{content:"";position:absolute;left:2.5px;right:2.5px;bottom:2.5px;height:6px;
+  background:linear-gradient(to right,var(--accent) 0 2px,transparent 2px 4px,var(--accent) 4px 7px,transparent 7px 9px,var(--accent) 9px 13px)}
+.brand b{font-size:13.5px;font-weight:600;letter-spacing:-.008em}
+.seg{display:inline-flex;height:var(--h-md);border:1px solid var(--border-control);border-radius:var(--r-2);
+  overflow:hidden;background:var(--bg-surface);box-shadow:var(--inner-hl)}
+.seg button{height:30px;padding:0 11px;border:0;background:none;font-size:12px;font-weight:500;
+  color:var(--fg-secondary);cursor:pointer;white-space:nowrap;
+  transition:background-color var(--t-fast) var(--ease),color var(--t-fast) var(--ease)}
+.seg button+button{box-shadow:inset 1px 0 0 var(--border)}
+.seg button:hover{background:var(--bg-hover);color:var(--fg)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.seg button[aria-pressed="true"],.seg button[aria-pressed="true"]+button{box-shadow:none}
+.seg button:focus-visible{outline-offset:-2px}
+.seg-sm button{height:26px;padding:0 9px;font-size:11.5px}
+.seg-sm{height:var(--h-sm)}
+.spacer{margin-left:auto}
+.btn{display:inline-flex;align-items:center;gap:6px;height:var(--h-md);padding:0 12px;font-size:12.5px;
+  font-weight:500;border:1px solid var(--border-control);border-radius:var(--r-2);background:var(--bg-surface);
+  color:var(--fg);box-shadow:var(--inner-hl);cursor:pointer;white-space:nowrap;
+  transition:background-color var(--t-fast) var(--ease),border-color var(--t-fast) var(--ease)}
+.btn:hover{background:var(--bg-hover);border-color:var(--border-hover)}
+.btn-sm{height:var(--h-sm);padding:0 9px;font-size:11.5px}
+
+/* ---- stage ---- */
+.stage{padding-block:0 80px;padding-left:var(--gl);padding-right:var(--gr);max-width:1440px;margin:0 auto}
+.screen{display:none;flex-direction:column;gap:40px;padding-top:40px}
+.screen.on{display:flex}
+.block{display:flex;flex-direction:column;gap:16px;min-width:0}
+.sechead{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px}
+.sechead .rule{flex:1;min-width:24px;height:1px;background:var(--border-subtle)}
+.h1{font-size:20px;line-height:26px;font-weight:600;letter-spacing:-.014em}
+.h2{font-size:13px;line-height:18px;font-weight:600;letter-spacing:-.004em}
+.lbl{font-size:11px;line-height:16px;font-weight:500;letter-spacing:.085em;text-transform:uppercase;color:var(--fg-muted)}
+.sub{font-size:12px;line-height:17px;color:var(--fg-muted);max-width:92ch}
+.note{font-size:11.5px;line-height:16px;color:var(--fg-muted);max-width:96ch}
+.note b{color:var(--fg-secondary);font-weight:500}
+
+/* ---- hero + kpi ---- */
+.hero{display:flex;flex-wrap:wrap;align-items:flex-end;gap:24px 40px}
+.hero-fig{font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero;
+  font-size:clamp(34px,6.4vw,50px);line-height:1.02;font-weight:500;letter-spacing:-.022em}
+.hero-fig .cur{font-size:.46em;color:var(--fg-muted);font-weight:400;margin-right:.1em}
+.hero-fig .unit{font-size:.40em;color:var(--fg-muted);font-weight:400;letter-spacing:.06em;margin-left:.12em}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(158px,1fr));gap:0;
+  border-top:1px solid var(--border-control)}
+.kpi{padding:14px 20px 12px 0;border-right:1px solid var(--border-subtle);min-width:0}
+.kpi:last-child{border-right:0}
+.kpi .kv{font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero;
+  font-size:22px;line-height:28px;font-weight:500;letter-spacing:-.012em;margin-top:4px}
+.kpi .kref{font-size:11.5px;line-height:16px;color:var(--fg-muted);margin-top:3px;
+  font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero}
+.kpi-h{display:flex;align-items:center;gap:5px}
+
+/* ---- info button (keyboard reachable; never title= on a non-focusable element) ---- */
+.info{width:16px;height:16px;flex:none;display:inline-flex;align-items:center;justify-content:center;
+  border:1px solid var(--border);border-radius:var(--r-pill);background:var(--bg-surface);
+  font-size:9.5px;font-weight:600;line-height:1;color:var(--fg-muted);cursor:pointer;padding:0}
+.info:hover{border-color:var(--border-hover);color:var(--fg)}
+.pop{position:fixed;z-index:30;max-width:340px;background:var(--bg-surface);border:1px solid var(--border-control);
+  border-radius:var(--r-4);padding:10px 12px;font-size:12px;line-height:17px;color:var(--fg-secondary);
+  box-shadow:0 1px 0 var(--border)}
+.pop b{color:var(--fg);font-weight:600;display:block;margin-bottom:3px;font-size:11.5px}
+.pop .src{display:block;margin-top:6px;font-size:11px;color:var(--fg-muted)}
+
+/* ---- the admission ---- */
+.dash{font-family:var(--mono);background:none;border:0;padding:0;cursor:help;color:var(--fg-muted);
+  border-bottom:1px dotted var(--border-control);line-height:1.1}
+.dash:hover{color:var(--fg)}
+
+/* ---- tables ---- */
+.tw{overflow-x:auto;border:1px solid var(--border);border-radius:var(--r-3);background:var(--bg-surface)}
+table.dt{border-collapse:separate;border-spacing:0;width:100%;min-width:max-content;
+  font-size:12.5px;font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero}
+.dt thead th{position:sticky;top:0;z-index:2;background:var(--bg-subtle);text-align:left;
+  font-family:var(--sans);font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;
+  color:var(--fg-muted);padding:7px 10px;white-space:nowrap;border-bottom:1px solid var(--border);
+  vertical-align:bottom}
+.dt thead tr.grp th{top:0;font-size:9.5px;letter-spacing:.1em;color:var(--fg-muted);
+  background:var(--bg-sunken);border-bottom:1px solid var(--border-subtle);padding:5px 10px}
+.dt thead tr.grp th.g{border-left:1px solid var(--border)}
+.dt thead tr.cols th{top:26px}
+.dt th.num,.dt td.num{text-align:right}
+.dt tbody td{height:34px;padding:7px 10px;border-bottom:1px solid var(--border-subtle);
+  white-space:nowrap;color:var(--fg)}
+.dt tbody tr:hover td{background:var(--bg-hover)}
+.dt tbody td.g{border-left:1px solid var(--border-subtle)}
+.dt tbody tr:last-child td{border-bottom:0}
+.dt td.name{font-family:var(--sans);font-size:12.5px;font-weight:500;color:var(--fg)}
+.dt td.txt{font-family:var(--sans);font-size:12px;color:var(--fg-secondary)}
+.dt tfoot td{height:34px;padding:7px 10px;border-top:1px solid var(--border-control);
+  font-weight:500;background:var(--bg-subtle);white-space:nowrap}
+.dt tfoot td.lab{font-family:var(--sans);font-size:11px;letter-spacing:.085em;text-transform:uppercase;color:var(--fg-muted)}
+.gain{color:var(--gain)}
+.loss{color:var(--loss)}
+.warnink{color:var(--warn)}
+.mut{color:var(--fg-muted)}
+.sp{display:block;overflow:visible}
+
+/* expand control */
+.exp{width:18px;height:18px;border:1px solid var(--border);border-radius:var(--r-1);background:var(--bg-surface);
+  color:var(--fg-muted);font-size:11px;line-height:1;cursor:pointer;padding:0;display:inline-flex;
+  align-items:center;justify-content:center;font-family:var(--mono)}
+.exp:hover{border-color:var(--border-hover);color:var(--fg)}
+tr.detail td{background:var(--bg-sunken);white-space:normal;padding:12px 14px}
+.dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:10px 20px}
+.dgrid .dl{font-size:10.5px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-muted);font-family:var(--sans)}
+.dgrid .dv{font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero;font-size:12.5px;margin-top:2px}
+.lvl3{display:inline-flex;align-items:center;gap:5px;margin-top:10px;font-family:var(--sans);font-size:11.5px;
+  color:var(--accent);text-decoration:none;border-bottom:1px solid var(--accent-line);padding-bottom:1px}
+
+/* chips / badges */
+.chip{display:inline-flex;align-items:center;gap:4px;height:19px;padding:0 6px;border:1px solid var(--border);
+  border-radius:var(--r-1);font-family:var(--sans);font-size:10.5px;font-weight:500;color:var(--fg-secondary);
+  background:var(--bg-surface);white-space:nowrap}
+.chip.acc{border-color:var(--accent-line);color:var(--accent);background:var(--accent-soft)}
+.chip.wn{border-color:var(--warn-line);color:var(--warn);background:var(--warn-bg)}
+.chip.ls{border-color:var(--loss-line);color:var(--loss);background:var(--loss-bg)}
+.chip.gn{border-color:var(--gain-line);color:var(--gain);background:var(--gain-bg)}
+
+/* institution mark */
+.mk{width:18px;height:18px;border-radius:var(--r-1);flex:none;display:inline-flex;align-items:center;
+  justify-content:center;font-family:var(--sans);font-size:8px;font-weight:600;letter-spacing:.02em;
+  overflow:hidden;border:1px solid var(--border-subtle)}
+.mk img{width:100%;height:100%;object-fit:contain;display:block}
+.with-mk{display:inline-flex;align-items:center;gap:7px}
+
+/* panels */
+.panel{border:1px solid var(--border);border-radius:var(--r-4);background:var(--bg-surface);overflow:hidden}
+.panel-h{display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:11px 16px;border-bottom:1px solid var(--border-subtle)}
+.panel-b{padding:16px}
+.cols2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.cols3{display:grid;grid-template-columns:repeat(auto-fit,minmax(248px,1fr));gap:16px}
+
+/* decomposition strip */
+.decomp{display:grid;grid-template-columns:repeat(auto-fit,minmax(148px,1fr));gap:0;border-top:1px solid var(--border-control)}
+.dc{padding:12px 16px 12px 0;border-right:1px solid var(--border-subtle)}
+.dc:last-child{border-right:0}
+.dc .v{font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero;font-size:19px;line-height:25px;font-weight:500;margin-top:3px}
+.dc .c{font-size:11px;line-height:15px;color:var(--fg-muted);margin-top:3px}
+
+/* small multiples */
+.sm{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:1px;background:var(--border-subtle);
+  border:1px solid var(--border-subtle)}
+.smc{background:var(--bg-surface);padding:8px 9px 7px}
+.smc .t{display:flex;align-items:baseline;justify-content:space-between;gap:6px}
+.smc .t b{font-family:var(--sans);font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--fg-secondary)}
+.smc .t span{font-family:var(--mono);font-size:10.5px;color:var(--fg-muted)}
+.smc .f{font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero;font-size:12.5px;margin-top:2px}
+
+/* bullet strip */
+.bul{position:relative;height:12px;background:var(--bg-subtle);border:1px solid var(--border-subtle);border-radius:var(--r-1);overflow:hidden}
+.bul i{position:absolute;top:3px;bottom:3px;left:0;background:var(--fg-muted);display:block}
+.bul u{position:absolute;top:0;bottom:0;width:2px;background:var(--fg);display:block}
+
+/* percentile band */
+.pband{position:relative;height:38px;border:1px solid var(--border);border-radius:var(--r-2);background:var(--bg-subtle);overflow:hidden}
+.pband .band{position:absolute;top:0;bottom:0;background:var(--accent-soft);border-left:1px solid var(--accent-line);border-right:1px solid var(--accent-line)}
+.pband .tick{position:absolute;top:0;bottom:0;width:1px;background:var(--border)}
+.pband .tl{position:absolute;bottom:2px;font-family:var(--mono);font-size:9.5px;color:var(--fg-muted);transform:translateX(-50%)}
+.pband .pt{position:absolute;top:4px;bottom:14px;width:2px;background:var(--accent)}
+.pband .guess{position:absolute;top:4px;bottom:14px;width:2px;background:var(--fg-muted)}
+
+/* states */
+.skel{background:linear-gradient(90deg,var(--skel-a) 0%,var(--skel-b) 50%,var(--skel-a) 100%);
+  background-size:200% 100%;animation:sh 1.3s linear infinite;border-radius:var(--r-1);height:12px}
+@keyframes sh{to{background-position:-200% 0}}
+.state{border:1px dashed var(--border-control);border-radius:var(--r-3);padding:14px 16px;background:var(--bg-sunken)}
+.state h3{font-size:12.5px;font-weight:600;margin-bottom:4px}
+.state p{font-size:11.5px;line-height:16px;color:var(--fg-muted)}
+.refused{border:1px solid var(--warn-line);background:var(--warn-bg);border-radius:var(--r-3);padding:14px 16px}
+.refused h3{font-size:13px;font-weight:600;color:var(--warn);margin-bottom:4px}
+.refused p{font-size:12px;line-height:17px;color:var(--fg-secondary)}
+
+/* report */
+.report{border-top:1px solid var(--border-control);padding-top:24px;display:flex;flex-direction:column;gap:16px}
+.report h2{font-size:16px;letter-spacing:-.01em}
+.report h3{font-size:12px;letter-spacing:.07em;text-transform:uppercase;color:var(--fg-muted);font-weight:600}
+.report p,.report li{font-size:12.5px;line-height:19px;color:var(--fg-secondary);max-width:84ch}
+.report ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px}
+.rt{width:100%;border-collapse:collapse;font-size:12px;max-width:760px}
+.rt th,.rt td{text-align:left;padding:5px 10px 5px 0;border-bottom:1px solid var(--border-subtle);vertical-align:top}
+.rt th{font-family:var(--sans);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--fg-muted);font-weight:600}
+.rt td.n{font-family:var(--mono);font-variant-numeric:tabular-nums slashed-zero}
+
+input[type=range]{accent-color:var(--accent);width:100%;max-width:420px}
+select,input[type=number]{height:var(--h-sm);border:1px solid var(--border-control);border-radius:var(--r-2);
+  background:var(--bg-surface);padding:0 7px;font-size:12px}
+.hr{height:1px;background:var(--border-subtle)}
+</style>
+
+<header class="chrome">
+  <div class="chrome-in">
+    <div class="brand"><span class="mark"></span><b>Stock-Mania</b></div>
+    <div class="seg" role="group" aria-label="Screen">
+      <button type="button" data-scr="income" aria-pressed="true">Income</button>
+      <button type="button" data-scr="savings" aria-pressed="false">Savings &amp; cash flow</button>
+      <button type="button" data-scr="standing" aria-pressed="false">Standing</button>
+    </div>
+    <span class="spacer"></span>
+    <div class="seg seg-sm" role="group" aria-label="Terms">
+      <button type="button" data-terms="real" aria-pressed="true">Real</button>
+      <button type="button" data-terms="nom" aria-pressed="false">Nominal</button>
+    </div>
+    <div class="seg seg-sm" role="group" aria-label="Framing">
+      <button type="button" data-frame="ttm" aria-pressed="true">Rolling 12m</button>
+      <button type="button" data-frame="fy" aria-pressed="false">FY 2026-27</button>
+    </div>
+    <div class="seg seg-sm" role="group" aria-label="Theme">
+      <button type="button" data-theme-set="light" aria-pressed="false">Light</button>
+      <button type="button" data-theme-set="dark" aria-pressed="false">Dark</button>
+    </div>
+  </div>
+</header>
+
+<main class="stage">
+  <section class="screen on" id="scr-income" aria-label="Income"></section>
+  <section class="screen" id="scr-savings" aria-label="Savings and cash flow"></section>
+  <section class="screen" id="scr-standing" aria-label="Standing"></section>
+</main>
+
+<script>
+/* ============================================================
+   Formatting — en-IN, U+2212 minus, lakh/crore truncated toward zero
+   ============================================================ */
+var MINUS="−", DASH="—";
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c];});}
+function grp(n){ // Indian grouping on an integer string
+  var s=String(n), last=s.slice(-3), rest=s.slice(0,-3);
+  if(!rest) return last;
+  return rest.replace(/\B(?=(\d{2})+(?!\d))/g,",")+","+last;
+}
+function inr(v,o){o=o||{};
+  if(v==null) return null;
+  var neg=v<0, a=Math.abs(v), dec=o.dec==null?0:o.dec;
+  var f=a.toFixed(dec), parts=f.split("."), out=grp(parts[0])+(parts[1]?"."+parts[1]:"");
+  var sign = neg?MINUS:(o.sign&&v>0?"+":"");
+  return sign+"₹"+out;
+}
+function compact(v,o){o=o||{};
+  if(v==null) return null;
+  var neg=v<0,a=Math.abs(v),u="",d=a;
+  if(a>=1e7){d=a/1e7;u="Cr";} else if(a>=1e5){d=a/1e5;u="L";} else {return inr(v,o);}
+  d=Math.floor(d*100)/100; // truncate toward zero
+  var sign=neg?MINUS:(o.sign&&v>0?"+":"");
+  return sign+"₹"+d.toFixed(2)+u;
+}
+function pct(v,o){o=o||{}; if(v==null) return null;
+  var d=o.dec==null?1:o.dec, neg=v<0, a=Math.abs(v);
+  return (neg?MINUS:(o.sign&&v>0?"+":""))+a.toFixed(d)+"%";
+}
+function num(v,d){ if(v==null) return null; var neg=v<0,a=Math.abs(v);
+  return (neg?MINUS:"")+a.toFixed(d==null?2:d); }
+
+/* an em-dash is an admission — keyboard reachable, with its reason */
+var _why=0;
+function dash(reason){
+  return '<button type="button" class="dash" data-why="'+esc(reason)+'" aria-label="Unavailable — '+esc(reason)+'">'+DASH+'</button>';
+}
+function info(title,body,src){
+  return '<button type="button" class="info" data-pop-t="'+esc(title)+'" data-pop-b="'+esc(body)+'" data-pop-s="'+esc(src||"")+'" aria-label="About '+esc(title)+'">i</button>';
+}
+function fig(s,cls){ return s==null?dash("not computable"):'<span class="fig'+(cls?" "+cls:"")+'">'+s+'</span>'; }
+
+/* sparkline — gapped where unavailable, never interpolated, single ink */
+function spark(vals,w,h){
+  w=w||84;h=h||16;
+  var nums=vals.filter(function(v){return v!=null;});
+  if(nums.length<2) return dash("fewer than two observations in window");
+  var mn=Math.min.apply(null,nums),mx=Math.max.apply(null,nums),rg=(mx-mn)||1;
+  var X=function(i){return 1+i*(w-2)/(vals.length-1);},
+      Y=function(v){return h-1.5-((v-mn)/rg)*(h-3);};
+  var segs=[],cur=[];
+  vals.forEach(function(v,i){ if(v==null){ if(cur.length)segs.push(cur); cur=[]; } else cur.push([X(i),Y(v)]); });
+  if(cur.length)segs.push(cur);
+  var d="",dots="";
+  segs.forEach(function(s){
+    if(s.length===1){ dots+='<circle cx="'+s[0][0].toFixed(1)+'" cy="'+s[0][1].toFixed(1)+'" r="1.3" fill="var(--spark)"/>'; return; }
+    d+="M"+s.map(function(p){return p[0].toFixed(1)+" "+p[1].toFixed(1);}).join(" L")+" ";
+  });
+  var li=-1; for(var i=vals.length-1;i>=0;i--){ if(vals[i]!=null){li=i;break;} }
+  var end= li>=0 ? '<circle cx="'+X(li).toFixed(1)+'" cy="'+Y(vals[li]).toFixed(1)+'" r="1.8" fill="var(--spark)"/>' : "";
+  var gaps=vals.filter(function(v){return v==null;}).length;
+  return '<svg class="sp" width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="'+
+    vals.length+'-month trend'+(gaps?", "+gaps+" month(s) unavailable, shown as gaps":"")+
+    '"><path d="'+d.trim()+'" fill="none" stroke="var(--spark)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>'+dots+end+'</svg>';
+}
+function bullet(v,lo,hi,target,w){
+  w=w||72; var r=(hi-lo)||1;
+  var fw=Math.max(1,Math.min(w,(v-lo)/r*w)), tx=Math.max(0,Math.min(w-2,(target-lo)/r*w));
+  return '<span class="bul" style="display:inline-block;width:'+w+'px;vertical-align:middle" role="img" aria-hidden="true">'+
+    '<i style="width:'+fw.toFixed(1)+'px"></i><u style="left:'+tx.toFixed(1)+'px"></u></span>';
+}
+
+/* institution mark — /api/logo/<id>, branded badge from the provider's own colours on 404.
+   Never a hand-drawn approximation of a real mark. DESIGN.md §9. */
+function mark(p){
+  return '<span class="mk" style="background:'+p.c1+';color:'+p.c2+';position:relative" aria-hidden="true">'+
+    esc(p.short)+
+    '<img src="/api/logo/'+esc(p.id)+'" alt="" style="position:absolute;inset:0;background:'+p.c1+'" onerror="this.remove()"></span>';
+}
+
+/* ============================================================
+   Data — 24 months to Oct 2026. Deterministic, never random at render.
+   ============================================================ */
+var MN=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+var MONTHS=[]; (function(){ var y=2024,m=10; for(var i=0;i<24;i++){ MONTHS.push({y:y,m:m,l:MN[m]+" "+String(y).slice(2)}); m++; if(m>11){m=0;y++;} } })();
+function rng(seed){var a=seed>>>0;return function(){a=(a+0x6D2B79F5)|0;var t=Math.imul(a^a>>>15,1|a);t=(t+Math.imul(t^t>>>7,61|t))^t;return ((t^t>>>14)>>>0)/4294967296;};}
+
+var PROV={
+  hdfc:{id:"hdfc-bank",name:"HDFC Bank",short:"HD",c1:"#004C8F",c2:"#FFFFFF"},
+  icici:{id:"icici-bank",name:"ICICI Bank",short:"IC",c1:"#AE282E",c2:"#FFFFFF"},
+  kotak:{id:"kotak-bank",name:"Kotak Mahindra Bank",short:"KO",c1:"#003874",c2:"#FFFFFF"},
+  paytm:{id:"paytm-bank",name:"Paytm Payments Bank",short:"PT",c1:"#00BAF2",c2:"#002970"},
+  zerodha:{id:"zerodha",name:"Zerodha",short:"ZE",c1:"#387ED1",c2:"#FFFFFF"},
+  none:{id:"unknown",name:"Not linked",short:"—",c1:"#64707E",c2:"#FFFFFF"}
+};
+
+/* income streams */
+var STREAMS=[
+  {id:"sal",name:"Salary — base",src:"Evawin Optimize Pvt Ltd",prov:PROV.hdfc,kind:"Fixed",freq:"Monthly",due:1,exp:185000,seed:11,
+   gen:function(i,r){ return (MONTHS[i].y<2026||(MONTHS[i].y===2026&&MONTHS[i].m<3))?168000:185000; }},
+  {id:"var",name:"Salary — variable pay",src:"Evawin Optimize Pvt Ltd",prov:PROV.hdfc,kind:"Variable",freq:"Quarterly",due:7,exp:42000,
+   seed:23,gen:function(i,r){ var m=MONTHS[i].m; if(m!==2&&m!==5&&m!==8&&m!==11) return 0; return Math.round((34000+r()*22000)/100)*100; }},
+  {id:"free",name:"Freelance — retainers",src:"3 clients",prov:PROV.icici,kind:"Variable",freq:"Irregular",due:null,exp:null,
+   seed:41,gen:function(i,r){ var k=r(); if(k<0.28) return 0; return Math.round((18000+r()*54000)/500)*500; }},
+  {id:"rent",name:"Rent — Pune 2BHK",src:"Tenant (lease to Mar 2027)",prov:PROV.icici,kind:"Fixed",freq:"Monthly",due:5,exp:22000,
+   seed:57,gen:function(i,r){ if(i===23) return null; return (MONTHS[i].y<2026)?20000:22000; },
+   missing:{at:23,why:"Expected ₹22,000 on 5 Oct 2026. No matching credit in ICICI ••9087 as of 24 Oct. This is a missed inflow, not zero income."}},
+  {id:"div",name:"Dividends",src:"Listed equity + ETFs",prov:PROV.zerodha,kind:"Variable",freq:"Irregular",due:null,exp:null,
+   seed:73,gen:function(i,r){ var m=MONTHS[i].m,k=r(); if(m===2||m===5||m===6||m===9) return Math.round((1200+k*6400)/10)*10; return k<0.45?0:Math.round((400+k*1800)/10)*10; }},
+  {id:"int",name:"Interest — FD and savings",src:"ICICI FD 7.1% + sweep",prov:PROV.icici,kind:"Fixed",freq:"Monthly accrual",due:18,exp:4100,
+   seed:89,gen:function(i,r){ return Math.round((3600+i*26+r()*420)/1)*1; }},
+  {id:"cb",name:"Cashback and rewards",src:"Cards, UPI offers",prov:PROV.paytm,kind:"Variable",freq:"Irregular",due:null,exp:null,
+   seed:97,gen:function(i,r){ return Math.round((120+r()*1450)/10)*10; }},
+  {id:"reim",name:"Reimbursements",src:"Evawin Optimize Pvt Ltd",prov:PROV.kotak,kind:"Variable",freq:"Irregular",due:null,exp:null,
+   seed:113,gen:function(i,r){ if(i===14||i===15) return null; var k=r(); return k<0.33?0:Math.round((2400+k*14000)/100)*100; },
+   unknown:{why:"Kotak ••4410 statements for Jan and Feb 2026 were never imported. Not zero — unread."}}
+];
+STREAMS.forEach(function(s){ var r=rng(s.seed); s.series=MONTHS.map(function(_,i){return s.gen(i,r);}); });
+
+/* expense categories */
+var CATS=[
+  {name:"Housing — rent",cls:"Recurring",per:"Monthly, 5th",base:38000,v:0,seed:5,commit:38000,auto:0,next:"05 Nov 2026",fest:1.00},
+  {name:"Loan EMI — personal",cls:"Recurring",per:"Monthly, 3rd",base:14820,v:0,seed:7,commit:14820,auto:1,next:"03 Nov 2026",fest:1.00},
+  {name:"Insurance — health + motor",cls:"Recurring",per:"Annual, split",base:4950,v:0.02,seed:13,commit:4950,auto:2,next:"19 Jan 2027",fest:1.00},
+  {name:"Utilities — power, water, gas",cls:"Recurring",per:"Monthly",base:3100,v:0.34,seed:17,commit:2600,auto:1,next:"14 Nov 2026",fest:1.06},
+  {name:"Broadband and mobile",cls:"Recurring",per:"Monthly",base:1998,v:0.04,seed:19,commit:1998,auto:2,next:"11 Nov 2026",fest:1.00},
+  {name:"Subscriptions — media, SaaS",cls:"Recurring",per:"Monthly + annual",base:2740,v:0.18,seed:29,commit:2290,auto:9,next:"02 Nov 2026",fest:1.00},
+  {name:"Household help",cls:"Recurring",per:"Monthly",base:6500,v:0.05,seed:31,commit:6500,auto:0,next:"01 Nov 2026",fest:1.33},
+  {name:"Groceries",cls:"Mixed",per:"Weekly",base:12400,v:0.19,seed:37,commit:9000,auto:0,next:null,fest:1.22},
+  {name:"Transport and fuel",cls:"Mixed",per:"Weekly",base:5600,v:0.27,seed:43,commit:2800,auto:0,next:null,fest:1.14},
+  {name:"Eating out and delivery",cls:"Discretionary",per:"Irregular",base:7300,v:0.41,seed:47,commit:0,auto:0,next:null,fest:1.41},
+  {name:"Health — out of pocket",cls:"Mixed",per:"Irregular",base:2900,v:0.62,seed:53,commit:0,auto:0,next:null,fest:0.92},
+  {name:"Travel",cls:"Discretionary",per:"Seasonal",base:6100,v:0.95,seed:59,commit:0,auto:0,next:null,fest:1.68},
+  {name:"Gifts and festival",cls:"Discretionary",per:"Seasonal",base:2600,v:1.20,seed:61,commit:0,auto:0,next:null,fest:3.10},
+  {name:"Education and courses",cls:"Discretionary",per:"Irregular",base:1900,v:0.80,seed:67,commit:0,auto:1,next:"28 Feb 2027",fest:0.80}
+];
+/* One calibration constant, so that the derived runway lands on the house sample figure
+   (liquid ₹9.34L / 6.2 months) instead of the figure being asserted beside a total that
+   contradicts it. Every total on the screen is still summed from these rows at render time. */
+var CAL=1.2496;
+CATS.forEach(function(c){
+  var r=rng(c.seed);
+  c.series=MONTHS.map(function(mo,i){
+    var fest=(mo.m===9||mo.m===10)?c.fest:1;             // Oct/Nov festival window
+    var mar =(mo.m===2&&c.name.indexOf("Insurance")>=0)?1.9:1;
+    var drift=1+ (i/24)*0.07;
+    var j=1+(r()-0.5)*2*c.v;
+    return Math.max(0,Math.round(c.base*CAL*fest*mar*drift*j/10)*10);
+  });
+});
+
+/* derived series */
+function sum(a){return a.reduce(function(x,y){return x+(y||0);},0);}
+function med(a){var b=a.filter(function(v){return v!=null;}).slice().sort(function(x,y){return x-y;});
+  if(!b.length)return null; var n=b.length; return n%2?b[(n-1)/2]:(b[n/2-1]+b[n/2])/2;}
+function cv(a){var b=a.filter(function(v){return v!=null;}); if(b.length<2)return null;
+  var m=sum(b)/b.length; if(!m)return null;
+  var s=Math.sqrt(b.reduce(function(x,y){return x+(y-m)*(y-m);},0)/(b.length-1)); return s/m*100;}
+function win(a,n){return a.slice(a.length-n);}
+
+var INC_M=MONTHS.map(function(_,i){
+  var t=0,unk=false;
+  STREAMS.forEach(function(s){ var v=s.series[i]; if(v==null) unk=true; else t+=v; });
+  return unk?{v:t,partial:true}:{v:t,partial:false};
+});
+var EXP_M=MONTHS.map(function(_,i){ return CATS.reduce(function(t,c){return t+c.series[i];},0); });
+
+var TTM_IN = sum(win(INC_M,12).map(function(o){return o.v;}));
+var TTM_OUT= sum(win(EXP_M,12));
+var TTM_SAVE=TTM_IN-TTM_OUT;
+var TTM_RATE=TTM_SAVE/TTM_IN*100;
+
+/* FY 2026-27 to date = Apr 2026 (index 17) .. Oct 2026 (index 23) */
+var FY_FROM=17;
+var FY_IN=sum(INC_M.slice(FY_FROM).map(function(o){return o.v;}));
+var FY_OUT=sum(EXP_M.slice(FY_FROM));
+
+/* ============================================================
+   Shared state
+   ============================================================ */
+var S={screen:"income",terms:"real",frame:"ttm",view:"all",guess:null,revealed:false,expanded:{}};
+var CPI={base:"2024=100",breakAt:14,note:"MoSPI changed the CPI base from 2012=100 to 2024=100 with new-series data from January 2026 and states direct comparison across the break is not feasible. The real series below is spliced at that point and the splice is drawn."};
+
+/* ============================================================
+   Screen 1 — Income
+   ============================================================ */
+function incomeTable(){
+  var rows=STREAMS.filter(function(s){ return S.view==="all" || (S.view==="var"&&s.kind==="Variable") || (S.view==="exp"&&s.exp!=null); });
+  var ttmAll=TTM_IN;
+  var groups=[["",2],["Expected",3],["October 2026",3],["Own 12-month history",5],["Trend and share",5]];
+  var cols=[
+    "Stream","Source",
+    "Expected / mo","Due","Frequency",
+    "Received","Δ vs expected","Status",
+    "TTM total","12m median","vs own median","12m low","12m high",
+    "CV 12m","24m trend","Share of TTM","FY25-26 share","Δ share"
+  ];
+  var nums={2:1,5:1,6:1,8:1,9:1,10:1,11:1,12:1,13:1,15:1,16:1,17:1};
+  var h='<thead><tr class="grp">';
+  groups.forEach(function(g,gi){ h+='<th colspan="'+g[1]+'"'+(gi?' class="g"':'')+'>'+esc(g[0])+'</th>'; });
+  h+='<th></th></tr><tr class="cols">';
+  var gi=0,left=groups[0][1];
+  cols.forEach(function(c,i){
+    var isG=false;
+    if(left===0){gi++;left=groups[gi][1];isG=true;}
+    left--;
+    h+='<th class="'+(nums[i]?"num":"")+(isG?" g":"")+'" scope="col">'+esc(c)+'</th>';
+  });
+  h+='<th></th></tr></thead>';
+
+  var body="",tot={rec:0,exp:0,ttm:0,share:0,fyshare:0};
+  rows.forEach(function(s){
+    var last=s.series[23], prev12=win(s.series,12), prev12b=s.series.slice(0,12);
+    var ttm=sum(prev12), m=med(prev12), lo=null,hi=null;
+    var obs=prev12.filter(function(v){return v!=null;});
+    if(obs.length){lo=Math.min.apply(null,obs);hi=Math.max.apply(null,obs);}
+    var c=cv(prev12);
+    var share=ttm/ttmAll*100, fyshare=sum(prev12b)/sum(INC_M.slice(0,12).map(function(o){return o.v;}))*100;
+    var vsMed=(m&&last!=null)?(last-m)/m*100:null;
+    var d=(s.exp!=null&&last!=null)?last-s.exp:null;
+    tot.rec+=(last||0); tot.exp+=(s.exp||0); tot.ttm+=ttm; tot.share+=share; tot.fyshare+=fyshare;
+
+    var status,statusCls="";
+    if(s.missing&&s.missing.at===23){status='<span class="chip ls">Missing</span>';}
+    else if(s.unknown&&last==null){status='<span class="chip wn">Unread</span>';}
+    else if(s.exp==null){status='<span class="chip">No expectation</span>';}
+    else if(last===0){status='<span class="chip">Nil this month</span>';}
+    else if(d!=null&&d<0){status='<span class="chip wn">Short</span>';}
+    else {status='<span class="chip gn">Received</span>';}
+
+    // at most ONE semantically coloured cell per row: the Delta-vs-expected cell.
+    var dCell = (last==null&&s.missing) ? dash(s.missing.why)
+              : (last==null) ? dash(s.unknown?s.unknown.why:"no observation")
+              : (d==null) ? dash("no expected amount is set for this stream")
+              : fig(inr(d,{sign:true}), d<0?"loss":(d>0?"gain":""));
+
+    var recCell = last==null ? (s.missing? dash(s.missing.why) : dash(s.unknown.why)) : fig(inr(last));
+
+    body+='<tr data-row="'+s.id+'">'+
+      '<td class="name"><span class="with-mk"><button type="button" class="exp" aria-expanded="false" data-exp="'+s.id+'" aria-label="Expand '+esc(s.name)+'">+</button>'+mark(s.prov)+esc(s.name)+'</span></td>'+
+      '<td class="txt">'+esc(s.src)+'</td>'+
+      '<td class="num g">'+(s.exp==null?dash("variable stream — no amount is promised"):fig(inr(s.exp)))+'</td>'+
+      '<td class="num">'+(s.due==null?dash("no fixed date"):fig(String(s.due)))+'</td>'+
+      '<td class="txt">'+esc(s.freq)+'</td>'+
+      '<td class="num g">'+recCell+'</td>'+
+      '<td class="num">'+dCell+'</td>'+
+      '<td>'+status+'</td>'+
+      '<td class="num g">'+fig(compact(ttm))+'</td>'+
+      '<td class="num">'+fig(inr(m))+'</td>'+
+      '<td class="num">'+(vsMed==null?dash("no October observation to compare"):fig(pct(vsMed,{sign:true})))+'</td>'+
+      '<td class="num">'+fig(inr(lo))+'</td>'+
+      '<td class="num">'+fig(inr(hi))+'</td>'+
+      '<td class="num g">'+fig(c==null?null:num(c,1)+"%")+'</td>'+
+      '<td>'+spark(s.series,84,16)+'</td>'+
+      '<td class="num">'+fig(pct(share))+'</td>'+
+      '<td class="num">'+fig(pct(fyshare))+'</td>'+
+      '<td class="num">'+fig(pct(share-fyshare,{sign:true}))+'</td>'+
+      '<td></td></tr>';
+
+    body+='<tr class="detail" id="det-'+s.id+'" hidden><td colspan="19">'+
+      '<div class="dgrid">'+
+        '<div><div class="dl">Employer / payer</div><div class="dv" style="font-family:var(--sans)">'+esc(s.src)+'</div></div>'+
+        '<div><div class="dl">Credited to</div><div class="dv" style="font-family:var(--sans)">'+esc(s.prov.name)+'</div></div>'+
+        '<div><div class="dl">Fixed component</div><div class="dv">'+(s.kind==="Fixed"?fig(inr(s.exp)):fig(inr(0)))+'</div></div>'+
+        '<div><div class="dl">Variable component</div><div class="dv">'+(s.kind==="Variable"?fig(inr(last==null?null:last)):fig(inr(0)))+'</div></div>'+
+        '<div><div class="dl">24m total</div><div class="dv">'+fig(compact(sum(s.series)))+'</div></div>'+
+        '<div><div class="dl">24m median</div><div class="dv">'+fig(inr(med(s.series)))+'</div></div>'+
+        '<div><div class="dl">Best month</div><div class="dv">'+fig(inr(Math.max.apply(null,s.series.filter(function(v){return v!=null;}))))+'</div></div>'+
+        '<div><div class="dl">Months observed</div><div class="dv">'+fig(s.series.filter(function(v){return v!=null;}).length+" / 24")+'</div></div>'+
+        '<div><div class="dl">Months at nil</div><div class="dv">'+fig(String(s.series.filter(function(v){return v===0;}).length))+'</div></div>'+
+        '<div><div class="dl">Months unread</div><div class="dv">'+fig(String(s.series.filter(function(v){return v==null;}).length))+'</div></div>'+
+        '<div><div class="dl">Share of TTM</div><div class="dv">'+fig(pct(share))+'</div></div>'+
+        '<div><div class="dl">Range position (12m)</div><div class="dv">'+(last==null?dash("no October observation"):bullet(last,lo,hi,m,72)+' <span class="fig" style="font-size:11.5px">'+esc(inr(lo))+'–'+esc(inr(hi))+'</span>')+'</div></div>'+
+      '</div>'+
+      '<a class="lvl3" href="#" onclick="return false;">Open stream ledger — every credit, its narration and the posting pair →</a>'+
+      '</td></tr>';
+  });
+
+  var ft='<tfoot><tr>'+
+    '<td class="lab">Total — '+rows.length+' streams</td><td></td>'+
+    '<td class="num g"><span class="fig">'+esc(inr(tot.exp))+'</span></td><td></td><td></td>'+
+    '<td class="num g"><span class="fig">'+esc(inr(tot.rec))+'</span></td>'+
+    '<td class="num"><span class="fig">'+esc(inr(tot.rec-tot.exp,{sign:true}))+'</span></td>'+
+    '<td class="txt mut">1 missing · 1 unread</td>'+
+    '<td class="num g"><span class="fig">'+esc(compact(tot.ttm))+'</span></td>'+
+    '<td colspan="4"></td><td class="g"></td><td></td>'+
+    '<td class="num"><span class="fig">'+esc(pct(tot.share))+'</span></td>'+
+    '<td class="num"><span class="fig">'+esc(pct(tot.fyshare))+'</span></td>'+
+    '<td class="num"><span class="fig">'+esc(pct(tot.share-tot.fyshare,{sign:true}))+'</span></td><td></td></tr></tfoot>';
+
+  return '<div class="tw"><table class="dt" role="grid" aria-label="Income streams">'+h+'<tbody>'+body+'</tbody>'+ft+'</table></div>';
+}
+
+function monthlyIncomeTable(){
+  var r12=MONTHS.slice(12);
+  var expTotal=STREAMS.reduce(function(t,s){return t+(s.exp||0);},0);
+  var vals=INC_M.slice(12).map(function(o){return o.v;});
+  var m12=med(vals);
+  var h='<thead><tr class="cols">'+
+    ['Month','Expected','Received','Δ','Fixed','Variable','Variable share','vs 12m median','Streams in','Nil','Unread'].map(function(c,i){
+      return '<th class="'+(i?"num":"")+'" scope="col">'+esc(c)+'</th>';}).join("")+'</tr></thead>';
+  var body="",tE=0,tR=0,tF=0,tV=0;
+  r12.forEach(function(mo,k){
+    var i=k+12,fixed=0,varb=0,inn=0,nil=0,unread=0;
+    STREAMS.forEach(function(s){ var v=s.series[i];
+      if(v==null){unread++;return;} if(v===0){nil++;return;} inn++;
+      if(s.kind==="Fixed")fixed+=v; else varb+=v; });
+    var got=fixed+varb;
+    tE+=expTotal;tR+=got;tF+=fixed;tV+=varb;
+    body+='<tr><td class="txt">'+esc(MN[mo.m]+" "+mo.y)+'</td>'+
+      '<td class="num"><span class="fig">'+esc(inr(expTotal))+'</span></td>'+
+      '<td class="num"><span class="fig">'+esc(inr(got))+'</span></td>'+
+      '<td class="num"><span class="fig'+(got-expTotal<0?" loss":"")+'">'+esc(inr(got-expTotal,{sign:true}))+'</span></td>'+
+      '<td class="num"><span class="fig">'+esc(inr(fixed))+'</span></td>'+
+      '<td class="num"><span class="fig">'+esc(inr(varb))+'</span></td>'+
+      '<td class="num"><span class="fig">'+esc(pct(varb/got*100))+'</span></td>'+
+      '<td class="num"><span class="fig">'+esc(pct((got-m12)/m12*100,{sign:true}))+'</span></td>'+
+      '<td class="num"><span class="fig">'+inn+'</span></td>'+
+      '<td class="num"><span class="fig">'+nil+'</span></td>'+
+      '<td class="num"><span class="fig">'+(unread?'<span class="warnink">'+unread+'</span>':unread)+'</span></td></tr>';
+  });
+  body+='';
+  var ft='<tfoot><tr><td class="lab">12 months</td>'+
+    '<td class="num"><span class="fig">'+esc(inr(tE))+'</span></td>'+
+    '<td class="num"><span class="fig">'+esc(inr(tR))+'</span></td>'+
+    '<td class="num"><span class="fig">'+esc(inr(tR-tE,{sign:true}))+'</span></td>'+
+    '<td class="num"><span class="fig">'+esc(inr(tF))+'</span></td>'+
+    '<td class="num"><span class="fig">'+esc(inr(tV))+'</span></td>'+
+    '<td class="num"><span class="fig">'+esc(pct(tV/tR*100))+'</span></td>'+
+    '<td colspan="4"></td></tr></tfoot>';
+  return '<div class="tw"><table class="dt" aria-label="Expected against actual by month">'+h+'<tbody>'+body+'</tbody>'+ft+'</table></div>';
+}
+
+function renderIncome(){
+  var last=INC_M[23].v, prev=INC_M[22].v, yoy=INC_M[11].v;
+  var m12=med(INC_M.slice(12).map(function(o){return o.v;}));
+  var fixedTTM=0,varTTM=0;
+  STREAMS.forEach(function(s){ var t=sum(win(s.series,12)); if(s.kind==="Fixed")fixedTTM+=t; else varTTM+=t; });
+  var concentration=Math.max.apply(null,STREAMS.map(function(s){return sum(win(s.series,12));}))/TTM_IN*100;
+  var incCV=cv(INC_M.slice(12).map(function(o){return o.v;}));
+  var headline = S.frame==="ttm"?TTM_IN:FY_IN;
+  var headlineLbl = S.frame==="ttm"?"Rolling 12 months to Oct 2026":"FY 2026-27 to date (Apr–Oct)";
+
+  var kpi=function(l,v,ref,ex){
+    return '<div class="kpi"><div class="kpi-h"><span class="lbl">'+esc(l)+'</span>'+(ex?info(l,ex[0],ex[1]):'')+'</div>'+
+      '<div class="kv">'+v+'</div><div class="kref">'+ref+'</div></div>';
+  };
+
+  var html='<div class="block">'+
+    '<div class="sechead"><h1 class="h1">Income</h1><span class="rule"></span>'+
+      '<span class="chip">24 months of ledger</span><span class="chip">'+STREAMS.length+' streams</span>'+
+      '<span class="chip wn">1 expected inflow missing</span><span class="chip wn">2 months unread</span></div>'+
+    '<div class="hero">'+
+      '<div><div class="lbl">'+esc(headlineLbl)+'</div>'+
+        '<div class="hero-fig"><span class="cur">₹</span>'+esc(compact(headline).replace("₹",""))+'</div>'+
+        '<div class="note" style="margin-top:6px">Against a 12-month median month of <b>'+esc(inr(m12))+'</b>, October came in at <b>'+esc(inr(last))+'</b> — '+
+        esc(pct((last-m12)/m12*100,{sign:true}))+' on the median and '+esc(pct((last-yoy)/yoy*100,{sign:true}))+' on Oct 2025. Every total here is summed at render time from the stream rows below.</div></div>'+
+    '</div>'+
+    '<div class="kpis">'+
+      kpi("October received",'<span class="fig">'+esc(inr(last))+'</span>','vs Sep '+esc(inr(prev))+' · '+esc(pct((last-prev)/prev*100,{sign:true})),
+        ["Sum of every credit posted to an income account in October 2026. A stream with no credit shows an em-dash, not a zero.","Derived from the ledger, not from a bank feed balance."])+
+      kpi("Fixed share of TTM",'<span class="fig">'+esc(pct(fixedTTM/TTM_IN*100))+'</span>','variable '+esc(pct(varTTM/TTM_IN*100))+' · '+esc(compact(varTTM)),
+        ["Salary base, rent and interest accrual are classed Fixed. Variable pay, freelance, dividends, cashback and reimbursements are Variable.","Classification is keyword-driven and user-editable; no model assigns it."])+
+      kpi("Largest stream share",'<span class="fig">'+esc(pct(concentration))+'</span>','concentration risk · top 1 of '+STREAMS.length,
+        ["Share of trailing-12-month income contributed by the single largest stream. Above 70% a single employer is effectively the whole balance sheet.","House threshold, not a sourced standard. Stated as convention."])+
+      kpi("Income CV (12m)",'<span class="fig">'+esc(num(incCV,1))+'%</span>','coefficient of variation · lower is steadier',
+        ["Standard deviation of monthly income divided by the mean, over the trailing 12 months. Computed on 12 observations; two months are partial because one stream is unread.","Sample standard deviation (n−1)."])+
+      kpi("Expected but not received",'<span class="fig loss">'+esc(inr(22000))+'</span>','1 inflow · Rent — Pune 2BHK · due 5 Oct',
+        ["An expected inflow with no matching credit is carried as missing. It is excluded from totals and shown as an em-dash in its row, never as zero.","DESIGN.md §4: a figure that cannot be computed is an em-dash, never a zero."])+
+      kpi("Coverage",'<span class="fig">'+esc(pct(190/192*100))+'</span>','190 of 192 stream-months read',
+        ["8 streams × 24 months = 192 stream-months. Two Kotak statements were never imported, so two are unread.","Coverage is printed beside every aggregate on this screen."])+
+    '</div>'+
+  '</div>';
+
+  html+='<div class="block">'+
+    '<div class="sechead"><h2 class="h1">Streams</h2><span class="rule"></span>'+
+      '<span class="lbl">Saved view</span>'+
+      '<div class="seg seg-sm" role="group" aria-label="Saved view">'+
+        '<button type="button" data-view="all" aria-pressed="'+(S.view==="all")+'">All streams</button>'+
+        '<button type="button" data-view="var" aria-pressed="'+(S.view==="var")+'">Variable only</button>'+
+        '<button type="button" data-view="exp" aria-pressed="'+(S.view==="exp")+'">Has an expectation</button>'+
+      '</div>'+
+      '<button type="button" class="btn btn-sm">Save this view…</button></div>'+
+    incomeTable()+
+    '<p class="note">18 fields and one 24-month sparkline per row. Four are comparative: <b>Δ vs expected</b>, <b>vs own median</b>, <b>Δ share against FY25-26</b> and the <b>12m low/high</b> pair the median sits inside. One cell per row may carry semantic colour and it is Δ vs expected; direction everywhere else is carried by a signed figure in body ink. A sparkline with an unread month is drawn as a gap, never interpolated. The <b>+</b> control expands the row in place; only "Open stream ledger" navigates.</p>'+
+  '</div>';
+
+  html+='<div class="block">'+
+    '<div class="sechead"><h2 class="h1">Expected against actual, by month</h2><span class="rule"></span>'+
+      '<span class="chip">Expected is the sum of standing expectations, not a forecast</span></div>'+
+    monthlyIncomeTable()+
+    '<p class="note">A month short of expectation is not a month of lower income — it may be a payment that moved. The <b>Unread</b> column is the honest denominator: any month with an unread statement cannot be called complete, and the two amber entries are Jan and Feb 2026.</p>'+
+  '</div>';
+
+  /* the six states, in context */
+  html+='<div class="block">'+
+    '<div class="sechead"><h2 class="h1">States this screen can be in</h2><span class="rule"></span></div>'+
+    '<div class="cols3">'+
+      '<div class="state"><h3>Loading</h3><div style="display:flex;flex-direction:column;gap:6px;margin:8px 0 6px">'+
+        '<div class="skel" style="width:70%"></div><div class="skel" style="width:46%"></div><div class="skel" style="width:88%"></div></div>'+
+        '<p>Skeletons in the table’s own shape. Never a spinner over stale figures.</p></div>'+
+      '<div class="state"><h3>Empty</h3><p>No income accounts are mapped yet. Map a category to <span class="mono">Income:*</span> or import a statement, and streams appear here within one parse.</p></div>'+
+      '<div class="state"><h3>Error</h3><p>The ICICI ••9087 statement for Oct 2026 failed to parse at line 214 — a scanned page with no text layer. Ask the bank for the CSV, or key the five rows by hand.</p></div>'+
+      '<div class="state"><h3>Unknown</h3><p>Kotak ••4410 for Jan and Feb 2026 was never imported. Reimbursements shows '+dash("statement never imported")+' for those months and the sparkline gaps.</p></div>'+
+      '<div class="state"><h3>Refused</h3><p>Year-on-year income growth is not shown for Freelance: 7 of 24 months are nil and 2 are unread, so a growth rate would be an artefact of which months happened to carry an invoice.</p></div>'+
+      '<div class="state"><h3>Stale</h3><p><span class="chip wn">Stale</span> Interest accrual for Oct 2026 is the bank’s 18 Sep statement figure carried forward. A figure exists; it should not be read as current.</p></div>'+
+    '</div></div>';
+
+  document.getElementById("scr-income").innerHTML=html;
+}
+
+/* ============================================================
+   Screen 2 — Savings and cash flow
+   ============================================================ */
+function savingsDecomp(){
+  // s = 1 - E/I. Compare the trailing 12m to the 12m before it.
+  var I1=TTM_IN, E1=TTM_OUT;
+  var I0=sum(INC_M.slice(0,12).map(function(o){return o.v;})), E0=sum(EXP_M.slice(0,12));
+  var s0=1-E0/I0, s1=1-E1/I1;
+  var ds=s1-s0;
+  var fromIncome=(E0/I0)-(E0/I1);
+  var fromExpense=(E0/I0)-(E1/I0);
+  var inter=ds-fromIncome-fromExpense;
+  return {I0:I0,I1:I1,E0:E0,E1:E1,s0:s0*100,s1:s1*100,ds:ds*100,fi:fromIncome*100,fe:fromExpense*100,ix:inter*100};
+}
+
+function expenseTable(){
+  var ttmOut=TTM_OUT;
+  var groups=[["",3],["October 2026",3],["Own 12-month history",5],["Commitment",4],["Comparison",3]];
+  var cols=["Category","Class","Periodicity",
+    "Spent","Share of month","vs own median",
+    "TTM total","12m median","12m low","12m high","CV 12m",
+    "Committed / mo","Committed / yr","Auto-renewing","Next renewal",
+    "24m trend","Festival uplift","Δ vs FY25-26 avg"];
+  var nums={3:1,4:1,5:1,6:1,7:1,8:1,9:1,10:1,11:1,12:1,13:1,16:1,17:1};
+  var h='<thead><tr class="grp">';
+  groups.forEach(function(g,gi){ h+='<th colspan="'+g[1]+'"'+(gi?' class="g"':'')+'>'+esc(g[0])+'</th>'; });
+  h+='<th></th></tr><tr class="cols">';
+  var gi=0,left=groups[0][1];
+  cols.forEach(function(c,i){ var isG=false;
+    if(left===0){gi++;left=groups[gi][1];isG=true;} left--;
+    h+='<th class="'+(nums[i]?"num":"")+(isG?" g":"")+'" scope="col">'+esc(c)+'</th>'; });
+  h+='<th></th></tr></thead>';
+
+  var octTotal=EXP_M[23];
+  var body="",T={oct:0,ttm:0,cm:0,cy:0,auto:0,share:0};
+  CATS.forEach(function(c,ci){
+    var last=c.series[23],p12=win(c.series,12),ttm=sum(p12),m=med(p12),
+        lo=Math.min.apply(null,p12),hi=Math.max.apply(null,p12),v=cv(p12);
+    var share=last/octTotal*100, vsMed=(last-m)/m*100;
+    var fyAvg=sum(c.series.slice(0,12))/12, dFY=(ttm/12-fyAvg)/fyAvg*100;
+    var fest=c.fest;
+    T.oct+=last;T.ttm+=ttm;T.cm+=Math.round(c.commit*CAL);T.cy+=Math.round(c.commit*CAL)*12;T.auto+=c.auto;T.share+=share;
+    var clsChip = c.cls==="Recurring"?'<span class="chip">Recurring</span>':
+                  c.cls==="Discretionary"?'<span class="chip acc">Discretionary</span>':'<span class="chip">Mixed</span>';
+    body+='<tr>'+
+      '<td class="name"><button type="button" class="exp" aria-expanded="false" data-exp="c'+ci+'" aria-label="Expand '+esc(c.name)+'">+</button> '+esc(c.name)+'</td>'+
+      '<td>'+clsChip+'</td><td class="txt">'+esc(c.per)+'</td>'+
+      '<td class="num g"><span class="fig">'+esc(inr(last))+'</span></td>'+
+      '<td class="num"><span class="fig">'+esc(pct(share))+'</span></td>'+
+      '<td class="num"><span class="fig'+(vsMed>18?" loss":"")+'">'+esc(pct(vsMed,{sign:true}))+'</span></td>'+
+      '<td class="num g"><span class="fig">'+esc(compact(ttm))+'</span></td>'+
+      '<td class="num"><span class="fig">'+esc(inr(m))+'</span></td>'+
+      '<td class="num"><span class="fig">'+esc(inr(lo))+'</span></td>'+
+      '<td class="num"><span class="fig">'+esc(inr(hi))+'</span></td>'+
+      '<td class="num"><span class="fig">'+esc(num(v,1))+'%</span></td>'+
+      '<td class="num g"><span class="fig">'+esc(c.commit?inr(Math.round(c.commit*CAL)):"₹0")+'</span></td>'+
+      '<td class="num"><span class="fig">'+esc(c.commit?compact(Math.round(c.commit*CAL)*12):"₹0")+'</span></td>'+
+      '<td class="num"><span class="fig">'+c.auto+'</span></td>'+
+      '<td class="txt">'+(c.next?esc(c.next):dash("nothing scheduled — this category is spent, not committed"))+'</td>'+
+      '<td class="g">'+spark(c.series,84,16)+'</td>'+
+      '<td class="num"><span class="fig">'+esc(num(fest,2))+'×</span></td>'+
+      '<td class="num"><span class="fig">'+esc(pct(dFY,{sign:true}))+'</span></td>'+
+      '<td></td></tr>';
+    body+='<tr class="detail" id="det-c'+ci+'" hidden><td colspan="19">'+
+      '<div class="dgrid">'+
+      '<div><div class="dl">Share of TTM outgo</div><div class="dv">'+fig(pct(ttm/ttmOut*100))+'</div></div>'+
+      '<div><div class="dl">24m total</div><div class="dv">'+fig(compact(sum(c.series)))+'</div></div>'+
+      '<div><div class="dl">Festival window (Oct+Nov)</div><div class="dv">'+fig(inr(Math.round((c.series[10]+c.series[11]+c.series[22]+c.series[23])/4)))+'</div></div>'+
+      '<div><div class="dl">Other 10 months</div><div class="dv">'+fig(inr(Math.round((sum(c.series)-c.series[10]-c.series[11]-c.series[22]-c.series[23])/20)))+'</div></div>'+
+      '<div><div class="dl">Range position (12m)</div><div class="dv">'+bullet(last,lo,hi,m,72)+' <span class="fig" style="font-size:11.5px">'+esc(inr(lo))+'–'+esc(inr(hi))+'</span></div></div>'+
+      '<div><div class="dl">Months above median</div><div class="dv">'+fig(String(p12.filter(function(x){return x>m;}).length)+" / 12")+'</div></div>'+
+      '<div><div class="dl">Classified by</div><div class="dv" style="font-family:var(--sans)">Keyword rules you maintain. No model.</div></div>'+
+      '<div><div class="dl">Auto-renewing lines</div><div class="dv">'+fig(String(c.auto))+'</div></div>'+
+      '</div><a class="lvl3" href="#" onclick="return false;">Open category — merchants, periodicity detection and the keyword rules →</a></td></tr>';
+  });
+  var ft='<tfoot><tr><td class="lab">Total — '+CATS.length+' categories</td><td colspan="2"></td>'+
+    '<td class="num g"><span class="fig">'+esc(inr(T.oct))+'</span></td>'+
+    '<td class="num"><span class="fig">'+esc(pct(T.share))+'</span></td><td></td>'+
+    '<td class="num g"><span class="fig">'+esc(compact(T.ttm))+'</span></td>'+
+    '<td colspan="4"></td>'+
+    '<td class="num g"><span class="fig">'+esc(inr(T.cm))+'</span></td>'+
+    '<td class="num"><span class="fig">'+esc(compact(T.cy))+'</span></td>'+
+    '<td class="num"><span class="fig">'+T.auto+'</span></td>'+
+    '<td colspan="5"></td></tr></tfoot>';
+  return {html:'<div class="tw"><table class="dt" role="grid" aria-label="Outgo by category">'+h+'<tbody>'+body+'</tbody>'+ft+'</table></div>',T:T};
+}
+
+function seasonality(){
+  // month-of-year small multiple, monochrome, position + label identify the month
+  var byMonth=[];
+  for(var m=0;m<12;m++){
+    var obs=[];
+    MONTHS.forEach(function(mo,i){ if(mo.m===m) obs.push({y:mo.y,v:EXP_M[i]}); });
+    byMonth.push({m:m,obs:obs});
+  }
+  var all=EXP_M.slice(), gmed=med(all);
+  var cells=byMonth.map(function(b){
+    var vals=b.obs.map(function(o){return o.v;}), mm=med(vals);
+    var idx=mm/gmed;
+    var w=74,h=22,mx=Math.max.apply(null,all),bw=Math.floor(w/Math.max(3,vals.length))-3;
+    var bars=vals.map(function(v,k){ var bh=Math.max(1,v/mx*(h-2));
+      return '<rect x="'+(k*(bw+3))+'" y="'+(h-bh).toFixed(1)+'" width="'+bw+'" height="'+bh.toFixed(1)+'" fill="var(--spark)" opacity="'+(0.45+0.55*(k+1)/vals.length).toFixed(2)+'"/>';}).join("");
+    return '<div class="smc"><div class="t"><b>'+MN[b.m]+'</b><span>'+esc(num(idx,2))+'×</span></div>'+
+      '<svg width="'+w+'" height="'+h+'" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="'+MN[b.m]+' outgo, '+vals.length+' year(s), index '+num(idx,2)+' times the all-month median"><rect x="0" y="'+(h-gmed/mx*(h-2)).toFixed(1)+'" width="'+w+'" height="1" fill="var(--grid)"/>'+bars+'</svg>'+
+      '<div class="f">'+esc(inr(mm))+'</div></div>';
+  }).join("");
+  return {html:'<div class="sm">'+cells+'</div>',gmed:gmed};
+}
+
+function renderSavings(){
+  var D=savingsDecomp();
+  var E=expenseTable();
+  var SE=seasonality();
+  var octIn=INC_M[23].v, octOut=EXP_M[23], octSave=octIn-octOut;
+  var recTTM=0,disTTM=0,mixTTM=0;
+  CATS.forEach(function(c){var t=sum(win(c.series,12)); if(c.cls==="Recurring")recTTM+=t; else if(c.cls==="Discretionary")disTTM+=t; else mixTTM+=t;});
+  var liquid=934000, runway=liquid/(TTM_OUT/12);
+  var headIn=S.frame==="ttm"?TTM_IN:FY_IN, headOut=S.frame==="ttm"?TTM_OUT:FY_OUT;
+  var headRate=(headIn-headOut)/headIn*100;
+
+  var kpi=function(l,v,ref,ex){
+    return '<div class="kpi"><div class="kpi-h"><span class="lbl">'+esc(l)+'</span>'+(ex?info(l,ex[0],ex[1]):'')+'</div>'+
+      '<div class="kv">'+v+'</div><div class="kref">'+ref+'</div></div>';};
+
+  var html='<div class="block">'+
+    '<div class="sechead"><h1 class="h1">Savings and cash flow</h1><span class="rule"></span>'+
+      '<span class="chip">'+(S.frame==="ttm"?"Rolling 12 months":"FY 2026-27 to date")+'</span>'+
+      '<span class="chip">'+(S.terms==="real"?"Real terms, CPI 2024=100":"Nominal")+'</span></div>'+
+    '<div class="hero"><div><div class="lbl">Savings rate</div>'+
+      '<div class="hero-fig">'+esc(num(headRate,1))+'<span class="unit">%</span></div>'+
+      '<div class="note" style="margin-top:6px">Kept <b>'+esc(compact(headIn-headOut))+'</b> of <b>'+esc(compact(headIn))+'</b>. '+
+      'Twelve months earlier the same measure read <b>'+esc(num(D.s0,1))+'%</b>. The decomposition below says which side moved; it is an exact identity, residual included.</div></div></div>'+
+    '<div class="kpis">'+
+      kpi("October kept",'<span class="fig">'+esc(inr(octSave))+'</span>','in '+esc(inr(octIn))+' · out '+esc(inr(octOut)),
+        ["Income credited minus expenses posted, for October 2026. Transfers between your own accounts are excluded on both sides.","Derived from the ledger; a transfer is never an expense."])+
+      kpi("Committed outgo / mo",'<span class="fig">'+esc(inr(E.T.cm))+'</span>',esc(pct(E.T.cm/(TTM_IN/12)*100))+' of a median income month',
+        ["The part of a month that is already promised: rent, EMI, insurance, connectivity, subscriptions, household help, and the floor of groceries and transport.","Periodicity detected from merchant and amount using your keyword rules. No model."])+
+      kpi("Committed outgo / yr",'<span class="fig">'+esc(compact(E.T.cy))+'</span>',esc(pct(E.T.cy/TTM_IN*100))+' of TTM income',
+        ["Monthly commitment × 12. Annual-billed lines are divided into a monthly equivalent first, so the two figures reconcile.","Same basis as the per-month figure."])+
+      kpi("Recurring share",'<span class="fig">'+esc(pct(recTTM/TTM_OUT*100))+'</span>','discretionary '+esc(pct(disTTM/TTM_OUT*100))+' · mixed '+esc(pct(mixTTM/TTM_OUT*100)),
+        ["Recurring means it repeats on a detected period. Discretionary means it does not. Mixed categories carry a committed floor and a free top — groceries and transport are the two.","Three shares sum to 100% by construction."])+
+      kpi("Auto-renewing lines",'<span class="fig">'+E.T.auto+'</span>','next charge 02 Nov 2026 · '+esc(inr(449)),
+        ["Lines that will charge again without anyone acting. Counted from detected periodicity plus merchant, not from a subscription list you maintain.","Count, not amount — amounts vary across renewals."])+
+      kpi("Runway",'<span class="fig">'+esc(num(runway,1))+'</span>','months · liquid '+esc(compact(liquid))+' · bands are convention',
+        ["Liquid assets divided by average monthly outgo over the trailing 12 months. The measured number is the figure; the 3/6/12-month bands around it are convention, not measurement.","Band convention is widely used and unsourced; stated as convention wherever it appears."])+
+    '</div></div>';
+
+  html+='<div class="block">'+
+    '<div class="sechead"><h2 class="h1">Where the savings rate moved from</h2><span class="rule"></span>'+
+      '<span class="chip">'+esc(num(D.s0,1))+'% → '+esc(num(D.s1,1))+'%</span>'+info("Decomposition","Savings rate s = 1 − E/I. The income effect holds expenses at last year’s level and moves income only. The expense effect holds income at last year’s level and moves expenses only. What is left is the interaction of the two moving together, and it is shown rather than absorbed.","Exact identity: Δs = income effect + expense effect + interaction.")+'</div>'+
+    '<div class="decomp">'+
+      '<div class="dc"><div class="lbl">Total move</div><div class="v">'+esc(pct(D.ds,{sign:true,dec:2}))+'</div><div class="c">percentage points</div></div>'+
+      '<div class="dc"><div class="lbl">From the income side</div><div class="v">'+esc(pct(D.fi,{sign:true,dec:2}))+'</div><div class="c">'+esc(compact(D.I0))+' → '+esc(compact(D.I1))+' · '+esc(pct((D.I1-D.I0)/D.I0*100,{sign:true}))+'</div></div>'+
+      '<div class="dc"><div class="lbl">From the expense side</div><div class="v">'+esc(pct(D.fe,{sign:true,dec:2}))+'</div><div class="c">'+esc(compact(D.E0))+' → '+esc(compact(D.E1))+' · '+esc(pct((D.E1-D.E0)/D.E0*100,{sign:true}))+'</div></div>'+
+      '<div class="dc"><div class="lbl">Interaction</div><div class="v">'+esc(pct(D.ix,{sign:true,dec:2}))+'</div><div class="c">shown, not absorbed</div></div>'+
+      '<div class="dc"><div class="lbl">Reconciles</div><div class="v">'+esc(pct(D.fi+D.fe+D.ix,{sign:true,dec:2}))+'</div><div class="c">equals the total move exactly</div></div>'+
+    '</div>'+
+    '<p class="note">A savings rate that improved because income rose is a different fact from one that improved because spending fell, and only the second is repeatable at a lower income. '+
+    'Here <b>'+(Math.abs(D.fi)>=Math.abs(D.fe)?'the income side':'the expense side')+'</b> moved the rate most, '+
+    (Math.abs(D.fi)>=Math.abs(D.fe)?(D.fi>=0?'and it moved it up':'and it moved it down'):(D.fe>=0?'and it moved it up':'and it moved it down'))+
+    '. The interaction term is small here, but it is printed rather than folded into one of the other two.</p></div>';
+
+  html+='<div class="block">'+
+    '<div class="sechead"><h2 class="h1">Outgo by category</h2><span class="rule"></span>'+
+      '<span class="lbl">Saved view</span><div class="seg seg-sm" role="group" aria-label="Saved view"><button type="button" aria-pressed="true">Committed first</button><button type="button" aria-pressed="false">Discretionary only</button></div></div>'+
+    E.html+
+    '<p class="note">18 fields and one 24-month sparkline per row. Three are comparative: <b>vs own median</b>, <b>festival uplift</b> (Oct–Nov against the rest of the year) and <b>Δ against the FY25-26 monthly average</b>. One semantic colour per row, spent on <b>vs own median</b> and only past +18%. Committed per month and per year reconcile: the annual column is the monthly one × 12, with annual-billed lines converted to a monthly equivalent first.</p></div>';
+
+  html+='<div class="block">'+
+    '<div class="sechead"><h2 class="h1">Seasonality</h2><span class="rule"></span>'+
+      '<span class="chip">Month of year · all available years</span>'+
+      info("Seasonality","One panel per calendar month. Bars are the years observed, oldest palest. The hairline is the all-month median of total outgo; the figure above each panel is that month’s median as a multiple of it.","Small multiples are monochrome by rule: the category is identified by position and label, never by hue.")+'</div>'+
+    SE.html+
+    '<p class="note">All-month median outgo: <b class="fig">'+esc(inr(SE.gmed))+'</b>. October and November carry the festival window and March carries insurance renewals and tax-planning. A savings rate compared month-to-month without this is mostly reading the calendar.</p></div>';
+
+  html+='<div class="block">'+
+    '<div class="sechead"><h2 class="h1">Quietly auto-renewing</h2><span class="rule"></span><span class="chip wn">'+E.T.auto+' lines</span></div>'+
+    '<div class="tw"><table class="dt" aria-label="Auto-renewing lines">'+
+      '<thead><tr class="cols"><th>Line</th><th>Category</th><th class="num">Charge</th><th>Period</th><th>Next</th><th class="num">Annual</th><th class="num">Last raised</th><th class="num">Used in 90d</th></tr></thead><tbody>'+
+      [["Streaming — video","Subscriptions",649,"Monthly","02 Nov 2026",7788,"+₹150 Jul 2026","41 sessions"],
+       ["Music","Subscriptions",149,"Monthly","07 Nov 2026",1788,"unchanged 2 yrs","? sessions"],
+       ["Cloud storage 2TB","Subscriptions",219,"Monthly","12 Nov 2026",2628,"unchanged 2 yrs","background"],
+       ["Design tool","Subscriptions",1100,"Monthly","18 Nov 2026",13200,"+₹200 Apr 2026","3 sessions"],
+       ["News — annual","Subscriptions",2400,"Annual","09 Mar 2027",2400,"+₹400 Mar 2026","6 sessions"],
+       ["Gym","Subscriptions",1800,"Quarterly","21 Dec 2026",7200,"unchanged 1 yr","11 visits"],
+       ["Password manager","Subscriptions",299,"Annual","30 Jan 2027",299,"unchanged 3 yrs","daily"],
+       ["Domain + mail","Subscriptions",1450,"Annual","14 Apr 2027",1450,"+₹150 Apr 2026","daily"],
+       ["Courses platform","Education",3600,"Annual","28 Feb 2027",3600,"unchanged 1 yr","2 sessions"],
+       ["Broadband","Broadband and mobile",1299,"Monthly","11 Nov 2026",15588,"unchanged 1 yr","daily"],
+       ["Mobile postpaid","Broadband and mobile",699,"Monthly","11 Nov 2026",8388,"+₹50 Jun 2026","daily"],
+       ["Health insurance","Insurance",3100,"Monthly","19 Jan 2027",37200,"+₹280 Jan 2026","—"],
+       ["Motor insurance","Insurance",1850,"Annual","03 Aug 2027",1850,"+₹190 Aug 2026","—"],
+       ["Electricity autopay","Utilities",null,"Monthly","14 Nov 2026",null,"—","—"],
+       ["Personal loan EMI","Loan EMI",14820,"Monthly","03 Nov 2026",177840,"fixed to Sep 2029","—"]
+      ].map(function(r){
+        return '<tr><td class="name">'+esc(r[0])+'</td><td class="txt">'+esc(r[1])+'</td>'+
+          '<td class="num">'+(r[2]==null?dash("a metered bill — the amount is not known until it arrives"):'<span class="fig">'+esc(inr(r[2]))+'</span>')+'</td>'+
+          '<td class="txt">'+esc(r[3])+'</td><td class="txt">'+esc(r[4])+'</td>'+
+          '<td class="num">'+(r[5]==null?dash("varies by month; no annual figure can be stated"):'<span class="fig">'+esc(inr(r[5]))+'</span>')+'</td>'+
+          '<td class="num txt">'+esc(r[6])+'</td><td class="num txt">'+esc(r[7])+'</td></tr>';
+      }).join("")+
+      '</tbody><tfoot><tr><td class="lab">15 lines</td><td colspan="4"></td><td class="num"><span class="fig">'+esc(compact(7788+1788+2628+13200+2400+7200+299+1450+3600+15588+8388+37200+1850+177840))+'</span></td><td colspan="2" class="txt mut">electricity excluded — metered</td></tr></tfoot></table></div>'+
+    '<p class="note">The annual total excludes the one line whose amount cannot be known in advance. It is shown as an em-dash in both columns rather than estimated into the sum.</p></div>';
+
+  document.getElementById("scr-savings").innerHTML=html;
+}
+
+/* ============================================================
+   Screen 3 — Standing
+   ============================================================ */
+var PILLARS=[
+  {name:"Runway",state:"measured",v:6.2,unit:"months",score:72,cov:100,sens:[68,76],
+   thr:"3 months adequate / 6 comfortable — convention, not a sourced standard",
+   basis:"Liquid ₹9.34L ÷ trailing-12m average outgo"},
+  {name:"Savings rate",state:"measured",v:null,unit:"%",score:81,cov:98,sens:[76,85],
+   thr:"Banded against your own 24-month distribution, not a public norm",
+   basis:"1 − outgo/income over the trailing 12 months"},
+  {name:"Debt service",state:"measured",v:7.7,unit:"% of income",score:88,cov:100,sens:[86,90],
+   thr:"Below 20% of net income — RBI-adjacent lender convention, stated as convention",
+   basis:"EMI ₹14,820 ÷ median monthly income"},
+  {name:"Income stability",state:"measured",v:null,unit:"CV",score:64,cov:92,sens:[55,71],
+   thr:"Banded against your own history. 2 of 24 stream-months are unread, so the band is wider",
+   basis:"Coefficient of variation of monthly income, trailing 12 months"},
+  {name:"Protection cover",state:"declared-absent",v:0,unit:"",score:12,cov:100,sens:[12,12],
+   thr:"Term cover of 10–12× annual income — industry convention, no regulator sets it",
+   basis:"You declared no term life policy. Declared absent is a measurement, and it scores low honestly."},
+  {name:"Retirement funding",state:"unknown",v:null,unit:"",score:null,cov:0,sens:null,
+   thr:"—",
+   basis:"No EPF or NPS balance has ever been imported. Not zero — unread."}
+];
+
+function renderStanding(){
+  var computable=PILLARS.filter(function(p){return p.score!=null;});
+  var unknown=PILLARS.filter(function(p){return p.score==null;});
+  var covAll=Math.round(PILLARS.reduce(function(t,p){return t+p.cov;},0)/PILLARS.length);
+
+  var html='<div class="block">'+
+    '<div class="sechead"><h1 class="h1">Standing</h1><span class="rule"></span>'+
+      '<span class="chip">6 pillars</span><span class="chip wn">1 unknown</span>'+
+      '<span class="chip">Coverage '+covAll+'%</span></div>'+
+    '<div class="refused"><h3>The composite is not computed</h3>'+
+      '<p><b>Retirement funding</b> has never been measured: no EPF or NPS balance has been imported. '+
+      'A composite built from five pillars and a guess at the sixth would be a different number wearing the same name, so it is refused rather than approximated. '+
+      'Import an EPF passbook or an NPS statement and the composite becomes computable the same day. '+
+      'The five pillars that <i>are</i> measurable are shown in full below — a refusal is not a blank screen.</p></div>'+
+  '</div>';
+
+  /* pillars */
+  var prow=PILLARS.map(function(p){
+    var sc = p.score==null ? dash(p.basis)
+      : '<span class="fig">'+p.score+'</span>';
+    var sens = p.sens? '<span class="fig">'+p.sens[0]+'–'+p.sens[1]+'</span>' : dash("no score, so no sensitivity range");
+    var tier = p.score==null?dash("no score, so no tier"):
+      (p.score>=80?'<span class="chip">Strong</span>':p.score>=60?'<span class="chip">Adequate</span>':
+       p.score>=40?'<span class="chip">Thin</span>':'<span class="chip wn">Exposed</span>');
+    var st = p.state==="measured"?'<span class="chip gn">Measured</span>':
+             p.state==="declared-absent"?'<span class="chip">Declared absent</span>':'<span class="chip wn">Unknown</span>';
+    return '<tr><td class="name">'+esc(p.name)+'</td><td>'+st+'</td>'+
+      '<td class="num">'+sc+'</td><td class="num">'+sens+'</td>'+
+      '<td>'+tier+'</td>'+
+      '<td class="num"><span class="fig">'+p.cov+'%</span></td>'+
+      '<td class="txt">'+esc(p.basis)+'</td>'+
+      '<td class="txt">'+esc(p.thr)+'</td></tr>';
+  }).join("");
+
+  html+='<div class="block">'+
+    '<div class="sechead"><h2 class="h1">Pillars</h2><span class="rule"></span>'+
+      '<span class="chip">Measured · declared absent · unknown — never collapsed</span></div>'+
+    '<div class="tw"><table class="dt" aria-label="Financial health pillars">'+
+      '<thead><tr class="cols"><th>Pillar</th><th>Data state</th><th class="num">Score</th><th class="num">Sensitivity</th><th>Tier</th><th class="num">Coverage</th><th>Basis</th><th>Threshold and its source</th></tr></thead>'+
+      '<tbody>'+prow+'</tbody>'+
+      '<tfoot><tr><td class="lab">Composite</td><td><span class="chip wn">Refused</span></td>'+
+      '<td class="num">'+dash("Retirement funding is unknown. The composite refuses until every pillar is computable.")+'</td>'+
+      '<td class="num">'+dash("no composite, so no sensitivity range")+'</td><td>'+dash("no composite, so no tier")+'</td>'+
+      '<td class="num"><span class="fig">'+covAll+'%</span></td>'+
+      '<td class="txt" colspan="2">'+computable.length+' of 6 pillars computable. Missing: '+esc(unknown.map(function(p){return p.name;}).join(", "))+'.</td></tr></tfoot></table></div>'+
+    '<p class="note">A tier is never celebrated when it drops. A pillar that falls says what fell and by how much, and nothing is awarded for logging more transactions — there is no streak, no badge and no leaderboard here.</p></div>';
+
+  /* guess first */
+  html+='<div class="block">'+
+    '<div class="sechead"><h2 class="h1">Where do you think you sit?</h2><span class="rule"></span>'+
+      '<span class="chip acc">Answer before the reveal</span></div>'+
+    '<div class="panel"><div class="panel-b" style="display:flex;flex-direction:column;gap:14px">'+
+      '<p class="sub">People are systematically wrong about their rank, and the direction of the error is set by who they compare themselves to. A software professional usually <b>underestimates their national rank and overestimates their global one</b>. Put a mark down first; the reveal is worth more as a belief corrected than as a score awarded.</p>'+
+      '<label class="lbl" for="guessIn">Your guess — Indian income percentile</label>'+
+      '<input type="range" id="guessIn" min="50" max="99" step="1" value="'+(S.guess==null?85:S.guess)+'" aria-describedby="guessOut">'+
+      '<div id="guessOut" class="mono" style="font-size:13px">You think you are in the top <span class="fig" id="guessV">'+(100-(S.guess==null?85:S.guess))+'</span>% of Indian earners.</div>'+
+      '<div><button type="button" class="btn" id="revealBtn">'+(S.revealed?"Hide the placement":"Reveal the placement")+'</button></div>'+
+    '</div></div></div>';
+
+  /* percentile */
+  if(S.revealed){
+    var g=(S.guess==null?85:S.guess);
+    html+='<div class="block">'+
+      '<div class="sechead"><h2 class="h1">Placement</h2><span class="rule"></span>'+
+        '<span class="chip">PPP-converted, never nominal FX</span>'+
+        '<span class="chip">Band, not a point</span>'+
+        info("Why a band","Above roughly the 90th Indian percentile the product is quoting a model, not an observation — PLFS publishes no cutoffs above about the 90th and every household survey under-reports top incomes. That is exactly the band you occupy, so the placement refuses to resolve past “top 10%” for India.","PLFS for the body; WID India as a reconstruction under DINA guidelines above the 90th; CBDT slab data covers filers, not the population, and is a cross-check only.")+'</div>'+
+      pbandRow("India — income",72,96,"Top 10% — refuses to resolve further",g,
+        "PLFS body + WID above the 90th, flagged modelled. Stamp dated Oct 2026.")+
+      pbandRow("World — income",80,94,"Decile 9",null,
+        "World Inequality Report 2026, PPP. Cross-country placement is shown at decile resolution only, because PPP factors are themselves extrapolated between ICP rounds.")+
+      '<div class="cols2">'+
+      '<div class="panel"><div class="panel-h"><h2 class="h2">Why the placement moved</h2><span class="chip">vs Oct 2025</span></div>'+
+        '<div class="panel-b"><div class="decomp" style="border-top:0">'+
+        '<div class="dc"><div class="lbl">Percentile</div><div class="v"><span class="fig">'+MINUS+'2</span></div><div class="c">points, within the band</div></div>'+
+        '<div class="dc"><div class="lbl">Your real income</div><div class="v"><span class="fig">+3.1%</span></div><div class="c">CPI-deflated, urban series</div></div>'+
+        '<div class="dc"><div class="lbl">The distribution</div><div class="v"><span class="fig">+6.0%</span></div><div class="c">at this part of the curve</div></div>'+
+        '</div><p class="note" style="margin-top:12px">You rose and still slipped. A percentile that falls while your real income grows is the population moving, not you — which is information, not a demotion. This is why percentile is never plotted as a time series here.</p></div></div>'+
+      '<div class="panel"><div class="panel-h"><h2 class="h2">Sourced archetypes</h2><span class="chip">No celebrity rungs</span></div>'+
+        '<div class="panel-b"><table class="dt" style="min-width:0"><tbody>'+
+        [["Median Indian urban household","₹6,996 MPCE","HCES 2023-24"],
+         ["Global top-10% income threshold","$65,500 / yr","World Inequality Report 2026, PPP"],
+         ["Global top-1% income threshold","$250,300 / yr","World Inequality Report 2026, PPP"],
+         ["US income, highest published cutoff","Top 5%","US Census Table H-1 — no official US top-1% income cutoff exists"],
+         ["Indian income, highest published cutoff","~90th percentile","PLFS — nothing official above it"]
+        ].map(function(r){return '<tr><td class="txt">'+esc(r[0])+'</td><td class="num"><span class="fig">'+esc(r[1])+'</span></td><td class="txt mut">'+esc(r[2])+'</td></tr>';}).join("")+
+        '</tbody></table><p class="note" style="margin-top:10px">Billionaire rungs are not shown. Net worth is a stock and income is a flow; they cannot share an axis, and the published estimates carry peer-estimated debt and unverifiable assets silently set to zero, with no error margin.</p></div></div>'+
+      '</div></div>';
+
+    /* progression */
+    html+='<div class="block">'+
+      '<div class="sechead"><h2 class="h1">Progression</h2><span class="rule"></span>'+
+        '<span class="chip">Log₂ ratio to the median</span>'+
+        '<span class="chip">'+(S.terms==="real"?"Real · CPI 2024=100":"Nominal")+'</span>'+
+        info("Why not percentile over time","Percentile saturates at the top — ₹30L and ₹3Cr are a couple of points apart — and it moves when the population moves. Doublings from the median keep resolving at the top and are drift-robust. No statistical agency plots rank as a time series.","Percentile for placement, log-ratio-to-median for progression.")+'</div>'+
+      logRatioChart()+
+      '<p class="note"><b>CPI base break.</b> '+esc(CPI.note)+' The break is drawn as a vertical rule at Jan 2026; the series either side is spliced, and the splice is visible rather than smoothed away.</p></div>';
+  } else {
+    html+='<div class="block"><div class="state"><h3>Placement is hidden until you guess</h3>'+
+      '<p>Move the slider and press Reveal. Showing the number first turns it into a score awarded; showing it second turns it into a belief corrected, and only the second is useful.</p></div></div>';
+  }
+
+  document.getElementById("scr-standing").innerHTML=html;
+  var gi=document.getElementById("guessIn");
+  if(gi){ gi.addEventListener("input",function(){ S.guess=+gi.value;
+    document.getElementById("guessV").textContent=100-S.guess; }); }
+  var rb=document.getElementById("revealBtn");
+  if(rb){ rb.addEventListener("click",function(){ if(S.guess==null)S.guess=+document.getElementById("guessIn").value; S.revealed=!S.revealed; renderStanding(); }); }
+}
+
+function pbandRow(label,lo,hi,verdict,guess,src){
+  var ticks=[50,60,70,80,90,95,99];
+  var X=function(p){return ((p-50)/49*100);};
+  var t=ticks.map(function(p){return '<span class="tick" style="left:'+X(p).toFixed(2)+'%"></span><span class="tl" style="left:'+X(p).toFixed(2)+'%">'+p+'</span>';}).join("");
+  var band='<span class="band" style="left:'+X(lo).toFixed(2)+'%;width:'+(X(hi)-X(lo)).toFixed(2)+'%"></span>';
+  var gm=guess!=null?'<span class="guess" style="left:'+X(guess).toFixed(2)+'%"></span>':"";
+  return '<div style="display:flex;flex-direction:column;gap:7px;margin-bottom:18px">'+
+    '<div style="display:flex;flex-wrap:wrap;align-items:baseline;gap:10px">'+
+      '<span class="lbl">'+esc(label)+'</span>'+
+      '<b class="mono" style="font-size:13.5px">'+esc(verdict)+'</b>'+
+      '<span class="chip">band '+lo+'–'+hi+'</span>'+
+      (guess!=null?'<span class="chip">your guess '+guess+'</span>':'')+
+    '</div>'+
+    '<div class="pband">'+t+band+gm+'</div>'+
+    '<p class="note">'+esc(src)+' The band widens above the 90th because the evidence thins there, and it is drawn wide rather than narrowed for comfort.'+
+    (guess!=null?' Your guess sits '+(guess<lo?'below':guess>hi?'above':'inside')+' the band.':'')+'</p></div>';
+}
+
+function logRatioChart(){
+  // log2(real income / median income), 24 months, with the CPI base break drawn
+  var medianM=6996*4.2; // illustrative urban household monthly equivalent, stated below
+  var pts=MONTHS.map(function(mo,i){
+    var real=INC_M[i].v*(S.terms==="real"?(1/(1+0.0045*i)):1);
+    return INC_M[i].partial?null:Math.log(real/medianM)/Math.LN2;
+  });
+  var w=900,h=170,pl=46,pr=14,pt=14,pb=26;
+  var nums=pts.filter(function(v){return v!=null;});
+  var mn=Math.floor(Math.min.apply(null,nums)*2)/2-0.25, mx=Math.ceil(Math.max.apply(null,nums)*2)/2+0.25;
+  var X=function(i){return pl+i*(w-pl-pr)/(pts.length-1);},
+      Y=function(v){return pt+(mx-v)/(mx-mn)*(h-pt-pb);};
+  var grid="",lab="";
+  for(var v=Math.ceil(mn*2)/2; v<=mx; v+=0.5){
+    grid+='<line x1="'+pl+'" y1="'+Y(v).toFixed(1)+'" x2="'+(w-pr)+'" y2="'+Y(v).toFixed(1)+'" stroke="var(--grid)" stroke-width="1"/>';
+    lab+='<text x="'+(pl-7)+'" y="'+(Y(v)+3.5).toFixed(1)+'" text-anchor="end" font-size="10" font-family="IBM Plex Mono, monospace" fill="var(--fg-muted)">'+v.toFixed(1)+'×</text>';
+  }
+  var segs=[],cur=[];
+  pts.forEach(function(v,i){ if(v==null){if(cur.length)segs.push(cur);cur=[];} else cur.push([X(i),Y(v)]); });
+  if(cur.length)segs.push(cur);
+  var d=segs.map(function(s){return "M"+s.map(function(p){return p[0].toFixed(1)+" "+p[1].toFixed(1);}).join(" L");}).join(" ");
+  var brk=X(CPI.breakAt);
+  var xlab="";
+  MONTHS.forEach(function(mo,i){ if(i%4===0||i===23) xlab+='<text x="'+X(i).toFixed(1)+'" y="'+(h-8)+'" text-anchor="middle" font-size="10" font-family="IBM Plex Mono, monospace" fill="var(--fg-muted)">'+esc(mo.l)+'</text>'; });
+  var lastV=pts[23];
+  return '<div class="panel"><div class="panel-b">'+
+    '<div style="overflow-x:auto"><svg viewBox="0 0 '+w+' '+h+'" width="100%" style="min-width:560px;display:block" role="img" aria-label="Doublings above the median household income, 24 months, real terms, with the January 2026 CPI base break marked">'+
+    grid+lab+
+    '<line x1="'+brk.toFixed(1)+'" y1="'+pt+'" x2="'+brk.toFixed(1)+'" y2="'+(h-pb)+'" stroke="var(--warn)" stroke-width="1" stroke-dasharray="3 3"/>'+
+    '<text x="'+(brk+5).toFixed(1)+'" y="'+(pt+11)+'" font-size="10" font-family="Inter, sans-serif" fill="var(--warn)">CPI base break · Jan 2026 · spliced</text>'+
+    '<path d="'+d+'" fill="none" stroke="var(--spark)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>'+
+    '<circle cx="'+X(23).toFixed(1)+'" cy="'+Y(lastV).toFixed(1)+'" r="3" fill="var(--spark)"/>'+
+    '<text x="'+(X(23)-6).toFixed(1)+'" y="'+(Y(lastV)-8).toFixed(1)+'" text-anchor="end" font-size="11" font-family="IBM Plex Mono, monospace" fill="var(--fg)">'+lastV.toFixed(2)+'× doublings</text>'+
+    xlab+
+    '</svg></div>'+
+    '<p class="note" style="margin-top:10px">Vertical axis is <b>doublings above the median</b>: '+
+    '<span class="fig">'+lastV.toFixed(2)+'</span> means roughly <span class="fig">'+Math.pow(2,lastV).toFixed(1)+'×</span> the reference median. '+
+    'Reference is the HCES 2023-24 urban MPCE of <span class="fig">₹6,996</span> scaled to a 4.2-person household monthly equivalent — a stated assumption, yours to change, not a hidden one. '+
+    'Two months are omitted as gaps because a stream was unread; the line is broken there rather than drawn through.</p>'+
+    '</div></div>';
+}
+
+/* ============================================================
+   Report
+   ============================================================ */
+function renderReport(){
+  // Counted live. Figures inside a collapsed drill-down row do not count, and
+  // sparkline vertices do not count.
+  function cnt(sel){
+    return Array.prototype.filter.call(document.querySelectorAll(sel+" .fig"),function(n){
+      return !n.closest("tr.detail");
+    }).length;
+  }
+  var counts={income:cnt("#scr-income"),savings:cnt("#scr-savings"),standing:cnt("#scr-standing")};
+  var el=document.getElementById("report-counts");
+  if(el){
+    el.innerHTML=
+      '<tr><th>Measure</th><th>Target</th><th>Income</th><th>Savings</th><th>Standing</th></tr>'+
+      '<tr><td>Fields per flagship table row</td><td class="n">16–18</td><td class="n">18</td><td class="n">18</td><td class="n">8</td></tr>'+
+      '<tr><td>— of which comparative</td><td class="n">≥2</td><td class="n">4</td><td class="n">3</td><td class="n">2</td></tr>'+
+      '<tr><td>Micro-charts per row</td><td class="n">exactly 1</td><td class="n">1</td><td class="n">1</td><td class="n">0</td></tr>'+
+      '<tr><td>Semantically-coloured cells per row</td><td class="n">≤1</td><td class="n">1</td><td class="n">1</td><td class="n">0</td></tr>'+
+      '<tr><td>Drill-down levels</td><td class="n">3</td><td class="n">3</td><td class="n">3</td><td class="n">2</td></tr>'+
+      '<tr><td>Figures on the screen (counted live)</td><td class="n">≥200 main</td><td class="n">'+counts.income+'</td><td class="n">'+counts.savings+'</td><td class="n">'+counts.standing+'</td></tr>'+
+      '<tr><td>Saved views</td><td class="n">≥1</td><td class="n">3</td><td class="n">2</td><td class="n">0</td></tr>';
+  }
+}
+
+/* ============================================================
+   Wiring
+   ============================================================ */
+function renderAll(){ renderIncome(); renderSavings(); renderStanding(); renderReport(); }
+
+document.addEventListener("click",function(e){
+  var b=e.target.closest ? e.target.closest("button,a") : null;
+  if(!b) { closePop(); return; }
+  if(b.dataset.scr){
+    S.screen=b.dataset.scr;
+    document.querySelectorAll("[data-scr]").forEach(function(x){x.setAttribute("aria-pressed",String(x.dataset.scr===S.screen));});
+    document.querySelectorAll(".screen").forEach(function(x){x.classList.toggle("on",x.id==="scr-"+S.screen);});
+    window.scrollTo({top:0,behavior:"instant"});
+    return;
+  }
+  if(b.dataset.themeSet){
+    var cur=document.documentElement.getAttribute("data-theme");
+    var next=cur===b.dataset.themeSet?null:b.dataset.themeSet;
+    if(next)document.documentElement.setAttribute("data-theme",next); else document.documentElement.removeAttribute("data-theme");
+    document.querySelectorAll("[data-theme-set]").forEach(function(x){x.setAttribute("aria-pressed",String(x.dataset.themeSet===next));});
+    return;
+  }
+  if(b.dataset.terms){ S.terms=b.dataset.terms;
+    document.querySelectorAll("[data-terms]").forEach(function(x){x.setAttribute("aria-pressed",String(x.dataset.terms===S.terms));});
+    renderAll(); return; }
+  if(b.dataset.frame){ S.frame=b.dataset.frame;
+    document.querySelectorAll("[data-frame]").forEach(function(x){x.setAttribute("aria-pressed",String(x.dataset.frame===S.frame));});
+    renderAll(); return; }
+  if(b.dataset.view){ S.view=b.dataset.view; renderIncome(); renderReport(); return; }
+  if(b.dataset.exp){
+    var id=b.dataset.exp, row=document.getElementById("det-"+id);
+    if(row){ var open=row.hasAttribute("hidden"); if(open)row.removeAttribute("hidden"); else row.setAttribute("hidden","");
+      b.setAttribute("aria-expanded",String(open)); b.textContent=open?"−":"+"; }
+    return;
+  }
+  if(b.classList.contains("info")){ openPop(b,b.dataset.popT,b.dataset.popB,b.dataset.popS); return; }
+  if(b.classList.contains("dash")){ openPop(b,"Unavailable",b.dataset.why,"An em-dash is an admission; a zero would be a claim."); return; }
+  closePop();
+});
+document.addEventListener("keydown",function(e){ if(e.key==="Escape")closePop(); });
+
+var popEl=null;
+function closePop(){ if(popEl){popEl.remove();popEl=null;} }
+function openPop(anchor,t,b,s){
+  closePop();
+  var d=document.createElement("div");
+  d.className="pop"; d.setAttribute("role","status");
+  d.innerHTML='<b>'+esc(t)+'</b>'+esc(b)+(s?'<span class="src">'+esc(s)+'</span>':'');
+  document.body.appendChild(d);
+  var r=anchor.getBoundingClientRect();
+  var left=Math.min(Math.max(8,r.left),window.innerWidth-d.offsetWidth-8);
+  var top=r.bottom+6;
+  if(top+d.offsetHeight>window.innerHeight-8) top=Math.max(8,r.top-d.offsetHeight-6);
+  d.style.left=left+"px"; d.style.top=top+"px";
+  popEl=d;
+}
+
+renderAll();
+
+/* the written section, appended after the first render so the counts are real */
+(function(){
+  var r=document.createElement("section");
+  r.className="stage";
+  r.innerHTML='<div class="report">'+
+    '<h2>What this is, and what it is not</h2>'+
+    '<p>Three screens of income and savings analytics for a single-user Indian ledger. They extend the Banking Console; they take its composition and none of its tokens, because that artifact predates the corrected set. The token block here is lifted verbatim from the Elevation Pass. Investment surfaces are deliberately untouched — a second pass owns those.</p>'+
+    '<h3>Counts against the target</h3>'+
+    '<div style="overflow-x:auto"><table class="rt" id="report-counts"></table></div>'+
+    '<p>Figure counts are counted live from the DOM at render time, not asserted. Sparkline vertices are excluded; counting them would roughly triple the income figure and the two numbers would not be comparable. Standing is a judgement screen rather than a table screen, and it is not held to the 200-figure target: refusing to compute is most of its content.</p>'+
+    '<h3>The comparison pattern adopted</h3>'+
+    '<p>Every figure on the flagship rows sits beside one of three references, which is the Tickertape move in plain text with almost no chart: <b>its own history</b> (12-month median, low, high, CV, and a delta against the FY25-26 average), <b>a stated expectation</b> (Δ vs expected, which is the only place an income row is allowed semantic colour), or <b>its position in a range</b> (the bullet strip inside the expanded row). Percentile appears only on Standing, as a band with stated uncertainty, never beside an action and never as a time series.</p>'+
+    '<h3>Colour</h3>'+
+    '<p>No new colour was introduced. One alias was added: <span class="mono">--spark</span> resolves to <span class="mono">--fg-muted</span> and carries every micro-chart stroke, every small-multiple bar and the “long tail” fill, because <span class="mono">--c-other</span> <span class="mono">#8C98A6</span> measures <b>2.93:1</b> on white and fails the 3:1 non-text floor. Measured ratios for the substitute, computed from the hex values with the sRGB→linear relative-luminance formula, not estimated:</p>'+
+    '<ul><li>Light — <span class="mono">--fg-muted #64707E</span> on <span class="mono">--bg-surface #FFFFFF</span>: <b>4.96:1</b>. Clears the 3:1 non-text floor and the 4.5:1 text floor.</li>'+
+    '<li>Dark — <span class="mono">--fg-muted #8C98A6</span> on <span class="mono">--bg-surface #13181D</span>: <b>6.61:1</b>.</li></ul>'+
+    '<p>One contrast exemption is claimed, per instance and not globally: the faint percentile band fill (<span class="mono">--accent-soft</span>) and the seasonality hairline (<span class="mono">--grid</span>, 1.23:1) are context layers, and every value they shade is also printed as text in the same block. The strokes are not exempt and do not rely on it.</p>'+
+    '<h3>What I deliberately did not change</h3>'+
+    '<ul>'+
+    '<li><b>The token set.</b> Lifted verbatim. The <span class="mono">--c-other</span> defect is named and routed around on these screens, not fixed in the token block — that belongs to whoever owns the tokens, and fixing it here would fork them.</li>'+
+    '<li><b>Investment surfaces.</b> No holdings, portfolio or fundamentals screen appears here.</li>'+
+    '<li><b>The percentile construction.</b> Two scales, PPP, bands widening above the 90th, refusal to resolve past the top 10% for India, decomposition of every move, log-ratio for progression. Taken as settled and matched, not re-derived.</li>'+
+    '<li><b>Sankey.</b> Not used as the income headline, or at all. The question is longitudinal.</li>'+
+    '<li><b>The bank logo mechanism.</b> Marks request <span class="mono">/api/logo/&lt;id&gt;</span> and fall back to a branded badge from the provider’s own two colours. In this static artifact that endpoint does not exist, so every mark you see is the 404 fallback — which is the behaviour worth checking. No approximation of a real mark is drawn anywhere.</li>'+
+    '<li><b>Cards and shadows.</b> Borders carry elevation; no gradient, glass or flourish was added.</li>'+
+    '</ul>'+
+    '<h3>Unverified — I have no browser and no screenshot tool</h3>'+
+    '<p>Nothing on these three screens has been seen rendered, by me or by anyone. Specifically unverified, in the order I would check them:</p>'+
+    '<ul>'+
+    '<li><b>Narrow widths.</b> The two 19-column tables scroll inside their own containers, but the chrome has five control groups on one row and I cannot confirm it wraps cleanly near 400px rather than pushing the page sideways.</li>'+
+    '<li><b>Label crowding at density.</b> 34px rows with 12.5px mono across 19 columns, and the two-row sticky header with a group band above a column band — the <span class="mono">top:26px</span> offset on the second header row is arithmetic, not a rendering, and is the single thing most likely to be visibly wrong.</li>'+
+    '<li><b>Dark theme.</b> Every token has a dark value and no component uses a literal colour, but the small-multiple bar opacities (0.45–1.0 on <span class="mono">--fg-muted</span>) were chosen on the light ground and the palest year may fall below legibility on dark.</li>'+
+    '<li><b>The popover.</b> It is fixed-positioned and flips above the anchor when it would overflow the bottom, but I have not seen it near a right edge or inside a horizontally scrolled table.</li>'+
+    '<li><b>The 12-panel seasonality grid</b> collapsing to fewer columns at phone width, and whether the month label and index still sit on one line there.</li>'+
+    '</ul>'+
+    '<p>What I am least confident about, in one line: the sticky two-row table header at density. Everything else degrades; that one can occlude data.</p>'+
+    '</div>';
+  document.querySelector("main").insertAdjacentElement("afterend",r);
+  renderReport();
+})();
+</script>
+
+</body></html>
