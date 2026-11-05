@@ -2,7 +2,9 @@
 
 import * as React from "react";
 import { Scale } from "lucide-react";
-import { Card, Field } from "@/ui/primitives";
+import { Field } from "@/components/ui/field";
+import { Panel } from "@/components/ui/page-shell";
+import { Input } from "@/components/ui/input";
 import { ActionForm, SubmitButton } from "@/ui/action-form";
 import type { ActionState } from "@/ui/action-state";
 import { bookAdjustmentAction, reconcileAccountAction } from "../actions";
@@ -37,10 +39,9 @@ export default function ReconcilePanel({
   const differs = report !== null && !report.ok && closing !== "";
 
   return (
-    <Card
+    <Panel
       title="Reconcile against a statement"
-      subtitle="Type the closing balance your bank prints. Nothing is changed — you are told the difference, and what to do about it."
-      className="mb-6"
+      description="Type the closing balance your bank prints. Nothing is changed — you are told the difference, and what to do about it."
     >
       <ActionForm
         action={reconcileAccountAction}
@@ -52,11 +53,10 @@ export default function ReconcilePanel({
         <>
           <Field name="asOf" label="Statement date" required>
             {(props) => (
-              <input
+              <Input
                 {...props}
                 name="asOf"
                 type="date"
-                className="form-input"
                 value={asOf}
                 max={today}
                 onChange={(event) => setAsOf(event.target.value)}
@@ -72,10 +72,10 @@ export default function ReconcilePanel({
             required
           >
             {(props) => (
-              <input
+              <Input
                 {...props}
                 name="statementClosing"
-                className="form-input tnum"
+                className="tabular-nums"
                 inputMode="decimal"
                 placeholder="48250.75"
                 value={closing}
@@ -97,21 +97,21 @@ export default function ReconcilePanel({
         <div
           className={
             settled
-              ? "mt-4 rounded-xl border border-green-500/30 bg-green-500/5 p-4"
-              : "mt-4 rounded-xl border border-amber-500/30 bg-amber-500/5 p-4"
+              ? "mt-4 rounded-xl border border-(--gain)/30 bg-(--gain)/5 p-4"
+              : "mt-4 rounded-xl border border-(--warn)/30 bg-(--warn)/5 p-4"
           }
           role="status"
         >
-          <p className={settled ? "text-sm text-green-400" : "text-sm text-amber-300"}>
+          <p className={settled ? "text-sm text-(--gain)" : "text-sm text-(--warn)"}>
             {report.message}
           </p>
 
           {differs && (
-            <div className="mt-4 border-t border-white/10 pt-4">
-              <p className="mb-3 text-xs text-gray-400">
+            <div className="mt-4 border-t border-(--border-subtle) pt-4">
+              <p className="mb-3 text-xs text-(--fg-secondary)">
                 If the statement is right and the missing movements are not worth importing, book
                 the difference as an adjustment against{" "}
-                <span className="text-gray-300">Equity:Opening Balances</span>. The original
+                <span className="text-(--fg-secondary)">Equity:Opening Balances</span>. The original
                 postings are left alone — the correction is a new transaction, so both stay visible.
               </p>
               <ActionForm
@@ -134,6 +134,6 @@ export default function ReconcilePanel({
           )}
         </div>
       )}
-    </Card>
+    </Panel>
   );
 }

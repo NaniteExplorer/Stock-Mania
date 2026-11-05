@@ -1,7 +1,9 @@
 import type { Money } from "@/core/money";
 import type { Percentage, Quantity } from "@/core/numeric";
 import type { Xirr } from "@/domain/portfolio";
-import { MoneyText, Pill, Stat } from "@/ui/primitives";
+import { FigureText } from "@/components/ui/data-cell";
+import { Kpi, KpiStrip, Panel } from "../../../../components/ui/page-shell";
+import { percentage, rupee, signed, unknown } from "@/core/format";
 import { formatPercent } from "@/ui/format";
 import { XirrValue } from "./gold-xirr";
 
@@ -18,8 +20,8 @@ import { XirrValue } from "./gold-xirr";
  *
  *  - **An unpriced position renders as unpriced, never as zero.** A market value
  *    of `null` means "no price resolved", and the difference between that and
- *    "worth nothing" is the whole holding. `Stat` renders a `null` Money as a
- *    dash with a label; the hint beside it says why.
+ *    "worth nothing" is the whole holding. `Kpi` renders it as an explained
+ *    unknown, never a formatted zero.
  *  - **An undefined XIRR renders its reason.** `XirrValue` already does this and
  *    is reused rather than reimplemented.
  *  - **Cost basis is the ledger's, untouched by any chart.** The average cost
@@ -62,82 +64,75 @@ export default function ReturnsPanel({ returns }: { returns: HoldingReturns }) {
   const priced = returns.marketValue !== null;
 
   return (
-    <section className="panel mb-6 p-5" aria-labelledby="holding-returns-heading">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 id="holding-returns-heading" className="text-sm font-semibold text-gray-100">
-            Returns over your ledger
-          </h2>
-          <p className="mt-1 max-w-2xl text-xs text-gray-500">
-            Money-weighted return and profit and loss for this holding alone, computed from the trades you recorded
-            and valued through the price ladder as of {returns.asOf}.
-          </p>
-        </div>
-        <Pill tone="neutral">
+    <Panel
+      title="Returns over your ledger"
+      description={`Money-weighted return and profit and loss for this holding alone, computed from the trades you recorded and valued through the price ladder as of ${returns.asOf}.`}
+      actions={
+        <span className="text-xs text-(--fg-muted)">
           {priced
             ? `Priced ${returns.pricedOn ?? returns.asOf}${returns.isStale ? " · stale" : ""}`
             : "Unpriced"}
-        </Pill>
-      </div>
-
+        </span>
+      }
+    >
       {!priced && (
-        <p role="status" className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/[0.06] p-3 text-xs text-amber-300">
+        <p role="status" className="mb-4 rounded-lg border border-(--warn)/40 bg-(--warn)/[0.06] p-3 text-xs text-(--warn)">
           No price resolved for this holding{returns.unpricedReason ? `: ${returns.unpricedReason}` : "."} Market
-          value, unrealised gain and XIRR are left blank rather than shown as zero — an unpriced position is not a
+         value, unrealised gain and XIRR are left blank rather than shown as zero — an unpriced position is not a
           worthless one, and only you can tell which this is.
         </p>
       )}
 
       {returns.unconverted && (
-        <p role="status" className="mb-4 rounded-lg border border-amber-500/40 bg-amber-500/[0.06] p-3 text-xs text-amber-300">
+        <p role="status" className="mb-4 rounded-lg border border-(--warn)/40 bg-(--warn)/[0.06] p-3 text-xs text-(--warn)">
           Part of this holding could not be converted to the reporting currency, so the portfolio-level figures it
           feeds are partial. The per-holding numbers below are in {returns.currency}.
         </p>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Invested" value={returns.costBasis} hint="Open-lot cost plus charges, exactly as traded" />
-        <Stat
+      <KpiStrip>
+        <Kpi label="Invested" value={rupee(returns.costBasis)} detail="Open-lot cost plus charges, exactly as traded" />
+        <Kpi
           label="Market value"
-          value={returns.marketValue}
-          hint={priced ? "Latest resolved valuation" : (returns.unpricedReason ?? "No price resolved")}
+          value={returns.marketValue ? rupee(returns.marketValue) : unknown(returns.unpricedReason ?? "No price resolved")}
+          detail={priced ? "Latest resolved valuation" : undefined}
         />
-        <Stat
+        <Kpi
           label="Unrealised gain / loss"
-          value={returns.unrealisedGain}
-          hint={returns.absoluteReturn ? `${formatPercent(returns.absoluteReturn)} on open cost` : "Needs a priced open position"}
+          value={returns.unrealisedGain ? signed(returns.unrealisedGain) : unknown("Needs a priced open position")}
+          detail={returns.absoluteReturn ? `${formatPercent(returns.absoluteReturn)} on open cost` : undefined}
         />
-        <Stat
+        <Kpi
           label="Absolute return"
-          value={returns.absoluteReturn ? <span className="tnum">{formatPercent(returns.absoluteReturn)}</span> : null}
-          hint="Unrealised gain divided by open-position cost"
+          value={returns.absoluteReturn ? percentage(returns.absoluteReturn) : unknown("Needs a priced open position")}
+          detail="Unrealised gain divided by open-position cost"
         />
-      </div>
+      </KpiStrip>
 
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
-        <div className="rounded-lg border border-gray-600/70 p-4">
-          <p className="metric-label">XIRR</p>
+        <div className="rounded-lg border border-(--border)/70 p-4">
+          <h3 className="text-xs font-medium text-(--fg-muted)">XIRR</h3>
           <div className="mt-1">
             <XirrValue value={returns.xirr} />
           </div>
-          <p className="mt-2 text-xs text-gray-500">
+          <p className="mt-2 text-xs text-(--fg-muted)">
             Annualised and money-weighted, from every cash leg this holding produced plus its closing value.
           </p>
         </div>
 
-        <div className="rounded-lg border border-gray-600/70 p-4">
-          <p className="metric-label">Average buy price, as traded</p>
+        <div className="rounded-lg border border-(--border)/70 p-4">
+          <h3 className="text-xs font-medium text-(--fg-muted)">Average buy price, as traded</h3>
           <div className="mt-1 text-xl font-semibold">
-            <MoneyText value={returns.averageBuyPriceAsTraded} tone="neutral" />
+            {returns.averageBuyPriceAsTraded ? <FigureText value={returns.averageBuyPriceAsTraded} /> : "—"}
           </div>
-          <p className="mt-2 text-xs text-gray-500">
+          <p className="mt-2 text-xs text-(--fg-muted)">
             Across {returns.boughtQuantityAsTraded.toDecimalString()} units bought; {returns.quantity.toDecimalString()}{" "}
             still held.
           </p>
           {returns.averageBuyPricePerCurrentShare && returns.boughtQuantityInCurrentShares && (
-            <div className="mt-2 rounded border border-gray-600 px-2 py-1.5 text-xs text-gray-400">
+            <div className="mt-2 rounded border border-(--border) px-2 py-1.5 text-xs text-(--fg-secondary)">
               Per current share, after the {returns.splitFactorLabel} you logged:{" "}
-              <MoneyText value={returns.averageBuyPricePerCurrentShare} tone="neutral" className="text-gray-200" />{" "}
+              <FigureText value={returns.averageBuyPricePerCurrentShare} className="text-(--fg)" />{" "}
               across {returns.boughtQuantityInCurrentShares.toDecimalString()} shares. That is the figure comparable
               with the adjusted price chart above; the one beside it is what you actually paid. Your cost basis is the
               same money either way — applying the split factor to a series that already carries it is the 40x error
@@ -147,10 +142,10 @@ export default function ReturnsPanel({ returns }: { returns: HoldingReturns }) {
         </div>
       </div>
 
-      <p className="mt-4 text-xs text-gray-500">
+      <p className="mt-4 text-xs text-(--fg-muted)">
         Cost basis is taken from the ledger only. Nothing on this panel is derived from the price series, so a
         retroactively restated history cannot move it.
       </p>
-    </section>
+    </Panel>
   );
 }

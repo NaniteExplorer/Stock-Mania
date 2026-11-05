@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { Count } from "@/core/units";
 import type { RefreshPricesOutput } from "@/app/pricing.usecases";
 import { summarizePortfolioRefresh } from "@/app/price-refresh-summary.usecases";
 import { check, checkTrue, done, section } from "./harness";
@@ -11,12 +12,12 @@ const output = (input: {
   persisted: input.persisted,
   warnings: input.warnings ?? [],
   reports: [{
-    requested: 1,
-    persisted: input.persisted,
+    requested: Count(1),
+    persisted: Count(input.persisted),
     rejected: [],
     divergences: [],
     warnings: input.warnings ?? [],
-    attempts: input.attempts,
+    attempts: input.attempts.map((attempt) => ({ ...attempt, quotes: Count(attempt.quotes) })),
   }],
 });
 

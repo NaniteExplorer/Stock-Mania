@@ -1,5 +1,6 @@
 import type { CatalogFetchReceipt, CatalogSearchOutput } from "@/domain/instrument-catalog";
 import type { InstrumentKind } from "@/domain/instruments";
+import type { Count } from "@/core/units";
 
 export type LiveDataFreshness = "LIVE" | "DELAYED" | "EOD" | "NAV_DAILY" | "STALE" | "UNAVAILABLE";
 export type LiveDataProviderState = "READY" | "CONFIG_REQUIRED" | "CACHE_ONLY" | "UNAVAILABLE";
@@ -35,10 +36,10 @@ export interface LiveDataCenterOutput {
   readonly providers: readonly LiveDataProviderProfile[];
   readonly tracked: readonly LiveDataTrackedInstrument[];
   readonly coverage: {
-    readonly indianStocks: number;
-    readonly indianFunds: number;
-    readonly usStocks: number;
-    readonly other: number;
+    readonly indianStocks: Count;
+    readonly indianFunds: Count;
+    readonly usStocks: Count;
+    readonly other: Count;
   };
   readonly searchSamples: {
     readonly indianStock: CatalogSearchOutput | null;

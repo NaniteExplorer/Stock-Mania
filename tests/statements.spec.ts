@@ -496,4 +496,11 @@ check(
   "inferred:3",
 );
 
+section("neutral geometry headings do not invent amount roles");
+check(
+  "cr inside Description is not a Credit heading",
+  layoutFingerprint([["Date", "Description", "Reference", "Figure 1", "Figure 2"]]),
+  "inferred:5",
+);
+
 done();

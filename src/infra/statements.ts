@@ -23,6 +23,8 @@
 
 import { Currency, Money } from "@/core/money";
 import { CalendarDate } from "@/core/time";
+import { Ordinal } from "@/core/units";
+import type { StatementInput } from "@/domain/banking";
 
 /* ═══ Inputs and outputs ══════════════════════════════════════════════ */
 
@@ -193,6 +195,14 @@ export interface ParsedStatement {
   readonly fingerprint?: string;
 }
 
+/** Assign validated domain units when parsed file positions enter the banking port. */
+export function toBankingStatement(statement: ParsedStatement): StatementInput {
+  return {
+    rows: statement.rows.map((row) => ({ ...row, rowIndex: Ordinal(row.rowIndex), occurrence: Ordinal(row.occurrence) })),
+    problems: statement.problems.map((problem) => ({ ...problem, rowIndex: Ordinal(problem.rowIndex) })),
+  };
+}
+
 export class StatementParseError extends Error {
   // `cause` is optional and forwarded to `Error` so that a failure deep inside a
   // third-party reader — pdf.js on a corrupt file, say — keeps its stack behind
@@ -285,6 +295,8 @@ function reportedMapping(columns: ColumnMap): Readonly<Partial<Record<ColumnKey,
 
 const normalizeHeader = (value: Cell): string =>
   String(value ?? "")
+    // SBI includes the currency symbol in its debit/credit heading glyph run.
+    .replace(/[₹$€£]/g, "")
     .trim()
     .toLowerCase()
     .replace(/[_-]+/g, " ")
@@ -516,7 +528,14 @@ function withIdentifiedReferences(rows: readonly StatementRow[]): StatementRow[]
 function findColumn(headers: readonly string[], aliases: readonly string[]): number {
   const exact = headers.findIndex((header) => aliases.includes(header));
   if (exact >= 0) return exact;
-  return headers.findIndex((header) => aliases.some((alias) => header.includes(alias)));
+  return headers.findIndex((header) =>
+    aliases.some((alias) => {
+      if (alias.length > 2) return header.includes(alias);
+      // Short aliases such as Cr/Dr must not name a role from a fragment
+      // of another heading: "cr" occurs inside "description".
+      return header.split(/[^a-z0-9]+/).includes(alias);
+    }),
+  );
 }
 
 function detectByAliases(rows: readonly RawRow[]): { headerIndex: number; columns: ColumnMap } | null {

@@ -1,5 +1,6 @@
 import { Err, Ok } from "@/core/kernel";
 import { Currency } from "@/core/money";
+import { Count } from "@/core/units";
 import { CalendarDate, DateRange } from "@/core/time";
 import { type HealthStatus, ProviderError } from "@/domain/pricing";
 import {
@@ -49,13 +50,13 @@ const WEEK = DateRange.of(DAY("2026-09-01"), DAY("2026-09-07"));
 
 const HEALTHY: HealthStatus = {
   state: "HEALTHY",
-  consecutiveFailures: 0,
+  consecutiveFailures: Count(0),
   lastError: null,
   circuitOpenUntil: null,
 };
 const DEAD: HealthStatus = {
   state: "UNAVAILABLE",
-  consecutiveFailures: 5,
+  consecutiveFailures: Count(5),
   lastError: "down",
   circuitOpenUntil: new Date("2026-09-13T00:00:00Z"),
 };

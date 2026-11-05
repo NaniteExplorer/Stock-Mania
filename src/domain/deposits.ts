@@ -28,6 +28,7 @@ import { UserId } from "@/core/kernel";
 import { Currency, Money, type RoundingMode } from "@/core/money";
 import { Percentage, Quantity, Rate, UnitPrice } from "@/core/numeric";
 import { CalendarDate, DateRange, FinancialYear } from "@/core/time";
+import { Count, Days, Ordinal, type Months } from "@/core/units";
 import { Account, AccountId, AccountType } from "@/domain/accounts";
 import type { BalanceSource } from "@/domain/assets";
 
@@ -45,21 +46,18 @@ export type CompoundingFrequency =
 export type InterestType = "SIMPLE" | "COMPOUND" | "FLAT" | "REDUCING_BALANCE";
 
 /** Compounding periods per year. `AT_MATURITY` compounds once over the term. */
-export function periodsPerYear(frequency: CompoundingFrequency): number {
-  switch (frequency) {
-    case "DAILY":
-      return 365;
-    case "MONTHLY":
-      return 12;
-    case "QUARTERLY":
-      return 4;
-    case "HALF_YEARLY":
-      return 2;
-    case "ANNUALLY":
-    case "AT_MATURITY":
-      return 1;
-  }
+export function periodsPerYear(frequency: CompoundingFrequency): Count {
+  return PERIODS_PER_YEAR[frequency];
 }
+
+const PERIODS_PER_YEAR: Readonly<Record<CompoundingFrequency, Count>> = Object.freeze({
+  DAILY: Count(365),
+  MONTHLY: Count(12),
+  QUARTERLY: Count(4),
+  HALF_YEARLY: Count(2),
+  ANNUALLY: Count(1),
+  AT_MATURITY: Count(1),
+});
 
 const RATE_DENOMINATOR = 10n ** 10n * 100n;
 
@@ -76,7 +74,7 @@ const RATE_DENOMINATOR = 10n ** 10n * 100n;
 export function compoundFactor(
   rate: Rate,
   frequency: CompoundingFrequency,
-  periods: number,
+  periods: Count,
 ): { numerator: bigint; denominator: bigint } {
   if (!Number.isInteger(periods) || periods < 0) {
     throw new RangeError(`Compounding periods must be a non-negative whole number, got ${periods}.`);
@@ -97,7 +95,7 @@ export function compoundFactor(
 export function simpleInterest(
   principal: Money,
   rate: Rate,
-  days: number,
+  days: Days,
   mode: RoundingMode = "HALF_UP",
 ): Money {
   const factor = rate.accrualFactor(days);
@@ -292,7 +290,7 @@ export class FixedDeposit extends DepositProduct {
 
     if (this.terms.interestType === "SIMPLE") {
       const days = this.terms.openedOn.daysUntil(effective);
-      const interest = simpleInterest(this.terms.principal, this.terms.rate, days);
+      const interest = simpleInterest(this.terms.principal, this.terms.rate, Days(days));
       return this.terms.payout === "PERIODIC_PAYOUT"
         ? this.terms.principal
         : this.terms.principal.plus(interest);
@@ -301,7 +299,7 @@ export class FixedDeposit extends DepositProduct {
     const periods = this.periodsBetween(this.terms.openedOn, effective);
     if (this.terms.payout === "PERIODIC_PAYOUT") return this.terms.principal;
 
-    const factor = compoundFactor(this.terms.rate, this.terms.compounding, periods);
+    const factor = compoundFactor(this.terms.rate, this.terms.compounding, Count(periods));
     const compounded = this.terms.principal.timesRatio(factor.numerator, factor.denominator, "HALF_UP");
 
     /*
@@ -313,7 +311,7 @@ export class FixedDeposit extends DepositProduct {
     const wholePeriodsEnd = this.periodEnd(periods);
     const stubDays = Math.max(0, wholePeriodsEnd.daysUntil(effective));
     if (stubDays === 0) return compounded;
-    return compounded.plus(simpleInterest(compounded, this.terms.rate, stubDays));
+    return compounded.plus(simpleInterest(compounded, this.terms.rate, Days(stubDays)));
   }
 
   /** The date `periods` whole compounding periods after the deposit opened. */
@@ -397,7 +395,7 @@ export class FixedDeposit extends DepositProduct {
   }
 
   private periodicPayout(): Money {
-    const factor = compoundFactor(this.terms.rate, this.terms.compounding, 1);
+    const factor = compoundFactor(this.terms.rate, this.terms.compounding, Count(1));
     return this.terms.principal
       .timesRatio(factor.numerator, factor.denominator, "HALF_UP")
       .minus(this.terms.principal);
@@ -411,7 +409,7 @@ export interface RecurringDepositTerms {
   readonly rate: Rate;
   readonly openedOn: CalendarDate;
   /** Number of monthly instalments. */
-  readonly months: number;
+  readonly months: Months;
   /** Indian RDs compound quarterly on each instalment. */
   readonly compounding: CompoundingFrequency;
   /**
@@ -421,7 +419,7 @@ export interface RecurringDepositTerms {
    * bank charges a penalty and the instalment earns nothing, so a schedule that
    * quietly assumed every instalment arrived would overstate the maturity value.
    */
-  readonly missedInstalments?: readonly number[];
+  readonly missedInstalments?: readonly Ordinal[];
   /** Penalty per missed instalment — commonly ₹1–₹2 per ₹100 per month. */
   readonly missedInstalmentPenalty?: Money;
 }
@@ -454,7 +452,7 @@ export class RecurringDeposit extends DepositProduct {
   }
 
   private missed(instalment: number): boolean {
-    return (this.terms.missedInstalments ?? []).includes(instalment);
+    return (this.terms.missedInstalments ?? []).includes(Ordinal(instalment));
   }
 
   /** Instalment `n` is paid at the start of month `n`. */
@@ -480,14 +478,14 @@ export class RecurringDeposit extends DepositProduct {
         (effective.day < paidOn.day ? 1 : 0);
       const periods = Math.max(0, Math.floor(monthsHeld / monthsPerPeriod));
 
-      const factor = compoundFactor(this.terms.rate, this.terms.compounding, periods);
+      const factor = compoundFactor(this.terms.rate, this.terms.compounding, Count(periods));
       let value = this.terms.instalment.timesRatio(factor.numerator, factor.denominator, "HALF_UP");
 
       // Simple interest on the months that do not complete a period, as banks pay.
       const stubMonths = Math.max(0, monthsHeld - periods * monthsPerPeriod);
       if (stubMonths > 0) {
         const stubDays = paidOn.plusMonths(periods * monthsPerPeriod).daysUntil(effective);
-        value = value.plus(simpleInterest(value, this.terms.rate, Math.max(0, stubDays)));
+        value = value.plus(simpleInterest(value, this.terms.rate, Days(Math.max(0, stubDays))));
       }
       total = total.plus(value);
     }
@@ -539,7 +537,7 @@ export interface PpfTerms {
   /** Rate per financial year — PPF is re-notified quarterly, effectively annually. */
   readonly ratesByFinancialYear: ReadonlyMap<string, Rate>;
   /** Extensions taken after the initial 15 years, in 5-year blocks. */
-  readonly extensionBlocks?: number;
+  readonly extensionBlocks?: Count;
 }
 
 /** The statutory ceiling on a year's PPF contribution. */
@@ -970,11 +968,11 @@ export interface DepositTermsInput {
   readonly rate?: Rate;
   readonly principal?: Money;
   readonly instalment?: Money;
-  readonly months?: number;
+  readonly months?: Months;
   readonly maturesOn?: CalendarDate;
   readonly prematurePenalty?: Percentage;
   readonly npsTier?: NpsTier;
-  readonly extensionBlocks?: number;
+  readonly extensionBlocks?: Count;
 }
 
 /** A year's money into a scheme. PPF uses `amount`; EPF uses the three parts. */

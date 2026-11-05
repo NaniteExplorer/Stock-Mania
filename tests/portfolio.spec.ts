@@ -18,7 +18,8 @@
  * why both exist.
  */
 
-import { Money } from "@/core/money";
+import { Currency, Money } from "@/core/money";
+import { Ratio } from "@/core/units";
 import { Percentage, Quantity, Rate } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
 import {
@@ -102,8 +103,20 @@ checkTrue(
   extreme.ok && extreme.rate.percent.toApproximateNumber() > 200_000,
 );
 // Self-verifying: whatever the number, the NPV at that rate must be ~0.
-checkTrue("with a residual at the tolerance", extreme.ok && Math.abs(extreme.residual) < 1e-3);
+checkTrue("with a residual at the tolerance", extreme.ok && Math.abs(extreme.residual.toApproximateNumber()) < 1e-3);
 checkTrue("in a handful of iterations", extreme.ok && extreme.iterations < 300);
+for (const currency of [Currency.reporting, Currency.USD]) {
+  const result = xirr([
+    { on: CalendarDate.parse("2025-01-01"), amount: Money.fromRupees("-100000", currency) },
+    { on: CalendarDate.parse("2026-01-01"), amount: Money.fromRupees("110000", currency) },
+  ]);
+  checkTrue(`${currency.code} residual converges`, result.ok);
+  if (result.ok) {
+    check(`${currency.code} residual is exact Money`, result.residual instanceof Money, true);
+    check(`${currency.code} residual keeps its input currency`, result.residual.currency.code, currency.code);
+    check(`${currency.code} residual exposes integer minor units`, typeof result.residual.minor, "bigint");
+  }
+}
 
 section("XIRR — a real SIP");
 
@@ -204,7 +217,7 @@ assertProperty(
       0,
     );
     const bound = Math.max(1e-3, scale * 1e-9, Math.abs(slope) * 1e-11);
-    return Math.abs(npv) < bound && Math.abs(result.residual) < bound;
+    return Math.abs(npv) < bound && Math.abs(result.residual.toApproximateNumber()) <= bound + 0.005;
   },
   1500,
 );
@@ -416,44 +429,44 @@ const returns = dailyReturns([
 check("four daily returns", returns.length, 4);
 check("the first is +1%", (returns[0] * 100).toFixed(4), "1.0000");
 
-check("sample standard deviation, not population", stdDev([1, 2, 3, 4]).toFixed(6), "1.290994");
-check("a single observation has no deviation", stdDev([5]), 0);
+check("sample standard deviation, not population", stdDev([1, 2, 3, 4].map(Ratio), Ratio).toFixed(6), "1.290994");
+check("a single observation has no deviation", stdDev([Ratio(5)], Ratio), 0);
 check("annualised over 252 trading days", TRADING_DAYS, 252);
 checkTrue("volatility is positive for a varying series", volatility(returns).toApproximateNumber() > 0);
-check("and zero for a flat one", volatility([0, 0, 0, 0]).toFixed(2), "0.00");
+check("and zero for a flat one", volatility([0, 0, 0, 0].map(Ratio)).toFixed(2), "0.00");
 
 const riskFree = { annual: Rate.annual("6.5") };
 checkTrue("Sharpe is a number for a varying series", sharpe(returns, riskFree) !== null);
-check("but undefined when there is no volatility", sharpe([0.01, 0.01, 0.01], riskFree), null);
+check("but undefined when there is no volatility", sharpe([0.01, 0.01, 0.01].map(Ratio), riskFree), null);
 checkTrue("Sortino ignores upside volatility", sortino(returns, riskFree) !== null);
-check("and is undefined when nothing went down", sortino([0.01, 0.02, 0.03], riskFree), null);
+check("and is undefined when nothing went down", sortino([0.01, 0.02, 0.03].map(Ratio), riskFree), null);
 
 section("beta, alpha and correlation");
 
 // A portfolio that moves exactly with the benchmark: beta 1, correlation 1.
-const benchmark = [0.01, -0.005, 0.02, -0.01, 0.015];
+const benchmark = [0.01, -0.005, 0.02, -0.01, 0.015].map(Ratio);
 const identical = [...benchmark];
 check("beta against itself is 1", beta(identical, benchmark)?.toFixed(4), "1.0000");
 check("and correlation is 1", correlation(identical, benchmark)?.toFixed(4), "1.0000");
 
 // Twice the benchmark's moves: beta 2, still perfectly correlated.
-const levered = benchmark.map((value) => value * 2);
+const levered = benchmark.map((value) => Ratio(value * 2));
 check("a doubled portfolio has beta 2", beta(levered, benchmark)?.toFixed(4), "2.0000");
 check("and correlation still 1", correlation(levered, benchmark)?.toFixed(4), "1.0000");
 
 // The mirror image: perfectly negatively correlated.
-const inverse = benchmark.map((value) => -value);
+const inverse = benchmark.map((value) => Ratio(-value));
 check("an inverse portfolio has beta −1", beta(inverse, benchmark)?.toFixed(4), "-1.0000");
 check("and correlation −1", correlation(inverse, benchmark)?.toFixed(4), "-1.0000");
 
-check("a constant benchmark gives no beta", beta(benchmark, [0.01, 0.01, 0.01, 0.01, 0.01]), null);
+check("a constant benchmark gives no beta", beta(benchmark, [0.01, 0.01, 0.01, 0.01, 0.01].map(Ratio)), null);
 checkTrue("alpha is defined where beta is", alpha(levered, benchmark, riskFree) !== null);
 
 section("value at risk — historical, not parametric");
 
-const twentyDays = Array.from({ length: 40 }, (_unused, index) => (index === 0 ? -0.08 : index / 1000 - 0.02));
+const twentyDays = Array.from({ length: 40 }, (_unused, index) => Ratio(index === 0 ? -0.08 : index / 1000 - 0.02));
 checkTrue("VaR is a loss", (historicalVar(twentyDays)?.toApproximateNumber() ?? 1) < 0);
-check("a short series has no VaR rather than a made-up one", historicalVar([0.01, -0.02]), null);
+check("a short series has no VaR rather than a made-up one", historicalVar([0.01, -0.02].map(Ratio)), null);
 
 /* ═══ Income and allocation ═══════════════════════════════════════════ */
 

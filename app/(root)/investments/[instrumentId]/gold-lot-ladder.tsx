@@ -1,5 +1,7 @@
 import type { GoldAnalytics } from "@/app/gold-analytics.usecases";
-import { MoneyText } from "@/ui/primitives";
+import { Panel } from "../../../../components/ui/page-shell";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "../../../../components/ui/table";
+import { FigureCell, FigureText } from "../../../../components/ui/data-cell";
 
 /**
  * Every open lot, oldest first, with the day it turns long-term and how far off
@@ -21,107 +23,97 @@ export default function GoldLotLadder({
   const category = analytics.taxCategory.replace(/_/g, " ").toLowerCase();
 
   return (
-    <section className="panel mb-6 p-0" aria-labelledby="gold-ladder-heading">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-gray-600 px-5 py-4">
-        <div>
-          <h2 id="gold-ladder-heading" className="text-sm font-semibold text-gray-100">
-            Lots, and when each turns long-term
-          </h2>
-          <p className="mt-1 max-w-xl text-xs text-gray-500">
-            {threshold === null
-              ? `No shipped tax regime gives ${category} a long-term holding period on ${analytics.asOf.toISO()}, so no lot below can be counted down to one.`
-              : `Long-term after more than ${threshold} days held, for ${category}, on ${analytics.asOf.toISO()}. Day ${threshold} is still short-term — the rule is strictly greater, so eligibility starts the day after.`}
-          </p>
-        </div>
-        <span className="pill">{rows.length} open lot{rows.length === 1 ? "" : "s"}</span>
-      </div>
-
+    <Panel
+      title="Lots, and when each turns long-term"
+      description={
+        threshold === null
+          ? `No shipped tax regime gives ${category} a long-term holding period on ${analytics.asOf.toISO()}, so no lot below can be counted down to one.`
+          : `Long-term after more than ${threshold} days held, for ${category}, on ${analytics.asOf.toISO()}. Day ${threshold} is still short-term — the rule is strictly greater, so eligibility starts the day after.`
+      }
+      actions={<span className="text-xs text-(--fg-muted)">{rows.length} open lot{rows.length === 1 ? "" : "s"}</span>}
+    >
       {rows.length === 0 ? (
-        <p className="px-5 py-6 text-sm text-gray-500">
+        <p className="text-sm text-(--fg-muted)">
           No open lots. A purchase or a lease credit creates one.
         </p>
       ) : (
-        <div className="table-scroll">
-          <table className="w-full text-sm">
-            <caption className="sr-only">
+        <Table>
+            <TableCaption className="sr-only">
               Open lots with acquisition date, grams remaining, cost per gram, unrealised
               gain against cash paid, origin, holding period and long-term eligibility date
-            </caption>
-            <thead>
-              <tr className="border-b border-gray-600">
-                <th scope="col" className="metric-label px-4 py-3 text-left">Acquired</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">{unit}</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Cost / {unit.toLowerCase()}</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Invested</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Unrealised</th>
-                <th scope="col" className="metric-label px-4 py-3 text-left">Origin</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Days held</th>
-                <th scope="col" className="metric-label px-4 py-3 text-left">Long-term</th>
-              </tr>
-            </thead>
-            <tbody>
+            </TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Acquired</TableHead>
+                <TableHead className="text-right">{unit}</TableHead>
+                <TableHead className="text-right">Cost / {unit.toLowerCase()}</TableHead>
+                <TableHead className="text-right">Invested</TableHead>
+                <TableHead className="text-right">Unrealised</TableHead>
+                <TableHead>Origin</TableHead>
+                <TableHead className="text-right">Days held</TableHead>
+                <TableHead>Long-term</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rows.map((row) => (
-                <tr key={row.lotId} className="border-b border-gray-600/50 align-top last:border-0">
-                  <th scope="row" className="tnum px-4 py-3 text-left font-normal text-gray-400">
+                <TableRow key={row.lotId} className="border-b border-(--border)/50 align-top last:border-0">
+                  <TableHead scope="row" className="tnum font-normal text-(--fg-secondary)">
                     {row.acquiredOn.toISO()}
-                  </th>
-                  <td className="tnum px-4 py-3 text-right text-gray-200">
+                  </TableHead>
+                  <TableCell className="tnum text-right text-(--fg)">
                     {row.grams.toDecimalString()}
-                  </td>
-                  <td className="px-4 py-3 text-right">
+                  </TableCell>
+                  <TableCell className="text-right">
                     {row.costPerGram ? (
-                      <MoneyText value={row.costPerGram.toMoney()} tone="neutral" />
+                      <FigureText value={row.costPerGram.toMoney()} />
                     ) : (
-                      <span className="text-xs text-gray-500">No cash paid</span>
+                      <span className="text-xs text-(--fg-muted)">No cash paid</span>
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <MoneyText value={row.investedCost} tone="neutral" />
-                  </td>
-                  <td className="px-4 py-3 text-right">
+                  </TableCell>
+                  <FigureCell value={row.investedCost} />
+                  <TableCell className="text-right">
                     {row.unrealised ? (
-                      <MoneyText value={row.unrealised} />
+                      <FigureText value={row.unrealised} tone="change" />
                     ) : (
-                      <span className="text-xs text-gray-500">Unpriced</span>
+                      <span className="text-xs text-(--fg-muted)">Unpriced</span>
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-xs">
+                  </TableCell>
+                  <TableCell className="text-xs">
                     {row.origin === "LEASE_CREDIT" ? (
-                      <span className="text-amber-500">Lease credit</span>
+                      <span className="text-(--warn)">Lease credit</span>
                     ) : (
-                      <span className="text-gray-400">Purchase</span>
+                      <span className="text-(--fg-secondary)">Purchase</span>
                     )}
-                  </td>
-                  <td className="tnum px-4 py-3 text-right text-gray-400">{row.holdingDays}</td>
-                  <td className="px-4 py-3 text-xs">
+                  </TableCell>
+                  <TableCell className="tnum text-right text-(--fg-secondary)">{row.holdingDays}</TableCell>
+                  <TableCell className="text-xs">
                     {row.isLongTerm ? (
-                      <span className="text-green-500">
+                      <span className="text-(--gain)">
                         Eligible{row.longTermOn ? ` since ${row.longTermOn.toISO()}` : ""}
                       </span>
                     ) : row.longTermOn ? (
-                      <span className="text-gray-400">
+                      <span className="text-(--fg-secondary)">
                         {row.longTermOn.toISO()}
                         {row.daysToLongTerm === null ? "" : ` · ${row.daysToLongTerm}d to go`}
                       </span>
                     ) : (
-                      <span className="text-gray-500">
+                      <span className="text-(--fg-muted)">
                         No long-term treatment for {category}
                       </span>
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
       )}
 
-      <p className="border-t border-gray-600 px-5 py-3 text-xs text-gray-500">
+      <p className="mt-3 text-xs text-(--fg-muted)">
         Unrealised is measured against cash actually paid, so a lease-credited lot is worth
         pure profit and reports no cost per {unit.toLowerCase()} — `null`, not zero, because a
         credit had no price. These rows therefore sum to the profit above, not to the
         book-basis figure.
       </p>
-    </section>
+    </Panel>
   );
 }

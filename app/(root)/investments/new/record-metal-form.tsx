@@ -23,7 +23,6 @@
 
 import * as React from "react";
 import { Coins } from "lucide-react";
-import { Field } from "@/ui/primitives";
 import { PlatformSelect, type PlatformOption } from "../platform-select";
 import { recordInvestmentEntryAction, type InvestmentEntryActionState } from "../catalog-actions";
 import type { AccountOption } from "./record-investment-form";
@@ -35,6 +34,9 @@ import {
   metalPricing,
   type MetalKind,
 } from "./metal-identity";
+import { Input } from "../../../../components/ui/input";
+import { NativeSelect } from "../../../../components/ui/native-select";
+import { FormField as Field } from "../[instrumentId]/form-field";
 
 export default function RecordMetalForm({
   accounts,
@@ -89,10 +91,10 @@ export default function RecordMetalForm({
       <section aria-labelledby="metal-identity-title" className="space-y-4">
         <div className="flex items-center gap-2">
           <Coins
-            className={kind === "DIGITAL_GOLD" ? "size-4 text-yellow-500" : "size-4 text-gray-400"}
+            className={kind === "DIGITAL_GOLD" ? "size-4 text-(--warn)" : "size-4 text-(--fg-secondary)"}
             aria-hidden
-          />
-          <h2 id="metal-identity-title" className="text-base font-semibold text-gray-100">
+         />
+          <h2 id="metal-identity-title" className="text-base font-semibold text-(--fg)">
             What you bought
           </h2>
         </div>
@@ -108,8 +110,8 @@ export default function RecordMetalForm({
                 onClick={() => chooseMetal(option.kind)}
                 className={
                   active
-                    ? "focus-brand inline-flex h-10 items-center rounded-lg border border-brand-500 bg-brand-500/10 px-4 text-sm font-medium text-gray-100"
-                    : "focus-brand inline-flex h-10 items-center rounded-lg border border-gray-600 px-4 text-sm text-gray-400 transition-colors hover:border-gray-500 hover:text-gray-100"
+                    ? "focus-brand inline-flex h-10 items-center rounded-lg border border-brand-500 bg-brand-500/10 px-4 text-sm font-medium text-(--fg)"
+                    : "focus-brand inline-flex h-10 items-center rounded-lg border border-(--border) px-4 text-sm text-(--fg-secondary) transition-colors hover:border-(--border-control) hover:text-(--fg)"
                 }
               >
                 {option.label}
@@ -122,15 +124,15 @@ export default function RecordMetalForm({
           <Field
             name="purity"
             label="Purity"
-            required
+           required
             hint="Part of the holding's identity — 999 and 995 fine are different grams."
           >
             {(props) => (
-              <select
+              <NativeSelect
                 {...props}
                 name="purity"
-                className="form-input"
-                value={purity}
+                
+               value={purity}
                 onChange={(event) => setPurity(event.target.value)}
               >
                 {lane.purities.map((option) => (
@@ -138,7 +140,7 @@ export default function RecordMetalForm({
                     {option.label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             )}
           </Field>
           <PlatformSelect
@@ -146,21 +148,21 @@ export default function RecordMetalForm({
             instrumentKind={kind}
             error={errors.institutionId?.[0] ?? errors.newPlatformName?.[0]}
             onPlatformNameChange={setPlatformName}
-          />
+         />
         </div>
 
         <p
           className={
             identified
-              ? "rounded-lg border border-green-500/30 bg-green-500/[0.05] p-3 text-xs text-gray-300"
-              : "rounded-lg border border-gray-600/70 p-3 text-xs text-gray-500"
+              ? "rounded-lg border border-(--gain)/30 bg-(--gain)/[0.05] p-3 text-xs text-(--fg-secondary)"
+              : "rounded-lg border border-(--border)/70 p-3 text-xs text-(--fg-muted)"
           }
           aria-live="polite"
         >
           {identified ? (
             <>
-              Recording as <span className="text-gray-100">{name}</span>, priced from{" "}
-              <span className="tnum text-gray-300">{purity}</span>. Grams on another platform stay a
+              Recording as <span className="text-(--fg)">{name}</span>, priced from{" "}
+              <span className="tnum text-(--fg-secondary)">{purity}</span>. Grams on another platform stay a
               separate holding with its own cost base.
             </>
           ) : (
@@ -179,79 +181,79 @@ export default function RecordMetalForm({
 
       <section
         aria-labelledby="metal-entry-title"
-        className="grid gap-4 border-t border-gray-600 pt-5 md:grid-cols-4"
+        className="grid gap-4 border-t border-(--border) pt-5 md:grid-cols-4"
       >
         <div className="md:col-span-4">
-          <h2 id="metal-entry-title" className="text-base font-semibold text-gray-100">
+          <h2 id="metal-entry-title" className="text-base font-semibold text-(--fg)">
             Purchase details
           </h2>
         </div>
 
         <Field name="side" label="Side" required error={errors.side?.[0]}>
           {(props) => (
-            <select
+            <NativeSelect
               {...props}
               name="side"
-              className="form-input"
-              value={side}
+              
+             value={side}
               onChange={(event) => setSide(event.target.value as "BUY" | "SELL")}
             >
               <option value="BUY">Buy</option>
               <option value="SELL">Sell</option>
-            </select>
+            </NativeSelect>
           )}
         </Field>
         <Field name="tradedOn" label="Date" required error={errors.tradedOn?.[0]}>
           {(props) => (
-            <input
+            <Input
               {...props}
               name="tradedOn"
               type="date"
-              className="form-input"
-              value={tradedOn}
+              
+             value={tradedOn}
               onChange={(event) => setTradedOn(event.target.value)}
-              required
-            />
+             required
+           />
           )}
         </Field>
         <Field
           name="quantity"
           label="Grams"
-          required
+         required
           hint="The grams credited to the vault, to as many decimals as the receipt shows."
           error={errors.quantity?.[0]}
         >
           {(props) => (
-            <input
+            <Input
               {...props}
               name="quantity"
-              className="form-input tnum"
+              className="tnum"
               inputMode="decimal"
               placeholder="0.0000"
-              value={grams}
+             value={grams}
               onChange={(event) => setGrams(event.target.value)}
-              required
-            />
+             required
+           />
           )}
         </Field>
         <Field
           name="totalAmount"
           label={side === "BUY" ? "Total paid (INR)" : "Total received (INR)"}
-          required
+         required
           hint="The rupee total on the receipt — what actually changed hands, charges included. Not the rate per gram: that is worked out from this and the grams."
           error={errors.totalAmount?.[0]}
         >
           {(props) => (
-            <input
+            <Input
               {...props}
               name="totalAmount"
-              className="form-input tnum"
+              className="tnum"
               inputMode="decimal"
               placeholder="0.00"
-              value={totalAmount}
+             value={totalAmount}
               onChange={(event) => setTotalAmount(event.target.value)}
-              required
-            />
+             required
+           />
           )}
         </Field>
 
@@ -264,12 +266,12 @@ export default function RecordMetalForm({
           <Field
             name="settlementAccountId"
             label="Proceeds to"
-            required
+           required
             hint="Where the sale money landed."
             error={errors.settlementAccountId?.[0]}
           >
             {(props) => (
-              <select {...props} name="settlementAccountId" className="form-input" required defaultValue="">
+              <NativeSelect {...props} name="settlementAccountId" required defaultValue="">
                 <option value="" disabled>
                   Choose an account
                 </option>
@@ -278,7 +280,7 @@ export default function RecordMetalForm({
                     {account.label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             )}
           </Field>
         )}
@@ -290,15 +292,15 @@ export default function RecordMetalForm({
           error={errors.exchangeFees?.[0]}
         >
           {(props) => (
-            <input
+            <Input
               {...props}
               name="exchangeFees"
-              className="form-input tnum"
+              className="tnum"
               inputMode="decimal"
               placeholder="0.00"
-              value={platformCharges}
+             value={platformCharges}
               onChange={(event) => setPlatformCharges(event.target.value)}
-            />
+           />
           )}
         </Field>
         <Field
@@ -308,37 +310,37 @@ export default function RecordMetalForm({
           error={errors.statutoryCharges?.[0]}
         >
           {(props) => (
-            <input
+            <Input
               {...props}
               name="statutoryCharges"
-              className="form-input tnum"
+              className="tnum"
               inputMode="decimal"
               placeholder="0.00"
-              value={gst}
+             value={gst}
               onChange={(event) => setGst(event.target.value)}
-            />
+           />
           )}
         </Field>
 
         {side === "SELL" && (
           <Field name="method" label="Lot method">
             {(props) => (
-              <select {...props} name="method" className="form-input" defaultValue="FIFO">
+              <NativeSelect {...props} name="method" defaultValue="FIFO">
                 <option value="FIFO">FIFO</option>
                 <option value="LIFO">LIFO</option>
                 <option value="HIFO">HIFO</option>
                 <option value="AVERAGE_COST">Average cost</option>
                 <option value="SPECIFIC_ID">Specific lots</option>
-              </select>
+              </NativeSelect>
             )}
           </Field>
         )}
 
-        <div className="rounded-lg border border-gray-600/70 p-4 md:col-span-4" aria-live="polite">
-          <p className="metric-label">Signed cash impact</p>
+        <div className="rounded-lg border border-(--border)/70 p-4 md:col-span-4" aria-live="polite">
+          <p className="text-xs font-medium text-(--fg-muted)">Signed cash impact</p>
           <p
             className={
-              preview.ok ? "tnum mt-1 text-2xl font-semibold text-gray-100" : "mt-1 text-sm text-red-500"
+              preview.ok ? "tnum mt-1 text-2xl font-semibold text-(--fg)" : "mt-1 text-sm text-(--loss)"
             }
           >
             {preview.ok ? `INR ${formatMinor(preview.value.signedMinor)}` : preview.message}
@@ -346,22 +348,22 @@ export default function RecordMetalForm({
           {preview.ok && (
             <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
               <div className="flex justify-between gap-3">
-                <dt className="text-gray-500">{lane.label} itself, charges excluded</dt>
-                <dd className="tnum text-gray-200">INR {formatMinor(preview.value.considerationMinor)}</dd>
+                <dt className="text-(--fg-muted)">{lane.label} itself, charges excluded</dt>
+                <dd className="tnum text-(--fg)">INR {formatMinor(preview.value.considerationMinor)}</dd>
               </div>
               <div className="flex justify-between gap-3">
-                <dt className="text-gray-500">Works out at, per gram</dt>
-                <dd className="tnum text-gray-200">INR {formatMinor(preview.value.ratePerGramMinor)}</dd>
+                <dt className="text-(--fg-muted)">Works out at, per gram</dt>
+                <dd className="tnum text-(--fg)">INR {formatMinor(preview.value.ratePerGramMinor)}</dd>
               </div>
             </dl>
           )}
-          <p className="mt-2 text-xs text-gray-500">
+          <p className="mt-2 text-xs text-(--fg-muted)">
             No verified charge schedule exists for bullion platforms, so nothing is estimated here —
             the fields above are what is saved. On a sale, platform fees and GST are treated as
             transfer expenses and deducted from the consideration in full.
           </p>
           {side === "BUY" && (
-            <p className="mt-2 text-xs text-amber-300">
+            <p className="mt-2 text-xs text-(--warn)">
               This does not move money out of any account. The grams enter the books as an opening
               position, so if the rupees did leave a tracked account, record that payment separately
               — otherwise the same money is counted once as cash and once as metal.
@@ -380,10 +382,10 @@ export default function RecordMetalForm({
             {pending ? "Recording..." : `Record ${lane.noun}`}
           </button>
           {!preview.ok && identified && (
-            <p className="text-xs text-gray-500">{preview.message}</p>
+            <p className="text-xs text-(--fg-muted)">{preview.message}</p>
           )}
           {state && (
-            <p className={state.ok ? "text-sm text-green-500" : "text-sm text-red-500"} role="status">
+            <p className={state.ok ? "text-sm text-(--gain)" : "text-sm text-(--loss)"} role="status">
               {state.message}
             </p>
           )}

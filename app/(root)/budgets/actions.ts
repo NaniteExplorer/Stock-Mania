@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Money } from "@/core/money";
+import { Percentage } from "@/core/numeric";
 import { AccountId } from "@/domain/accounts";
 import { currentUserId, services } from "@/infra/container";
 
@@ -33,7 +34,7 @@ const schema = z.object({
  *
  * `limit` is a string and stays one until `Money.fromRupees` — the same reason as
  * every other amount field. `warnAtPercent` is coerced to a number because it
- * genuinely is a count, not money.
+ * is entered as percent points and marshalled into Percentage, never a money amount.
  */
 export async function setBudgetAction(
   _previous: BudgetActionState | null,
@@ -52,7 +53,7 @@ export async function setBudgetAction(
     accountId: AccountId.from(parsed.data.accountId),
     month: parsed.data.month ? parsed.data.month : null,
     limit: Money.fromRupees(parsed.data.limit),
-    warnAtPercent: parsed.data.warnAtPercent,
+    warnAtPercent: Percentage.of(parsed.data.warnAtPercent.toString()),
     carryover: parsed.data.carryover === "on",
   });
 

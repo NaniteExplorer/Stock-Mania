@@ -1,0 +1,56 @@
+import { UserId } from "@/core/kernel";
+import { Currency, Money } from "@/core/money";
+import { Percentage } from "@/core/numeric";
+import { CalendarDate } from "@/core/time";
+import { Account, AccountCode, AccountType } from "@/domain/accounts";
+import { OtherPhysicalAsset, RealEstate, Vehicle, type AssertedValuation } from "@/domain/assets";
+import { DecliningBalance, type Purchase } from "@/domain/depreciation";
+import { check, checkDeep, done, section, throws } from "./harness";
+
+const on = CalendarDate.parse;
+const currency = Currency.of("INR");
+const amount = (minor: bigint) => Money.fromMinor(minor, currency);
+const account = Account.open({ userId: UserId.from("physical-owner"), code: AccountCode.parse("Assets:Physical:Item"), name: "Item", type: AccountType.ASSET, currency });
+const purchase: Purchase = { on: on("2025-01-01"), price: amount(10000n) };
+const model = new DecliningBalance(Percentage.of(10), "Owner assumption");
+const constructors = [RealEstate, Vehicle, OtherPhysicalAsset] as const;
+
+section("purchase and model are shared, observations stay separate");
+for (const Kind of constructors) {
+  const asset = new Kind(account, [], purchase);
+  check("purchase is not silently an observation", asset.valueOn(on("2026-01-01")), null);
+  check("explicit model returns calculated value", asset.modelledValueOn(on("2026-01-01"), model)?.value.minor.toString(), "9000");
+  check("model retains provenance", asset.modelledValueOn(on("2026-01-01"), model)?.basis, "Owner assumption");
+  const unknown = new Kind(account, []);
+  check("old two-argument constructor retains unknown purchase", unknown.purchase, undefined);
+  check("no purchase means no model", unknown.modelledValueOn(on("2026-01-01"), model), null);
+  const observed = new Kind(account, [{ on: on("2025-06-01"), value: amount(0n), source: "SELF_ASSESSED", note: "Scrapped" }], purchase);
+  check("zero observation is known zero", observed.valueOn(on("2026-01-01"))?.minor.toString(), "0");
+  check("model does not overwrite actual observation", observed.modelledValueOn(on("2026-01-01"), model)?.value.minor.toString(), "9000");
+  check("future observation is unavailable before its date", observed.valueOn(on("2025-05-31")), null);
+  check("observation source/note survive", observed.valuationOn(on("2025-06-01"))?.valuation.note, "Scrapped");
+  throws("zero purchase refused", () => new Kind(account, [], { ...purchase, price: amount(0n) }), "positive");
+  throws("negative purchase refused", () => new Kind(account, [], { ...purchase, price: amount(-1n) }), "positive");
+  throws("foreign purchase refused", () => new Kind(account, [], { ...purchase, price: Money.fromMinor(1n, Currency.of("USD")) }), "currency");
+  throws("negative observation refused", () => new Kind(account, [{ on: purchase.on, value: amount(-1n), source: "SELF_ASSESSED" }], purchase), "negative");
+  throws("foreign observation refused", () => new Kind(account, [{ on: purchase.on, value: Money.fromMinor(1n, Currency.of("USD")), source: "SELF_ASSESSED" }]), "currency");
+  throws("pre-purchase observation refused", () => new Kind(account, [{ on: on("2024-12-31"), value: amount(1n), source: "SELF_ASSESSED" }], purchase), "predate");
+  const valuation: AssertedValuation = { on: purchase.on, value: amount(9007199254740993n), source: "PROFESSIONAL_VALUATION" };
+  throws("duplicate observation dates refused", () => new Kind(account, [valuation, { ...valuation, source: "SELF_ASSESSED" }]), "one asserted");
+  check("exact large observation survives", new Kind(account, [valuation]).valueOn(purchase.on)?.minor.toString(), "9007199254740993");
+  const mutablePurchase = { ...purchase };
+  const mutableValuation = { ...valuation };
+  const list = [mutableValuation];
+  const retained = new Kind(account, list, mutablePurchase);
+  mutablePurchase.price = amount(1n);
+  mutableValuation.value = amount(1n);
+  list.length = 0;
+  check("purchase record is a validated copy", retained.purchase?.price.minor.toString(), "10000");
+  check("observation collection is a validated copy", retained.valueOn(purchase.on)?.minor.toString(), "9007199254740993");
+  check("purchase record cannot be replaced", Reflect.set(retained.purchase!, "price", amount(1n)), false);
+  check("observation array cannot be appended", Reflect.set(retained.valuations, 1, valuation), false);
+  check("observation record cannot be rewritten", Reflect.set(retained.valuations[0]!, "value", amount(1n)), false);
+}
+checkDeep("physical kinds include OTHER", constructors.map((Kind) => new Kind(account, []).kind), ["REAL_ESTATE", "VEHICLE", "OTHER"]);
+check("Vehicle legacy depreciation stays compatible", new Vehicle(account, [], purchase).depreciatedValueOn(on("2026-01-01"))?.minor.toString(), "8500");
+done();

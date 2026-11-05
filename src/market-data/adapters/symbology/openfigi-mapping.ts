@@ -20,6 +20,7 @@
  * client grows a `post`, this should move onto it and the local transport deleted.
  */
 
+import { Count, Millis } from "@/core/units";
 import { RateLimitBudget } from "@/domain/pricing";
 import { ProviderOptions, ProviderRuntime } from "@/infra/providers";
 import { MarketDataSource } from "@/market-data/engine/source";
@@ -112,7 +113,7 @@ export class OpenFigiMappingAdapter extends MarketDataSource implements Symbolog
 
   override rateLimit(): RateLimitBudget {
     // The published keyless limit, as the bucket rather than as a comment.
-    return { requests: 25, perMillis: 60_000, burst: 5 };
+    return { requests: Count(25), perMillis: Millis(60_000), burst: Count(5) };
   }
 
   async map(jobs: readonly SymbologyJob[]): Promise<MarketDataResult<readonly SymbologyMatch[]>> {

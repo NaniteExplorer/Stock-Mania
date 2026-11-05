@@ -4,6 +4,7 @@ import { Currency, Money } from "@/core/money";
 import type { InvestmentWorkspaceOutput } from "@/app/investing.usecases";
 import { BarSeries, Chart, type SeriesMeta, type SeriesPoint } from "@/ui/charts";
 import { formatMoney } from "@/ui/format";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableRow } from "../../../../components/ui/table";
 
 const SERIES: readonly SeriesMeta[] = [
   { id: "investedAmount", label: "Invested" },
@@ -37,7 +38,7 @@ export default function PerformanceChart({
         subtitle="Available money metrics only; unavailable income and total gain are left out rather than charted as zero."
         series={series}
         height={280}
-        empty={series.length === 0 ? <p className="text-sm text-gray-500">No available money metrics to chart.</p> : undefined}
+        empty={series.length === 0 ? <p className="text-sm text-(--fg-muted)">No available money metrics to chart.</p> : undefined}
         tableView={() => <MetricTable metrics={metrics} reportingCurrency={reportingCurrency} series={series} />}
       >
         <BarSeries data={[point]} series={series} currency={reportingCurrency} />
@@ -56,24 +57,24 @@ function MetricTable({
   series: readonly SeriesMeta[];
 }) {
   return (
-    <table className="w-full text-sm">
-      <caption className="sr-only">Available performance metrics in reporting currency</caption>
-      <tbody>
+    <Table>
+      <TableCaption className="sr-only">Available performance metrics in reporting currency</TableCaption>
+      <TableBody>
         {series.map((item) => {
           const metric = metrics[item.id as keyof typeof metrics];
           return (
-            <tr key={item.id} className="border-b border-gray-600/50 last:border-0">
-              <th scope="row" className="px-3 py-2 text-left font-medium text-gray-300">{item.label}</th>
-              <td className="tnum px-3 py-2 text-right text-gray-200">
+            <TableRow key={item.id}>
+              <TableHead scope="row" className="text-left">{item.label}</TableHead>
+              <TableCell className="tnum text-right">
                 {metric.status === "AVAILABLE"
                   ? formatMoney(Money.fromRupees(metric.value, Currency.of(metric.currency ?? reportingCurrency)))
                   : "Unavailable"}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           );
         })}
-      </tbody>
-    </table>
+      </TableBody>
+    </Table>
   );
 }
 

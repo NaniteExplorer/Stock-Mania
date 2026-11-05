@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Field } from "@/ui/primitives";
 import { deleteMetalHoldingAction, updateMetalHoldingAction, type InvestingActionState } from "../actions";
+import { Input } from "../../../../components/ui/input";
+import { NativeSelect } from "../../../../components/ui/native-select";
+import { FormField as Field } from "./form-field";
 
 export default function MetalTransactionActions({
   instrumentId,
@@ -38,25 +40,25 @@ export default function MetalTransactionActions({
     <div className="space-y-2">
       <div className="flex justify-end gap-2">
         <button type="button" className="ghost-btn h-8 px-3 text-xs" onClick={() => { setEditing(!editing); setConfirming(false); }}>{editing ? "Cancel" : "Edit"}</button>
-        <button type="button" className="ghost-btn h-8 px-3 text-xs text-red-400" onClick={() => { setConfirming(!confirming); setEditing(false); }}>{confirming ? "Cancel" : "Delete"}</button>
+        <button type="button" className="ghost-btn h-8 px-3 text-xs text-(--loss)" onClick={() => { setConfirming(!confirming); setEditing(false); }}>{confirming ? "Cancel" : "Delete"}</button>
       </div>
-      {editing && <form action={update} className="grid min-w-80 gap-3 rounded-xl border border-gray-600 p-3 sm:grid-cols-3">
+      {editing && <form action={update} className="grid min-w-80 gap-3 rounded-xl border border-(--border) p-3 sm:grid-cols-3">
         <input type="hidden" name="instrumentId" value={instrumentId} /><input type="hidden" name="tradeId" value={tradeId} />
-        <Field name={`grams-${tradeId}`} label="Grams">{(props) => <input {...props} name="grams" className="form-input tnum" inputMode="decimal" defaultValue={grams} required />}</Field>
-        <Field name={`invested-${tradeId}`} label="Invested">{(props) => <input {...props} name="invested" className="form-input tnum" inputMode="decimal" defaultValue={invested} required />}</Field>
-        <Field name={`charges-${tradeId}`} label="GST and fees">{(props) => <input {...props} name="charges" className="form-input tnum" inputMode="decimal" defaultValue={charges} />}</Field>
-        <Field name={`funding-${tradeId}`} label="Paid from">{(props) => <select {...props} name="fundingAccountId" className="form-input" defaultValue={fundingAccountId ?? "OPENING"} required>
+        <Field name={`grams-${tradeId}`} label="Grams">{(props) => <Input {...props} name="grams" className="tnum" inputMode="decimal" defaultValue={grams} required />}</Field>
+        <Field name={`invested-${tradeId}`} label="Invested">{(props) => <Input {...props} name="invested" className="tnum" inputMode="decimal" defaultValue={invested} required />}</Field>
+        <Field name={`charges-${tradeId}`} label="GST and fees">{(props) => <Input {...props} name="charges" className="tnum" inputMode="decimal" defaultValue={charges} />}</Field>
+        <Field name={`funding-${tradeId}`} label="Paid from">{(props) => <NativeSelect {...props} name="fundingAccountId" defaultValue={fundingAccountId ?? "OPENING"} required>
           {accounts.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}
           <option value="OPENING">Already owned — no payment to record</option>
-        </select>}</Field>
-        <Field name={`date-${tradeId}`} label="Date">{(props) => <input {...props} name="recordedOn" type="date" className="form-input" defaultValue={recordedOn} required />}</Field>
+        </NativeSelect>}</Field>
+        <Field name={`date-${tradeId}`} label="Date">{(props) => <Input {...props} name="recordedOn" type="date" defaultValue={recordedOn} required />}</Field>
         <div className="sm:col-span-3"><button type="submit" className="primary-btn h-9 px-4 text-xs" disabled={updating}>{updating ? "Saving…" : "Save changes"}</button></div>
       </form>}
-      {confirming && <form action={remove} className="flex items-center justify-end gap-2 rounded-xl border border-red-500/30 p-3">
+      {confirming && <form action={remove} className="flex items-center justify-end gap-2 rounded-xl border border-(--loss)/30 p-3">
         <input type="hidden" name="instrumentId" value={instrumentId} /><input type="hidden" name="tradeId" value={tradeId} />
-        <span className="text-xs text-gray-400">Permanently remove this investment?</span><button type="submit" className="ghost-btn h-8 px-3 text-xs text-red-400" disabled={deleting}>{deleting ? "Deleting…" : "Confirm delete"}</button>
+        <span className="text-xs text-(--fg-secondary)">Permanently remove this investment?</span><button type="submit" className="ghost-btn h-8 px-3 text-xs text-(--loss)" disabled={deleting}>{deleting ? "Deleting…" : "Confirm delete"}</button>
       </form>}
-      {state && <p className={state.ok ? "text-xs text-green-500" : "text-xs text-red-500"} role="status">{state.message}</p>}
+      {state && <p className={state.ok ? "text-xs text-(--gain)" : "text-xs text-(--loss)"} role="status">{state.message}</p>}
     </div>
   );
 }

@@ -34,6 +34,7 @@ import {
   YAxis,
 } from "recharts";
 import { CHART_SERIES, Chart, useChartAnimation, type SeriesMeta } from "@/ui/charts";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../../components/ui/table";
 
 export interface ComparisonSeries {
   id: string;
@@ -68,14 +69,14 @@ function IndexTooltip({
 }) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="rounded-xl border border-gray-600 bg-gray-800 px-3 py-2 shadow-lg">
-      {label !== undefined && <p className="mb-1 text-xs font-medium text-gray-400">{String(label)}</p>}
+    <div className="rounded-xl border border-(--border) bg-(--bg-surface) px-3 py-2 shadow-lg">
+      {label !== undefined && <p className="mb-1 text-xs font-medium text-(--fg-secondary)">{String(label)}</p>}
       <ul className="space-y-0.5">
         {payload.map((item) => (
           <li key={String(item.dataKey)} className="flex items-center gap-2 text-xs">
-            <span aria-hidden className="h-2 w-2 shrink-0 rounded-full" style={{ background: item.color }} />
-            <span className="text-gray-400">{item.name}</span>
-            <span className="tnum ml-auto text-gray-100">
+            <svg aria-hidden className="h-2 w-2 shrink-0" viewBox="0 0 2 2"><circle cx="1" cy="1" r="1" fill={item.color} /></svg>
+            <span className="text-(--fg-secondary)">{item.name}</span>
+            <span className="tnum ml-auto text-(--fg)">
               {typeof item.value === "number" ? (item.value / 100).toFixed(2) : "—"}
             </span>
           </li>
@@ -102,11 +103,11 @@ export default function ComparisonChart({
 
   const empty =
     series.length === 0 ? (
-      <p className="rounded-lg border border-gray-600/70 p-4 text-sm text-gray-500">
+      <p className="rounded-lg border border-(--border)/70 p-4 text-sm text-(--fg-muted)">
         Choose at least one holding to compare. A benchmark on its own has nothing to be a benchmark for.
       </p>
     ) : data.length === 0 ? (
-      <p className="rounded-lg border border-gray-600/70 p-4 text-sm text-gray-500">
+      <p className="rounded-lg border border-(--border)/70 p-4 text-sm text-(--fg-muted)">
         None of the chosen series has stored daily bars in a shared window, so there is no common start date to rebase
         from. Back-fill their histories and try again — a chart drawn from one series and a guess is worse than none.
       </p>
@@ -115,7 +116,7 @@ export default function ComparisonChart({
   return (
     <div>
       {partial.length > 0 && (
-        <p role="status" className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/[0.06] p-3 text-xs text-amber-300">
+        <p role="status" className="mb-3 rounded-lg border border-(--warn)/40 bg-(--warn)/[0.06] p-3 text-xs text-(--warn)">
           Partial coverage: {partial.join(" ")} Those lines begin where their data does, not at the base date, so their
           first visible point is not 100.
         </p>
@@ -128,31 +129,31 @@ export default function ComparisonChart({
         height={320}
         empty={empty}
         tableView={() => (
-          <div className="table-scroll max-h-80">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-gray-800">
-                <tr>
-                  <th scope="col" className="px-3 py-2 text-left text-xs text-gray-500">Date</th>
+          <div className="max-h-80 overflow-y-auto">
+            <Table density="compact">
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-left">Date</TableHead>
                   {series.map((one) => (
-                    <th key={one.id} scope="col" className="px-3 py-2 text-right text-xs text-gray-500">
+                    <TableHead key={one.id} className="text-right">
                       {one.label}
-                    </th>
+                    </TableHead>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {data.map((point) => (
-                  <tr key={point.x} className="border-t border-gray-700">
-                    <td className="px-3 py-1.5 text-gray-300">{point.x}</td>
+                  <TableRow key={point.x}>
+                    <TableCell className="text-(--fg-secondary)">{point.x}</TableCell>
                     {series.map((one) => (
-                      <td key={one.id} className="tnum px-3 py-1.5 text-right text-gray-200">
+                      <TableCell key={one.id} className="tnum text-right">
                         {typeof point[one.id] === "number" ? (Number(point[one.id]) / 100).toFixed(2) : "—"}
-                      </td>
+                      </TableCell>
                     ))}
-                  </tr>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
       >
@@ -191,15 +192,13 @@ export default function ComparisonChart({
         </LineChart>
       </Chart>
 
-      <ul className="mt-3 space-y-1 text-xs text-gray-500">
+      <ul className="mt-3 space-y-1 text-xs text-(--fg-muted)">
         {series.map((one, index) => (
           <li key={one.id} className="flex flex-wrap items-center gap-2">
-            <span
-              aria-hidden
-              className="h-2.5 w-2.5 shrink-0 rounded-full"
-              style={{ background: CHART_SERIES[index % CHART_SERIES.length] }}
-            />
-            <span className="text-gray-300">{one.label}</span>
+            <svg aria-hidden className="h-2.5 w-2.5 shrink-0" viewBox="0 0 2 2">
+              <circle cx="1" cy="1" r="1" fill={CHART_SERIES[index % CHART_SERIES.length]} />
+            </svg>
+            <span className="text-(--fg-secondary)">{one.label}</span>
             <span>{one.benchmark ? "benchmark" : "holding"}</span>
             <span>· {one.points} daily bars</span>
             {one.firstPoint && <span>· from {one.firstPoint}</span>}

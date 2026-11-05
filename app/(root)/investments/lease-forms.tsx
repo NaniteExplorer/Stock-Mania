@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Field } from "@/ui/primitives";
+import { Field } from "@/components/ui/field";
+import { Input } from "../../../components/ui/input";
+import { NativeSelect } from "../../../components/ui/native-select";
 import { ProviderPicker } from "@/ui/provider-picker";
 import {
   accrueLeaseAction,
@@ -22,7 +24,7 @@ export interface LeasableHolding {
 function Result({ state }: { state: LeasingActionState | null }) {
   if (!state) return null;
   return (
-    <p className={state.ok ? "text-sm text-green-500" : "text-sm text-red-500"} role="status">
+    <p className={state.ok ? "text-sm text-(--gain)" : "text-sm text-(--loss)"} role="status">
       {state.message}
     </p>
   );
@@ -70,7 +72,7 @@ export function OpenLeaseForm({
 
   if (holdings.length === 0) {
     return (
-      <p className="text-sm text-gray-400">
+      <p className="text-sm text-(--fg-secondary)">
         Add a digital-gold holding and record what you bought first — a lease is gold you already own
         put out to earn, so there has to be gold to lease.
       </p>
@@ -81,7 +83,7 @@ export function OpenLeaseForm({
     <form action={action} className="grid gap-4 md:grid-cols-3">
       <Field name="instrumentId" label="Gold holding" required error={errors.instrumentId?.[0]}>
         {(props) => (
-          <select {...props} name="instrumentId" className="form-input" required defaultValue="">
+          <NativeSelect {...props} name="instrumentId" required defaultValue="">
             <option value="" disabled>
               Choose a holding
             </option>
@@ -90,7 +92,7 @@ export function OpenLeaseForm({
                 {holding.label} — {holding.held}g held
               </option>
             ))}
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
@@ -113,10 +115,10 @@ export function OpenLeaseForm({
         error={errors.quantity?.[0]}
       >
         {(props) => (
-          <input
+          <Input
             {...props}
             name="quantity"
-            className="form-input tnum"
+            className="tnum"
             inputMode="decimal"
             placeholder="8.5"
             required
@@ -126,11 +128,10 @@ export function OpenLeaseForm({
 
       <Field name="startOn" label="Started on" required error={errors.startOn?.[0]}>
         {(props) => (
-          <input
+          <Input
             {...props}
             name="startOn"
             type="date"
-            className="form-input"
             value={startOn}
             onChange={(event) => setStartOn(event.target.value)}
             required
@@ -140,9 +141,8 @@ export function OpenLeaseForm({
 
       <Field name="tenure" label="Tenure" hint="The way the product is sold. Sets the closing date.">
         {(props) => (
-          <select
+          <NativeSelect
             {...props}
-            className="form-input"
             value={tenure}
             onChange={(event) => setTenure(event.target.value)}
           >
@@ -153,7 +153,7 @@ export function OpenLeaseForm({
             <option value="24">24 months</option>
             <option value="36">36 months</option>
             <option value="CUSTOM">Custom — pick a date</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
@@ -165,11 +165,10 @@ export function OpenLeaseForm({
         error={errors.closesOn?.[0]}
       >
         {(props) => (
-          <input
+          <Input
             {...props}
             name="closesOn"
             type="date"
-            className="form-input"
             key={closesOn}
             defaultValue={closesOn}
             required
@@ -185,7 +184,7 @@ export function OpenLeaseForm({
         error={errors.annualRate?.[0]}
       >
         {(props) => (
-          <input {...props} name="annualRate" className="form-input tnum" inputMode="decimal" placeholder="4" required />
+          <Input {...props} name="annualRate" className="tnum" inputMode="decimal" placeholder="4" required />
         )}
       </Field>
 
@@ -197,13 +196,13 @@ export function OpenLeaseForm({
         error={errors.payoutFrequency?.[0]}
       >
         {(props) => (
-          <select {...props} name="payoutFrequency" className="form-input" defaultValue="MONTHLY">
+          <NativeSelect {...props} name="payoutFrequency" defaultValue="MONTHLY">
             <option value="MONTHLY">Monthly</option>
             <option value="QUARTERLY">Quarterly</option>
             <option value="HALF_YEARLY">Every six months</option>
             <option value="ANNUAL">Yearly</option>
             <option value="ON_MATURITY">Once, at maturity</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
@@ -215,16 +214,15 @@ export function OpenLeaseForm({
         error={errors.payoutMode?.[0]}
       >
         {(props) => (
-          <select
+          <NativeSelect
             {...props}
             name="payoutMode"
-            className="form-input"
             value={payoutMode}
             onChange={(event) => setPayoutMode(event.target.value as "GRAMS" | "CASH")}
           >
             <option value="GRAMS">More gold — grams into the holding</option>
             <option value="CASH">Rupees — into an account</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
@@ -237,7 +235,7 @@ export function OpenLeaseForm({
           error={errors.payoutAccountId?.[0]}
         >
           {(props) => (
-            <select {...props} name="payoutAccountId" className="form-input" required defaultValue="">
+            <NativeSelect {...props} name="payoutAccountId" required defaultValue="">
               <option value="" disabled>
                 Choose an account
               </option>
@@ -246,7 +244,7 @@ export function OpenLeaseForm({
                   {account.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           )}
         </Field>
       )}
@@ -258,12 +256,12 @@ export function OpenLeaseForm({
         error={errors.tdsRate?.[0]}
       >
         {(props) => (
-          <input {...props} name="tdsRate" className="form-input tnum" inputMode="decimal" placeholder="0" />
+          <Input {...props} name="tdsRate" className="tnum" inputMode="decimal" placeholder="0" />
         )}
       </Field>
 
       <Field name="reference" label="Reference" hint="Blank numbers it for you." error={errors.reference?.[0]}>
-        {(props) => <input {...props} name="reference" className="form-input" placeholder="LEASE-0001" />}
+        {(props) => <Input {...props} name="reference" placeholder="LEASE-0001" />}
       </Field>
 
       <Field
@@ -272,7 +270,7 @@ export function OpenLeaseForm({
         hint="Their own id, for reconciliation."
         error={errors.sourceReference?.[0]}
       >
-        {(props) => <input {...props} name="sourceReference" className="form-input" />}
+        {(props) => <Input {...props} name="sourceReference" />}
       </Field>
 
       <div className="md:col-span-3 flex flex-wrap items-center gap-3">
@@ -372,15 +370,15 @@ export function LeaseRowActions({
           <form action={settle} className="flex items-center gap-2">
             <input type="hidden" name="leaseId" value={leaseId} />
             <input type="hidden" name="endedOn" value={defaultDate} />
-            <select
+            <NativeSelect
               name="outcome"
-              className="form-input h-8 w-auto py-0 text-xs"
+              className="h-8 w-auto py-0 text-xs"
               defaultValue="MATURED"
               aria-label={`How ${reference} ended`}
             >
               <option value="MATURED">Matured</option>
               <option value="CANCELLED">Cancelled early</option>
-            </select>
+            </NativeSelect>
             <button type="submit" className="ghost-btn h-8 px-3 text-xs" disabled={settling}>
               {settling ? "Closing…" : "Close"}
             </button>
@@ -401,7 +399,7 @@ export function LeaseRowActions({
             <input type="hidden" name="leaseId" value={leaseId} />
             <button
               type="submit"
-              className="ghost-btn h-8 px-3 text-xs text-red-400"
+              className="ghost-btn h-8 px-3 text-xs text-(--loss)"
               disabled={removing}
               title={`Remove ${reference}. Only possible because it has earned nothing yet.`}
             >
@@ -412,7 +410,7 @@ export function LeaseRowActions({
       </div>
 
       {editing && (
-        <form action={update} className="grid gap-3 rounded-xl border border-gray-600 p-3 md:grid-cols-3">
+        <form action={update} className="grid gap-3 rounded-xl border border-(--border) p-3 md:grid-cols-3">
           <input type="hidden" name="leaseId" value={leaseId} />
 
           <Field name={`platform-${leaseId}`} label="Platform">
@@ -428,16 +426,16 @@ export function LeaseRowActions({
 
           <Field name={`ref-${leaseId}`} label="Their reference">
             {(props) => (
-              <input {...props} name="sourceReference" className="form-input" maxLength={120} />
+              <Input {...props} name="sourceReference" maxLength={120} />
             )}
           </Field>
 
           <Field name={`notes-${leaseId}`} label="Notes">
-            {(props) => <input {...props} name="notes" className="form-input" maxLength={500} />}
+            {(props) => <Input {...props} name="notes" maxLength={500} />}
           </Field>
 
           {hasBookedInterest ? (
-            <p className="md:col-span-3 text-xs text-amber-500">
+            <p className="md:col-span-3 text-xs text-(--warn)">
               Interest has already been booked into the ledger from these terms, so the grams, rate
               and dates are fixed — changing them would leave those postings claiming an accrual
               this lease no longer says it earned. Close it and open a corrected one instead.
@@ -446,10 +444,10 @@ export function LeaseRowActions({
             <>
               <Field name={`qty-${leaseId}`} label="Grams">
                 {(props) => (
-                  <input
+                  <Input
                     {...props}
                     name="quantity"
-                    className="form-input tnum"
+                    className="tnum"
                     inputMode="decimal"
                     defaultValue={quantity}
                   />
@@ -458,10 +456,10 @@ export function LeaseRowActions({
 
               <Field name={`rate-${leaseId}`} label="Rate % a year">
                 {(props) => (
-                  <input
+                  <Input
                     {...props}
                     name="annualRate"
-                    className="form-input tnum"
+                    className="tnum"
                     inputMode="decimal"
                     defaultValue={annualRate}
                   />
@@ -470,10 +468,10 @@ export function LeaseRowActions({
 
               <Field name={`tds-${leaseId}`} label="TDS %">
                 {(props) => (
-                  <input
+                  <Input
                     {...props}
                     name="tdsRate"
-                    className="form-input tnum"
+                    className="tnum"
                     inputMode="decimal"
                     defaultValue={tdsRate}
                   />
@@ -482,13 +480,13 @@ export function LeaseRowActions({
 
               <Field name={`start-${leaseId}`} label="Starts">
                 {(props) => (
-                  <input {...props} name="startOn" type="date" className="form-input" defaultValue={startOn} />
+                  <Input {...props} name="startOn" type="date" defaultValue={startOn} />
                 )}
               </Field>
 
               <Field name={`close-${leaseId}`} label="Closes">
                 {(props) => (
-                  <input {...props} name="closesOn" type="date" className="form-input" defaultValue={closesOn} />
+                  <Input {...props} name="closesOn" type="date" defaultValue={closesOn} />
                 )}
               </Field>
             </>
@@ -506,7 +504,7 @@ export function LeaseRowActions({
       <Result state={settleState} />
       {updateState && (
         <p
-          className={updateState.ok ? "text-xs text-green-500" : "max-w-md text-xs text-red-500"}
+          className={updateState.ok ? "text-xs text-(--gain)" : "max-w-md text-xs text-(--loss)"}
           role="status"
         >
           {updateState.message}
@@ -514,7 +512,7 @@ export function LeaseRowActions({
       )}
       {deleteState && (
         <p
-          className={deleteState.ok ? "text-xs text-green-500" : "max-w-md text-xs text-red-500"}
+          className={deleteState.ok ? "text-xs text-(--gain)" : "max-w-md text-xs text-(--loss)"}
           role="status"
         >
           {deleteState.message}

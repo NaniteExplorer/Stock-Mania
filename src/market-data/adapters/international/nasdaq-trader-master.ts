@@ -17,6 +17,7 @@
  * as the quote key.
  */
 
+import { Count, Millis } from "@/core/units";
 import { Currency } from "@/core/money";
 import { RateLimitBudget } from "@/domain/pricing";
 import { ProviderOptions, ProviderRuntime } from "@/infra/providers";
@@ -79,7 +80,7 @@ export class NasdaqTraderMasterAdapter extends MarketDataSource implements Instr
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 6, perMillis: 60_000, burst: 2 };
+    return { requests: Count(6), perMillis: Millis(60_000), burst: Count(2) };
   }
 
   async load(): Promise<MarketDataResult<readonly InstrumentMasterRow[]>> {

@@ -11,11 +11,11 @@
  * asserts in both directions.
  */
 
-import { AppError, Clock, Err, NotFoundError, Ok, Result, UseCase, UserId, ValidationError } from "@/core/kernel";
+import { AppError, Clock, DomainError, Err, NotFoundError, Ok, Result, UseCase, UserId, ValidationError } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { CalendarDate } from "@/core/time";
 import { Account, AccountClosedError, AccountCode, AccountId, AccountRepository, AccountSubtype, AccountType, AccountTypeName, SystemAccountCodes, resolveDefaultChart } from "@/domain/accounts";
-import { Charge, Expense, Income, OpeningBalance, Refund, Transaction, TransactionAlreadyReversedError, TransactionId, TransactionKind, TransactionRepository, TransactionSource, Transfer, accountRef } from "@/domain/transactions";
+import { Charge, Expense, Income, OpeningBalance, Refund, Transaction, TransactionAlreadyReversedError, TransactionId, TransactionKind, TransactionRepository, TransactionSource, Transfer, TombstoneRefusedError, UndoRefusedError, accountRef } from "@/domain/transactions";
 /* ═══ SeedChartOfAccounts ═════════════════════════════════════════════ */
 
 export interface SeedChartOfAccountsInput {
@@ -131,6 +131,21 @@ export class OpenAccount implements UseCase<OpenAccountInput, OpenAccountOutput>
   ) {}
 
   async execute(input: OpenAccountInput): Promise<Result<OpenAccountOutput, AppError>> {
+    const prepared = await this.prepare(input);
+    if (!prepared.ok) return prepared;
+    const account = prepared.value;
+    const code = account.code;
+
+    await this.accounts.save(account);
+    return this.seedOpening(input, account, code);
+  }
+
+  /**
+   * Validates the input and builds the account with a free code, without saving
+   * it. A caller that must open the account inside its own atomic unit (a
+   * physical asset, say) inserts the returned entity there.
+   */
+  async prepare(input: OpenAccountInput): Promise<Result<Account, AppError>> {
     const name = input.name.trim();
     if (name.length === 0) {
       return Err(new ValidationError("Give the account a name.", { name: ["Required"] }));
@@ -190,9 +205,10 @@ export class OpenAccount implements UseCase<OpenAccountInput, OpenAccountOutput>
       institution: input.institution ?? parent?.institution ?? null,
       accountNumberSuffix: input.accountNumberSuffix ?? null,
     });
+    return Ok(account);
+  }
 
-    await this.accounts.save(account);
-
+  private async seedOpening(input: OpenAccountInput, account: Account, code: AccountCode): Promise<Result<OpenAccountOutput, AppError>> {
     const opening = input.openingBalance;
     if (opening && !opening.isZero) {
       const equity = await this.accounts.findByCode(
@@ -219,7 +235,7 @@ export class OpenAccount implements UseCase<OpenAccountInput, OpenAccountOutput>
           destination: accountRef(account),
           today: CalendarDate.parse(this.clock.today()),
         },
-        { amount: opening.abs(), account: accountRef(account) },
+        { amount: opening, account: accountRef(account) },
       );
       await this.journal.save(txn);
     }
@@ -393,7 +409,7 @@ export class RecordTransaction
    * account types that produced the label, and the legality matrix independently
    * rejects a combination that has no meaning.
    */
-  private static build(
+  static build(
     from: Account,
     to: Account,
     context: Parameters<typeof Transfer.record>[0],
@@ -510,5 +526,315 @@ export class ReverseTransaction
     await this.journal.save(reversal);
 
     return Ok({ reversalTransactionId: reversal.id });
+  }
+}
+
+/* ═══ Batch undo / redo (tasks 2.2–2.4) ═══════════════════════════════ */
+
+/**
+ * The undo unit is `audit_events.request_id` (ARCHITECTURE §10.2). These use cases
+ * write a batch under one request id, undo a whole batch by tombstone/restore
+ * (never reverse-a-reversal, §10.1), and redo per D3 (§10.3).
+ */
+
+export interface RemoveTransactionsInput {
+  userId: UserId;
+  transactionIds: readonly TransactionId[];
+  /** Supplied by the caller when the removal belongs to a wider request. */
+  requestId?: string;
+}
+
+/**
+ * Removes one or many transactions as one undoable batch. Atomic (D1): an unknown,
+ * already-removed or reconciled (L10) row refuses the whole batch, naming the rows,
+ * and nothing is removed.
+ */
+export class RemoveTransactions implements UseCase<RemoveTransactionsInput, { requestId: string; removed: number }> {
+  constructor(
+    private readonly journal: TransactionRepository,
+    private readonly clock: Clock,
+  ) {}
+
+  async execute(input: RemoveTransactionsInput): Promise<Result<{ requestId: string; removed: number }, AppError>> {
+    if (input.transactionIds.length === 0) {
+      return Err(new ValidationError("Choose at least one transaction to remove."));
+    }
+    try {
+      const done = await this.journal.softDeleteMany(input.userId, input.transactionIds, this.clock.now(), {
+        requestId: input.requestId,
+      });
+      return Ok({ requestId: done.requestId, removed: done.count });
+    } catch (error) {
+      if (error instanceof TombstoneRefusedError) return Err(error);
+      throw error;
+    }
+  }
+}
+
+export interface EditTransactionInput {
+  userId: UserId;
+  /** The transaction being corrected. */
+  transactionId: TransactionId;
+  fromAccountId: AccountId;
+  toAccountId: AccountId;
+  amount: Money;
+  postedOn: CalendarDate;
+  narration: string;
+  reference?: string | null;
+  categoryId?: string | null;
+  requestId?: string;
+}
+
+export interface EditTransactionOutput {
+  /** The undo unit: the reversal and the replacement together. */
+  requestId: string;
+  reversalTransactionId: TransactionId;
+  replacementTransactionId: TransactionId;
+}
+
+/**
+ * An edit on an append-only ledger: the original is reversed and the corrected
+ * transaction recorded, both under one request id, so `UndoBatch` takes the pair
+ * back as one unit and the original returns to every balance.
+ */
+export class EditTransaction implements UseCase<EditTransactionInput, EditTransactionOutput> {
+  constructor(
+    private readonly accounts: AccountRepository,
+    private readonly journal: TransactionRepository,
+    private readonly clock: Clock,
+  ) {}
+
+  async execute(input: EditTransactionInput): Promise<Result<EditTransactionOutput, AppError>> {
+    const original = await this.journal.findById(input.userId, input.transactionId);
+    if (!original) return Err(new NotFoundError("Transaction", input.transactionId.value));
+    if (original.isReversal || (await this.journal.hasReversal(input.userId, original.id))) {
+      return Err(new TransactionAlreadyReversedError());
+    }
+    if (!input.amount.isPositive) {
+      return Err(new ValidationError("Enter an amount greater than zero.", { amount: ["Must be greater than zero"] }));
+    }
+    if (input.fromAccountId.equals(input.toAccountId)) {
+      return Err(new ValidationError("Pick two different accounts — money cannot move to itself.", { toAccountId: ["Must differ from the source account"] }));
+    }
+    if (input.narration.trim().length === 0) {
+      return Err(new ValidationError("Add a description so you can recognise this later.", { narration: ["Required"] }));
+    }
+    const [from, to] = await Promise.all([
+      this.accounts.findById(input.userId, input.fromAccountId),
+      this.accounts.findById(input.userId, input.toAccountId),
+    ]);
+    if (!from) return Err(new NotFoundError("Source account", input.fromAccountId.value));
+    if (!to) return Err(new NotFoundError("Destination account", input.toAccountId.value));
+    for (const account of [from, to]) {
+      if (!account.acceptsPostings) return Err(new AccountClosedError(account.displayName));
+    }
+
+    const built = RecordTransaction.build(
+      from,
+      to,
+      {
+        userId: input.userId,
+        txnDate: input.postedOn,
+        description: input.narration.trim(),
+        source: accountRef(from),
+        destination: accountRef(to),
+        txnSource: "MANUAL",
+        reference: input.reference ?? null,
+        importBatchId: null,
+        fingerprint: null,
+      },
+      { amount: input.amount, categoryId: input.categoryId ?? null },
+      undefined,
+    );
+    if (!built.ok) return built;
+
+    const today = CalendarDate.parse(this.clock.today());
+    const reversal = original.reverse({
+      reversedOn: original.txnDate.isAfter(today) ? today : original.txnDate,
+      description: `Edited — ${original.description}`,
+    });
+    const { requestId } = await this.journal.saveBatch(input.userId, [reversal, built.value], this.clock.now(), {
+      requestId: input.requestId,
+    });
+    return Ok({ requestId, reversalTransactionId: reversal.id, replacementTransactionId: built.value.id });
+  }
+}
+
+/** The one class A redo step a user+session holds (D3): the undo that can be undone. */
+export interface RedoCursor {
+  /** The batch that was undone. */
+  readonly undoneRequestId: string;
+  /** The undo's own request — inverting it is the redo. */
+  readonly undoRequestId: string;
+  /** Every transaction the undo touched; a newer write to any of them invalidates the cursor. */
+  readonly transactionIds: readonly TransactionId[];
+}
+
+/** Session- and user-scoped storage for the class A cursor. */
+export interface RedoCursorStore {
+  get(userId: UserId, sessionId: string): RedoCursor | null;
+  set(userId: UserId, sessionId: string, cursor: RedoCursor): void;
+  clear(userId: UserId, sessionId: string): void;
+}
+
+export class InMemoryRedoCursorStore implements RedoCursorStore {
+  private readonly cursors = new Map<string, RedoCursor>();
+
+  private static key(userId: UserId, sessionId: string): string {
+    return `${userId.value}\u0000${sessionId}`;
+  }
+
+  get(userId: UserId, sessionId: string): RedoCursor | null {
+    return this.cursors.get(InMemoryRedoCursorStore.key(userId, sessionId)) ?? null;
+  }
+
+  set(userId: UserId, sessionId: string, cursor: RedoCursor): void {
+    this.cursors.set(InMemoryRedoCursorStore.key(userId, sessionId), cursor);
+  }
+
+  clear(userId: UserId, sessionId: string): void {
+    this.cursors.delete(InMemoryRedoCursorStore.key(userId, sessionId));
+  }
+}
+
+export type RedoUnavailableReason = "NOTHING_TO_REDO" | "INVALIDATED";
+
+/** Redo is disabled *with a reason*, never hidden (ARCHITECTURE §10.3). */
+export class RedoUnavailableError extends DomainError {
+  constructor(readonly reason: RedoUnavailableReason) {
+    super(
+      `LEDGER_REDO_${reason}`,
+      reason === "INVALIDATED"
+        ? "A newer change touches the transactions that were undone, so redo is no longer available."
+        : "There is nothing to redo.",
+    );
+  }
+}
+
+export type RedoState =
+  | { readonly available: true; readonly undoneRequestId: string }
+  | { readonly available: false; readonly reason: RedoUnavailableReason; readonly message: string };
+
+export interface UndoBatchInput {
+  userId: UserId;
+  /** Scopes the redo cursor (D3). */
+  sessionId: string;
+  /** The batch to undo — an `audit_events.request_id`. */
+  requestId: string;
+}
+
+export interface UndoBatchOutput {
+  /** The undo's own request id. */
+  requestId: string;
+  tombstoned: number;
+  restored: number;
+}
+
+/**
+ * Undoes a whole batch atomically: removals are restored through the restore policy;
+ * creations — including both halves of an edit — are tombstoned, so the original
+ * returns to every balance and the evidence stays behind `removed: "INCLUDE"`.
+ * A refusal (`UndoRefusedError`, naming the blocking reason) changes nothing.
+ * On success the session's class A redo cursor is replaced (one step).
+ */
+export class UndoBatch implements UseCase<UndoBatchInput, UndoBatchOutput> {
+  constructor(
+    private readonly journal: TransactionRepository,
+    private readonly cursors: RedoCursorStore,
+    private readonly clock: Clock,
+  ) {}
+
+  async execute(input: UndoBatchInput): Promise<Result<UndoBatchOutput, AppError>> {
+    try {
+      const inverted = await this.journal.invertBatch(input.userId, input.requestId, this.clock.now());
+      this.cursors.set(input.userId, input.sessionId, {
+        undoneRequestId: input.requestId,
+        undoRequestId: inverted.requestId,
+        transactionIds: [...inverted.tombstoned, ...inverted.restored],
+      });
+      return Ok({ requestId: inverted.requestId, tombstoned: inverted.tombstoned.length, restored: inverted.restored.length });
+    } catch (error) {
+      if (error instanceof UndoRefusedError) return Err(error);
+      throw error;
+    }
+  }
+}
+
+/**
+ * Redo for class A (D3): a one-step cursor, not a stack. It is the undo of the
+ * undo, so it too is tombstone/restore and is refused atomically. Invalidated the
+ * instant a newer mutation touches a transaction of the undone batch.
+ */
+export class RedoBatch implements UseCase<{ userId: UserId; sessionId: string }, UndoBatchOutput> {
+  constructor(
+    private readonly journal: TransactionRepository,
+    private readonly cursors: RedoCursorStore,
+    private readonly clock: Clock,
+  ) {}
+
+  /** Whether redo is available, and if not, why — for a disabled control with a reason. */
+  async state(input: { userId: UserId; sessionId: string }): Promise<RedoState> {
+    const cursor = this.cursors.get(input.userId, input.sessionId);
+    if (!cursor) return RedoBatch.unavailable("NOTHING_TO_REDO");
+    if (await this.journal.touchedSince(input.userId, cursor.undoRequestId, cursor.transactionIds)) {
+      this.cursors.clear(input.userId, input.sessionId);
+      return RedoBatch.unavailable("INVALIDATED");
+    }
+    return { available: true, undoneRequestId: cursor.undoneRequestId };
+  }
+
+  async execute(input: { userId: UserId; sessionId: string }): Promise<Result<UndoBatchOutput, AppError>> {
+    const state = await this.state(input);
+    if (!state.available) return Err(new RedoUnavailableError(state.reason));
+    const cursor = this.cursors.get(input.userId, input.sessionId)!;
+    try {
+      const redone = await this.journal.invertBatch(input.userId, cursor.undoRequestId, this.clock.now());
+      this.cursors.clear(input.userId, input.sessionId);
+      return Ok({ requestId: redone.requestId, tombstoned: redone.tombstoned.length, restored: redone.restored.length });
+    } catch (error) {
+      if (error instanceof UndoRefusedError) return Err(error);
+      throw error;
+    }
+  }
+
+  private static unavailable(reason: RedoUnavailableReason): RedoState {
+    return { available: false, reason, message: new RedoUnavailableError(reason).message };
+  }
+}
+
+/** D3's class B redo depth. */
+export const CLASS_B_REDO_DEPTH = 20;
+
+/**
+ * The class B redo stack (D3): an ordinary bounded stack, depth 20. Pushing past
+ * the depth drops the oldest entry; any new class B mutation clears it.
+ */
+export class BoundedRedoStack<T> {
+  private readonly items: T[] = [];
+
+  constructor(readonly depth: number = CLASS_B_REDO_DEPTH) {
+    if (!Number.isInteger(depth) || depth < 1) throw new Error("A redo stack needs a positive depth.");
+  }
+
+  get size(): number {
+    return this.items.length;
+  }
+
+  push(item: T): void {
+    this.items.push(item);
+    if (this.items.length > this.depth) this.items.shift();
+  }
+
+  pop(): T | null {
+    return this.items.pop() ?? null;
+  }
+
+  peek(): T | null {
+    return this.items[this.items.length - 1] ?? null;
+  }
+
+  /** A new mutation forks history: everything that could be redone is gone. */
+  clear(): void {
+    this.items.length = 0;
   }
 }

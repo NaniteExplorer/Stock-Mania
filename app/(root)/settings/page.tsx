@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Coins, Landmark, ShieldCheck } from "lucide-react";
 import { getCurrentSession } from "@/infra/auth/session";
 import { Currency } from "@/core/money";
 import { CalendarDate, FinancialYear } from "@/core/time";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
-import { PageHeader, Pill } from "@/ui/primitives";
+import { Masthead, Page, Panel } from "@/components/ui/page-shell";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { Banner } from "@/components/ui/banner";
 import TaxSettingsForm from "./tax-settings-form";
+import DateOfBirthForm from "./dob-form";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -31,60 +33,39 @@ export default async function SettingsPage() {
   const today = CalendarDate.parse(new Date().toISOString().slice(0, 10));
   const financialYear = FinancialYear.containing(today);
   const stored = await services().repositories.taxSettings.findFor(userId, financialYear);
+  const projection = await services().projection();
+  const profile = await projection.load.execute({ userId: projection.userId });
+  const bornOn = profile.ok ? profile.value.bornOn : null;
 
   return (
-    <div className="flex max-w-3xl flex-col gap-6">
-      <PageHeader
+    <Page>
+      <Masthead
         title="Settings"
         subtitle="A deliberately small, manual-first setup."
-        badge={<Pill tone="brand">{financialYear.label}</Pill>}
+        side={<StatusBadge tone="accent">{financialYear.label}</StatusBadge>}
       />
 
-      <section className="panel p-6">
-        <h2 className="font-semibold text-gray-100">Account</h2>
-        <dl className="mt-4 grid grid-cols-[8rem_1fr] gap-y-3 text-sm">
-          <dt className="text-gray-500">Name</dt>
-          <dd className="text-gray-200">{name}</dd>
-          <dt className="text-gray-500">Email</dt>
-          <dd className="text-gray-200">{email}</dd>
+      <Panel title="Account">
+        <dl className="grid grid-cols-[8rem_1fr] gap-y-3 text-sm">
+          <dt className="text-(--fg-muted)">Name</dt>
+          <dd>{name}</dd>
+          <dt className="text-(--fg-muted)">Email</dt>
+          <dd>{email}</dd>
         </dl>
-      </section>
+        <DateOfBirthForm bornOn={bornOn?.toString() ?? ""} />
+      </Panel>
 
-      <section className="panel p-6">
-        <div className="flex items-center gap-3">
-          <span className="icon-chip">
-            <Coins className="h-5 w-5" />
-          </span>
-          <div>
-            <h2 className="font-semibold text-gray-100">Reporting currency</h2>
-            <p className="text-xs text-gray-500">
-              Amounts are stored in the currency they were entered in and
-              reported in this one.
-            </p>
-          </div>
-        </div>
-        <p className="tnum mt-4 text-sm text-gray-200">
+      <Panel title="Reporting currency" description="Amounts are stored in the currency they were entered in and reported in this one.">
+        <p className="text-sm tabular-nums">
           {reporting.symbol} · {reporting.code}
         </p>
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-(--fg-muted)">
           Choosing a different reporting currency needs a preferences table and
           an FX rate book, both of which arrive with the pricing engine.
         </p>
-      </section>
+      </Panel>
 
-      <section className="panel p-6">
-        <div className="flex items-center gap-3">
-          <span className="icon-chip">
-            <Landmark className="h-5 w-5" />
-          </span>
-          <div>
-            <h2 className="font-semibold text-gray-100">Tax settings</h2>
-            <p className="text-xs text-gray-500">
-              Your circumstances, which no ledger can derive. Stored per financial
-              year so a reprinted return keeps the rate it was filed at.
-            </p>
-          </div>
-        </div>
+      <Panel title="Tax settings" description="Your circumstances, which no ledger can derive. Stored per financial year so a reprinted return keeps the rate it was filed at.">
         <TaxSettingsForm
           financialYear={stored?.financialYear ?? financialYear.label}
           marginalSlabPercent={stored ? stored.marginalSlabRate.toFixed(2) : "30"}
@@ -93,19 +74,15 @@ export default async function SettingsPage() {
           usesNewRegime={stored?.usesNewRegime ?? true}
           isAssumed={stored === null}
         />
-      </section>
+      </Panel>
 
-      <section className="panel flex items-start gap-3 p-4 text-sm">
-        <span className="icon-chip shrink-0">
-          <ShieldCheck className="h-5 w-5" />
-        </span>
-        <p className="text-gray-400">
-          <strong className="text-gray-100">Manual mode is active.</strong> No
-          broker, mailbox, cloud drive or scheduled sync is connected — and none
+      <Banner title="Manual mode is active.">
+        <p>
+          No broker, mailbox, cloud drive or scheduled sync is connected — and none
           is planned. Everything here is entered by you or imported from a file
           you already have.
         </p>
-      </section>
-    </div>
+      </Banner>
+    </Page>
   );
 }

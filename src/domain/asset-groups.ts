@@ -136,11 +136,18 @@ export function kindsIn(group: AssetGroup): readonly InstrumentKind[] {
  * screen is actually asked for.
  */
 export function kindLabel(kind: InstrumentKind, currencyCode?: string): string {
-  if (kind === "LISTED_EQUITY" && currencyCode !== undefined) {
-    return currencyCode === "INR" ? "Indian equity" : "Foreign equity";
-  }
-  return KIND_LABELS[kind];
+  const byMarket = currencyCode === undefined ? undefined : LABEL_BY_MARKET[kind];
+  return byMarket ? byMarket(currencyCode!) : KIND_LABELS[kind];
 }
+
+/**
+ * Kinds whose label depends on the market, given a currency. Only listed equity
+ * today; a second is one more row here rather than another condition in
+ * `kindLabel` (`RULES.md` §8.3).
+ */
+const LABEL_BY_MARKET: Partial<Readonly<Record<InstrumentKind, (currencyCode: string) => string>>> = {
+  LISTED_EQUITY: (currencyCode) => (currencyCode === "INR" ? "Indian equity" : "Foreign equity"),
+};
 
 const KIND_LABELS: Readonly<Record<InstrumentKind, string>> = {
   LISTED_EQUITY: "Listed equity",

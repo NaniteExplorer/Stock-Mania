@@ -72,7 +72,7 @@ const MAX_ORPHAN_LINES = 3;
  * silently dropped that amount, and the running balance was then one paisa short
  * for the rest of the statement.
  */
-const MONEY = /^-?(?:\d{1,3}(?:,\d{3})*|\d+)?\.\d{2}$/;
+const MONEY = /^-?(?:\d{1,3}(?:,\d{2,3})*|\d+)?\.\d{2}$/;
 
 /** `20-05-2025`, `20/05/2025` - a statement's own date column. */
 const DATE = /^\d{1,2}[-/]\d{1,2}[-/]\d{2,4}$/;

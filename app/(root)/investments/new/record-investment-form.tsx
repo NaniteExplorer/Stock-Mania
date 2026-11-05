@@ -5,13 +5,15 @@ import { ReceiptText } from "lucide-react";
 import type { CatalogInstrumentType } from "@/domain/instrument-catalog";
 import type { InstrumentKind } from "@/domain/instruments";
 import { kindLabel } from "@/domain/asset-groups";
-import { Field } from "@/ui/primitives";
 import { PlatformSelect, type PlatformOption } from "../platform-select";
 import { recordInvestmentEntryAction, type InvestmentEntryActionState } from "../catalog-actions";
 import { addableReference } from "../entry-identity";
 import InstrumentSearch, { type ConfirmedInstrument } from "./instrument-search";
 import type { EntryLane } from "./entry-lane-nav";
 import { estimateInvestmentCharges, formatChargeMinor } from "./investment-charge-estimate";
+import { Input } from "../../../../components/ui/input";
+import { NativeSelect } from "../../../../components/ui/native-select";
+import { FormField as Field } from "../[instrumentId]/form-field";
 
 export interface AccountOption {
   id: string;
@@ -113,7 +115,7 @@ export default function RecordInvestmentForm({
   return (
     <form action={action} className="space-y-6">
       <section aria-labelledby="instrument-identity-title" className="space-y-4">
-        <h2 id="instrument-identity-title" className="text-base font-semibold text-gray-100">Instrument identity</h2>
+        <h2 id="instrument-identity-title" className="text-base font-semibold text-(--fg)">Instrument identity</h2>
         {lane === "market" && <InstrumentSearch onConfirm={setSelection} />}
 
         <input type="hidden" name="identityMode" value={identityMode} />
@@ -123,63 +125,63 @@ export default function RecordInvestmentForm({
         <input type="hidden" name="listingId" value={selected?.listing.id ?? ""} />
 
         {selected ? (
-          <div className="rounded-lg border border-green-500/30 bg-green-500/[0.05] p-4">
-            <p className="text-sm font-medium text-gray-100">{selected.listing.symbol}</p>
-            <p className="mt-1 text-xs text-gray-400">{selected.name}</p>
+          <div className="rounded-lg border border-(--gain)/30 bg-(--gain)/[0.05] p-4">
+            <p className="text-sm font-medium text-(--fg)">{selected.listing.symbol}</p>
+            <p className="mt-1 text-xs text-(--fg-secondary)">{selected.name}</p>
             <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-4">
-              <div><dt className="text-gray-500">Exchange</dt><dd className="text-gray-200">{selected.listing.exchange}</dd></div>
-              <div><dt className="text-gray-500">Type</dt><dd className="text-gray-200">{selected.instrumentType}</dd></div>
-              <div><dt className="text-gray-500">Currency</dt><dd className="text-gray-200">{selected.listing.currency}</dd></div>
-              <div><dt className="text-gray-500">Provider</dt><dd className="text-gray-200">{preferredProvider(selected.providerMappings)}</dd></div>
+              <div><dt className="text-(--fg-muted)">Exchange</dt><dd className="text-(--fg)">{selected.listing.exchange}</dd></div>
+              <div><dt className="text-(--fg-muted)">Type</dt><dd className="text-(--fg)">{selected.instrumentType}</dd></div>
+              <div><dt className="text-(--fg-muted)">Currency</dt><dd className="text-(--fg)">{selected.listing.currency}</dd></div>
+              <div><dt className="text-(--fg-muted)">Provider</dt><dd className="text-(--fg)">{preferredProvider(selected.providerMappings)}</dd></div>
             </dl>
             {reference?.ok ? (
-              <p className="mt-3 text-xs text-gray-500">
-                Quote key <span className="tnum text-gray-300">{reference.quoteRef}</span>
+              <p className="mt-3 text-xs text-(--fg-muted)">
+                Quote key <span className="tnum text-(--fg-secondary)">{reference.quoteRef}</span>
                 {selected.firstTradeDate ? ` · priced from ${selected.firstTradeDate}` : ""}
               </p>
             ) : (
-              <p className="mt-3 text-xs text-amber-400" role="alert">{reference?.reason}</p>
+              <p className="mt-3 text-xs text-(--warn)" role="alert">{reference?.reason}</p>
             )}
           </div>
         ) : selection?.mode === "MANUAL" ? (
           <div className="space-y-4">
-            <p className="rounded-lg border border-amber-500/30 bg-amber-500/[0.05] p-3 text-xs text-amber-300">
+            <p className="rounded-lg border border-(--warn)/30 bg-(--warn)/[0.05] p-3 text-xs text-(--warn)">
               Manual entry is not live-priced. No quote key is stored for it, so its value stays whatever you record —
               use it for holdings the catalogue genuinely cannot identify. Digital gold, silver and
               platinum are live-priced and belong in their own lane above, not here.
             </p>
             <div className="grid gap-4 md:grid-cols-3">
             <Field name="symbol" label="Symbol" required error={errors.symbol?.[0]}>
-              {(props) => <input {...props} name="symbol" className="form-input" maxLength={40} required />}
+              {(props) => <Input {...props} name="symbol"  maxLength={40} required />}
             </Field>
             <Field name="name" label="Name" required error={errors.name?.[0]}>
-              {(props) => <input {...props} name="name" className="form-input" maxLength={160} required />}
+              {(props) => <Input {...props} name="name"  maxLength={160} required />}
             </Field>
             <Field name="kind" label="Investment type" required error={errors.kind?.[0]}>
               {(props) => (
-                <select {...props} name="kind" className="form-input" value={manualKind} onChange={(event) => setManualKind(event.target.value as InstrumentKind)}>
+                <NativeSelect {...props} name="kind" value={manualKind} onChange={(event) => setManualKind(event.target.value as InstrumentKind)}>
                   {MANUAL_KINDS.map((kind) => <option key={kind} value={kind}>{kindLabel(kind)}</option>)}
-                </select>
+                </NativeSelect>
               )}
             </Field>
             <Field name="isin" label="ISIN" error={errors.isin?.[0]}>
-              {(props) => <input {...props} name="isin" className="form-input" maxLength={12} placeholder="INE009A01021" />}
+              {(props) => <Input {...props} name="isin"  maxLength={12} placeholder="INE009A01021" />}
             </Field>
             <Field name="exchange" label="Exchange" error={errors.exchange?.[0]}>
-              {(props) => <input {...props} name="exchange" className="form-input" maxLength={16} placeholder="NSE" value={manualExchange} onChange={(event) => setManualExchange(event.target.value)} />}
+              {(props) => <Input {...props} name="exchange"  maxLength={16} placeholder="NSE" value={manualExchange} onChange={(event) => setManualExchange(event.target.value)} />}
             </Field>
             <Field name="currency" label="Currency" required error={errors.currency?.[0]}>
               {(props) => (
-                <select {...props} name="currency" className="form-input" value={manualCurrency} onChange={(event) => setManualCurrency(event.target.value as "INR" | "USD")}>
+                <NativeSelect {...props} name="currency" value={manualCurrency} onChange={(event) => setManualCurrency(event.target.value as "INR" | "USD")}>
                   <option value="INR">INR</option>
                   <option value="USD">USD</option>
-                </select>
+                </NativeSelect>
               )}
             </Field>
             </div>
           </div>
         ) : (
-          <p className="rounded-lg border border-gray-600/70 p-3 text-sm text-gray-500">
+          <p className="rounded-lg border border-(--border)/70 p-3 text-sm text-(--fg-muted)">
             Confirm a catalogue result or choose manual entry.
           </p>
         )}
@@ -196,36 +198,36 @@ export default function RecordInvestmentForm({
         )}
       </section>
 
-      <section aria-labelledby="trade-entry-title" className="grid gap-4 border-t border-gray-600 pt-5 md:grid-cols-4">
+      <section aria-labelledby="trade-entry-title" className="grid gap-4 border-t border-(--border) pt-5 md:grid-cols-4">
         <div className="md:col-span-4 flex items-center gap-2">
-          <ReceiptText className="size-4 text-gray-500" aria-hidden />
-          <h2 id="trade-entry-title" className="text-base font-semibold text-gray-100">Trade details</h2>
+          <ReceiptText className="size-4 text-(--fg-muted)" aria-hidden />
+          <h2 id="trade-entry-title" className="text-base font-semibold text-(--fg)">Trade details</h2>
         </div>
 
         <Field name="side" label="Side" required error={errors.side?.[0]}>
           {(props) => (
-            <select {...props} name="side" className="form-input" value={side} onChange={(event) => setSide(event.target.value as "BUY" | "SELL")}>
+            <NativeSelect {...props} name="side" value={side} onChange={(event) => setSide(event.target.value as "BUY" | "SELL")}>
               <option value="BUY">Buy</option>
               <option value="SELL">Sell</option>
-            </select>
+            </NativeSelect>
           )}
         </Field>
         <Field name="tradedOn" label="Trade date" required error={errors.tradedOn?.[0]}>
-          {(props) => <input {...props} name="tradedOn" type="date" className="form-input" value={tradedOn} onChange={(event) => setTradedOn(event.target.value)} required />}
+          {(props) => <Input {...props} name="tradedOn" type="date" value={tradedOn} onChange={(event) => setTradedOn(event.target.value)} required />}
         </Field>
         <Field name="quantity" label="Quantity" required error={errors.quantity?.[0]}>
-          {(props) => <input {...props} name="quantity" className="form-input tnum" inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />}
+          {(props) => <Input {...props} name="quantity" className="tnum" inputMode="decimal" value={quantity} onChange={(event) => setQuantity(event.target.value)} required />}
         </Field>
         <Field name="unitPrice" label={`Execution price per unit (${currency})`} hint="Enter the price from the trade or contract note. Market quotes are never copied into this field." required error={errors.unitPrice?.[0]}>
-          {(props) => <input {...props} name="unitPrice" className="form-input tnum" inputMode="decimal" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} required />}
+          {(props) => <Input {...props} name="unitPrice" className="tnum" inputMode="decimal" value={unitPrice} onChange={(event) => setUnitPrice(event.target.value)} required />}
         </Field>
 
         <Field name="settlementAccountId" label={side === "BUY" ? "Paid from" : "Proceeds to"} required error={errors.settlementAccountId?.[0]}>
           {(props) => (
-            <select {...props} name="settlementAccountId" className="form-input" required defaultValue="">
+            <NativeSelect {...props} name="settlementAccountId" required defaultValue="">
               <option value="" disabled>Choose an account</option>
               {accounts.map((account) => <option key={account.id} value={account.id}>{account.label}</option>)}
-            </select>
+            </NativeSelect>
           )}
         </Field>
         <PlatformSelect platforms={platforms} instrumentKind={selectedKind} error={errors.institutionId?.[0] ?? errors.newPlatformName?.[0]} onPlatformNameChange={setPlatformName} />
@@ -233,33 +235,33 @@ export default function RecordInvestmentForm({
         {(selectedKind === "LISTED_EQUITY" || selectedKind === "ETF") && (
           <Field name="segment" label="Product" hint="Delivery and intraday have different STT, stamp and brokerage rules.">
             {(props) => (
-              <select {...props} name="segment" className="form-input" value={segment} onChange={(event) => setSegment(event.target.value as typeof segment)}>
+              <NativeSelect {...props} name="segment" value={segment} onChange={(event) => setSegment(event.target.value as typeof segment)}>
                 <option value="EQ_DELIVERY">Delivery</option>
                 <option value="EQ_INTRADAY">Intraday</option>
-              </select>
+              </NativeSelect>
             )}
           </Field>
         )}
 
         <Field name="brokerage" label="Brokerage" error={errors.brokerage?.[0]}>
-          {(props) => <input {...props} name="brokerage" className="form-input tnum" inputMode="decimal" placeholder="0.00" value={brokerage} onChange={(event) => setBrokerage(event.target.value)} />}
+          {(props) => <Input {...props} name="brokerage" className="tnum" inputMode="decimal" placeholder="0.00" value={brokerage} onChange={(event) => setBrokerage(event.target.value)} />}
         </Field>
         <Field name="exchangeFees" label="Exchange fees" error={errors.exchangeFees?.[0]}>
-          {(props) => <input {...props} name="exchangeFees" className="form-input tnum" inputMode="decimal" placeholder="0.00" value={exchangeFees} onChange={(event) => setExchangeFees(event.target.value)} />}
+          {(props) => <Input {...props} name="exchangeFees" className="tnum" inputMode="decimal" placeholder="0.00" value={exchangeFees} onChange={(event) => setExchangeFees(event.target.value)} />}
         </Field>
         <Field name="statutoryCharges" label="STT, GST and stamp" error={errors.statutoryCharges?.[0]}>
-          {(props) => <input {...props} name="statutoryCharges" className="form-input tnum" inputMode="decimal" placeholder="0.00" value={statutoryCharges} onChange={(event) => setStatutoryCharges(event.target.value)} />}
+          {(props) => <Input {...props} name="statutoryCharges" className="tnum" inputMode="decimal" placeholder="0.00" value={statutoryCharges} onChange={(event) => setStatutoryCharges(event.target.value)} />}
         </Field>
         <Field name="taxWithheld" label="Tax withheld" error={errors.taxWithheld?.[0]}>
-          {(props) => <input {...props} name="taxWithheld" className="form-input tnum" inputMode="decimal" placeholder="0.00" value={taxWithheld} onChange={(event) => setTaxWithheld(event.target.value)} />}
+          {(props) => <Input {...props} name="taxWithheld" className="tnum" inputMode="decimal" placeholder="0.00" value={taxWithheld} onChange={(event) => setTaxWithheld(event.target.value)} />}
         </Field>
 
         {estimate && (
-          <div className="rounded-lg border border-gray-600/70 p-4 md:col-span-4" aria-live="polite">
+          <div className="rounded-lg border border-(--border)/70 p-4 md:col-span-4" aria-live="polite">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="metric-label">Estimated purchase / sale costs</p>
-                <p className="mt-1 text-xs text-gray-400">{estimate.note}</p>
+                <p className="text-xs font-medium text-(--fg-muted)">Estimated purchase / sale costs</p>
+                <p className="mt-1 text-xs text-(--fg-secondary)">{estimate.note}</p>
               </div>
               {estimate.supported && (
                 <button
@@ -279,17 +281,17 @@ export default function RecordInvestmentForm({
               <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2 lg:grid-cols-3">
                 {estimate.lines.map((item, index) => (
                   <div key={`${item.key}-${index}`} className="flex justify-between gap-3">
-                    <dt className="text-gray-500">{item.label}</dt>
-                    <dd className="tnum text-gray-200">INR {formatChargeMinor(item.minor)}</dd>
+                    <dt className="text-(--fg-muted)">{item.label}</dt>
+                    <dd className="tnum text-(--fg)">INR {formatChargeMinor(item.minor)}</dd>
                   </div>
                 ))}
                 <div className="flex justify-between gap-3 font-medium">
-                  <dt className="text-gray-300">Gross cash {side === "BUY" ? "debit" : "credit"}</dt>
-                  <dd className="tnum text-gray-100">INR {formatChargeMinor(estimate.grossCashMinor)}</dd>
+                  <dt className="text-(--fg-secondary)">Gross cash {side === "BUY" ? "debit" : "credit"}</dt>
+                  <dd className="tnum text-(--fg)">INR {formatChargeMinor(estimate.grossCashMinor)}</dd>
                 </div>
               </dl>
             )}
-            <p className="mt-3 text-xs text-amber-300">
+            <p className="mt-3 text-xs text-(--warn)">
               Estimate only. Editable fields above are the actual contract-note values saved. Capital-gains income tax is calculated separately on sale, never added here.
             </p>
           </div>
@@ -298,25 +300,25 @@ export default function RecordInvestmentForm({
         {side === "SELL" && (
           <>
             <Field name="deductibleCharges" label="Deductible charges" hint="STT and tax withheld are usually not deductible." error={errors.deductibleCharges?.[0]}>
-              {(props) => <input {...props} name="deductibleCharges" className="form-input tnum" inputMode="decimal" placeholder="0.00" />}
+              {(props) => <Input {...props} name="deductibleCharges" className="tnum" inputMode="decimal" placeholder="0.00" />}
             </Field>
             <Field name="method" label="Lot method">
               {(props) => (
-                <select {...props} name="method" className="form-input" defaultValue="FIFO">
+                <NativeSelect {...props} name="method" defaultValue="FIFO">
                   <option value="FIFO">FIFO</option>
                   <option value="LIFO">LIFO</option>
                   <option value="HIFO">HIFO</option>
                   <option value="AVERAGE_COST">Average cost</option>
                   <option value="SPECIFIC_ID">Specific lots</option>
-                </select>
+                </NativeSelect>
               )}
             </Field>
           </>
         )}
 
-        <div className="rounded-lg border border-gray-600/70 p-4 md:col-span-4">
-          <p className="metric-label">Signed cash impact</p>
-          <p className={preview.ok ? "tnum mt-1 text-2xl font-semibold text-gray-100" : "mt-1 text-sm text-red-500"}>
+        <div className="rounded-lg border border-(--border)/70 p-4 md:col-span-4">
+          <p className="text-xs font-medium text-(--fg-muted)">Signed cash impact</p>
+          <p className={preview.ok ? "tnum mt-1 text-2xl font-semibold text-(--fg)" : "mt-1 text-sm text-(--loss)"}>
             {preview.ok ? preview.display : preview.message}
           </p>
         </div>
@@ -326,7 +328,7 @@ export default function RecordInvestmentForm({
             {pending ? "Recording..." : "Record investment"}
           </button>
           {state && (
-            <p className={state.ok ? "text-sm text-green-500" : "text-sm text-red-500"} role="status">
+            <p className={state.ok ? "text-sm text-(--gain)" : "text-sm text-(--loss)"} role="status">
               {state.message}
             </p>
           )}

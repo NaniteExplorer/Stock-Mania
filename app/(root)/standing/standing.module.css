@@ -1,0 +1,8 @@
+.stack{display:flex;flex-direction:column;gap:var(--gap-block)}
+.guess{display:flex;flex-direction:column;gap:12px;border:0;margin:0;padding:0}
+.legend{font-size:var(--fs-sec);color:var(--fg)}
+.choices{display:flex;flex-wrap:wrap;gap:16px}
+.figure{font-family:var(--fig-face);font-variant-numeric:var(--fig-vn);font-size:var(--num-size);color:var(--fg)}
+.line{font-size:var(--fs-sec);color:var(--fg)}
+.note{font-size:11px;line-height:15px;color:var(--fg-secondary)}
+.list{margin:0;padding-left:18px;font-size:var(--fs-sec);color:var(--fg)}

@@ -1,9 +1,10 @@
 import { Clock, UniqueId, UserId, newUuid } from "@/core/kernel";
+import { Count, Millis } from "@/core/units";
 
 const ISIN_PATTERN = /^[A-Z]{2}[A-Z0-9]{9}[0-9]$/;
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
-export const CATALOG_REFRESH_INTERVAL_MS = DAY_MS;
+export const CATALOG_REFRESH_INTERVAL_MS = Millis(DAY_MS);
 
 export class CatalogInstrumentId extends UniqueId {
   private readonly __catalogInstrumentId = true;
@@ -116,7 +117,7 @@ export interface CatalogFetchReceipt {
   readonly source: string;
   readonly fetchedAt: Date;
   readonly checksum: string;
-  readonly rowCount: number;
+  readonly rowCount: Count;
 }
 
 export interface CatalogFetchAttempt {
@@ -126,10 +127,10 @@ export interface CatalogFetchAttempt {
 }
 
 export interface CatalogIngestReport {
-  readonly instruments: number;
-  readonly listings: number;
-  readonly mappings: number;
-  readonly unmatchedMappings: number;
+  readonly instruments: Count;
+  readonly listings: Count;
+  readonly mappings: Count;
+  readonly unmatchedMappings: Count;
 }
 
 export interface CatalogSearchRows {
@@ -142,9 +143,9 @@ export interface InstrumentCatalogRepository {
   latestSuccessfulFetch(source?: string): Promise<CatalogFetchReceipt | null>;
   latestFetchAttempt(source: string): Promise<CatalogFetchAttempt | null>;
   recordFetchFailure(source: string, attemptedAt: Date): Promise<void>;
-  count(): Promise<number>;
+  count(): Promise<Count>;
   ingest(snapshot: CatalogSnapshot): Promise<CatalogIngestReport>;
-  search(normalizedQuery: string, limit: number): Promise<CatalogSearchRows>;
+  search(normalizedQuery: string, limit: Count): Promise<CatalogSearchRows>;
   linkPortfolioInstrument(input: {
     userId: UserId;
     portfolioInstrumentId: string;
@@ -164,7 +165,7 @@ export interface InstrumentCatalogRepository {
    * budget to be spent over days, not a request to be awaited.
    */
   listingsDueQuoteKeyCheck(
-    limit: number,
+    limit: Count,
     asAt: Date,
   ): Promise<readonly (QuoteKeyCandidateListing & CatalogQuoteKeyState)[]>;
 
@@ -187,7 +188,7 @@ export interface InstrumentCatalogRepository {
   touchQuoteKey(listingId: string, at: Date): Promise<void>;
 
   /** Stores harvested Moneycontrol `sc_id`s. Offline only; never a keystroke dependency. */
-  recordMoneycontrolScIds(rows: readonly MoneycontrolScIdRow[]): Promise<number>;
+  recordMoneycontrolScIds(rows: readonly MoneycontrolScIdRow[]): Promise<Count>;
 
   /** The `sc_id` map the India quote adapter needs, keyed by normalised symbol. */
   moneycontrolScIdMap(): Promise<ReadonlyMap<string, string>>;
@@ -328,7 +329,7 @@ export function toCatalogSearchCandidate(candidate: CatalogCandidate): CatalogSe
  * that happens a handful of times a year; a month's staleness on a *dead* key
  * costs nothing, because the holding is still valued at its last known close.
  */
-export const QUOTE_KEY_REVALIDATION_INTERVAL_MS = 30 * DAY_MS;
+export const QUOTE_KEY_REVALIDATION_INTERVAL_MS = Millis(30 * DAY_MS);
 
 /** The types a history endpoint may serve and we may index. C10. */
 export const PRICEABLE_QUOTE_TYPES: readonly string[] = ["EQUITY", "ETF", "ETFS", "MUTUALFUND"];
@@ -381,7 +382,7 @@ export function candidateQuoteKeys(listing: QuoteKeyCandidateListing): readonly 
 export interface QuoteKeyProbeResult {
   readonly quoteKey: string;
   /** How many daily bars came back. Zero is a resolution failure, not an empty chart. */
-  readonly bars: number;
+  readonly bars: Count;
   /** The currency the source says the series is in. */
   readonly currency: string | null;
   /** The source's own classification, verbatim. */
@@ -468,10 +469,10 @@ export interface QuoteKeyResolution {
 }
 
 export interface QuoteKeyReconciliationReport {
-  readonly probed: number;
-  readonly resolved: number;
-  readonly markedStale: number;
-  readonly stillUnresolved: number;
+  readonly probed: Count;
+  readonly resolved: Count;
+  readonly markedStale: Count;
+  readonly stillUnresolved: Count;
   /** One line per listing that could not be resolved, for the operator. */
   readonly reasons: readonly string[];
 }

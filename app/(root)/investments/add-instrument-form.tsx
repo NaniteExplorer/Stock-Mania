@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Field } from "@/ui/primitives";
+import { Field } from "@/components/ui/field";
+import { Input } from "../../../components/ui/input";
+import { NativeSelect } from "../../../components/ui/native-select";
 import type { InstrumentKind } from "@/domain/instruments";
 import { ASSET_GROUPS, groupBlurb, groupLabel, kindLabel, kindsIn, type AssetGroup } from "@/domain/asset-groups";
 import { hintsFor } from "@/ui/instrument-hints";
@@ -57,34 +59,34 @@ export default function AddInstrumentForm({
 
   return (
     <form action={action} className="grid gap-4 md:grid-cols-3">
-      <div className="md:col-span-3 rounded-2xl border border-violet-500/25 bg-violet-500/[0.04] p-4">
+      <div className="md:col-span-3 rounded-2xl border border-(--accent)/25 bg-(--accent)/[0.04] p-4">
         <div className="mb-4 flex items-center gap-3">
-          <span className="flex size-8 items-center justify-center rounded-full bg-violet-500 text-sm font-bold text-white">1</span>
-          <div><h3 className="font-semibold text-gray-100">Choose the investment</h3><p className="text-xs text-gray-500">Start with a broad category, then choose the exact type.</p></div>
+          <span className="flex size-8 items-center justify-center rounded-full bg-(--accent) text-sm font-bold text-(--fg)">1</span>
+          <div><h3 className="font-semibold text-(--fg)">Choose the investment</h3><p className="text-xs text-(--fg-muted)">Start with a broad category, then choose the exact type.</p></div>
         </div>
         <div className="grid gap-4 md:grid-cols-2">
           <Field name="category" label="Investment category" hint={groupBlurb(category)}>
             {(props) => (
-              <select {...props} name="category" className="form-input" value={category} onChange={(event) => {
+              <NativeSelect {...props} name="category" value={category} onChange={(event) => {
                 const next = event.target.value as AssetGroup;
                 setCategory(next);
                 setKind(kindsIn(next)[0]);
               }}>
                 {ASSET_GROUPS.map((group) => <option key={group} value={group}>{groupLabel(group)}</option>)}
-              </select>
+              </NativeSelect>
             )}
           </Field>
           <Field name="kind" label="Investment type" required error={errors.kind?.[0]}>
             {(props) => (
-              <select {...props} name="kind" className="form-input" value={kind} onChange={(event) => setKind(event.target.value as InstrumentKind)}>
+              <NativeSelect {...props} name="kind" value={kind} onChange={(event) => setKind(event.target.value as InstrumentKind)}>
                 {kindsIn(category).map((item) => <option key={item} value={item}>{kindLabel(item)}</option>)}
-              </select>
+              </NativeSelect>
             )}
           </Field>
         </div>
       </div>
-      <div className="md:col-span-3 grid gap-4 rounded-2xl border border-gray-600/70 p-4 md:grid-cols-2">
-        <div className="md:col-span-2"><h3 className="font-semibold text-gray-100">2. Choose the platform</h3><p className="mt-1 text-xs text-gray-500">The app will create the holding name, symbol and pricing setup from this choice.</p></div>
+      <div className="md:col-span-3 grid gap-4 rounded-2xl border border-(--border)/70 p-4 md:grid-cols-2">
+        <div className="md:col-span-2"><h3 className="font-semibold text-(--fg)">2. Choose the platform</h3><p className="mt-1 text-xs text-(--fg-muted)">The app will create the holding name, symbol and pricing setup from this choice.</p></div>
         <PlatformSelect platforms={platforms} instrumentKind={kind} error={errors.institutionId?.[0] ?? errors.newPlatformName?.[0]} onPlatformNameChange={setPlatformName} />
       </div>
       <Field
@@ -95,23 +97,22 @@ export default function AddInstrumentForm({
         error={errors.symbol?.[0]}
       >
         {(props) => (
-          <input {...props} name="symbol" className="form-input" placeholder={hint.symbol} value={isDigitalMetal ? automaticSymbol : symbol} onChange={(event) => setSymbol(event.target.value)} readOnly={isDigitalMetal} required />
+          <Input {...props} name="symbol" placeholder={hint.symbol} value={isDigitalMetal ? automaticSymbol : symbol} onChange={(event) => setSymbol(event.target.value)} readOnly={isDigitalMetal} required />
         )}
       </Field>
 
       <Field name="name" label="Name" required error={errors.name?.[0]}>
         {(props) => (
-          <input {...props} name="name" className="form-input" placeholder={hint.name} value={isDigitalMetal ? automaticName : name} onChange={(event) => setName(event.target.value)} readOnly={isDigitalMetal} required />
+          <Input {...props} name="name" placeholder={hint.name} value={isDigitalMetal ? automaticName : name} onChange={(event) => setName(event.target.value)} readOnly={isDigitalMetal} required />
         )}
       </Field>
 
       <div className="hidden">
       <Field name="legacyKindPicker" label="Kind">
         {(props) => (
-          <select
+          <NativeSelect
             {...props}
             name="legacyKindPicker"
-            className="form-input"
             value={kind}
             onChange={(event) => setKind(event.target.value as InstrumentKind)}
           >
@@ -146,7 +147,7 @@ export default function AddInstrumentForm({
               <option value="OPTION">Option (F&amp;O — business income)</option>
               <option value="FUTURE">Future (F&amp;O — business income)</option>
             </optgroup>
-          </select>
+          </NativeSelect>
         )}
       </Field>
       </div>
@@ -159,10 +160,10 @@ export default function AddInstrumentForm({
         error={errors.currency?.[0]}
       >
         {(props) => (
-          <select {...props} name="currency" className="form-input" defaultValue="INR">
+          <NativeSelect {...props} name="currency" defaultValue="INR">
             <option value="INR">INR — Indian rupee</option>
             <option value="USD">USD — US dollar</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
@@ -174,7 +175,7 @@ export default function AddInstrumentForm({
       {hint.hasIsin && (
         <Field name="isin" label="ISIN" error={errors.isin?.[0]}>
           {(props) => (
-            <input {...props} name="isin" className="form-input" maxLength={12} placeholder="INE009A01021" />
+            <Input {...props} name="isin" maxLength={12} placeholder="INE009A01021" />
           )}
         </Field>
       )}
@@ -182,7 +183,7 @@ export default function AddInstrumentForm({
       {hint.hasExchange && (
         <Field name="exchange" label="Exchange" error={errors.exchange?.[0]}>
           {(props) => (
-            <input {...props} name="exchange" className="form-input" placeholder={hint.exchange} />
+            <Input {...props} name="exchange" placeholder={hint.exchange} />
           )}
         </Field>
       )}
@@ -194,17 +195,16 @@ export default function AddInstrumentForm({
         error={errors.quoteRef?.[0]}
       >
         {(props) => isDigitalMetal ? (
-          <select {...props} name="quoteRef" className="form-input" key={kind} defaultValue={hint.quoteRef}>
+          <NativeSelect {...props} name="quoteRef" key={kind} defaultValue={hint.quoteRef}>
             {kind === "DIGITAL_GOLD" && <option key="gold-999" value="GOLD999">24K gold (99.9% purity)</option>}
             {kind === "DIGITAL_GOLD" && <option key="gold-995" value="GOLD995">22K gold (99.5% benchmark)</option>}
             {kind === "DIGITAL_SILVER" && <option key="silver-999" value="SILVER999">Fine silver (99.9% purity)</option>}
             {kind === "DIGITAL_PLATINUM" && <option key="platinum-999" value="PLATINUM999">Fine platinum (99.9% purity)</option>}
-          </select>
+          </NativeSelect>
         ) : (
-          <input
+          <Input
             {...props}
             name="quoteRef"
-            className="form-input"
             key={kind}
             defaultValue={hint.quoteRef}
           />
@@ -212,8 +212,8 @@ export default function AddInstrumentForm({
       </Field>
 
       {hint.tax && (
-        <p className="md:col-span-3 rounded-xl border border-gray-600 px-3 py-2 text-xs text-gray-400">
-          <span className="font-medium text-gray-300">How this is taxed. </span>
+        <p className="md:col-span-3 rounded-xl border border-(--border) px-3 py-2 text-xs text-(--fg-secondary)">
+          <span className="font-medium text-(--fg-secondary)">How this is taxed. </span>
           {hint.tax}
         </p>
       )}
@@ -226,17 +226,17 @@ export default function AddInstrumentForm({
           error={errors.underlying?.[0]}
         >
           {(props) => (
-            <select {...props} name="underlying" className="form-input" defaultValue="EQUITY">
+            <NativeSelect {...props} name="underlying" defaultValue="EQUITY">
               <option value="EQUITY">Equity</option>
               <option value="DEBT">Debt (slab-taxed)</option>
               <option value="GOLD">Gold</option>
-            </select>
+            </NativeSelect>
           )}
         </Field>
       )}
 
       {kind === "DEBT_FUND" && (
-        <label className="flex items-center gap-2 text-sm text-gray-300 md:col-span-3">
+        <label className="flex items-center gap-2 text-sm text-(--fg-secondary) md:col-span-3">
           <input type="checkbox" name="legacyUnits" className="h-4 w-4" />
           These units were bought before 1 April 2023 (they keep indexation and the 20% long-term rate)
         </label>
@@ -252,12 +252,12 @@ export default function AddInstrumentForm({
             error={errors.underlyingSymbol?.[0]}
           >
             {(props) => (
-              <input {...props} name="underlyingSymbol" className="form-input" placeholder="NIFTY" required />
+              <Input {...props} name="underlyingSymbol" placeholder="NIFTY" required />
             )}
           </Field>
 
           <Field name="expiry" label="Expiry" required error={errors.expiry?.[0]}>
-            {(props) => <input {...props} name="expiry" type="date" className="form-input" required />}
+            {(props) => <Input {...props} name="expiry" type="date" required />}
           </Field>
 
           <Field
@@ -268,10 +268,10 @@ export default function AddInstrumentForm({
             error={errors.lotSize?.[0]}
           >
             {(props) => (
-              <input
+              <Input
                 {...props}
                 name="lotSize"
-                className="form-input tnum"
+                className="tnum"
                 inputMode="numeric"
                 placeholder="75"
                 required
@@ -285,19 +285,19 @@ export default function AddInstrumentForm({
         <>
           <Field name="right" label="Call or put" required error={errors.right?.[0]}>
             {(props) => (
-              <select {...props} name="right" className="form-input" defaultValue="CALL">
+              <NativeSelect {...props} name="right" defaultValue="CALL">
                 <option value="CALL">Call</option>
                 <option value="PUT">Put</option>
-              </select>
+              </NativeSelect>
             )}
           </Field>
 
           <Field name="strike" label="Strike" required error={errors.strike?.[0]}>
             {(props) => (
-              <input
+              <Input
                 {...props}
                 name="strike"
-                className="form-input tnum"
+                className="tnum"
                 inputMode="decimal"
                 placeholder="24000.00"
                 required
@@ -315,13 +315,13 @@ export default function AddInstrumentForm({
           error={errors.contractMonth?.[0]}
         >
           {(props) => (
-            <input {...props} name="contractMonth" className="form-input tnum" placeholder="2026-09" />
+            <Input {...props} name="contractMonth" className="tnum" placeholder="2026-09" />
           )}
         </Field>
       )}
 
       {isContract && (
-        <p className="md:col-span-3 text-xs text-amber-500">
+        <p className="md:col-span-3 text-xs text-(--warn)">
           F&amp;O is taxed as non-speculative business income at your slab rate, and its
           losses cannot be set off against capital gains. Set your marginal rate on
           Settings, or the report assumes the top slab.
@@ -333,7 +333,7 @@ export default function AddInstrumentForm({
           {pending ? "Adding…" : "Add instrument"}
         </button>
         {state && (
-          <p className={state.ok ? "text-sm text-green-500" : "text-sm text-red-500"} role="status">
+          <p className={state.ok ? "text-sm text-(--gain)" : "text-sm text-(--loss)"} role="status">
             {state.message}
           </p>
         )}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_GROUPS } from "@/ui/nav";
 import { BrandMark } from "@/components/Logo";
+import type { DebtHeaderFigures } from "@/ui/debt-header";
 import { ArrowUpRight, ArrowDownRight, PencilLine } from "lucide-react";
 
 export interface SidebarSummary {
@@ -15,7 +16,7 @@ export interface SidebarSummary {
 const isActive = (pathname: string, href: string) =>
   href === "/dashboard" ? pathname === "/dashboard" : pathname.startsWith(href);
 
-const Sidebar = ({ summary }: { summary?: SidebarSummary }) => {
+const Sidebar = ({ summary, debt }: { summary?: SidebarSummary; debt?: DebtHeaderFigures | null }) => {
   const pathname = usePathname();
 
   return (
@@ -54,6 +55,24 @@ const Sidebar = ({ summary }: { summary?: SidebarSummary }) => {
         {NAV_GROUPS.map((group) => (
           <div key={group.label}>
             <p className="side-group-label">{group.label}</p>
+            {group.label === "Debt" && debt && (
+              <p className="-mt-1 mb-1 px-3 text-[11px] text-gray-500" data-testid="debt-group-figures">
+                Total outstanding <span className="font-semibold text-gray-300 tnum">{debt.totalOutstanding}</span>
+                {debt.blendedRate !== null && (
+                  <>
+                    <br />
+                    Blended rate <span className="font-semibold text-gray-300 tnum">{debt.blendedRate}</span> · loans only
+                  </>
+                )}
+                {debt.monthlyOutgo !== null && (
+                  <>
+                    <br />
+                    Monthly outgo <span className="font-semibold text-gray-300 tnum">{debt.monthlyOutgo}</span>
+                    {debt.outgoLoansOnly && " · loans only"}
+                  </>
+                )}
+              </p>
+            )}
             <ul className="flex flex-col gap-0.5">
               {group.items.map(({ href, label, icon: Icon }) => (
                 <li key={href}>

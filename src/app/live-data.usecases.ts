@@ -1,5 +1,6 @@
 import type { Clock, UserId } from "@/core/kernel";
-import type { InstrumentCatalogRepository } from "@/domain/instrument-catalog";
+import { Count } from "@/core/units";
+import type { CatalogFetchReceipt, InstrumentCatalogRepository } from "@/domain/instrument-catalog";
 import type { InstrumentRepository, MarketInstrument } from "@/domain/instruments";
 import {
   providerProfile,
@@ -23,12 +24,17 @@ export class ViewLiveDataCenter {
   ) {}
 
   async execute(input: { userId: UserId }): Promise<LiveDataCenterOutput> {
-    const [tracked, upstoxFetch, amfiFetch, secFetch, zerodhaFetch] = await Promise.all([
+    const sources = ["UPSTOX_PUBLIC", "AMFI_NAV", "SEC_COMPANY_TICKERS", "ZERODHA_CSV"];
+    const [tracked, fetchResults] = await Promise.all([
       this.instruments.list(input.userId),
-      this.catalog.latestSuccessfulFetch("UPSTOX_PUBLIC"),
-      this.catalog.latestSuccessfulFetch("AMFI_NAV"),
-      this.catalog.latestSuccessfulFetch("SEC_COMPANY_TICKERS"),
-      this.catalog.latestSuccessfulFetch("ZERODHA_CSV"),
+      Promise.allSettled(sources.map(async (source) => this.catalog.latestSuccessfulFetch(source))),
+    ]);
+    const [upstoxFetch, amfiFetch, secFetch, zerodhaFetch] = fetchResults.map((result) =>
+      result.status === "fulfilled" ? result.value : null,
+    );
+    const fetches = new Map<string, PromiseSettledResult<CatalogFetchReceipt | null>>([
+      ["upstox-public", fetchResults[0]], ["amfi", fetchResults[1]],
+      ["sec", fetchResults[2]], ["zerodha", fetchResults[3]],
     ]);
 
     const trackedOutput = tracked.map((instrument) => this.toTracked(instrument));
@@ -117,15 +123,21 @@ export class ViewLiveDataCenter {
           capabilities: ["Historical and fallback close prices"],
           limitations: ["Undocumented endpoint; availability and delay are not guaranteed"],
         }),
-      ],
+      ].map((provider) => fetches.get(provider.id)?.status === "rejected" ? {
+        ...provider,
+        state: "UNAVAILABLE" as const,
+        freshness: "UNAVAILABLE" as const,
+        lastFetch: null,
+        limitations: [...provider.limitations, "Fetch history is unreadable right now. Its last successful fetch is unknown; retry later."],
+      } : provider),
       tracked: trackedOutput,
       coverage: {
-        indianStocks: trackedOutput.filter((row) => row.market === "IN" && isExchangeTraded(row.kind)).length,
-        indianFunds: trackedOutput.filter((row) => row.market === "IN" && isFund(row.kind)).length,
-        usStocks: trackedOutput.filter((row) => row.market === "US" && isExchangeTraded(row.kind)).length,
-        other: trackedOutput.filter((row) =>
+        indianStocks: Count(trackedOutput.filter((row) => row.market === "IN" && isExchangeTraded(row.kind)).length),
+        indianFunds: Count(trackedOutput.filter((row) => row.market === "IN" && isFund(row.kind)).length),
+        usStocks: Count(trackedOutput.filter((row) => row.market === "US" && isExchangeTraded(row.kind)).length),
+        other: Count(trackedOutput.filter((row) =>
           row.market === "OTHER" || (!isExchangeTraded(row.kind) && !isFund(row.kind))
-        ).length,
+        ).length),
       },
       searchSamples: { indianStock: null, mutualFund: null, usStock: null },
       automationReadiness: [

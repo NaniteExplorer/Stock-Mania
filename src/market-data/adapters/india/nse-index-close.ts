@@ -12,6 +12,7 @@
  * 2007); this is the official failover and the cross-check.
  */
 
+import { Count, Millis } from "@/core/units";
 import { Err } from "@/core/kernel";
 import { CalendarDate } from "@/core/time";
 import { ProviderError, RateLimitBudget } from "@/domain/pricing";
@@ -57,7 +58,7 @@ export class NseIndexCloseAdapter extends MarketDataSource implements Historical
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 30, perMillis: 60_000, burst: 5 };
+    return { requests: Count(30), perMillis: Millis(60_000), burst: Count(5) };
   }
 
   async history(request: HistoryRequest): Promise<MarketDataResult<HistoricalSeries>> {

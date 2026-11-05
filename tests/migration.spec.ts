@@ -21,6 +21,7 @@
  * decimal places, and a trade.
  */
 
+import { Count } from "@/core/units";
 import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
@@ -165,7 +166,7 @@ async function main() {
 
   const afterDryRun = await accounts.list(userId, { includeClosed: true });
   check("nothing was written — no accounts exist", afterDryRun.length, 0);
-  check("and no transactions", (await journal.find(userId, { limit: 100 })).transactions.length, 0);
+  check("and no transactions", (await journal.find(userId, { limit: Count(100) })).transactions.length, 0);
 
   /* ── 3. The real run ──────────────────────────────────────────────── */
 
@@ -228,7 +229,7 @@ async function main() {
     4,
   );
 
-  const totalAfterTwoRuns = (await journal.find(userId, { limit: 1000 })).transactions.length;
+  const totalAfterTwoRuns = (await journal.find(userId, { limit: Count(1000) })).transactions.length;
   const balanceAfterTwoRuns = await balances.balanceOf(userId, savings!.id, CalendarDate.parse("2025-04-30"));
   check("the balance is unchanged by the second run", balanceAfterTwoRuns.toDecimalString(), "178000.50");
 
@@ -236,7 +237,7 @@ async function main() {
   checkTrue("a third run also adds nothing", third.ok && third.value.migrated === 0);
   check(
     "the journal is the same size",
-    (await journal.find(userId, { limit: 1000 })).transactions.length,
+    (await journal.find(userId, { limit: Count(1000) })).transactions.length,
     totalAfterTwoRuns,
   );
 

@@ -2,6 +2,9 @@
 
 import * as React from "react";
 import { INSTITUTION_KINDS, institutionKindLabel, type InstitutionKind } from "@/domain/institutions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import {
   archivePlatformAction,
   deletePlatformAction,
@@ -62,35 +65,37 @@ export default function PlatformRowActions({
     <div className="space-y-2">
       <div className="flex flex-wrap items-center gap-2">
         {!isArchived && (
-          <button
+          <Button
+            variant="outline"
             type="button"
-            className="ghost-btn h-8 px-3 text-xs"
+            size="sm"
             onClick={() => setEditing((open) => !open)}
             aria-expanded={editing}
           >
             {editing ? "Cancel" : "Edit"}
-          </button>
+          </Button>
         )}
 
         <form action={archive}>
           <input type="hidden" name="platformId" value={platformId} />
           {isArchived && <input type="hidden" name="restore" value="on" />}
-          <button type="submit" className="ghost-btn h-8 px-3 text-xs" disabled={archiving}>
+          <Button variant="outline" type="submit" size="sm" disabled={archiving}>
             {archiving ? "Saving…" : isArchived ? "Restore" : "Archive"}
-          </button>
+          </Button>
         </form>
 
         {canDelete && (
           <form action={remove}>
             <input type="hidden" name="platformId" value={platformId} />
-            <button
+            <Button
+              variant="outline"
               type="submit"
-              className="ghost-btn h-8 px-3 text-xs text-red-400"
+              size="sm" className="text-(--loss)"
               disabled={removing}
               title={`Remove ${name}. Only possible because it holds nothing.`}
             >
               {removing ? "Removing…" : "Remove"}
-            </button>
+            </Button>
           </form>
         )}
       </div>
@@ -98,17 +103,17 @@ export default function PlatformRowActions({
       {editing && (
         <form action={update} className={compact ? "space-y-2" : "flex flex-wrap items-center gap-2"}>
           <input type="hidden" name="platformId" value={platformId} />
-          <input
+          <Input
             name="name"
             defaultValue={name}
-            className="form-input h-8 w-44 py-0 text-xs"
+            className="h-8 w-44 py-0 text-xs"
             maxLength={120}
             required
             aria-label={`Name for ${name}`}
           />
-          <select
+          <NativeSelect
             name="kind"
-            className="form-input h-8 w-auto py-0 text-xs"
+            className="h-8 w-auto py-0 text-xs"
             defaultValue={kind}
             aria-label={`What sort of platform ${name} is`}
           >
@@ -117,26 +122,26 @@ export default function PlatformRowActions({
                 {institutionKindLabel(kind)}
               </option>
             ))}
-          </select>
-          <label className="flex items-center gap-1.5 text-xs text-gray-400">
+          </NativeSelect>
+          <label className="flex items-center gap-1.5 text-xs text-(--fg-secondary)">
             <span className="whitespace-nowrap">Buys back</span>
-            <input
+            <Input
               name="sellSpread"
               defaultValue={sellSpread}
-              className="form-input tnum h-8 w-16 py-0 text-xs"
+              className="tabular-nums h-8 w-16 py-0 text-xs"
               inputMode="decimal"
               aria-label={`Percent below the benchmark ${name} buys back at`}
             />
             <span className="whitespace-nowrap">% under benchmark</span>
           </label>
-          <button type="submit" className="ghost-btn h-8 px-3 text-xs" disabled={updating}>
+          <Button variant="outline" type="submit" size="sm" disabled={updating}>
             {updating ? "Saving…" : "Save"}
-          </button>
+          </Button>
         </form>
       )}
 
       {state && (
-        <p className={state.ok ? "text-xs text-green-500" : "text-xs text-red-500"} role="status">
+        <p className={state.ok ? "text-xs text-(--gain)" : "text-xs text-(--loss)"} role="status">
           {state.message}
         </p>
       )}

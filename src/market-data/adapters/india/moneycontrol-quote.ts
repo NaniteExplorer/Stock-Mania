@@ -17,6 +17,7 @@
  * instrument and look like an outage.
  */
 
+import { Count, Millis } from "@/core/units";
 import { RateLimitBudget } from "@/domain/pricing";
 import { ProviderOptions, ProviderRuntime } from "@/infra/providers";
 import { MarketDataSource } from "@/market-data/engine/source";
@@ -65,7 +66,7 @@ export class MoneycontrolQuoteAdapter extends MarketDataSource implements LiveQu
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 30, perMillis: 60_000, burst: 5 };
+    return { requests: Count(30), perMillis: Millis(60_000), burst: Count(5) };
   }
 
   async quote(request: LiveQuoteRequest): Promise<MarketDataResult<readonly LiveQuote[]>> {

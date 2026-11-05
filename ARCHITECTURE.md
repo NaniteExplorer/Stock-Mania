@@ -365,10 +365,11 @@ price with its timestamp shown, never to a silent zero.
 ## 10. Mutation classes (added 2026-10-22)
 
 **Status correction (2026-10-24):** this section specifies the target mutation model,
-not verified shipped capability. TASKS.md P2 tracks implementation. Its D1–D7 decisions
-remain pending; in particular §10.3 is the recommended redo design subject to D3,
-retention is subject to D2, bulk atomicity to D1 and unfiltered bulk-removal refusal to
-D5. No automatic or optional header-restatement flow is authorised before D4 is settled.
+not verified shipped capability. TASKS.md P2 tracks implementation. After DOC-R1 the
+owner explicitly approved D1–D6: atomic bulk changes, 30-day undo window, the redo
+model in §10.3, separately confirmed header restatement, filter-required remove-all,
+and a navigation-only command palette. D7's saved-view contract remains unspecified.
+An undo window never authorises hard deletion of evidence (RULES.md §2.3).
 
 Full CRUD verbs — edit, undo, redo, remove one, remove all — sit over an append-only
 ledger without weakening it, because the verbs are a *presentation* over three different
@@ -404,7 +405,7 @@ removed, or a whole import undone are the same unit. No new table.
 
 ### 10.3 Redo
 
-Subject to owner decision D3, the recommendation gives class A a **one-step cursor**, not a stack: session- and user-scoped, invalidated the
+Approved by owner decision D3 on 2026-10-24, class A gets a **one-step cursor**, not a stack: session- and user-scoped, invalidated the
 instant any newer mutation touches an entity in the undone batch, and disabled *with a
 reason* rather than hidden. Class B gets an ordinary bounded stack, depth 20.
 
@@ -429,6 +430,55 @@ column on the posting.
 
 **`counterparties.normalisedName`, unique per user, is the stable key** that recurrence
 detection needs, and it already exists.
+
+**Supersession (2026-10-29, Claude): price steps are non-negative; income receipts are inflows.**
+The 1.0 packet allowed signed price steps only because `PriceSteps` did not then refuse them; no
+decision made negatives meaningful, and none is (a premium, subscription or expected salary is
+never below zero; zero is real, e.g. a free tier). Now binding: `PriceSteps` refuses a negative
+amount; `*_price_steps.amount_minor` is `NULL OR >= 0`; an `IncomeReceipt` links the **bank-side
+inflow**: a posting with `direction = DEBIT` on an ASSET account whose role is cash-like
+(`ASSET_BANK`, `ASSET_SAVINGS`, `ASSET_CASH`) *(direction rule added 2026-10-29 answering Codex:
+posting amounts are unsigned magnitudes, so "amount > 0" alone would admit a CREDIT outflow)*. The
+read adapter returns the receipt amount **signed by direction** (DEBIT +, CREDIT −), so a wrong-leg
+link reaches `IncomeStream` as negative and is refused there too.
+Affected: `src/core/recurrence.ts`, `src/domain/income.ts` + their specs (done, Claude); the three
+`*_price_steps` CHECKs, the 1.6 receipt write path, and `tests/manual-finance-reads.spec.ts`'s
+negative fixture (Codex). `sum_insured_minor` was already positive-only.
+
+**Physical assets and depreciation (2026-10-28, 1.4, answering Codex).** A modelled value is
+never stored. Each REAL_ESTATE / VEHICLE / OTHER asset carries a nullable **current** model:
+kind (DECLINING / STRAIGHT / SCHEDULE) plus `rate_percent_scaled` and `floor_percent_scaled`
+(the exact `Percentage` scaled integer, never basis points, so values round-trip), a required
+non-empty `basis` text for DECLINING / STRAIGHT (the owner's stated reason), and `schedule_id`
+for SCHEDULE, **restricted to shipped schedules** (today only `MOTOR_IDV`), whose name, bands and
+basis come from code by id. Owner-defined age schedules are not persisted; the product does not
+ask for them. *(Clarified 2026-10-29, answering Codex.)* The repository rehydrates a `DepreciationModel` beside the asset. Age bands
+are whole months, stored as integers. Changing the model is a class B update recorded in
+`audit_events`; there is no model-history table, because no past value depends on it. **Gold,
+ESOP grants and gold leases take no depreciation model** and are out of 1.4: they keep their
+existing storage (a metal rate, a vesting schedule, lease terms).
+
+**Physical aggregate and receipt dates (2026-10-30, Claude, answering Codex's two contract questions).**
+*Income `receivedOn`:* always the **accounting date of the linked posting's transaction**. It is
+never owner-entered. `income_receipts.received_on` is a stored copy the write path takes from that
+transaction; a write whose date differs is refused, and the reads may keep using the column. One
+source, because a second date invites "arrived on the 1st" beside a bank line dated the 3rd.
+*Physical assets:* the persisted aggregate covers REAL_ESTATE, VEHICLE and **OTHER** (gadgets,
+appliances: PRODUCT §4.3 "major spends"); task 1.4 adds the `OTHER` domain subtype. Gold, ESOP
+grants and gold leases are still excluded. Its shape:
+- **Header** (one row per asset ledger account): kind; an optional **purchase** `{on, price_minor}`
+  for all three kinds, both present or both null, with price > 0, in the account's currency; and the
+  current depreciation model above. Only an asset with a purchase can yield a modelled value.
+- **Asserted valuations** in their own table, as history: `{on, value_minor >= 0, source, note}`.
+  Zero is real (a scrapped car). The source is one of `ValuationSource`. They are unique per
+  `(asset, on)`: a second assertion on the same date updates that row (class B), so no precedence
+  rule is needed. An assertion dated before a known purchase date is refused. These are
+  **observations only**. A modelled value is never written here or anywhere else.
+- **Linked purchase (1.8):** when the side table links an acquisition posting, the posting is
+  authoritative. The header's `on` and `price_minor` must equal that posting's transaction date and
+  amount, and the write path refuses a mismatch, the same rule as `receivedOn`. Unlinked assets keep
+  owner-entered purchase terms.
+- `valueOn` stays assertion-only. A screen offers `modelledValueOn` separately, labelled a model.
 
 **`net_worth_snapshots` already stores assets, liabilities, net worth, investments, income
 and expense per month** — the whole spine of the lifetime chart. What is missing is only a

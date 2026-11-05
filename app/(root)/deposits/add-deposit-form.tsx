@@ -1,9 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Field } from "@/ui/primitives";
+import { Field } from "@/components/ui/field";
 import { ProviderPicker } from "@/ui/provider-picker";
 import { openDepositAction, type DepositActionState } from "./actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 
 /**
  * Add a deposit.
@@ -24,18 +27,18 @@ export default function AddDepositForm() {
   return (
     <form action={action} className="grid gap-4 md:grid-cols-3">
       <Field name="name" label="Name" required error={errors.name?.[0]}>
-        {(props) => <input {...props} name="name" className="form-input" placeholder="HDFC FD 5yr" required />}
+        {(props) => <Input {...props} name="name" placeholder="HDFC FD 5yr" required />}
       </Field>
 
       <Field name="kind" label="Kind" required error={errors.kind?.[0]}>
         {(props) => (
-          <select {...props} name="kind" className="form-input" defaultValue="FIXED_DEPOSIT">
+          <NativeSelect {...props} name="kind" defaultValue="FIXED_DEPOSIT">
             <option value="FIXED_DEPOSIT">Fixed deposit</option>
             <option value="RECURRING_DEPOSIT">Recurring deposit</option>
             <option value="PPF">PPF</option>
             <option value="EPF">EPF</option>
             <option value="NPS">NPS</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
@@ -44,62 +47,62 @@ export default function AddDepositForm() {
       </Field>
 
       <Field name="openedOn" label="Opened on" required error={errors.openedOn?.[0]}>
-        {(props) => <input {...props} name="openedOn" type="date" className="form-input" required />}
+        {(props) => <Input {...props} name="openedOn" type="date" required />}
       </Field>
 
       <Field name="rate" label="Rate (% p.a.)" hint="FD and RD. PPF and EPF rates are set per year." error={errors.rate?.[0]}>
-        {(props) => <input {...props} name="rate" className="form-input tnum" inputMode="decimal" placeholder="7.1" />}
+        {(props) => <Input {...props} name="rate" className="tabular-nums" inputMode="decimal" placeholder="7.1" />}
       </Field>
 
       <Field name="compounding" label="Compounding" error={errors.compounding?.[0]}>
         {(props) => (
-          <select {...props} name="compounding" className="form-input" defaultValue="QUARTERLY">
+          <NativeSelect {...props} name="compounding" defaultValue="QUARTERLY">
             <option value="QUARTERLY">Quarterly (Indian bank default)</option>
             <option value="MONTHLY">Monthly</option>
             <option value="HALF_YEARLY">Half-yearly</option>
             <option value="ANNUALLY">Annually</option>
             <option value="DAILY">Daily</option>
             <option value="AT_MATURITY">At maturity</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
       <Field name="accrualBasis" label="Interest basis" error={errors.accrualBasis?.[0]}>
         {(props) => (
-          <select {...props} name="accrualBasis" className="form-input" defaultValue="COMPOUND">
+          <NativeSelect {...props} name="accrualBasis" defaultValue="COMPOUND">
             <option value="COMPOUND">Compound</option>
             <option value="SIMPLE">Simple</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
       <Field name="payout" label="Interest" hint="A payout deposit's value never grows — the interest leaves." error={errors.payout?.[0]}>
         {(props) => (
-          <select {...props} name="payout" className="form-input" defaultValue="CUMULATIVE">
+          <NativeSelect {...props} name="payout" defaultValue="CUMULATIVE">
             <option value="CUMULATIVE">Reinvested (cumulative)</option>
             <option value="PERIODIC_PAYOUT">Paid out each period</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
       <Field name="principal" label="Principal" hint="Fixed deposits." error={errors.principal?.[0]}>
         {(props) => (
-          <input {...props} name="principal" className="form-input tnum" inputMode="decimal" placeholder="100000.00" />
+          <Input {...props} name="principal" className="tabular-nums" inputMode="decimal" placeholder="100000.00" />
         )}
       </Field>
 
       <Field name="maturesOn" label="Matures on" hint="Fixed deposits." error={errors.maturesOn?.[0]}>
-        {(props) => <input {...props} name="maturesOn" type="date" className="form-input" />}
+        {(props) => <Input {...props} name="maturesOn" type="date" />}
       </Field>
 
       <Field name="instalment" label="Monthly instalment" hint="Recurring deposits." error={errors.instalment?.[0]}>
         {(props) => (
-          <input {...props} name="instalment" className="form-input tnum" inputMode="decimal" placeholder="5000.00" />
+          <Input {...props} name="instalment" className="tabular-nums" inputMode="decimal" placeholder="5000.00" />
         )}
       </Field>
 
       <Field name="months" label="Months" hint="Recurring deposits." error={errors.months?.[0]}>
-        {(props) => <input {...props} name="months" className="form-input tnum" inputMode="numeric" placeholder="24" />}
+        {(props) => <Input {...props} name="months" className="tabular-nums" inputMode="numeric" placeholder="24" />}
       </Field>
 
       <Field
@@ -109,30 +112,30 @@ export default function AddDepositForm() {
         error={errors.prematurePenalty?.[0]}
       >
         {(props) => (
-          <input {...props} name="prematurePenalty" className="form-input tnum" inputMode="decimal" placeholder="1" />
+          <Input {...props} name="prematurePenalty" className="tabular-nums" inputMode="decimal" placeholder="1" />
         )}
       </Field>
 
       <Field name="npsTier" label="NPS tier" error={errors.npsTier?.[0]}>
         {(props) => (
-          <select {...props} name="npsTier" className="form-input" defaultValue="">
+          <NativeSelect {...props} name="npsTier" defaultValue="">
             <option value="">Not applicable</option>
             <option value="TIER_I">Tier I (locked to 60)</option>
             <option value="TIER_II">Tier II (withdrawable)</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
       <div className="md:col-span-3 flex flex-wrap items-center gap-3">
-        <button type="submit" className="btn-glow" disabled={pending}>
+        <Button type="submit" loading={pending} disabled={pending}>
           {pending ? "Adding…" : "Add deposit"}
-        </button>
-        <p className="text-xs text-gray-500">
+        </Button>
+        <p className="text-xs text-(--fg-muted)">
           Leave the funding account blank for a deposit that predates your records — it is booked
           against opening balances instead.
         </p>
         {state && (
-          <p className={state.ok ? "text-sm text-green-500" : "text-sm text-red-500"} role="status">
+          <p className={state.ok ? "text-sm text-(--gain)" : "text-sm text-(--loss)"} role="status">
             {state.message}
           </p>
         )}

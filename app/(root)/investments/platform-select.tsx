@@ -1,7 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { Field } from "@/ui/primitives";
+import { Field } from "@/components/ui/field";
+import { Input } from "../../../components/ui/input";
+import { NativeSelect } from "../../../components/ui/native-select";
 import { groupOfKind, type AssetGroup } from "@/domain/asset-groups";
 import type { InstrumentKind } from "@/domain/instruments";
 import type { InstitutionKind } from "@/domain/institutions";
@@ -75,10 +77,9 @@ export function PlatformSelect({
         error={error}
       >
         {(props) => (
-          <select
+          <NativeSelect
             {...props}
             name="institutionId"
-            className="form-input"
             value={value}
             onChange={(event) => {
               const next = event.target.value;
@@ -105,7 +106,7 @@ export function PlatformSelect({
               </optgroup>
             )}
             <option value={NEW}>Add a platform…</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
@@ -117,10 +118,9 @@ export function PlatformSelect({
           hint="Registered as you save, and offered on every later form."
         >
           {(props) => (
-            <input
+            <Input
               {...props}
               name="newPlatformName"
-              className="form-input"
               placeholder="Kuvera"
               maxLength={120}
               required

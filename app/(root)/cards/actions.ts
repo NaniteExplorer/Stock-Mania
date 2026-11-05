@@ -5,6 +5,7 @@ import { z } from "zod";
 import { Money } from "@/core/money";
 import { Percentage, Quantity, Rate } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
+import { Days, Ordinal } from "@/core/units";
 import { AccountId } from "@/domain/accounts";
 import { BillingCycleRule, type CardTerms } from "@/domain/assets";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
@@ -58,7 +59,7 @@ const openSchema = z.object({
 function termsFrom(input: z.infer<typeof openSchema>): CardTerms {
   return {
     creditLimit: Money.fromRupees(input.creditLimit),
-    cycle: new BillingCycleRule(input.statementDay, input.graceDays),
+    cycle: new BillingCycleRule(Ordinal(input.statementDay), Days(input.graceDays)),
     financeRate: Rate.annual(input.financeRate),
     minimumDuePercent: Percentage.of(input.minimumDuePercent),
     minimumDueFloor: Money.fromRupees(input.minimumDueFloor),
@@ -185,4 +186,53 @@ export async function accrueChargesAction(
         ? "Nothing to charge — the balance did not revolve past its due date."
         : `Charged ${result.value.interest.toString()} interest, ${result.value.fees.toString()} in fees and ${result.value.gst.toString()} GST.`,
   };
+}
+
+/* === Minimum due typed from a statement (card-minimum-due.md) === */
+
+const minimumSchema = z.object({
+  accountId: z.string().trim().min(1),
+  statementThrough: z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "The statement date is missing."),
+  amount: AMOUNT,
+});
+
+/** Records (or corrects) the minimum due printed on one closed statement. */
+export async function recordMinimumDueAction(_previous: CardActionState | null, formData: FormData): Promise<CardActionState> {
+  const parsed = minimumSchema.safeParse({
+    accountId: formData.get("accountId") ?? "",
+    statementThrough: formData.get("statementThrough") ?? "",
+    amount: formData.get("amount") ?? "",
+  });
+  if (!parsed.success) return { ok: false, message: "Check the amount.", fieldErrors: z.flattenError(parsed.error).fieldErrors as Record<string, string[]> };
+  const { accountId, statementThrough, amount } = parsed.data;
+  try {
+    const { userId, record } = await services().cards.minimumDues.writes();
+    const today = CalendarDate.parse(new Date().toISOString().slice(0, 10));
+    const result = await record.execute({ userId, accountId: AccountId.from(accountId), statementThrough, amount, asOf: today });
+    if (!result.ok) return { ok: false, message: result.error.message, fieldErrors: { amount: [result.error.message] } };
+  } catch (error) {
+    console.error("recordMinimumDueAction failed", error);
+    return { ok: false, message: "Not saved — the minimum due could not be stored. Nothing was changed; try again." };
+  }
+  revalidatePath("/cards");
+  revalidatePath(`/cards/${accountId}`);
+  return { ok: true, message: "Minimum due saved for this statement." };
+}
+
+/** Tombstones the typed minimum; the card's percentage-and-floor rule applies again. */
+export async function removeMinimumDueAction(_previous: CardActionState | null, formData: FormData): Promise<CardActionState> {
+  const accountId = String(formData.get("accountId") ?? "").trim();
+  const statementThrough = String(formData.get("statementThrough") ?? "").trim();
+  if (!accountId || !/^\d{4}-\d{2}-\d{2}$/.test(statementThrough)) return { ok: false, message: "That statement could not be identified." };
+  try {
+    const { userId, remove } = await services().cards.minimumDues.writes();
+    const result = await remove.execute({ userId, accountId: AccountId.from(accountId), statementThrough });
+    if (!result.ok) return { ok: false, message: result.error.message };
+  } catch (error) {
+    console.error("removeMinimumDueAction failed", error);
+    return { ok: false, message: "Not removed — nothing was changed; try again." };
+  }
+  revalidatePath("/cards");
+  revalidatePath(`/cards/${accountId}`);
+  return { ok: true, message: "Typed minimum cleared; the card's rule applies." };
 }

@@ -1,9 +1,13 @@
 import type { Metadata } from "next";
-import { Wallet } from "lucide-react";
 import { connection } from "next/server";
 import { CalendarDate } from "@/core/time";
 import { BudgetLedger } from "@/domain/banking";
-import { Card, EmptyState, MoneyText, PageHeader, Pill, Stat } from "@/ui/primitives";
+import type { Money } from "@/core/money";
+import { rupee, type Figure } from "@/core/format";
+import { Kpi, KpiStrip, Masthead, Page as PageShell, Panel } from "@/components/ui/page-shell";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { FigureCell, TextCell } from "@/components/ui/data-cell";
+import { Banner } from "@/components/ui/banner";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 import BudgetForm, { type CategoryOption } from "./budget-form";
 
@@ -46,108 +50,86 @@ export default async function Page() {
     .map((account) => ({ id: account.id.value, label: account.code.toString() }));
 
   return (
-    <>
-      <PageHeader
-        title="Budgets"
-        subtitle="Actual's envelope arithmetic, exactly: a leftover carries forward, and an overspend either follows the category or is charged to the month."
-        badge={<Pill tone="brand">Phase 2</Pill>}
-      />
+    <PageShell>
+      <Masthead title="Budgets" />
+      <p className="text-sm text-(--fg-secondary)">
+        Actual&apos;s envelope arithmetic, exactly: a leftover carries forward, and an overspend either follows the category or is charged to the month.{" "}
+        <span className="text-(--fg-muted)">Phase 2</span>
+      </p>
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Budgeted" value={current.totalBudgeted} hint={current.month} />
-        <Stat label="To budget" value={current.toBudget} hint="Available less allocated" />
-        <Stat
-          label="Last month's overspend"
-          value={current.lastMonthOverspent}
-          hint="Charged to this month"
-        />
-        <Stat
-          label="Envelopes"
-          value={<span className="tnum">{current.envelopes.length}</span>}
-          hint="Categories with a limit"
-        />
-      </div>
+      <KpiStrip>
+        <Kpi label="Budgeted" value={rupee(current.totalBudgeted)} detail={current.month} />
+        <Kpi label="To budget" value={rupee(current.toBudget)} detail="Available less allocated" />
+        <Kpi label="Last month's overspend" value={rupee(current.lastMonthOverspent)} detail="Charged to this month" />
+        <Kpi label="Envelopes" value={String(current.envelopes.length) as Figure} detail="Categories with a limit" />
+      </KpiStrip>
 
       {current.warnings.length > 0 && (
-        <Card title="Over-allocated" className="mb-6">
-          <ul className="space-y-1 text-sm text-amber-500">
+        <Panel title="Over-allocated">
+          <ul className="space-y-1 text-sm text-(--warn)">
             {current.warnings.map((warning) => (
               <li key={warning}>{warning}</li>
             ))}
           </ul>
-        </Card>
+        </Panel>
       )}
 
-      {plan.value.months.map((month) => (
-        <section key={month.month} className="panel mb-6 p-0">
-          <div className="flex items-center justify-between border-b border-gray-600 px-5 py-4">
-            <h2 className="text-sm font-semibold text-gray-100">{month.month}</h2>
-            <p className="text-xs text-gray-500">
-              to budget <MoneyText value={month.toBudget} tone="neutral" />
-            </p>
-          </div>
+      {plan.value.months.map((month) =>
+        month.envelopes.length === 0 ? (
+          <Panel key={month.month} title={month.month} description={`to budget ${rupee(month.toBudget)}`}>
+            <Banner title="No budgets for this month">
+              <p>Set a limit on a category below. A recurring limit applies to every month; a month-specific one overrides it.</p>
+            </Banner>
+          </Panel>
+        ) : (
+          <Panel key={month.month} title={month.month} description={`to budget ${rupee(month.toBudget)}`} flush>
+            <Table aria-label={`Envelopes for ${month.month} with budgeted, spent, carried in and left`}>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Category</TableHead>
+                  <TableHead className="text-right">Budgeted</TableHead>
+                  <TableHead className="text-right">Spent</TableHead>
+                  <TableHead className="text-right">Carried in</TableHead>
+                  <TableHead className="text-right">Left</TableHead>
+                  <TableHead className="text-right">Used</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {month.envelopes.map((envelope) => {
+                  const used = BudgetLedger.utilisationBasisPoints(envelope.spent, envelope.budgeted);
+                  return (
+                    <TableRow key={envelope.accountId.value}>
+                      <TextCell>{byId.get(envelope.accountId.value)?.code.toString() ?? "—"}</TextCell>
+                      <FigureCell value={envelope.budgeted} />
+                      <FigureCell value={envelope.spent.abs()} />
+                      <FigureCell value={envelope.carriedIn} className={signTone(envelope.carriedIn)} />
+                      <FigureCell value={envelope.leftover} className={signTone(envelope.leftover)} />
+                      <TextCell className="text-right tabular-nums">
+                        {used === null ? "—" : `${Number(used) / 100}%`}
+                      </TextCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Panel>
+        ),
+      )}
 
-          {month.envelopes.length === 0 ? (
-            <EmptyState
-              icon={Wallet}
-              title="No budgets for this month"
-              body="Set a limit on a category below. A recurring limit applies to every month; a month-specific one overrides it."
-            />
-          ) : (
-            <div className="table-scroll">
-              <table className="w-full text-sm">
-                <caption className="sr-only">
-                  Envelopes for {month.month} with budgeted, spent, carried in and left
-                </caption>
-                <thead>
-                  <tr className="border-b border-gray-600">
-                    <th scope="col" className="metric-label px-4 py-3 text-left">Category</th>
-                    <th scope="col" className="metric-label px-4 py-3 text-right">Budgeted</th>
-                    <th scope="col" className="metric-label px-4 py-3 text-right">Spent</th>
-                    <th scope="col" className="metric-label px-4 py-3 text-right">Carried in</th>
-                    <th scope="col" className="metric-label px-4 py-3 text-right">Left</th>
-                    <th scope="col" className="metric-label px-4 py-3 text-right">Used</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {month.envelopes.map((envelope) => {
-                    const used = BudgetLedger.utilisationBasisPoints(envelope.spent, envelope.budgeted);
-                    return (
-                      <tr key={envelope.accountId.value} className="border-b border-gray-600/50 last:border-0">
-                        <td className="px-4 py-3 text-gray-100">
-                          {byId.get(envelope.accountId.value)?.code.toString() ?? "—"}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <MoneyText value={envelope.budgeted} tone="neutral" />
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <MoneyText value={envelope.spent.abs()} tone="neutral" />
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <MoneyText value={envelope.carriedIn} />
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <MoneyText value={envelope.leftover} />
-                        </td>
-                        <td className="tnum px-4 py-3 text-right text-gray-400">
-                          {used === null ? "—" : `${Number(used) / 100}%`}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-      ))}
-
-      <Card
+      <Panel
         title="Set a budget"
-        subtitle="Leave the month blank for a recurring limit. Carry-over makes the category keep its own leftover — and its own overspend."
+        description="Leave the month blank for a recurring limit. Carry-over makes the category keep its own leftover — and its own overspend."
       >
         <BudgetForm categories={options} defaultMonth={current.month} />
-      </Card>
-    </>
+      </Panel>
+    </PageShell>
   );
+}
+
+/**
+ * Library gap (F.7 Recompose A): FigureCell has no gain/loss tone, which the old
+ * MoneyText derived from the sign. The tone is applied here with token utilities.
+ */
+function signTone(value: Money): string | undefined {
+  return value.isNegative ? "text-(--loss)" : value.isPositive ? "text-(--gain)" : undefined;
 }

@@ -1,9 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Field } from "@/ui/primitives";
+import { Field } from "@/components/ui/field";
 import { ProviderPicker } from "@/ui/provider-picker";
 import { openLoanAction, type LoanActionState } from "./actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 
 export default function AddLoanForm() {
   const [state, action, pending] = React.useActionState<LoanActionState | null, FormData>(
@@ -15,19 +18,19 @@ export default function AddLoanForm() {
   return (
     <form action={action} className="grid gap-4 md:grid-cols-3">
       <Field name="name" label="Loan name" required error={errors.name?.[0]}>
-        {(props) => <input {...props} name="name" className="form-input" placeholder="HDFC Home Loan" required />}
+        {(props) => <Input {...props} name="name" placeholder="HDFC Home Loan" required />}
       </Field>
 
       <Field name="kind" label="Kind" required error={errors.kind?.[0]}>
         {(props) => (
-          <select {...props} name="kind" className="form-input" defaultValue="HOME">
+          <NativeSelect {...props} name="kind" defaultValue="HOME">
             <option value="HOME">Home</option>
             <option value="VEHICLE">Vehicle</option>
             <option value="PERSONAL">Personal</option>
             <option value="EDUCATION">Education</option>
             <option value="GOLD">Gold</option>
             <option value="OTHER">Other</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
@@ -37,29 +40,29 @@ export default function AddLoanForm() {
 
       <Field name="principal" label="Amount borrowed" required error={errors.principal?.[0]}>
         {(props) => (
-          <input {...props} name="principal" className="form-input tnum" inputMode="decimal" placeholder="5000000.00" required />
+          <Input {...props} name="principal" className="tabular-nums" inputMode="decimal" placeholder="5000000.00" required />
         )}
       </Field>
 
       <Field name="annualRate" label="Rate (% p.a.)" required error={errors.annualRate?.[0]}>
         {(props) => (
-          <input {...props} name="annualRate" className="form-input tnum" inputMode="decimal" placeholder="8.5" required />
+          <Input {...props} name="annualRate" className="tabular-nums" inputMode="decimal" placeholder="8.5" required />
         )}
       </Field>
 
       <Field name="periods" label="Instalments" required hint="240 for a 20-year monthly loan." error={errors.periods?.[0]}>
         {(props) => (
-          <input {...props} name="periods" className="form-input tnum" inputMode="numeric" placeholder="240" required />
+          <Input {...props} name="periods" className="tabular-nums" inputMode="numeric" placeholder="240" required />
         )}
       </Field>
 
       <Field name="frequency" label="Paid" error={errors.frequency?.[0]}>
         {(props) => (
-          <select {...props} name="frequency" className="form-input" defaultValue="MONTHLY">
+          <NativeSelect {...props} name="frequency" defaultValue="MONTHLY">
             <option value="MONTHLY">Monthly</option>
             <option value="QUARTERLY">Quarterly</option>
             <option value="ANNUALLY">Annually</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
@@ -70,19 +73,19 @@ export default function AddLoanForm() {
         error={errors.accrualBasis?.[0]}
       >
         {(props) => (
-          <select {...props} name="accrualBasis" className="form-input" defaultValue="REDUCING_BALANCE">
+          <NativeSelect {...props} name="accrualBasis" defaultValue="REDUCING_BALANCE">
             <option value="REDUCING_BALANCE">Reducing balance</option>
             <option value="FLAT">Flat</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
       <Field name="disbursedOn" label="Disbursed on" required error={errors.disbursedOn?.[0]}>
-        {(props) => <input {...props} name="disbursedOn" type="date" className="form-input" required />}
+        {(props) => <Input {...props} name="disbursedOn" type="date" required />}
       </Field>
 
       <Field name="firstPaymentOn" label="First instalment" hint="Defaults to one period after disbursement." error={errors.firstPaymentOn?.[0]}>
-        {(props) => <input {...props} name="firstPaymentOn" type="date" className="form-input" />}
+        {(props) => <Input {...props} name="firstPaymentOn" type="date" />}
       </Field>
 
       <Field
@@ -92,16 +95,16 @@ export default function AddLoanForm() {
         error={errors.prepaymentPenalty?.[0]}
       >
         {(props) => (
-          <input {...props} name="prepaymentPenalty" className="form-input tnum" inputMode="decimal" placeholder="0" />
+          <Input {...props} name="prepaymentPenalty" className="tabular-nums" inputMode="decimal" placeholder="0" />
         )}
       </Field>
 
       <div className="md:col-span-3 flex flex-wrap items-center gap-3">
-        <button type="submit" className="btn-glow" disabled={pending}>
+        <Button type="submit" loading={pending} disabled={pending}>
           {pending ? "Adding…" : "Add loan"}
-        </button>
+        </Button>
         {state && (
-          <p className={state.ok ? "text-sm text-green-500" : "text-sm text-red-500"} role="status">
+          <p className={state.ok ? "text-sm text-(--gain)" : "text-sm text-(--loss)"} role="status">
             {state.message}
           </p>
         )}

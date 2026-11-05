@@ -14,6 +14,11 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Panel } from "../../../../components/ui/page-shell";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "../../../../components/ui/table";
+import { Input } from "../../../../components/ui/input";
+import { Label } from "../../../../components/ui/label";
+import { NativeSelect } from "../../../../components/ui/native-select";
 import { ActionForm, SubmitButton } from "@/ui/action-form";
 import {
   bulkReviewRowsAction,
@@ -222,18 +227,18 @@ export default function ReviewTable({
     <>
       {/* ── Why the transfer rows are stuck ─────────────────────────────── */}
       {counts.choice > 0 && ownTransferTargets === 0 && (
-        <div className="mb-4 rounded-2xl border border-amber-500/30 bg-amber-500/5 px-4 py-3">
-          <p className="text-sm font-medium text-amber-300">
+        <div className="mb-4 rounded-2xl border border-(--warn)/30 bg-(--warn)/5 px-4 py-3">
+          <p className="text-sm font-medium text-(--warn)">
             {counts.choice} row{counts.choice === 1 ? "" : "s"} need the *other* account, and you
             have not opened one yet.
           </p>
-          <p className="mt-1 text-xs text-gray-400">
+          <p className="mt-1 text-xs text-(--fg-secondary)">
             These are transfers and investments — money that moved between two accounts you own, so
             neither side is a spending category. The only account you have is the one this statement
             came from, and a transfer to itself is not a transfer. Two ways forward: use{" "}
-            <span className="text-gray-300">The other account is not in the list</span> on a row to
+            <span className="text-(--fg-secondary)">The other account is not in the list</span> on a row to
             open the missing account and confirm in one step, or pick{" "}
-            <span className="text-gray-300">Treat as a category</span> if the money really did leave
+            <span className="text-(--fg-secondary)">Treat as a category</span> if the money really did leave
             your accounts.
           </p>
         </div>
@@ -241,7 +246,7 @@ export default function ReviewTable({
 
       {/* ── Lenses, search, sort ───────────────────────────────────────── */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <div className="flex flex-wrap gap-1 rounded-full border border-gray-600 bg-gray-800/60 p-1">
+        <div className="flex flex-wrap gap-1 rounded-full border border-(--border) bg-(--bg-surface)/60 p-1">
           {LENSES.map((option) => (
             <button
               key={option.key}
@@ -254,22 +259,22 @@ export default function ReviewTable({
                 "rounded-full px-3 py-1.5 text-xs font-medium transition-colors",
                 lens === option.key
                   ? "bg-brand-500/20 text-brand-300"
-                  : "text-gray-400 hover:text-gray-200",
+                  : "text-(--fg-secondary) hover:text-(--fg)",
               )}
               aria-pressed={lens === option.key}
             >
               {option.label}
-              <span className="tnum ml-1.5 text-gray-500">{counts[option.key]}</span>
+              <span className="tnum ml-1.5 text-(--fg-muted)">{counts[option.key]}</span>
             </button>
           ))}
         </div>
 
         <div className="relative min-w-52 flex-1">
           <Search
-            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500"
+            className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-(--fg-muted)"
             aria-hidden
           />
-          <input
+          <Input
             type="search"
             value={query}
             onChange={(event) => {
@@ -278,12 +283,12 @@ export default function ReviewTable({
             }}
             placeholder="Search narration, reference or category"
             aria-label="Search staged rows"
-            className="form-input h-10 w-full pl-9 text-xs"
+            className="h-10 w-full pl-9! text-xs"
           />
         </div>
 
-        <select
-          className="form-input h-10 py-1 text-xs"
+        <NativeSelect
+          className="h-10 text-xs"
           value={sort}
           onChange={(event) => setSort(event.target.value as typeof sort)}
           aria-label="Sort rows"
@@ -292,10 +297,10 @@ export default function ReviewTable({
           <option value="date">Date</option>
           <option value="amount">Amount, largest first</option>
           <option value="description">Narration A–Z</option>
-        </select>
+        </NativeSelect>
 
-        <select
-          className="form-input h-10 py-1 text-xs"
+        <NativeSelect
+          className="h-10 text-xs"
           value={pageSize}
           onChange={(event) => {
             setPageSize(Number(event.target.value));
@@ -308,19 +313,19 @@ export default function ReviewTable({
               {size} per page
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
 
       {/* ── Bulk bar ───────────────────────────────────────────────────── */}
       {effective.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-2 rounded-2xl border border-brand-500/30 bg-brand-500/5 px-4 py-3">
           <SlidersHorizontal className="h-4 w-4 text-brand-300" aria-hidden />
-          <p className="text-xs font-medium text-gray-200">
+          <p className="text-xs font-medium text-(--fg)">
             {effective.length} row{effective.length === 1 ? "" : "s"} selected
           </p>
 
-          <select
-            className="form-input h-9 py-1 text-xs"
+          <NativeSelect
+            className="h-9 text-xs"
             value={bulkAccount}
             onChange={(event) => setBulkAccount(event.target.value)}
             aria-label="Category to apply to the selected rows"
@@ -351,7 +356,7 @@ export default function ReviewTable({
                   </option>
                 ))}
             </optgroup>
-          </select>
+          </NativeSelect>
 
           <BulkButton
             batchId={batchId}
@@ -386,7 +391,7 @@ export default function ReviewTable({
 
           <button
             type="button"
-            className="ml-auto text-xs text-gray-400 underline-offset-2 hover:underline"
+            className="ml-auto text-xs text-(--fg-secondary) underline-offset-2 hover:underline"
             onClick={() => setSelected(new Set())}
           >
             Clear selection
@@ -395,15 +400,14 @@ export default function ReviewTable({
       )}
 
       {/* ── Table ──────────────────────────────────────────────────────── */}
-      <section className="panel p-0">
-        <div className="table-scroll">
-          <table className="w-full text-sm">
-            <caption className="sr-only">
+      <Panel title="Staged rows">
+          <Table aria-label="Staged rows">
+            <TableCaption className="sr-only">
               Staged rows with date, narration, proposed category, amount and status
-            </caption>
-            <thead>
-              <tr className="border-b border-gray-600">
-                <th scope="col" className="px-4 py-3 text-left">
+            </TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>
                   <input
                     type="checkbox"
                     className="h-4 w-4 accent-brand-500"
@@ -415,15 +419,15 @@ export default function ReviewTable({
                     disabled={selectable.length === 0}
                     aria-label={`Select all ${selectable.length} rows in this view`}
                   />
-                </th>
-                <th scope="col" className="metric-label px-4 py-3 text-left">Date</th>
-                <th scope="col" className="metric-label px-4 py-3 text-left">Narration</th>
-                <th scope="col" className="metric-label px-4 py-3 text-left">Category</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Amount</th>
-                <th scope="col" className="metric-label px-4 py-3 text-left">Status</th>
-              </tr>
-            </thead>
-            <tbody>
+                </TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Narration</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead className="text-right">Amount</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {visible.map((row) => {
                 const decided = row.status === "CONFIRMED" || row.status === "REJECTED";
                 // The categoriser's intent decides which list is offered *first*,
@@ -437,13 +441,13 @@ export default function ReviewTable({
 
                 return (
                   <React.Fragment key={row.id}>
-                    <tr
+                    <TableRow
                       className={cn(
-                        "border-b border-gray-600/50 align-top",
+                        "border-b border-(--border)/50 align-top",
                         selectableSet.has(row.id) && selected.has(row.id) && "bg-brand-500/5",
                       )}
                     >
-                      <td className="px-4 py-3">
+                      <TableCell className="whitespace-normal!">
                         <input
                           type="checkbox"
                           className="h-4 w-4 accent-brand-500"
@@ -452,9 +456,9 @@ export default function ReviewTable({
                           disabled={row.posted}
                           aria-label={`Select ${row.description}`}
                         />
-                      </td>
-                      <td className="tnum px-4 py-3 text-gray-400">{row.date}</td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell className="tnum text-(--fg-secondary)">{row.date}</TableCell>
+                      <TableCell className="whitespace-normal!">
                         <button
                           type="button"
                           onClick={() => setExpanded(isOpen ? null : row.id)}
@@ -463,25 +467,25 @@ export default function ReviewTable({
                         >
                           <ChevronDown
                             className={cn(
-                              "mt-1 h-3.5 w-3.5 shrink-0 text-gray-500 transition-transform",
+                              "mt-1 h-3.5 w-3.5 shrink-0 text-(--fg-muted) transition-transform",
                               isOpen && "rotate-180",
                             )}
                             aria-hidden
                           />
                           <span>
-                            <span className="block font-medium text-gray-100">{row.description}</span>
-                            <span className="mt-0.5 block max-w-md text-xs text-gray-500">
+                            <span className="block font-medium text-(--fg)">{row.description}</span>
+                            <span className="mt-0.5 block max-w-md text-xs text-(--fg-muted)">
                               {row.because}
                             </span>
                           </span>
                         </button>
-                      </td>
-                      <td className="px-4 py-3">
+                      </TableCell>
+                      <TableCell className="whitespace-normal!">
                         {row.posted ? (
-                          <span className="text-gray-400">{row.proposedLabel ?? "—"}</span>
+                          <span className="text-(--fg-secondary)">{row.proposedLabel ?? "—"}</span>
                         ) : decided ? (
                           <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-gray-400">{row.proposedLabel ?? "—"}</span>
+                            <span className="text-(--fg-secondary)">{row.proposedLabel ?? "—"}</span>
                             <ActionForm
                               action={reviewRowAction}
                               fields={{ batchId, rowId: row.id, decision: "RESET" }}
@@ -526,7 +530,7 @@ export default function ReviewTable({
 
                         {!row.posted && !decided && transfersFirst && (
                           newFor === row.id ? (
-                            <div className="mt-2 rounded-xl border border-gray-600 bg-gray-900/40 p-3">
+                            <div className="mt-2 rounded-xl border border-(--border) bg-(--bg-canvas)/40 p-3">
                               <NewAccountForm
                                 batchId={batchId}
                                 row={row}
@@ -544,31 +548,31 @@ export default function ReviewTable({
                             </button>
                           )
                         )}
-                      </td>
-                      <td
+                      </TableCell>
+                      <TableCell
                         className={cn(
-                          "tnum px-4 py-3 text-right font-medium",
-                          row.direction === "DEBIT" ? "text-red-400" : "text-green-400",
+                          "tnum text-right font-medium",
+                          row.direction === "DEBIT" ? "text-(--loss)" : "text-(--gain)",
                         )}
                       >
                         {row.direction === "DEBIT" ? "−" : "+"}
                         {row.amount}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-xs text-gray-400">
+                      </TableCell>
+                      <TableCell className="whitespace-normal!">
+                        <span className="text-xs text-(--fg-secondary)">
                           {statusLabel(row)}
                           {row.posted ? " · posted" : ""}
                         </span>
                         {row.rejectedReason && (
-                          <p className="text-xs text-gray-500">{row.rejectedReason}</p>
+                          <p className="text-xs text-(--fg-muted)">{row.rejectedReason}</p>
                         )}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
 
                     {isOpen && (
-                      <tr className="border-b border-gray-600/50 bg-gray-800/40">
-                        <td />
-                        <td colSpan={5} className="px-4 py-4">
+                      <TableRow className="border-b border-(--border)/50 bg-(--bg-surface)/40">
+                        <TableCell />
+                        <TableCell colSpan={5} className="whitespace-normal!">
                           <dl className="grid gap-x-6 gap-y-2 text-xs sm:grid-cols-2 lg:grid-cols-4">
                             <Detail label="Bank reference" value={row.reference ?? "—"} />
                             <Detail label="Balance after" value={row.balanceAfter ?? "—"} />
@@ -576,13 +580,13 @@ export default function ReviewTable({
                             <Detail label="Intent" value={row.intent} />
                           </dl>
 
-                          <p className="metric-label mt-4">The line as your bank wrote it</p>
-                          <pre className="mt-1 overflow-x-auto rounded-lg border border-gray-600 bg-gray-900/60 p-3 text-xs text-gray-400">
+                          <p className="mt-4 text-xs text-(--fg-muted)">The line as your bank wrote it</p>
+                          <pre className="mt-1 overflow-x-auto rounded-lg border border-(--border) bg-(--bg-canvas)/60 p-3 text-xs text-(--fg-secondary)">
                             {row.raw}
                           </pre>
 
                           {ruleFor === row.id ? (
-                            <div className="mt-4 rounded-xl border border-gray-600 bg-gray-900/40 p-4">
+                            <div className="mt-4 rounded-xl border border-(--border) bg-(--bg-canvas)/40 p-4">
                               <RuleForm
                                 batchId={batchId}
                                 row={row}
@@ -600,31 +604,30 @@ export default function ReviewTable({
                               Make a rule from this row
                             </button>
                           )}
-                        </td>
-                      </tr>
+                        </TableCell>
+                      </TableRow>
                     )}
                   </React.Fragment>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+            </TableBody>
+          </Table>
 
         {filtered.length === 0 && (
-          <p className="px-5 py-10 text-center text-sm text-gray-500">
+          <p className="px-5 py-10 text-center text-sm text-(--fg-muted)">
             No rows match this filter.
           </p>
         )}
 
         {/* ── Pagination ───────────────────────────────────────────────── */}
         {filtered.length > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-600 px-5 py-3">
-            <p className="text-xs text-gray-500">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-(--border) px-5 py-3">
+            <p className="text-xs text-(--fg-muted)">
               Showing{" "}
-              <span className="tnum text-gray-300">
+              <span className="tnum text-(--fg-secondary)">
                 {safePage * pageSize + 1}–{Math.min(filtered.length, (safePage + 1) * pageSize)}
               </span>{" "}
-              of <span className="tnum text-gray-300">{filtered.length}</span>
+              of <span className="tnum text-(--fg-secondary)">{filtered.length}</span>
               {filtered.length !== rows.length && ` (of ${rows.length} in the file)`}
             </p>
             <div className="flex items-center gap-2">
@@ -637,7 +640,7 @@ export default function ReviewTable({
                 <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
                 Previous
               </button>
-              <span className="tnum text-xs text-gray-400">
+              <span className="tnum text-xs text-(--fg-secondary)">
                 {safePage + 1} / {pageCount}
               </span>
               <button
@@ -652,7 +655,7 @@ export default function ReviewTable({
             </div>
           </div>
         )}
-      </section>
+      </Panel>
     </>
   );
 }
@@ -717,15 +720,15 @@ function AccountSelect({
   );
 
   return (
-    <select
+    <NativeSelect
       name="accountId"
-      className="form-input h-9 min-w-52 py-1 text-xs"
+      className="h-9 min-w-52 text-xs"
       defaultValue={defaultValue}
       aria-label={label}
     >
       <option value="">Choose…</option>
       {transfersFirst ? [transfers, spending] : [spending, transfers]}
-    </select>
+    </NativeSelect>
   );
 }
 
@@ -757,22 +760,22 @@ function NewAccountForm({
       }}
     >
       <>
-        <label className="block">
-          <span className="metric-label">Account name</span>
-          <input
+        <Label className="flex-col items-start gap-1 text-xs text-(--fg-muted)">
+          Account name
+          <Input
             name="name"
-            className="form-input mt-1 h-9 w-full py-1 text-xs"
+            className="mt-1 h-9 w-full text-xs"
             defaultValue={suggestion}
             required
             maxLength={120}
           />
-        </label>
+        </Label>
 
-        <label className="block">
-          <span className="metric-label">Kind</span>
-          <select
+        <Label className="flex-col items-start gap-1 text-xs text-(--fg-muted)">
+          Kind
+          <NativeSelect
             name="kind"
-            className="form-input mt-1 h-9 w-full py-1 text-xs"
+            className="mt-1 h-9 w-full text-xs"
             defaultValue={row.intent === "INVESTMENT" ? "BROKERAGE" : "BANK"}
           >
             {counterAccountKinds.map((kind) => (
@@ -780,14 +783,14 @@ function NewAccountForm({
                 {kind.label}
               </option>
             ))}
-          </select>
-        </label>
+          </NativeSelect>
+        </Label>
 
         <div className="flex items-end gap-2">
           <SubmitButton icon={<Plus aria-hidden />} className="h-9 px-3 text-xs">
             Create &amp; confirm
           </SubmitButton>
-          <button type="button" className="text-xs text-gray-400 hover:underline" onClick={onDone}>
+          <button type="button" className="text-xs text-(--fg-secondary) hover:underline" onClick={onDone}>
             Cancel
           </button>
         </div>
@@ -814,8 +817,8 @@ function guessAccountName(description: string): string {
 function Detail({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="metric-label">{label}</dt>
-      <dd className="mt-0.5 text-gray-300">{value}</dd>
+      <dt className="text-xs text-(--fg-muted)">{label}</dt>
+      <dd className="mt-0.5 text-(--fg-secondary)">{value}</dd>
     </div>
   );
 }
@@ -893,32 +896,32 @@ function RuleForm({
       }}
     >
       <>
-        <label className="block">
-          <span className="metric-label">When the narration</span>
-          <select name="matchType" className="form-input mt-1 h-9 w-full py-1 text-xs" defaultValue="CONTAINS">
+        <Label className="flex-col items-start gap-1 text-xs text-(--fg-muted)">
+          When the narration
+          <NativeSelect name="matchType" className="mt-1 h-9 w-full text-xs" defaultValue="CONTAINS">
             <option value="CONTAINS">contains</option>
             <option value="STARTS_WITH">starts with</option>
             <option value="EXACT">is exactly</option>
-          </select>
-        </label>
+          </NativeSelect>
+        </Label>
 
-        <label className="block">
-          <span className="metric-label">This text</span>
-          <input
+        <Label className="flex-col items-start gap-1 text-xs text-(--fg-muted)">
+          This text
+          <Input
             name="pattern"
-            className="form-input mt-1 h-9 w-full py-1 text-xs"
+            className="mt-1 h-9 w-full text-xs"
             defaultValue={suggestion}
             required
             minLength={2}
             maxLength={120}
           />
-        </label>
+        </Label>
 
-        <label className="block">
-          <span className="metric-label">Post it to</span>
-          <select
+        <Label className="flex-col items-start gap-1 text-xs text-(--fg-muted)">
+          Post it to
+          <NativeSelect
             name="accountId"
-            className="form-input mt-1 h-9 w-full py-1 text-xs"
+            className="mt-1 h-9 w-full text-xs"
             defaultValue={row.proposedAccountId ?? ""}
             required
           >
@@ -928,30 +931,30 @@ function RuleForm({
                 {option.label}
               </option>
             ))}
-          </select>
-        </label>
+          </NativeSelect>
+        </Label>
 
-        <label className="block">
-          <span className="metric-label">Applies to</span>
-          <select
+        <Label className="flex-col items-start gap-1 text-xs text-(--fg-muted)">
+          Applies to
+          <NativeSelect
             name="appliesTo"
-            className="form-input mt-1 h-9 w-full py-1 text-xs"
+            className="mt-1 h-9 w-full text-xs"
             defaultValue={row.direction}
           >
             <option value="ANY">Money in or out</option>
             <option value="DEBIT">Money out only</option>
             <option value="CREDIT">Money in only</option>
-          </select>
-        </label>
+          </NativeSelect>
+        </Label>
 
         <div className="flex items-center gap-2 sm:col-span-2 lg:col-span-4">
           <SubmitButton icon={<Wand2 aria-hidden />} className="h-9 px-3 text-xs">
             Save rule
           </SubmitButton>
-          <button type="button" className="text-xs text-gray-400 hover:underline" onClick={onDone}>
+          <button type="button" className="text-xs text-(--fg-secondary) hover:underline" onClick={onDone}>
             Cancel
           </button>
-          <p className="text-xs text-gray-500">
+          <p className="text-xs text-(--fg-muted)">
             Applies to future imports. This row keeps whatever you choose above.
           </p>
         </div>

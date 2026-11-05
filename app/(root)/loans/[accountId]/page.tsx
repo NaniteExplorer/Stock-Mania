@@ -6,7 +6,12 @@ import { CalendarDate } from "@/core/time";
 import { AccountId } from "@/domain/accounts";
 import { CashAsset } from "@/domain/assets";
 import { HomeLoan } from "@/domain/loans";
-import { Card, MoneyText, PageHeader, Pill, Stat } from "@/ui/primitives";
+import { rupee, type Figure } from "@/core/format";
+import { Kpi, KpiStrip, Masthead, Page as PageShell, Panel } from "@/components/ui/page-shell";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { FigureCell, TextCell } from "@/components/ui/data-cell";
+import { Button } from "@/components/ui/button";
+import { InstitutionMark } from "@/ui/provider-picker";
 import { currentUserId, services } from "@/infra/container";
 import LoanPaymentForms from "./loan-payment-forms";
 
@@ -45,7 +50,7 @@ export default async function Page({ params }: { params: Promise<{ accountId: st
   const comparison = loan.quotedVersusEffective();
   const payFrom = accounts
     .filter((account) => CashAsset.classify(account) !== null)
-    .map((account) => ({ id: account.id.value, label: account.displayName }));
+    .map((account) => ({ id: account.id.value, label: account.displayName, institution: account.institution }));
 
   // The next unpaid period, so the form defaults to the one the user owes.
   const nextPeriod =
@@ -59,113 +64,113 @@ export default async function Page({ params }: { params: Promise<{ accountId: st
       : null;
 
   return (
-    <>
-      <PageHeader
+    <PageShell>
+      <Masthead
         title={loan.displayName}
-        subtitle={`${loan.kind.toLowerCase()} loan · ${loan.terms.periods} instalments · ${
-          loan.terms.interestType === "FLAT" ? "flat rate" : "reducing balance"
-        }`}
-        badge={<Pill tone="brand">{loan.terms.annualRate.percent.toFixed(2)}% quoted</Pill>}
-        action={
-          <Link href="/loans" className="ghost-btn h-10 px-4 text-xs">
-            All loans
-          </Link>
+        hero={rupee(booked)}
+        side={
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/loans">All loans</Link>
+          </Button>
         }
       />
+      <p className="text-sm text-(--fg-secondary)">
+        {`${loan.kind.toLowerCase()} loan · ${loan.terms.periods} instalments · ${
+          loan.terms.interestType === "FLAT" ? "flat rate" : "reducing balance"
+        }`}
+        <span className="text-(--fg-muted)"> · {loan.terms.annualRate.percent.toFixed(2)}% quoted</span>
+      </p>
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Instalment" value={loan.instalment()} hint="Every period" />
-        <Stat label="Owed" value={booked} hint="From the journal" />
-        <Stat label="Interest over the term" value={schedule.totalInterest} hint="If it runs to term" />
-        <Stat
+      {/* The lender, with its mark: the same row the account detail page draws. */}
+      {loan.account.institution && (
+        <div className="flex items-center gap-3">
+          <InstitutionMark institution={loan.account.institution} />
+          <p className="text-sm text-(--fg-secondary)">{loan.account.institution}</p>
+        </div>
+      )}
+
+      <KpiStrip>
+        <Kpi label="Instalment" value={rupee(loan.instalment())} detail="Every period" />
+        <Kpi label="Owed" value={rupee(booked)} detail="From the journal" />
+        <Kpi label="Interest over the term" value={rupee(schedule.totalInterest)} detail="If it runs to term" />
+        <Kpi
           label="Effective rate"
-          value={<span className="tnum">{comparison.effective.percent.toFixed(2)}%</span>}
-          hint={
+          value={`${comparison.effective.percent.toFixed(2)}%` as Figure}
+          detail={
             loan.terms.interestType === "FLAT"
               ? `Quoted ${comparison.quoted.percent.toFixed(2)}% — the real cost is higher`
               : "Same as quoted, on a reducing balance"
           }
         />
-      </div>
+      </KpiStrip>
 
       {loan.terms.interestType === "FLAT" && (
-        <Card title="What a flat rate actually costs" className="mb-6">
-          <p className="text-sm text-gray-300">
+        <Panel title="What a flat rate actually costs">
+          <p className="text-sm text-(--fg-secondary)">
             This loan is quoted at {comparison.quoted.percent.toFixed(2)}% flat, which charges interest
             on the whole principal for the whole term regardless of what has been repaid. The
             equivalent reducing-balance rate — the one that produces this same instalment — is{" "}
-            <span className="tnum text-amber-500">{comparison.effective.percent.toFixed(2)}%</span>.
+            <span className="tabular-nums text-(--warn)">{comparison.effective.percent.toFixed(2)}%</span>.
             Both are shown everywhere this loan appears.
           </p>
-        </Card>
+        </Panel>
       )}
 
       {deductible && deductible.isPositive && (
-        <Card title="Interest paid, last twelve months" className="mb-6">
-          <p className="text-sm text-gray-300">
-            <MoneyText value={deductible} tone="neutral" /> — capped at ₹2,00,000 for a self-occupied
+        <Panel title="Interest paid, last twelve months">
+          <p className="text-sm text-(--fg-secondary)">
+            <span className="tabular-nums">{rupee(deductible)}</span> — capped at ₹2,00,000 for a self-occupied
             property under §24(b). The uncapped figure is on the schedule below.
           </p>
-        </Card>
+        </Panel>
       )}
 
-      <section className="panel mb-6 p-0">
-        <div className="flex items-center justify-between border-b border-gray-600 px-5 py-4">
-          <h2 className="text-sm font-semibold text-gray-100">Amortisation</h2>
-          <p className="text-xs text-gray-500">
-            {schedule.rows.length} rows · principal repaid{" "}
-            <MoneyText value={schedule.principalRepaid} tone="neutral" /> · closes{" "}
-            {schedule.closedOn ? schedule.closedOn.toISO() : "—"}
-          </p>
-        </div>
-        <div className="table-scroll max-h-[32rem] overflow-y-auto">
-          <table className="w-full text-sm">
-            <caption className="sr-only">
-              Amortisation schedule with opening balance, instalment, interest, principal and closing balance
-            </caption>
-            <thead className="sticky top-0 bg-gray-900">
-              <tr className="border-b border-gray-600">
-                <th scope="col" className="metric-label px-4 py-3 text-left">#</th>
-                <th scope="col" className="metric-label px-4 py-3 text-left">Date</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Opening</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Instalment</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Interest</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Principal</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Closing</th>
-              </tr>
-            </thead>
-            <tbody>
-              {schedule.rows.slice(0, ROWS_SHOWN).map((row, index) => (
-                <tr
-                  key={`${row.period}-${row.on.toISO()}-${index}`}
-                  className="border-b border-gray-600/50 last:border-0"
-                >
-                  <td className="tnum px-4 py-2 text-gray-500">{row.period}</td>
-                  <td className="tnum px-4 py-2 text-gray-400">
-                    {row.on.toISO()}
-                    {row.note && <span className="ml-2 text-xs text-brand-400">{row.note}</span>}
-                  </td>
-                  <td className="px-4 py-2 text-right"><MoneyText value={row.opening} tone="neutral" /></td>
-                  <td className="px-4 py-2 text-right"><MoneyText value={row.instalment} tone="neutral" /></td>
-                  <td className="px-4 py-2 text-right"><MoneyText value={row.interest} tone="neutral" /></td>
-                  <td className="px-4 py-2 text-right"><MoneyText value={row.principal} tone="neutral" /></td>
-                  <td className="px-4 py-2 text-right"><MoneyText value={row.closing} tone="neutral" /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        {schedule.rows.length > ROWS_SHOWN && (
-          <p className="px-5 py-3 text-xs text-gray-500">
-            Showing the first {ROWS_SHOWN} of {schedule.rows.length} rows. The final row adjusts the
-            instalment so the balance closes at exactly zero.
-          </p>
-        )}
-      </section>
+      <Panel
+        title="Amortisation"
+        description={`${schedule.rows.length} rows · principal repaid ${rupee(schedule.principalRepaid)} · closes ${
+          schedule.closedOn ? schedule.closedOn.toISO() : "—"
+        }`}
+        flush
+      >
+        <Table density="compact" aria-label="Amortisation schedule with opening balance, instalment, interest, principal and closing balance">
+          <TableHeader>
+            <TableRow>
+              <TableHead>#</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead className="text-right">Opening</TableHead>
+              <TableHead className="text-right">Instalment</TableHead>
+              <TableHead className="text-right">Interest</TableHead>
+              <TableHead className="text-right">Principal</TableHead>
+              <TableHead className="text-right">Closing</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {schedule.rows.slice(0, ROWS_SHOWN).map((row, index) => (
+              <TableRow key={`${row.period}-${row.on.toISO()}-${index}`}>
+                <TextCell className="tabular-nums">{row.period}</TextCell>
+                <TextCell className="tabular-nums" secondary={row.note ?? undefined}>
+                  {row.on.toISO()}
+                </TextCell>
+                <FigureCell value={row.opening} />
+                <FigureCell value={row.instalment} />
+                <FigureCell value={row.interest} />
+                <FigureCell value={row.principal} />
+                <FigureCell value={row.closing} />
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Panel>
+      {schedule.rows.length > ROWS_SHOWN && (
+        <p className="text-xs text-(--fg-muted)">
+          Showing the first {ROWS_SHOWN} of {schedule.rows.length} rows. The final row adjusts the
+          instalment so the balance closes at exactly zero.
+        </p>
+      )}
 
-      <Card
+      <Panel
         title="Record a payment"
-        subtitle="An instalment is split into principal and interest by the schedule, and posted as a transfer plus a charge — the split is never typed by hand."
+        description="An instalment is split into principal and interest by the schedule, and posted as a transfer plus a charge — the split is never typed by hand."
       >
         <LoanPaymentForms
           loanAccountId={accountId}
@@ -173,7 +178,7 @@ export default async function Page({ params }: { params: Promise<{ accountId: st
           defaultPeriod={nextPeriod}
           defaultDate={today.toISO()}
         />
-      </Card>
-    </>
+      </Panel>
+    </PageShell>
   );
 }

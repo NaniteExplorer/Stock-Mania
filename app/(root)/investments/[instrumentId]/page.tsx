@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Money } from "@/core/money";
+import { Count } from "@/core/units";
 import { Percentage, Quantity, UnitPrice } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
 import { DateRange } from "@/core/time";
@@ -18,8 +19,13 @@ import {
 } from "@/domain/split-normalisation";
 import { LotBook } from "@/domain/lots";
 import { CashAsset } from "@/domain/assets";
-import { Card, MoneyText, PageHeader, Pill, Stat } from "@/ui/primitives";
+import { ChartPanel, Kpi, KpiStrip, Masthead, Page as PageShell, Panel } from "../../../../components/ui/page-shell";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "../../../../components/ui/table";
+import { ActionCell, BadgeCell, FigureCell, FigureText, TextCell } from "../../../../components/ui/data-cell";
+import { Banner } from "../../../../components/ui/banner";
+import { rupee, signed, unknown, type FigureValue } from "@/core/format";
 import { formatPercent } from "@/ui/format";
+import { InstitutionMark } from "@/ui/provider-picker";
 import { currentUserId, services } from "@/infra/container";
 import TradeForms from "./trade-forms";
 import TradeRowActions from "./trade-row-actions";
@@ -49,6 +55,12 @@ const formatSyncedAt = (date: Date): string =>
     timeStyle: "short",
     timeZone: "Asia/Kolkata",
   }).format(date);
+
+/** A money figure, or the reason there is none — never a formatted zero. */
+const moneyFigure = (value: Money | null, reason: string): FigureValue =>
+  value ? rupee(value) : unknown(reason);
+const gainFigure = (value: Money | null, reason: string): FigureValue =>
+  value ? signed(value) : unknown(reason);
 
 const formatQuantityPercent = (value: Quantity): string =>
   `${value.toApproximateNumber().toFixed(2)}%`;
@@ -86,12 +98,12 @@ function loggedSplitsFrom(actions: readonly StoredCorporateAction[]): readonly L
 
 function GramBar({
   label,
-  value,
+ value,
   total,
   tone = "green",
 }: {
   label: string;
-  value: Quantity;
+ value: Quantity;
   total: Quantity;
   tone?: "green" | "amber";
 }) {
@@ -102,15 +114,13 @@ function GramBar({
   return (
     <div>
       <div className="mb-1 flex items-center justify-between gap-3 text-xs">
-        <span className="text-gray-400">{label}</span>
-        <span className="tnum text-gray-200">{value.toDecimalString()}g</span>
+        <span className="text-(--fg-secondary)">{label}</span>
+        <span className="tnum text-(--fg)">{value.toDecimalString()}g</span>
       </div>
-      <div className="h-2 overflow-hidden rounded-full bg-gray-700">
-        <div
-          className={tone === "green" ? "h-full rounded-full bg-green-500" : "h-full rounded-full bg-amber-500"}
-          style={{ width: `${width}%` }}
-        />
-      </div>
+      <svg aria-hidden className="block h-2 w-full overflow-hidden rounded-full" preserveAspectRatio="none" viewBox="0 0 100 2">
+        <rect width="100" height="2" fill="var(--bg-hover)" />
+        <rect width={width} height="2" fill={tone === "green" ? "var(--gain)" : "var(--warn)"} />
+      </svg>
     </div>
   );
 }
@@ -165,7 +175,7 @@ export default async function Page({
   const openLots = lots.filter((lot) => !lot.isExhausted);
   const open = LotBook.openPosition(openLots, instrument.currency);
   const currentQuotes = isDigitalMetal
-    ? await repositories.quotes.findLatestOnOrBefore(id.value, "CLOSE", today, 1)
+    ? await repositories.quotes.findLatestOnOrBefore(id.value, "CLOSE", today, Count(1))
     : [];
   const currentRate = currentQuotes[0]?.price.toMoney() ?? null;
   const currentValue = currentQuotes[0]?.price.times(open.quantity) ?? null;
@@ -354,7 +364,7 @@ export default async function Page({
 
   /* The live last price, appended past the last stored bar. */
   const marketQuotes = showMarketPanels
-    ? await repositories.quotes.findLatestOnOrBefore(id.value, "CLOSE", today, 1)
+    ? await repositories.quotes.findLatestOnOrBefore(id.value, "CLOSE", today, Count(1))
     : [];
   const liveQuote = marketQuotes[0] ?? null;
   const livePoint = liveQuote
@@ -456,55 +466,53 @@ export default async function Page({
     : "Refresh prices to load the latest rate";
 
   return (
-    <>
-      <PageHeader
+    <PageShell>
+      <Masthead
         title={`${instrument.symbol} — ${instrument.name}`}
-        subtitle={`${instrument.kind.replace(/_/g, " ").toLowerCase()} · taxed as ${profile.category
-          .replace(/_/g, " ")
-          .toLowerCase()}${profile.slabTaxedAlways ? ", at slab whatever the holding period" : ""}`}
-        badge={
-          profile.lockInMonths ? (
-            <Pill tone="brand">{profile.lockInMonths / 12}-year lock-in</Pill>
-          ) : (
-            <Pill tone="neutral">{instrument.unit.toLowerCase()}</Pill>
-          )
-        }
-        action={
-          <div className="flex items-center gap-2">
+        side={
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs text-(--fg-muted)">
+              {profile.lockInMonths ? `${profile.lockInMonths / 12}-year lock-in` : instrument.unit.toLowerCase()}
+            </span>
             <Link href="/investments" className="ghost-btn h-10 px-4 text-xs">All holdings</Link>
             <RefreshPricesButton instrumentId={instrumentId} auto={isDigitalMetal} lastSyncedAt={lastSyncedAt?.toISOString() ?? null} />
           </div>
         }
       />
+      <p className="max-w-2xl text-sm text-(--fg-muted)">
+        {`${instrument.kind.replace(/_/g, " ").toLowerCase()} · taxed as ${profile.category
+          .replace(/_/g, " ")
+          .toLowerCase()}${profile.slabTaxedAlways ? ", at slab whatever the holding period" : ""}`}
+      </p>
 
       <HoldingNav instrumentId={instrumentId} activeView={activeView} />
 
-      {activeView === "summary" && <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat
-          label={isDigitalMetal ? "Grams held" : "Units held"}
-          value={<span className="tnum">{open.quantity.toDecimalString()}</span>}
-          hint={isDigitalMetal ? "Current recorded platform balance" : `${openLots.length} open lot(s)`}
-        />
-        <Stat label="Invested" value={cashInvestedValue} hint={isDigitalMetal ? "Cash paid; lease credits excluded" : "Price plus charges"} />
-        <Stat
-          label="Market value"
-          value={position?.marketValue ?? null}
-          hint={
-            position?.pricedOn
-              ? `Priced ${position.pricedOn.toISO()}${position.isStale ? " · stale" : ""}`
-              : (position?.unpricedReason ?? "No price")
-          }
-        />
-        {isDigitalMetal ? (
-          <Stat label="Realised" value={position?.realisedGain ?? Money.zero()} hint="Gains already taken" />
-        ) : (
-          <Stat
-            label="Unrealised gain / loss"
-            value={holdingUnrealised}
-            hint={holdingReturn ? `${formatPercent(holdingReturn)} on open cost` : "Needs a priced open position"}
+      {activeView === "summary" && <>
+        {/* A quantity is not a FigureValue (src/core/format.ts formats money and percentages only), so it stays outside the strip. */}
+        <p className="text-sm text-(--fg-muted)">
+          {isDigitalMetal ? "Grams held" : "Units held"}{" "}
+          <span className="tnum font-semibold text-(--fg)">{open.quantity.toDecimalString()}</span>
+          {" · "}
+          {isDigitalMetal ? "Current recorded platform balance" : `${openLots.length} open lot(s)`}
+        </p>
+        <KpiStrip>
+          <Kpi label="Invested" value={rupee(cashInvestedValue)} detail={isDigitalMetal ? "Cash paid; lease credits excluded" : "Price plus charges"} />
+          <Kpi
+            label="Market value"
+            value={moneyFigure(position?.marketValue ?? null, position?.unpricedReason ?? "No price")}
+            detail={position?.pricedOn ? `Priced ${position.pricedOn.toISO()}${position.isStale ? " · stale" : ""}` : undefined}
           />
-        )}
-      </div>}
+          {isDigitalMetal ? (
+            <Kpi label="Realised" value={signed(position?.realisedGain ?? Money.zero())} detail="Gains already taken" />
+          ) : (
+            <Kpi
+              label="Unrealised gain / loss"
+              value={gainFigure(holdingUnrealised, "Needs a priced open position")}
+              detail={holdingReturn ? `${formatPercent(holdingReturn)} on open cost` : undefined}
+            />
+          )}
+        </KpiStrip>
+      </>}
 
       {!isDigitalMetal && activeView === "summary" && (
         <NonDigitalHoldingProfile
@@ -523,112 +531,104 @@ export default async function Page({
           unpricedReason={position?.unpricedReason ?? null}
           lifecycle={lifecycleFacts}
           view="summary"
-        />
+       />
       )}
 
       {isDigitalMetal && (
         <>
-          {activeView === "summary" && <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Average buy rate / gram" value={cashAverageBuyRate} hint="Cash paid ÷ bought grams" />
-            <Stat
+          {activeView === "summary" && <KpiStrip>
+            <Kpi label="Average buy rate / gram" value={moneyFigure(cashAverageBuyRate, "No purchases recorded")} detail="Cash paid ÷ bought grams" />
+            <Kpi
               label={hasSpread ? "Buy-back rate / gram" : "Current gold price / gram"}
-              value={metalRate}
-              hint={hasSpread ? `${analytics!.sellSpread.toFixed(2)}% under the ${analytics!.benchmarkPricePerGram?.toDecimalString()} benchmark · ${priceUpdatedHint}` : priceUpdatedHint}
+              value={moneyFigure(metalRate, priceUpdatedHint)}
+              detail={hasSpread ? `${analytics!.sellSpread.toFixed(2)}% under the ${analytics!.benchmarkPricePerGram?.toDecimalString()} benchmark · ${priceUpdatedHint}` : priceUpdatedHint}
             />
-            <Stat
+            <Kpi
               label={hasSpread ? "Realisable value" : "Current value"}
-              value={metalValue}
-              hint={hasSpread ? "What selling on the platform would produce today" : "Grams × current 1g price"}
+              value={moneyFigure(metalValue, "No current price")}
+              detail={hasSpread ? "What selling on the platform would produce today" : "Grams × current 1g price"}
             />
-            <Stat
+            <Kpi
               label="Unrealised gain / loss"
-              value={metalUnrealised}
-              hint={metalReturn ? `${formatPercent(metalReturn)} absolute; tax applies only on sale` : "Current value less invested amount; tax applies only on sale"}
+              value={gainFigure(metalUnrealised, "Current value less invested amount; tax applies only on sale")}
+              detail={metalReturn ? `${formatPercent(metalReturn)} absolute; tax applies only on sale` : "Current value less invested amount; tax applies only on sale"}
             />
-          </div>}
+          </KpiStrip>}
           {activeView === "summary" && instrument.kind === "DIGITAL_GOLD" && <GoldAdvisoryNote isLeased={leasedGrams.isPositive} />}
-          {activeView === "income-leases" && <section className="panel mb-6 p-5">
-            <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold text-gray-100">Investor analysis</h2>
-                <p className="mt-1 text-xs text-gray-500">Position quality, lease deployment and pricing freshness in one view.</p>
-              </div>
-              <Pill tone="neutral">{latestQuote ? `Checked ${formatSyncedAt(latestQuote.ingestedAt)}` : "No live price"}</Pill>
-            </div>
+          {activeView === "income-leases" && <Panel
+            title="Investor analysis"
+            description="Position quality, lease deployment and pricing freshness in one view."
+            actions={<span className="text-xs text-(--fg-muted)">{latestQuote ? `Checked ${formatSyncedAt(latestQuote.ingestedAt)}` : "No live price"}</span>}
+          >
             <div className="grid gap-4 lg:grid-cols-[1.1fr_1fr]">
               <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-lg border border-gray-600 p-4">
-                  <p className="metric-label">Price spread / gram</p>
-                  <p className="mt-2 text-xl font-semibold text-gray-100"><MoneyText value={rateSpread} /></p>
-                  <p className="mt-1 text-xs text-gray-500">{rateSpreadPercent ? `${formatPercent(rateSpreadPercent)} versus average buy rate` : "Needs current price and buy history"}</p>
+                <div className="rounded-lg border border-(--border) p-4">
+                  <p className="text-xs font-medium text-(--fg-muted)">Price spread / gram</p>
+                  <p className="mt-2 text-xl font-semibold text-(--fg)">{rateSpread ? <FigureText value={rateSpread} tone="change" /> : "—"}</p>
+                  <p className="mt-1 text-xs text-(--fg-muted)">{rateSpreadPercent ? `${formatPercent(rateSpreadPercent)} versus average buy rate` : "Needs current price and buy history"}</p>
                 </div>
-                <div className="rounded-lg border border-gray-600 p-4">
-                  <p className="metric-label">Lease deployment</p>
-                  <p className="mt-2 text-xl font-semibold text-gray-100">{formatQuantityPercent(leaseDeployment)}</p>
-                  <p className="mt-1 text-xs text-gray-500">{leasedGrams.toDecimalString()}g leased, {unleasedGramsValue.toDecimalString()}g idle</p>
+                <div className="rounded-lg border border-(--border) p-4">
+                  <p className="text-xs font-medium text-(--fg-muted)">Lease deployment</p>
+                  <p className="mt-2 text-xl font-semibold text-(--fg)">{formatQuantityPercent(leaseDeployment)}</p>
+                  <p className="mt-1 text-xs text-(--fg-muted)">{leasedGrams.toDecimalString()}g leased, {unleasedGramsValue.toDecimalString()}g idle</p>
                 </div>
-                <div className="rounded-lg border border-gray-600 p-4">
-                  <p className="metric-label">Weighted lease rate</p>
-                  <p className="mt-2 text-xl font-semibold text-gray-100">{weightedLeaseRate ? `${weightedLeaseRate.toFixed(2)}% p.a.` : "-"}</p>
-                  <p className="mt-1 text-xs text-gray-500">{activeLeaseRows.length} active lease{activeLeaseRows.length === 1 ? "" : "s"}</p>
+                <div className="rounded-lg border border-(--border) p-4">
+                  <p className="text-xs font-medium text-(--fg-muted)">Weighted lease rate</p>
+                  <p className="mt-2 text-xl font-semibold text-(--fg)">{weightedLeaseRate ? `${weightedLeaseRate.toFixed(2)}% p.a.` : "-"}</p>
+                  <p className="mt-1 text-xs text-(--fg-muted)">{activeLeaseRows.length} active lease{activeLeaseRows.length === 1 ? "" : "s"}</p>
                 </div>
-                <div className="rounded-lg border border-gray-600 p-4">
-                  <p className="metric-label">Due to add</p>
-                  <p className="mt-2 text-xl font-semibold text-amber-500">{leasePortfolio?.unpostedGrams.toDecimalString() ?? "0"}g</p>
-                  <p className="mt-1 text-xs text-gray-500">Gold interest earned but not yet added to holding lots</p>
+                <div className="rounded-lg border border-(--border) p-4">
+                  <p className="text-xs font-medium text-(--fg-muted)">Due to add</p>
+                  <p className="mt-2 text-xl font-semibold text-(--warn)">{leasePortfolio?.unpostedGrams.toDecimalString() ?? "0"}g</p>
+                  <p className="mt-1 text-xs text-(--fg-muted)">Gold interest earned but not yet added to holding lots</p>
                 </div>
               </div>
-              <div className="rounded-lg border border-gray-600 p-4">
-                <p className="metric-label">Gold deployment</p>
+              <div className="rounded-lg border border-(--border) p-4">
+                <p className="text-xs font-medium text-(--fg-muted)">Gold deployment</p>
                 <div className="mt-4 space-y-4">
                   <GramBar label="Leased and earning" value={leasedGrams} total={open.quantity} />
                   <GramBar label="Unleased wallet balance" value={unleasedGramsValue} total={open.quantity} tone="amber" />
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-3 border-t border-gray-600 pt-4 text-xs">
+                <div className="mt-4 grid grid-cols-2 gap-3 border-t border-(--border) pt-4 text-xs">
                   <div>
-                    <p className="metric-label">Earned to date</p>
-                    <p className="tnum mt-1 text-green-500">{leasePortfolio?.netInterestGrams.toDecimalString() ?? "0"}g net</p>
+                    <p className="text-xs font-medium text-(--fg-muted)">Earned to date</p>
+                    <p className="tnum mt-1 text-(--gain)">{leasePortfolio?.netInterestGrams.toDecimalString() ?? "0"}g net</p>
                   </div>
                   <div>
-                    <p className="metric-label">Withheld as TDS</p>
-                    <p className="tnum mt-1 text-gray-200">{leasePortfolio?.tdsGrams.toDecimalString() ?? "0"}g</p>
+                    <p className="text-xs font-medium text-(--fg-muted)">Withheld as TDS</p>
+                    <p className="tnum mt-1 text-(--fg)">{leasePortfolio?.tdsGrams.toDecimalString() ?? "0"}g</p>
                   </div>
                 </div>
               </div>
             </div>
-          </section>}
+          </Panel>}
           {analytics && (
             <>
-              {activeView === "performance" && <section className="panel mb-6 p-5">
-                <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-sm font-semibold text-gray-100">Where the profit came from</h2>
-                    <p className="mt-1 text-xs text-gray-500">
-                      Measured against cash actually paid, charges and taxes included. Grams credited by a
-                      lease cost nothing out of pocket, so everything they are worth is profit — the two
-                      halves below add to the total exactly.
-                    </p>
-                  </div>
-                  <Pill tone="neutral">
+              {activeView === "performance" && <Panel
+                title="Where the profit came from"
+                description="Measured against cash actually paid, charges and taxes included. Grams credited by a lease cost nothing out of pocket, so everything they are worth is profit — the two halves below add to the total exactly."
+                actions={
+                  <span className="text-xs text-(--fg-muted)">
                     {analytics.pricedOn ? `Priced ${analytics.pricedOn.toISO()}` : "No price"}
-                  </Pill>
-                </div>
+                  </span>
+                }
+              >
 
                 {analytics.benchmarkValue && (
-                  <div className="mb-4 rounded-lg border border-gray-600 p-4">
+                  <div className="mb-4 rounded-lg border border-(--border) p-4">
                     <div className="flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 text-sm">
-                      <span className="text-gray-400">
+                      <span className="text-(--fg-secondary)">
                         Benchmark value
-                        <span className="ml-2 text-xs text-gray-500">
+                        <span className="ml-2 text-xs text-(--fg-muted)">
                           IBJA, {analytics.benchmarkPricePerGram?.toDecimalString()}/g
                         </span>
                       </span>
-                      <span className="tnum text-gray-200">
+                      <span className="tnum text-(--fg)">
                         {analytics.benchmarkValue.toDecimalString()}
                       </span>
                     </div>
                     {analytics.sellSpread.isZero ? (
-                      <p className="mt-2 text-xs text-gray-500">
+                      <p className="mt-2 text-xs text-(--fg-muted)">
                         Valued at the bullion benchmark, because no buy-back spread is recorded for
                         this platform. Digital gold normally sells back 3-6% under it, and the 3%
                         GST paid on the way in never comes back — so this figure is optimistic by
@@ -638,28 +638,28 @@ export default async function Page({
                     ) : (
                       <>
                         <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 text-sm">
-                          <span className="text-gray-400">
+                          <span className="text-(--fg-secondary)">
                             Buy-back spread
-                            <span className="ml-2 text-xs text-gray-500">
+                            <span className="ml-2 text-xs text-(--fg-muted)">
                               {analytics.sellSpread.toFixed(2)}% under benchmark
                             </span>
                           </span>
-                          <span className="tnum text-amber-500">
+                          <span className="tnum text-(--warn)">
                             −{analytics.spreadCost?.toDecimalString()}
                           </span>
                         </div>
-                        <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-t border-gray-600 pt-2 text-sm">
-                          <span className="font-medium text-gray-200">
+                        <div className="mt-2 flex flex-wrap items-baseline justify-between gap-x-6 gap-y-2 border-t border-(--border) pt-2 text-sm">
+                          <span className="font-medium text-(--fg)">
                             Realisable today
-                            <span className="ml-2 text-xs text-gray-500">
+                            <span className="ml-2 text-xs text-(--fg-muted)">
                               at {analytics.pricePerGram?.toDecimalString()}/g
                             </span>
                           </span>
-                          <span className="tnum font-semibold text-gray-100">
+                          <span className="tnum font-semibold text-(--fg)">
                             {analytics.marketValue?.toDecimalString()}
                           </span>
                         </div>
-                        <p className="mt-2 text-xs text-gray-500">
+                        <p className="mt-2 text-xs text-(--fg-muted)">
                           Every figure below — the profit split and the chart — is computed at the
                           buy-back rate, not the benchmark, so it is what selling would actually
                           produce.
@@ -670,105 +670,94 @@ export default async function Page({
                 )}
 
                 {analytics.unpricedReason && (
-                  <p className="mb-4 rounded-lg border border-amber-600/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-500">
+                  <p className="mb-4 rounded-lg border border-(--warn)/40 bg-(--warn)/5 px-3 py-2 text-xs text-(--warn)">
                     {analytics.unpricedReason}
                   </p>
                 )}
                 {analytics.leaseGramsReconcile && (
-                  <p className="mb-4 rounded-lg border border-amber-600/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-500">
+                  <p className="mb-4 rounded-lg border border-(--warn)/40 bg-(--warn)/5 px-3 py-2 text-xs text-(--warn)">
                     {analytics.leaseGramsReconcile}
                   </p>
                 )}
 
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  <div className="rounded-lg border border-gray-600 p-4">
-                    <p className="metric-label">Total profit</p>
-                    <p className="mt-2 text-xl font-semibold"><MoneyText value={analytics.totalProfit} /></p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {analytics.totalProfitPercent
-                        ? `${formatPercent(analytics.totalProfitPercent)} on cash paid`
-                        : "Over what was actually paid"}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-gray-600 p-4">
-                    <p className="metric-label">From gold price</p>
-                    <p className="mt-2 text-xl font-semibold"><MoneyText value={analytics.priceProfit} /></p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {analytics.purchasedGrams.toDecimalString()}g bought, now worth more or less than they cost
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-gray-600 p-4">
-                    <p className="metric-label">From lease interest</p>
-                    <p className="mt-2 text-xl font-semibold text-green-500"><MoneyText value={analytics.leaseProfit} /></p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {analytics.leaseGrams.toDecimalString()}g the lease paid for
-                      {analytics.leaseShareOfProfit ? ` · ${formatPercent(analytics.leaseShareOfProfit)} of the profit` : ""}
-                    </p>
-                  </div>
-                  <div className="rounded-lg border border-gray-600 p-4">
-                    <p className="metric-label">Effective cost / gram</p>
-                    <p className="mt-2 text-xl font-semibold text-gray-100">
-                      <MoneyText value={analytics.effectiveCostPerGram?.toMoney() ?? null} tone="neutral" />
-                    </p>
-                    <p className="mt-1 text-xs text-gray-500">
-                      {analytics.blendedCostPerGram
+                <KpiStrip>
+                  <Kpi
+                    label="Total profit"
+                    value={gainFigure(analytics.totalProfit, analytics.unpricedReason ?? "No price")}
+                    detail={analytics.totalProfitPercent ? `${formatPercent(analytics.totalProfitPercent)} on cash paid` : "Over what was actually paid"}
+                  />
+                  <Kpi
+                    label="From gold price"
+                    value={gainFigure(analytics.priceProfit, analytics.unpricedReason ?? "No price")}
+                    detail={`${analytics.purchasedGrams.toDecimalString()}g bought, now worth more or less than they cost`}
+                  />
+                  <Kpi
+                    label="From lease interest"
+                    value={gainFigure(analytics.leaseProfit, analytics.unpricedReason ?? "No price")}
+                    detail={`${analytics.leaseGrams.toDecimalString()}g the lease paid for${analytics.leaseShareOfProfit ? ` · ${formatPercent(analytics.leaseShareOfProfit)} of the profit` : ""}`}
+                  />
+                  <Kpi
+                    label="Effective cost / gram"
+                    value={moneyFigure(analytics.effectiveCostPerGram?.toMoney() ?? null, "Cash paid ÷ grams bought, taxes and charges included")}
+                    detail={
+                      analytics.blendedCostPerGram
                         ? `${analytics.blendedCostPerGram.toMoney().toDecimalString()} once the free lease grams are counted in`
-                        : "Cash paid ÷ grams bought, taxes and charges included"}
-                    </p>
-                  </div>
-                </div>
+                        : "Cash paid ÷ grams bought, taxes and charges included"
+                    }
+                  />
+                </KpiStrip>
 
                 <div className="mt-4 grid gap-4 lg:grid-cols-[1.1fr_1fr]">
-                  <div className="rounded-lg border border-gray-600 p-4">
-                    <p className="metric-label">Grams in the holding, by where they came from</p>
+                  <div className="rounded-lg border border-(--border) p-4">
+                    <p className="text-xs font-medium text-(--fg-muted)">Grams in the holding, by where they came from</p>
                     <div className="mt-4 space-y-4">
                       <GramBar label="Bought with money" value={analytics.purchasedGrams} total={analytics.totalGrams} />
                       <GramBar label="Credited by a lease" value={analytics.leaseGrams} total={analytics.totalGrams} tone="amber" />
                     </div>
-                    <p className="mt-4 border-t border-gray-600 pt-3 text-xs text-gray-500">
+                    <p className="mt-4 border-t border-(--border) pt-3 text-xs text-(--fg-muted)">
                       Total {analytics.totalGrams.toDecimalString()}g. A sale consumes lots, so selling gold
                       lowers both bars and the profit split above without any separate adjustment.
                     </p>
                   </div>
-                  <div className="rounded-lg border border-gray-600 p-4">
-                    <p className="metric-label">Lease gram flow</p>
+                  <div className="rounded-lg border border-(--border) p-4">
+                    <p className="text-xs font-medium text-(--fg-muted)">Lease gram flow</p>
                     <dl className="mt-3 space-y-2 text-xs">
                       <div className="flex items-baseline justify-between gap-3">
-                        <dt className="text-gray-400">Credited over every lease</dt>
-                        <dd className="tnum text-gray-200">{analytics.creditedGramsEver.toDecimalString()}g</dd>
+                        <dt className="text-(--fg-secondary)">Credited over every lease</dt>
+                        <dd className="tnum text-(--fg)">{analytics.creditedGramsEver.toDecimalString()}g</dd>
                       </div>
                       <div className="flex items-baseline justify-between gap-3">
-                        <dt className="text-gray-400">Still held</dt>
-                        <dd className="tnum text-green-500">{analytics.leaseGrams.toDecimalString()}g</dd>
+                        <dt className="text-(--fg-secondary)">Still held</dt>
+                        <dd className="tnum text-(--gain)">{analytics.leaseGrams.toDecimalString()}g</dd>
                       </div>
                       <div className="flex items-baseline justify-between gap-3">
-                        <dt className="text-gray-400">Sold or otherwise gone</dt>
-                        <dd className="tnum text-gray-200">{analytics.leaseGramsDisposed.toDecimalString()}g</dd>
+                        <dt className="text-(--fg-secondary)">Sold or otherwise gone</dt>
+                        <dd className="tnum text-(--fg)">{analytics.leaseGramsDisposed.toDecimalString()}g</dd>
                       </div>
                       <div className="flex items-baseline justify-between gap-3">
-                        <dt className="text-gray-400">Earned, not yet added</dt>
-                        <dd className="tnum text-amber-500">
+                        <dt className="text-(--fg-secondary)">Earned, not yet added</dt>
+                        <dd className="tnum text-(--warn)">
                           {analytics.dueGrams.toDecimalString()}g
                           {analytics.dueValue ? ` · ${analytics.dueValue.toDecimalString()}` : ""}
                         </dd>
                       </div>
                       <div className="flex items-baseline justify-between gap-3">
-                        <dt className="text-gray-400">Withheld as TDS</dt>
-                        <dd className="tnum text-gray-200">{analytics.tdsGrams.toDecimalString()}g</dd>
+                        <dt className="text-(--fg-secondary)">Withheld as TDS</dt>
+                        <dd className="tnum text-(--fg)">{analytics.tdsGrams.toDecimalString()}g</dd>
                       </div>
-                      <div className="flex items-baseline justify-between gap-3 border-t border-gray-600 pt-2">
-                        <dt className="text-gray-400">Unrealised against book cost</dt>
-                        <dd className="tnum text-gray-200"><MoneyText value={analytics.unrealisedAgainstBook} /></dd>
+                      <div className="flex items-baseline justify-between gap-3 border-t border-(--border) pt-2">
+                        <dt className="text-(--fg-secondary)">Unrealised against book cost</dt>
+                        <dd className="tnum text-(--fg)">{analytics.unrealisedAgainstBook ? <FigureText value={analytics.unrealisedAgainstBook} tone="change" /> : "—"}</dd>
                       </div>
                     </dl>
-                    <p className="mt-3 text-xs text-gray-500">
+                    <p className="mt-3 text-xs text-(--fg-muted)">
                       The book figure nets off the value the lease grams were taxed at when they were
                       credited. It is the accounting answer; the profit above is the cash one. They are
                       never added together.
                     </p>
                   </div>
                 </div>
-              </section>}
+              </Panel>}
 
               {activeView === "performance" && <GoldReturnsPanel analytics={analytics} />}
 
@@ -781,15 +770,12 @@ export default async function Page({
                   {benchmark ? (
                     <GoldBenchmarkTable comparison={benchmark} />
                   ) : (
-                    <section className="panel mb-6 p-5">
-                      <h2 className="text-sm font-semibold text-gray-100">
-                        Was digital gold the right vehicle?
-                      </h2>
-                      <p className="mt-2 text-xs text-amber-500">
+                    <Panel title="Was digital gold the right vehicle?">
+                      <p className="text-xs text-(--warn)">
                         {benchmarkError ??
                           "The benchmark comparison could not be built for this holding."}
                       </p>
-                    </section>
+                    </Panel>
                   )}
                 </>
               )}
@@ -797,81 +783,80 @@ export default async function Page({
                 <GoldTaxStatement
                   analytics={analytics}
                   tdsWithheldGrams={analytics.tdsGrams.toDecimalString()}
-                />
+               />
               )}
             </>
           )}
 
-          {activeView === "activity" && <section className="panel mb-6 p-0">
-            <div className="flex items-center justify-between border-b border-gray-600 px-5 py-4">
-              <div><h2 className="text-sm font-semibold text-gray-100">Investment transactions</h2><p className="mt-1 text-xs text-gray-500">Every monthly investment is retained separately and drives the holding totals above.</p></div>
-              <Pill tone="neutral">{cashSettledTrades.length} entries</Pill>
-            </div>
-            {cashSettledTrades.length === 0 ? <p className="px-5 py-6 text-sm text-gray-500">No cash investments recorded yet.</p> : <div className="table-scroll"><table className="w-full text-sm">
-              <caption className="sr-only">Digital-metal investment transactions</caption>
-              <thead><tr className="border-b border-gray-600"><th className="metric-label px-4 py-3 text-left">Date</th><th className="metric-label px-4 py-3 text-right">Grams</th><th className="metric-label px-4 py-3 text-right">Invested</th><th className="metric-label px-4 py-3 text-right">Buy rate / gram</th><th className="metric-label px-4 py-3 text-right">Actions</th></tr></thead>
-              <tbody>{cashSettledTrades.map((trade) => {
+          {activeView === "activity" && <Panel
+            title="Investment transactions"
+            description="Every monthly investment is retained separately and drives the holding totals above."
+            actions={<span className="text-xs text-(--fg-muted)">{cashSettledTrades.length} entries</span>}
+          >
+            {cashSettledTrades.length === 0 ? <p className="text-sm text-(--fg-muted)">No cash investments recorded yet.</p> : <Table>
+              <TableCaption className="sr-only">Digital-metal investment transactions</TableCaption>
+              <TableHeader><TableRow><TableHead>Date</TableHead><TableHead className="text-right">Grams</TableHead><TableHead className="text-right">Invested</TableHead><TableHead className="text-right">Buy rate / gram</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+              <TableBody>{cashSettledTrades.map((trade) => {
                 const invested = trade.quantity.valueAt(trade.pricePerUnit, "HALF_EVEN").plus(trade.charges);
-                return <tr key={trade.id} className="border-b border-gray-600/50 align-top last:border-0">
-                  <td className="tnum px-4 py-3 text-gray-400">{trade.tradedOn.toISO()}</td>
-                  <td className="tnum px-4 py-3 text-right text-gray-200">{trade.quantity.toDecimalString()}g</td>
-                  <td className="px-4 py-3 text-right"><MoneyText value={invested} tone="neutral" /></td>
-                  <td className="px-4 py-3 text-right"><MoneyText value={trade.pricePerUnit} tone="neutral" /></td>
-                  <td className="px-4 py-3"><MetalTransactionActions instrumentId={instrumentId} tradeId={trade.id} grams={trade.quantity.toDecimalString()} invested={invested.toDecimalString()} charges={trade.charges.toDecimalString()} recordedOn={trade.tradedOn.toISO()} accounts={settlementAccounts} fundingAccountId={trade.settlementAccountId} /></td>
-                </tr>;
-              })}</tbody>
-            </table></div>}
-          </section>}
+                return <TableRow key={trade.id}>
+                  <TextCell className="tnum">{trade.tradedOn.toISO()}</TextCell>
+                  <TableCell className="tnum text-right text-(--fg)">{trade.quantity.toDecimalString()}g</TableCell>
+                  <FigureCell value={invested} />
+                  <FigureCell value={trade.pricePerUnit} />
+                  <ActionCell><MetalTransactionActions instrumentId={instrumentId} tradeId={trade.id} grams={trade.quantity.toDecimalString()} invested={invested.toDecimalString()} charges={trade.charges.toDecimalString()} recordedOn={trade.tradedOn.toISO()} accounts={settlementAccounts} fundingAccountId={trade.settlementAccountId} /></ActionCell>
+                </TableRow>;
+              })}</TableBody>
+            </Table>}
+          </Panel>}
           {activeView === "activity" && (
             <InvestmentActivity events={ledgerEvents} unit="g" />
           )}
-          {activeView === "activity" && <Card title="Add investment transaction" subtitle="Record each monthly investment separately with its grams, invested amount and acquisition date. The average buy rate and all portfolio totals are recalculated automatically." className="mb-6">
+          {activeView === "activity" && <Panel title="Add investment transaction" description="Record each monthly investment separately with its grams, invested amount and acquisition date. The average buy rate and all portfolio totals are recalculated automatically.">
             <MetalHoldingForm instrumentId={instrumentId} defaultDate={today.toISO()} accounts={settlementAccounts} />
-          </Card>}
+          </Panel>}
           {activeView === "income-leases" && instrument.kind === "DIGITAL_GOLD" && (
-            <section className="panel mb-6 p-0">
-              <div className="flex items-center justify-between border-b border-gray-600 px-5 py-4">
-                <div>
-                  <h2 className="text-sm font-semibold text-gray-100">Gold leases</h2>
-                  <p className="mt-1 text-xs text-gray-500">Leasing is separate from buying. Allocate any currently unleased grams and manage monthly gold interest here.</p>
-                </div>
-                <Pill tone="neutral">{leaseRows.length} leases</Pill>
-              </div>
+            <Panel
+              title="Gold leases"
+              description="Leasing is separate from buying. Allocate any currently unleased grams and manage monthly gold interest here."
+              actions={<span className="text-xs text-(--fg-muted)">{leaseRows.length} leases</span>}
+            >
               {leaseRows.length === 0 ? (
-                <p className="px-5 py-6 text-sm text-gray-500">No gold is on lease yet.</p>
+                <p className="text-sm text-(--fg-muted)">No gold is on lease yet.</p>
               ) : (
-                <div className="table-scroll"><table className="w-full text-sm">
-                  <caption className="sr-only">Digital-gold leases and monthly gram contributions</caption>
-                  <thead><tr className="border-b border-gray-600">
-                    <th className="metric-label px-4 py-3 text-left">Lease</th><th className="metric-label px-4 py-3 text-right">Principal</th><th className="metric-label px-4 py-3 text-right">Tenure</th><th className="metric-label px-4 py-3 text-right">Rate</th><th className="metric-label px-4 py-3 text-right">Monthly grams</th><th className="metric-label px-4 py-3 text-right">Earned to date</th><th className="metric-label px-4 py-3 text-right">Ready to add</th><th className="metric-label px-4 py-3 text-left">Actions</th>
-                  </tr></thead>
-                  <tbody>{leaseRows.map((row) => (
-                    <tr key={row.lease.id.value} className="border-b border-gray-600/50 align-top last:border-0">
-                      <td className="px-4 py-3"><span className="font-medium text-gray-100">{row.lease.reference}</span><p className="text-xs text-gray-500">{row.lease.props.platform} · {row.lease.props.startOn.toISO()} → {row.lease.props.closesOn.toISO()}</p></td>
-                      <td className="tnum px-4 py-3 text-right text-gray-200">{row.lease.quantity.toDecimalString()}g</td>
-                      <td className="tnum px-4 py-3 text-right text-gray-400">{row.lease.props.startOn.daysUntil(row.lease.props.closesOn)} days</td>
-                      <td className="tnum px-4 py-3 text-right text-gray-400">{row.lease.props.annualRate.toFixed(2)}% p.a.</td>
-                      <td className="tnum px-4 py-3 text-right text-green-500">{row.lease.schedule()[0]?.netInMonth.toDecimalString() ?? "0"}g<p className="text-xs text-gray-500">{row.lease.tdsRate.isZero ? "no TDS withheld" : "after TDS"}</p></td>
-                      <td className="tnum px-4 py-3 text-right text-green-500">{row.accrual.net.toDecimalString()}g<p className="text-xs text-gray-500">gross {row.accrual.gross.toDecimalString()}g</p></td>
-                      <td className="tnum px-4 py-3 text-right text-amber-500">{row.unpostedGrams.toDecimalString()}g</td>
-                      <td className="px-4 py-3"><LeaseRowActions leaseId={row.lease.id.value} reference={row.lease.reference} defaultDate={today.toISO()} isActive={row.lease.status === "ACTIVE"} platform={row.lease.props.platform} quantity={row.lease.quantity.toDecimalString()} startOn={row.lease.props.startOn.toISO()} closesOn={row.lease.props.closesOn.toISO()} annualRate={row.lease.props.annualRate.toFixed(2)} tdsRate={row.lease.tdsRate.toFixed(2)} hasBookedInterest={!row.lease.credited.isZero} autoAccrue /></td>
-                    </tr>
-                  ))}</tbody>
-                </table></div>
+                <Table>
+                  <TableCaption className="sr-only">Digital-gold leases and monthly gram contributions</TableCaption>
+                  <TableHeader><TableRow>
+                    <TableHead>Lease</TableHead><TableHead className="text-right">Principal</TableHead><TableHead className="text-right">Tenure</TableHead><TableHead className="text-right">Rate</TableHead><TableHead className="text-right">Monthly grams</TableHead><TableHead className="text-right">Earned to date</TableHead><TableHead className="text-right">Ready to add</TableHead><TableHead>Actions</TableHead>
+                  </TableRow></TableHeader>
+                  <TableBody>{leaseRows.map((row) => (
+                    <TableRow key={row.lease.id.value} className="border-b border-(--border)/50 align-top last:border-0">
+                      <TableCell><span className="font-medium text-(--fg)">{row.lease.reference}</span><p className="flex items-center gap-2 text-xs text-(--fg-muted)"><InstitutionMark institution={row.lease.props.platform} /><span>{row.lease.props.platform} · {row.lease.props.startOn.toISO()} → {row.lease.props.closesOn.toISO()}</span></p></TableCell>
+                      <TableCell className="tnum text-right text-(--fg)">{row.lease.quantity.toDecimalString()}g</TableCell>
+                      <TableCell className="tnum text-right text-(--fg-secondary)">{row.lease.props.startOn.daysUntil(row.lease.props.closesOn)} days</TableCell>
+                      <TableCell className="tnum text-right text-(--fg-secondary)">{row.lease.props.annualRate.toFixed(2)}% p.a.</TableCell>
+                      <TableCell className="tnum text-right text-(--gain)">{row.lease.schedule()[0]?.netInMonth.toDecimalString() ?? "0"}g<p className="text-xs text-(--fg-muted)">{row.lease.tdsRate.isZero ? "no TDS withheld" : "after TDS"}</p></TableCell>
+                      <TableCell className="tnum text-right text-(--gain)">{row.accrual.net.toDecimalString()}g<p className="text-xs text-(--fg-muted)">gross {row.accrual.gross.toDecimalString()}g</p></TableCell>
+                      <TableCell className="tnum text-right text-(--warn)">{row.unpostedGrams.toDecimalString()}g</TableCell>
+                      <ActionCell><LeaseRowActions leaseId={row.lease.id.value} reference={row.lease.reference} defaultDate={today.toISO()} isActive={row.lease.status === "ACTIVE"} platform={row.lease.props.platform} quantity={row.lease.quantity.toDecimalString()} startOn={row.lease.props.startOn.toISO()} closesOn={row.lease.props.closesOn.toISO()} annualRate={row.lease.props.annualRate.toFixed(2)} tdsRate={row.lease.tdsRate.toFixed(2)} hasBookedInterest={!row.lease.credited.isZero} autoAccrue /></ActionCell>
+                    </TableRow>
+                  ))}</TableBody>
+                </Table>
               )}
-              <div className="border-t border-gray-600 px-5 py-5">
-                <h3 className="text-sm font-semibold text-gray-100">Open a new lease</h3>
-                <p className="mb-4 mt-1 text-xs text-gray-500">This does not record a purchase or change invested money. It allocates only gold already held and currently unleased.</p>
+              <div className="mt-5">
+                <h3 className="text-sm font-semibold text-(--fg)">Open a new lease</h3>
+                <p className="mb-4 mt-1 text-xs text-(--fg-muted)">This does not record a purchase or change invested money. It allocates only gold already held and currently unleased.</p>
                 <DigitalGoldLeaseForm instrumentId={instrumentId} platform={leasePlatform} availableGrams={leaseResult?.ok ? leaseResult.value.unleasedGrams.toDecimalString() : "0"} defaultDate={today.toISO()} />
               </div>
-            </section>
+            </Panel>
           )}
         </>
       )}
 
       {showMarketPanels && (
-        <section className="panel mb-6 p-5" aria-labelledby="holding-price-heading">
-          <h2 id="holding-price-heading" className="sr-only">Price history</h2>
+        <ChartPanel
+          title="Price history"
+          summary={`Recorded price history for ${instrument.symbol}, with the latest quote when available.`}
+          state={{ kind: "ready", children: (
           <PriceHistoryChart
             symbol={instrument.symbol}
             instrumentId={instrumentId}
@@ -882,15 +867,16 @@ export default async function Page({
             quoteKey={catalogueMatch?.quoteKey ?? instrumentQuoteRef ?? null}
             quoteStale={catalogueMatch?.quoteStale ?? false}
             firstTradeDate={catalogueMatch?.firstTradeDate ?? null}
-          />
-        </section>
+         />
+          ) }}
+        />
       )}
 
       {showMarketPanels && holdingReturns && <ReturnsPanel returns={holdingReturns} />}
       {showMarketPanels && returnsError && (
-        <p role="alert" className="panel mb-6 p-5 text-sm text-red-300">
-          Returns could not be computed for this holding: {returnsError}
-        </p>
+        <Banner tone="error" role="alert" title="Returns could not be computed for this holding">
+          <p>{returnsError}</p>
+        </Banner>
       )}
 
       {!isDigitalMetal && activeView === "performance" && (
@@ -910,7 +896,7 @@ export default async function Page({
           unpricedReason={position?.unpricedReason ?? null}
           lifecycle={lifecycleFacts}
           view="performance"
-        />
+       />
       )}
 
       {!isDigitalMetal && activeView === "income-leases" && (
@@ -930,147 +916,113 @@ export default async function Page({
           unpricedReason={position?.unpricedReason ?? null}
           lifecycle={lifecycleFacts}
           view="income-leases"
-        />
+       />
       )}
 
       {activeView === "income-leases" && instrument.kind !== "DIGITAL_GOLD" && isDigitalMetal && (
-        <section className="panel mb-6 p-5" aria-labelledby="holding-income-heading">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 id="holding-income-heading" className="text-sm font-semibold text-gray-100">
-                Income & leases
-              </h2>
-              <p className="mt-1 max-w-2xl text-xs text-gray-500">
-                Lease features are only defined for digital gold in the current contract. This
-                holding keeps income and ownership in its trade and lot records, with no lease
-                controls to show.
-              </p>
-            </div>
-            <Pill tone="neutral">Not applicable</Pill>
-          </div>
-        </section>
+        <Panel
+          title="Income & leases"
+          description="Lease features are only defined for digital gold in the current contract. This holding keeps income and ownership in its trade and lot records, with no lease controls to show."
+          actions={<span className="text-xs text-(--fg-muted)">Not applicable</span>}
+        >
+          {null}
+        </Panel>
       )}
 
-      {!isDigitalMetal && activeView === "lots-tax" && <section className="panel mb-6 p-0">
-        <div className="flex items-center justify-between border-b border-gray-600 px-5 py-4">
-          <h2 className="text-sm font-semibold text-gray-100">Lots</h2>
-          <p className="text-xs text-gray-500">
-            The holding-period clock decides the tax on a sale, so it is per lot.
-          </p>
-        </div>
-        <div className="table-scroll">
-          <table className="w-full text-sm">
-            <caption className="sr-only">
+      {!isDigitalMetal && activeView === "lots-tax" && <Panel
+        flush
+        title="Lots"
+        description="The holding-period clock decides the tax on a sale, so it is per lot."
+      >
+          <Table>
+            <TableCaption className="sr-only">
               Lots with acquisition date, units, cost per unit and days held
-            </caption>
-            <thead>
-              <tr className="border-b border-gray-600">
-                <th scope="col" className="metric-label px-4 py-3 text-left">Acquired</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Units</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Remaining</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Cost / unit</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Invested</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Days held</th>
-                <th scope="col" className="metric-label px-4 py-3 text-left">Status</th>
-              </tr>
-            </thead>
-            <tbody>
+            </TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Acquired</TableHead>
+                <TableHead className="text-right">Units</TableHead>
+                <TableHead className="text-right">Remaining</TableHead>
+                <TableHead className="text-right">Cost / unit</TableHead>
+                <TableHead className="text-right">Invested</TableHead>
+                <TableHead className="text-right">Days held</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {lots.map((lot) => {
                 const days = lot.acquiredOn.daysUntil(today);
                 const locked = instrument.disposalBlockedOn(lot.acquiredOn, today);
                 return (
-                  <tr key={lot.id.value} className="border-b border-gray-600/50 last:border-0">
-                    <td className="tnum px-4 py-3 text-gray-400">{lot.acquiredOn.toISO()}</td>
-                    <td className="tnum px-4 py-3 text-right text-gray-400">
+                  <TableRow key={lot.id.value} className="border-b border-(--border)/50 last:border-0">
+                    <TableCell className="tnum text-(--fg-secondary)">{lot.acquiredOn.toISO()}</TableCell>
+                    <TableCell className="tnum text-right text-(--fg-secondary)">
                       {lot.props.originalQuantity.toDecimalString()}
-                    </td>
-                    <td className="tnum px-4 py-3 text-right text-gray-300">
+                    </TableCell>
+                    <TableCell className="tnum text-right text-(--fg-secondary)">
                       {lot.remaining.toDecimalString()}
-                    </td>
-                    <td className="px-4 py-3 text-right"><MoneyText value={lot.costPerUnit} tone="neutral" /></td>
-                    <td className="px-4 py-3 text-right"><MoneyText value={lot.totalInvested} tone="neutral" /></td>
-                    <td className="tnum px-4 py-3 text-right">
-                      <span className={days >= 365 ? "text-green-500" : "text-gray-400"}>{days}</span>
-                    </td>
-                    <td className="px-4 py-3 text-xs">
+                    </TableCell>
+                    <FigureCell value={lot.costPerUnit} />
+                    <FigureCell value={lot.totalInvested} />
+                    <TableCell className="tnum text-right">
+                      <span className={days >= 365 ? "text-(--gain)" : "text-(--fg-secondary)"}>{days}</span>
+                    </TableCell>
+                    <TableCell className="text-xs">
                       {lot.isExhausted ? (
-                        <span className="text-gray-500">Sold</span>
+                        <span className="text-(--fg-muted)">Sold</span>
                       ) : locked ? (
-                        <span className="text-amber-500">Locked in</span>
+                        <span className="text-(--warn)">Locked in</span>
                       ) : days >= 365 ? (
-                        <span className="text-green-500">Long term</span>
+                        <span className="text-(--gain)">Long term</span>
                       ) : (
-                        <span className="text-gray-400">Short term · {365 - days}d to go</span>
+                        <span className="text-(--fg-secondary)">Short term · {365 - days}d to go</span>
                       )}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
-      </section>}
+            </TableBody>
+          </Table>
+      </Panel>}
 
-      {!isDigitalMetal && activeView === "activity" && <section className="panel mb-6 p-0">
-        <div className="flex items-center justify-between border-b border-gray-600 px-5 py-4">
-          <h2 className="text-sm font-semibold text-gray-100">Trades</h2>
-          <p className="max-w-md text-xs text-gray-500">
-            What was actually entered. Correcting one reverses it and books the fix, so the
-            statement keeps both — the lots above are derived from this list.
-          </p>
-        </div>
+      {!isDigitalMetal && activeView === "activity" && <Panel
+        title="Trades"
+        description="What was actually entered. Correcting one reverses it and books the fix, so the statement keeps both — the lots above are derived from this list."
+      >
         {trades.length === 0 ? (
-          <p className="px-5 py-6 text-sm text-gray-500">
+          <p className="text-sm text-(--fg-muted)">
             Nothing recorded yet. The first purchase below creates the position.
           </p>
         ) : (
-          <div className="table-scroll">
-            <table className="w-full text-sm">
-              <caption className="sr-only">
+            <Table>
+              <TableCaption className="sr-only">
                 Trades with side, date, units, price and charges, each editable
-              </caption>
-              <thead>
-                <tr className="border-b border-gray-600">
-                  <th scope="col" className="metric-label px-4 py-3 text-left">Side</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-left">Date</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Units</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Price</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Charges</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Consideration</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-left">Do</th>
-                </tr>
-              </thead>
-              <tbody>
+              </TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Side</TableHead>
+                  <TableHead>Date</TableHead>
+                  <TableHead className="text-right">Units</TableHead>
+                  <TableHead className="text-right">Price</TableHead>
+                  <TableHead className="text-right">Charges</TableHead>
+                  <TableHead className="text-right">Consideration</TableHead>
+                  <TableHead>Do</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {trades.map((trade) => (
-                  <tr key={trade.id} className="border-b border-gray-600/50 align-top last:border-0">
-                    <td className="px-4 py-3">
-                      <span
-                        className={
-                          trade.side === "BUY"
-                            ? "rounded-full border border-green-600/50 px-2 py-1 text-xs text-green-500"
-                            : "rounded-full border border-amber-600/50 px-2 py-1 text-xs text-amber-500"
-                        }
-                      >
-                        {trade.side === "BUY" ? "Bought" : "Sold"}
-                      </span>
-                    </td>
-                    <td className="tnum px-4 py-3 text-gray-400">{trade.tradedOn.toISO()}</td>
-                    <td className="tnum px-4 py-3 text-right text-gray-300">
+                  <TableRow key={trade.id} className="border-b border-(--border)/50 align-top last:border-0">
+                    <BadgeCell tone={trade.side === "BUY" ? "gain" : "warning"}>
+                      {trade.side === "BUY" ? "Bought" : "Sold"}
+                    </BadgeCell>
+                    <TableCell className="tnum text-(--fg-secondary)">{trade.tradedOn.toISO()}</TableCell>
+                    <TableCell className="tnum text-right text-(--fg-secondary)">
                       {trade.quantity.toDecimalString()}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <MoneyText value={trade.pricePerUnit} tone="neutral" />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <MoneyText value={trade.charges} tone="neutral" />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <MoneyText
-                        value={trade.quantity.valueAt(trade.pricePerUnit, "HALF_EVEN")}
-                        tone="neutral"
-                      />
-                    </td>
-                    <td className="px-4 py-3">
+                    </TableCell>
+                    <FigureCell value={trade.pricePerUnit} />
+                    <FigureCell value={trade.charges} />
+                    <FigureCell value={trade.quantity.valueAt(trade.pricePerUnit, "HALF_EVEN")} />
+                    <ActionCell>
                       <TradeRowActions
                         instrumentId={instrumentId}
                         tradeId={trade.id}
@@ -1081,84 +1033,79 @@ export default async function Page({
                         tradedOn={trade.tradedOn.toISO()}
                         accounts={settlementAccounts}
                         settlementAccountId={trade.settlementAccountId}
-                      />
-                    </td>
-                  </tr>
+                     />
+                    </ActionCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
         )}
-      </section>}
+      </Panel>}
 
       {!isDigitalMetal && activeView === "lots-tax" && comparison?.ok && open.quantity.isPositive && (
-        <Card
+        <Panel
           title="What selling everything today would realise"
-          subtitle="The same sale under each method. The difference is the tax you can choose."
-          className="mb-6"
+          description="The same sale under each method. The difference is the tax you can choose."
         >
-          <div className="table-scroll">
-            <table className="w-full text-sm">
-              <caption className="sr-only">Realised gain by lot-selection method</caption>
-              <thead>
-                <tr className="border-b border-gray-600">
-                  <th scope="col" className="metric-label px-3 py-2 text-left">Method</th>
-                  <th scope="col" className="metric-label px-3 py-2 text-right">Cost basis</th>
-                  <th scope="col" className="metric-label px-3 py-2 text-right">Gain</th>
-                </tr>
-              </thead>
-              <tbody>
+            <Table>
+              <TableCaption className="sr-only">Realised gain by lot-selection method</TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Method</TableHead>
+                  <TableHead className="text-right">Cost basis</TableHead>
+                  <TableHead className="text-right">Gain</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {comparison.value.comparison.map((row) => (
-                  <tr key={row.method} className="border-b border-gray-600/50 last:border-0">
-                    <td className="px-3 py-2 text-gray-300">{row.method.replace(/_/g, " ")}</td>
-                    <td className="px-3 py-2 text-right"><MoneyText value={row.costBasis} tone="neutral" /></td>
-                    <td className="px-3 py-2 text-right"><MoneyText value={row.gain} /></td>
-                  </tr>
+                  <TableRow key={row.method} className="border-b border-(--border)/50 last:border-0">
+                    <TableCell className="text-(--fg-secondary)">{row.method.replace(/_/g, " ")}</TableCell>
+                    <FigureCell value={row.costBasis} />
+                    <FigureCell value={row.gain} tone="change" />
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
-          <p className="mt-3 text-xs text-gray-500">
+              </TableBody>
+            </Table>
+          <p className="mt-3 text-xs text-(--fg-muted)">
             Specific-id behaves as FIFO here because no lots have been nominated — the honest
             answer rather than an omission.
           </p>
-        </Card>
+        </Panel>
       )}
 
       {!isDigitalMetal && activeView === "activity" && <InvestmentActivity events={ledgerEvents} />}
 
       {!isDigitalMetal && activeView === "activity" && actions.length > 0 && (
-        <Card title="Corporate actions" subtitle="Applied as events, so each one can be undone." className="mb-6">
+        <Panel title="Corporate actions" description="Applied as events, so each one can be undone.">
           <ul className="space-y-2 text-sm">
             {actions.map((action) => (
               <li key={action.id} className="flex items-baseline justify-between gap-3">
-                <span className="text-gray-300">{action.kind.replace(/_/g, " ")}</span>
-                <span className="tnum text-xs text-gray-500">
+                <span className="text-(--fg-secondary)">{action.kind.replace(/_/g, " ")}</span>
+                <span className="tnum text-xs text-(--fg-muted)">
                   ex {action.exDate.toISO()}
                   {action.appliedAt ? " · applied" : " · pending"}
                 </span>
               </li>
             ))}
           </ul>
-        </Card>
+        </Panel>
       )}
 
-      {!isDigitalMetal && activeView === "activity" && <Card
+      {!isDigitalMetal && activeView === "activity" && <Panel
         title="Record a trade"
-        subtitle="A trade is a ledger transaction first; the lot is derived from it, so the portfolio can always be rebuilt from the journal."
+        description="A trade is a ledger transaction first; the lot is derived from it, so the portfolio can always be rebuilt from the journal."
       >
         <TradeForms
           instrumentId={instrumentId}
           accounts={settlementAccounts}
           defaultDate={today.toISO()}
           heldUnits={open.quantity.toDecimalString()}
-        />
-      </Card>}
+       />
+      </Panel>}
 
-      {activeView === "settings" && <Card
-        className="mt-6"
+      {activeView === "settings" && <Panel
         title="This holding's details"
-        subtitle="Correct the name, the platform, or the code the price feed knows it by — a holding that will not price is almost always a wrong code here."
+        description="Correct the name, the platform, or the code the price feed knows it by — a holding that will not price is almost always a wrong code here."
       >
         <InstrumentAdmin
           instrumentId={instrumentId}
@@ -1172,8 +1119,8 @@ export default async function Page({
           platforms={platforms}
           isClosed={instrument.isClosed}
           canDelete={trades.length === 0}
-        />
-      </Card>}
-    </>
+       />
+      </Panel>}
+    </PageShell>
   );
 }

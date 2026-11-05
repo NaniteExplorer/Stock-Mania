@@ -61,6 +61,7 @@ import {
 import { Buy, Sell, Transaction, TransactionRepository, accountRef } from "@/domain/transactions";
 import { Institution, InstitutionId, InstitutionRepository } from "@/domain/institutions";
 import { OpenAccount } from "@/app/ledger.usecases";
+import { Count } from "@/core/units";
 
 export interface ReportingCurrencyConverter {
   convert(
@@ -906,7 +907,7 @@ export class PortfolioReturns implements UseCase<PortfolioReturnsInput, Portfoli
     const page = await this.journal.find(input.userId, {
       accountIds,
       range: DateRange.of(CalendarDate.parse("1900-01-01"), input.asOf),
-      limit: 20_000,
+      limit: Count(20_000),
     });
 
     /*

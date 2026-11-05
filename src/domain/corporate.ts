@@ -52,8 +52,8 @@ export type CorporateActionKind =
  */
 export type LotEffectKind = "RESCALE" | "OPEN" | "CLOSE" | "TRANSFER_BASIS" | "REDUCE_BASIS";
 
-export interface LotEffect {
-  readonly kind: LotEffectKind;
+/** The fields an effect is built from. Each subclass reads the ones it needs. */
+export interface LotEffectFields {
   readonly instrumentId: InstrumentId;
   /**
    * `RESCALE`: units are multiplied by `to` and divided by `from`.
@@ -72,6 +72,132 @@ export interface LotEffect {
   readonly toInstrumentId?: InstrumentId;
   /** Human-readable, because a lot's history is read by a person. */
   readonly note: string;
+}
+
+/** What an effect needs to know about the action that produced it. */
+export interface LotEffectOrigin {
+  readonly exDate: CalendarDate;
+  readonly currency: Currency;
+  readonly actionKind: CorporateActionKind;
+}
+
+/**
+ * One thing an action does to a set of lots.
+ *
+ * **Each effect applies itself.** `CorporateAction.applyTo` used to switch on
+ * `kind`, so a new effect needed an edit to the interpreter: the open–closed
+ * test in `RULES.md` §8.2, failed, by a type-tag switch inside an engine (§8.3).
+ * A new effect is now one new subclass and nothing else changes.
+ *
+ * `kind` and every field stay readable. A caller that *describes* an effect, such
+ * as the use case reading a split's ratio, is not dispatching on it.
+ */
+export abstract class LotEffect implements LotEffectFields {
+  abstract readonly kind: LotEffectKind;
+  readonly instrumentId: InstrumentId;
+  readonly ratio?: { readonly from: Quantity; readonly to: Quantity };
+  readonly quantity?: Quantity;
+  readonly cost?: Money;
+  readonly basisAmount?: Money;
+  readonly toInstrumentId?: InstrumentId;
+  readonly note: string;
+
+  constructor(fields: LotEffectFields) {
+    this.instrumentId = fields.instrumentId;
+    this.ratio = fields.ratio;
+    this.quantity = fields.quantity;
+    this.cost = fields.cost;
+    this.basisAmount = fields.basisAmount;
+    this.toInstrumentId = fields.toInstrumentId;
+    this.note = fields.note;
+  }
+
+  /** Pure: returns new lots and leaves the input alone. */
+  abstract applyTo(lots: readonly Lot[], origin: LotEffectOrigin): readonly Lot[];
+}
+
+/** Units scaled by a ratio, cost unchanged. A split or consolidation. */
+export class RescaleLots extends LotEffect {
+  readonly kind = "RESCALE" as const;
+
+  applyTo(lots: readonly Lot[]): readonly Lot[] {
+    const ratio = this.ratio ?? { from: Quantity.fromString("1"), to: Quantity.fromString("1") };
+    return lots.map((lot) => (lot.isExhausted ? lot : lot.rescale(ratio)));
+  }
+}
+
+/** New units at a stated cost. A bonus, a rights take-up, a merger's incoming leg. */
+export class OpenLots extends LotEffect {
+  readonly kind = "OPEN" as const;
+
+  applyTo(lots: readonly Lot[], origin: LotEffectOrigin): readonly Lot[] {
+    if (!this.quantity || !this.cost) return lots;
+    return [
+      ...lots,
+      Lot.open({
+        instrumentId: this.instrumentId,
+        acquiredOn: origin.exDate,
+        originalQuantity: this.quantity,
+        cost: this.cost,
+        buyCharges: Money.zero(origin.currency),
+        openedByTransactionId: `corporate-${origin.actionKind.toLowerCase()}-${origin.exDate.toISO()}`,
+      }),
+    ];
+  }
+}
+
+/** Every remaining unit ends. A merger's outgoing leg. */
+export class CloseLots extends LotEffect {
+  readonly kind = "CLOSE" as const;
+
+  applyTo(lots: readonly Lot[]): readonly Lot[] {
+    return lots.map((lot) =>
+      lot.isExhausted ? lot : Lot.rehydrate({ ...lot.props, remainingQuantity: Quantity.ZERO }),
+    );
+  }
+}
+
+/**
+ * Basis leaves in proportion to remaining units. The outgoing side of a
+ * demerger; the receiving instrument's lots are opened by the paired effect.
+ */
+export class TransferBasis extends LotEffect {
+  readonly kind = "TRANSFER_BASIS" as const;
+
+  applyTo(lots: readonly Lot[]): readonly Lot[] {
+    const moving = this.basisAmount;
+    if (!moving) return lots;
+    const held = Quantity.sum(lots.map((lot) => lot.remaining));
+    if (held.isZero) return lots;
+    return lots.map((lot) => {
+      if (lot.isExhausted) return lot;
+      const share = lot.remaining.shareOf(moving, held, "HALF_EVEN");
+      return Lot.rehydrate({ ...lot.props, cost: lot.props.cost.minus(share) });
+    });
+  }
+}
+
+/** Basis falls with units unchanged. A return of capital. */
+export class ReduceBasis extends LotEffect {
+  readonly kind = "REDUCE_BASIS" as const;
+
+  applyTo(lots: readonly Lot[]): readonly Lot[] {
+    const reduction = this.basisAmount;
+    if (!reduction) return lots;
+    const held = Quantity.sum(lots.map((lot) => lot.remaining));
+    if (held.isZero) return lots;
+    return lots.map((lot) => {
+      if (lot.isExhausted) return lot;
+      const share = lot.remaining.shareOf(reduction, held, "HALF_EVEN");
+      const reduced = lot.props.cost.minus(share);
+      return Lot.rehydrate({
+        ...lot.props,
+        // Basis cannot go below zero: a return of capital beyond the basis is
+        // a capital gain, which `taxableEvents` reports instead.
+        cost: reduced.isNegative ? Money.zero(lot.currency) : reduced,
+      });
+    });
+  }
 }
 
 /** Money the action moves, if any. A split moves none. */
@@ -143,6 +269,19 @@ export abstract class CorporateAction extends ValueObject {
   /** What it does to the lots. */
   abstract lotEffects(): readonly LotEffect[];
 
+  /**
+   * The action that undoes this one, booked as its own transaction.
+   *
+   * Only a ratio change has a corporate-action inverse. Everything else is undone
+   * by reversing the ledger transaction it wrote — `Transaction.reverse()`'s job —
+   * so the default is null rather than an inverse that only half-works. A subtype
+   * that can invert itself says so here; nothing outside it asks what it is
+   * (`RULES.md` §8.3).
+   */
+  inverse(): CorporateAction | null {
+    return null;
+  }
+
   /** What it does to cash. Most actions do nothing. */
   cashEffects(): readonly CashEffect[] {
     return [];
@@ -173,71 +312,12 @@ export abstract class CorporateAction extends ValueObject {
    * it once, rather than silently compounding.
    */
   applyTo(lots: readonly Lot[]): readonly Lot[] {
-    let current = [...lots];
-    for (const effect of this.lotEffects()) {
-      switch (effect.kind) {
-        case "RESCALE": {
-          const ratio = effect.ratio ?? { from: Quantity.fromString("1"), to: Quantity.fromString("1") };
-          current = current.map((lot) => (lot.isExhausted ? lot : lot.rescale(ratio)));
-          break;
-        }
-        case "OPEN": {
-          if (!effect.quantity || !effect.cost) break;
-          current = [
-            ...current,
-            Lot.open({
-              instrumentId: effect.instrumentId,
-              acquiredOn: this.context.exDate,
-              originalQuantity: effect.quantity,
-              cost: effect.cost,
-              buyCharges: Money.zero(this.context.currency),
-              openedByTransactionId: `corporate-${this.kind.toLowerCase()}-${this.context.exDate.toISO()}`,
-            }),
-          ];
-          break;
-        }
-        case "REDUCE_BASIS": {
-          const reduction = effect.basisAmount;
-          if (!reduction) break;
-          const held = Quantity.sum(current.map((lot) => lot.remaining));
-          if (held.isZero) break;
-          current = current.map((lot) => {
-            if (lot.isExhausted) return lot;
-            const share = lot.remaining.shareOf(reduction, held, "HALF_EVEN");
-            const reduced = lot.props.cost.minus(share);
-            return Lot.rehydrate({
-              ...lot.props,
-              // Basis cannot go below zero: a return of capital beyond the basis is
-              // a capital gain, which `taxableEvents` reports instead.
-              cost: reduced.isNegative ? Money.zero(lot.currency) : reduced,
-            });
-          });
-          break;
-        }
-        case "CLOSE":
-          current = current.map((lot) =>
-            lot.isExhausted
-              ? lot
-              : Lot.rehydrate({ ...lot.props, remainingQuantity: Quantity.ZERO }),
-          );
-          break;
-        case "TRANSFER_BASIS": {
-          // The outgoing side of a demerger: basis leaves proportionally. The
-          // receiving instrument's lots are opened by the paired effect.
-          const moving = effect.basisAmount;
-          if (!moving) break;
-          const held = Quantity.sum(current.map((lot) => lot.remaining));
-          if (held.isZero) break;
-          current = current.map((lot) => {
-            if (lot.isExhausted) return lot;
-            const share = lot.remaining.shareOf(moving, held, "HALF_EVEN");
-            return Lot.rehydrate({ ...lot.props, cost: lot.props.cost.minus(share) });
-          });
-          break;
-        }
-      }
-    }
-    return current;
+    const origin: LotEffectOrigin = {
+      exDate: this.context.exDate,
+      currency: this.context.currency,
+      actionKind: this.kind,
+    };
+    return this.lotEffects().reduce<readonly Lot[]>((current, effect) => effect.applyTo(current, origin), lots);
   }
 
   protected components(): readonly unknown[] {
@@ -281,14 +361,17 @@ export class Split extends CorporateAction {
     return this.ratio.to.ratioTo(this.ratio.from);
   }
 
+  override inverse(): CorporateAction {
+    return new ReverseSplit(this.context, { from: this.ratio.to, to: this.ratio.from });
+  }
+
   lotEffects(): readonly LotEffect[] {
     return [
-      {
-        kind: "RESCALE",
+      new RescaleLots({
         instrumentId: this.context.instrumentId,
         ratio: this.ratio,
         note: `${this.ratio.from.toDecimalString()}:${this.ratio.to.toDecimalString()} split — units × ${this.factor.toDecimalString()}, cost unchanged`,
-      },
+      }),
     ];
   }
 
@@ -327,14 +410,17 @@ export class ReverseSplit extends CorporateAction {
     return this.ratio.to.ratioTo(this.ratio.from);
   }
 
+  override inverse(): CorporateAction {
+    return new Split(this.context, { from: this.ratio.to, to: this.ratio.from });
+  }
+
   lotEffects(): readonly LotEffect[] {
     return [
-      {
-        kind: "RESCALE",
+      new RescaleLots({
         instrumentId: this.context.instrumentId,
         ratio: this.ratio,
         note: `${this.ratio.from.toDecimalString()}:${this.ratio.to.toDecimalString()} consolidation`,
-      },
+      }),
     ];
   }
 
@@ -383,8 +469,7 @@ export class Bonus extends CorporateAction {
 
   lotEffects(): readonly LotEffect[] {
     return [
-      {
-        kind: "OPEN",
+      new OpenLots({
         instrumentId: this.context.instrumentId,
         quantity: this.issuedQuantity,
         // Zero cost: nothing was paid. The gain on eventual sale is the whole
@@ -393,7 +478,7 @@ export class Bonus extends CorporateAction {
         note:
           `${this.ratio.received.toDecimalString()}-for-${this.ratio.held.toDecimalString()} bonus — ` +
           `${this.issuedQuantity.toDecimalString()} units at nil cost, acquired ${this.context.exDate.toISO()}`,
-      },
+      }),
     ];
   }
 
@@ -439,13 +524,12 @@ export class Rights extends CorporateAction {
 
   lotEffects(): readonly LotEffect[] {
     return [
-      {
-        kind: "OPEN",
+      new OpenLots({
         instrumentId: this.context.instrumentId,
         quantity: this.subscription.quantity,
         cost: this.amountPaid,
         note: `Rights subscription at ${this.subscription.pricePerUnit.toDecimalString()} per unit`,
-      },
+      }),
     ];
   }
 
@@ -506,19 +590,17 @@ export class Merger extends CorporateAction {
 
   lotEffects(): readonly LotEffect[] {
     return [
-      {
-        kind: "CLOSE",
+      new CloseLots({
         instrumentId: this.context.instrumentId,
         note: `Merged into ${this.terms.intoInstrumentId.value}`,
-      },
-      {
-        kind: "OPEN",
+      }),
+      new OpenLots({
         instrumentId: this.terms.intoInstrumentId,
         quantity: this.receivedQuantity,
         // The caller supplies the outgoing basis; a merger moves it unchanged.
         cost: Money.zero(this.context.currency),
         note: `Received on merger at ${this.terms.exchangeRatio.toDecimalString()} per unit held`,
-      },
+      }),
     ];
   }
 
@@ -589,20 +671,18 @@ export class Demerger extends CorporateAction {
 
   lotEffects(): readonly LotEffect[] {
     return [
-      {
-        kind: "TRANSFER_BASIS",
+      new TransferBasis({
         instrumentId: this.context.instrumentId,
         basisAmount: this.basisMoved,
         toInstrumentId: this.terms.intoInstrumentId,
         note: `${this.terms.basisShare.toFixed(2)}% of basis moved to ${this.terms.intoInstrumentId.value}`,
-      },
-      {
-        kind: "OPEN",
+      }),
+      new OpenLots({
         instrumentId: this.terms.intoInstrumentId,
         quantity: this.receivedQuantity,
         cost: this.basisMoved,
         note: "Demerged entity received, carrying its share of the original basis",
-      },
+      }),
     ];
   }
 }
@@ -703,13 +783,12 @@ export class DividendStock extends CorporateAction {
 
   lotEffects(): readonly LotEffect[] {
     return [
-      {
-        kind: "OPEN",
+      new OpenLots({
         instrumentId: this.context.instrumentId,
         quantity: this.issuedQuantity,
         cost: Money.zero(this.context.currency),
         note: `Stock dividend of ${this.issuedQuantity.toDecimalString()} units at nil cost`,
-      },
+      }),
     ];
   }
 }
@@ -746,12 +825,11 @@ export class ReturnOfCapital extends CorporateAction {
     return reduction.isZero
       ? []
       : [
-          {
-            kind: "REDUCE_BASIS",
+          new ReduceBasis({
             instrumentId: this.context.instrumentId,
             basisAmount: reduction,
             note: `Return of capital — basis reduced by ${reduction.toString()}`,
-          },
+          }),
         ];
   }
 
@@ -833,16 +911,7 @@ export function adjustSeries(
  * the argument for the whole design, stated as code.
  */
 export function inverseOf(action: CorporateAction): CorporateAction | null {
-  if (action instanceof Split) {
-    return new ReverseSplit(action.context, { from: action.ratio.to, to: action.ratio.from });
-  }
-  if (action instanceof ReverseSplit) {
-    return new Split(action.context, { from: action.ratio.to, to: action.ratio.from });
-  }
-  // Everything else is reversed by reversing the ledger transaction it wrote,
-  // which is `Transaction.reverse()`'s job rather than this function's. Returning
-  // null says so instead of inventing an inverse that only half-works.
-  return null;
+  return action.inverse();
 }
 
 /* ═══ Repository port ═════════════════════════════════════════════════ */

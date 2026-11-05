@@ -1,0 +1,20 @@
+/* Local layout only; every value is a design token. */
+.chip { display:inline-flex; align-items:center; box-sizing:border-box; height:20px; padding:0 7px; border:1px solid var(--border-control); border-radius:var(--r-2); color:var(--fg-secondary); font-size:11.5px; line-height:16px; }
+.change { display:inline-flex; align-items:center; gap:8px; }
+.warn { color:var(--warn); }
+.muted { color:var(--fg-muted); }
+.note { display:block; color:var(--fg-muted); font-size:11.5px; line-height:15px; }
+.groupHead { color:var(--fg-muted); font-size:var(--fs-lab); letter-spacing:var(--ls-lab); text-transform:uppercase; font-weight:500; background:var(--bg-subtle); }
+.verbs { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.reason { color:var(--fg-muted); font-size:11.5px; }
+.ended > summary { cursor:pointer; color:var(--fg-secondary); font-size:var(--fs-sec); padding:8px 0; }
+.ended > summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.endedBody { color:var(--fg-muted); }
+.form { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:var(--gap-block); }
+.field { display:flex; flex-direction:column; gap:6px; min-width:0; font-size:var(--fs-sec); color:var(--fg); }
+.hint { color:var(--fg-muted); font-size:11.5px; }
+.error { color:var(--loss); font-size:11.5px; }
+.footer { grid-column:1 / -1; display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+.loading { display:flex; flex-direction:column; gap:var(--gap-block); }
+.skelHero { height:56px; width:240px; }
+.skelRow { height:var(--row-h); }

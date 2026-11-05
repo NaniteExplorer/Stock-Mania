@@ -19,6 +19,7 @@ import { Currency, Money } from "@/core/money";
 import { Percentage, Quantity, Rate, UnitPrice } from "@/core/numeric";
 import { CalendarDate, DateRange, FinancialYear } from "@/core/time";
 import { UserId } from "@/core/kernel";
+import { Count, Days, Months, Ordinal } from "@/core/units";
 import { Account, AccountCode, AccountType } from "@/domain/accounts";
 import {
   EmployeeProvidentFund,
@@ -78,7 +79,7 @@ function factorByRepeatedMultiplication(rate: Rate, periodsPerYear: bigint, peri
   return { numerator, denominator };
 }
 
-const quarterly20 = compoundFactor(Rate.annual("7.1"), "QUARTERLY", 20);
+const quarterly20 = compoundFactor(Rate.annual("7.1"), "QUARTERLY", Count(20));
 const repeated20 = factorByRepeatedMultiplication(Rate.annual("7.1"), 4n, 20);
 checkTrue(
   "exponentiation and repeated multiplication agree exactly",
@@ -92,22 +93,22 @@ check(
   "142174.67",
 );
 
-check("zero periods is a factor of one", compoundFactor(Rate.annual("9"), "MONTHLY", 0).numerator, compoundFactor(Rate.annual("9"), "MONTHLY", 0).denominator);
-throws("a fractional period count is refused", () => compoundFactor(Rate.annual("9"), "MONTHLY", 1.5), "whole number");
+check("zero periods is a factor of one", compoundFactor(Rate.annual("9"), "MONTHLY", Count(0)).numerator, compoundFactor(Rate.annual("9"), "MONTHLY", Count(0)).denominator);
+throws("a fractional period count is refused", () => compoundFactor(Rate.annual("9"), "MONTHLY", 1.5 as Count), "whole number");
 
 check(
   "simple interest for a year at 7%",
-  simpleInterest(rupees("100000"), Rate.annual("7"), 365).toDecimalString(),
+  simpleInterest(rupees("100000"), Rate.annual("7"), Days(365)).toDecimalString(),
   "7000.00",
 );
 check(
   "and for 90 days",
-  simpleInterest(rupees("100000"), Rate.annual("7"), 90).toDecimalString(),
+  simpleInterest(rupees("100000"), Rate.annual("7"), Days(90)).toDecimalString(),
   "1726.03",
 );
 check(
   "ACT/360 pays more for the same days — which is why the convention is carried",
-  simpleInterest(rupees("100000"), Rate.annual("7", "ACT_360"), 90).toDecimalString(),
+  simpleInterest(rupees("100000"), Rate.annual("7", "ACT_360"), Days(90)).toDecimalString(),
   "1750.00",
 );
 
@@ -240,7 +241,7 @@ const rd = new RecurringDeposit(rdAccount, {
   instalment: rupees("5000"),
   rate: Rate.annual("6.8"),
   openedOn: on("2026-04-01"),
-  months: 24,
+  months: Months(24),
   compounding: "QUARTERLY",
 });
 
@@ -267,9 +268,9 @@ const missed = new RecurringDeposit(rdAccount, {
   instalment: rupees("5000"),
   rate: Rate.annual("6.8"),
   openedOn: on("2026-04-01"),
-  months: 24,
+  months: Months(24),
   compounding: "QUARTERLY",
-  missedInstalments: [7],
+  missedInstalments: [Ordinal(7)],
   missedInstalmentPenalty: rupees("100"),
 });
 check("one fewer instalment was paid", missed.schedule().totalContributed.toDecimalString(), "115000.00");
@@ -292,7 +293,7 @@ throws(
       instalment: rupees("5000"),
       rate: Rate.annual("6.8"),
       openedOn: on("2026-04-01"),
-      months: 0,
+      months: Months(0),
       compounding: "QUARTERLY",
     }),
   "whole number of months",
@@ -357,7 +358,7 @@ const extended = new PublicProvidentFund(ppfAccount, {
   openedOn: on("2026-05-10"),
   contributions: [{ financialYear: "2026-27", amount: rupees("150000") }],
   ratesByFinancialYear: ppfRates,
-  extensionBlocks: 2,
+  extensionBlocks: Count(2),
 });
 check("two extension blocks add ten years", extended.maturesOn.toISO(), "2052-03-31");
 

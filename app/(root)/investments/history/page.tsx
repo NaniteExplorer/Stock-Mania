@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { History } from "lucide-react";
 import { connection } from "next/server";
 import { CalendarDate, FinancialYear } from "@/core/time";
 import { Percentage } from "@/core/numeric";
-import { Card, EmptyState, MoneyText, PageHeader, Pill, Stat } from "@/ui/primitives";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { rupee } from "@/core/format";
+import { Page as Shell, Masthead, KpiStrip, Kpi, Panel } from "../../../../components/ui/page-shell";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../../components/ui/table";
+import { FigureCell, FigureText } from "../../../../components/ui/data-cell";
+import { Banner } from "../../../../components/ui/banner";
+import { InstitutionMark } from "@/ui/provider-picker";
 import type { RealisedBucket } from "@/app/realised-history.usecases";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 
@@ -63,57 +68,55 @@ export default async function Page({
     : Percentage.ratio(view.total.total, view.total.costBasis);
 
   return (
-    <>
-      <PageHeader
+    <Shell>
+      <Masthead
         title="Realised gains"
-        subtitle="Profit already taken, by year, category and platform. Settled at the moment of sale, so nothing here depends on a live price."
-        badge={<Pill tone="brand">{scope}</Pill>}
-        action={
-          <Link href="/investments" className="ghost-btn h-10 px-4 text-xs">
-            Holdings
-          </Link>
+        side={
+          <>
+            <StatusBadge tone="accent">{scope}</StatusBadge>
+            <Link href="/investments" className="ghost-btn h-10 px-4 text-xs">
+              Holdings
+            </Link>
+          </>
         }
       />
+      <p className="text-sm text-(--fg-muted)">Profit already taken, by year, category and platform. Settled at the moment of sale, so nothing here depends on a live price.</p>
 
       {view.total.disposals === 0 ? (
-        <section className="panel p-0">
-          <EmptyState
-            icon={History}
-            title={selected ? `Nothing was sold in ${selected.label}` : "Nothing sold yet"}
-            body="Realised gain is what a sale actually banked. Record a sale on a holding and it appears here, split into short and long term the way a return needs it."
-          />
-        </section>
+        <Banner title={selected ? `Nothing was sold in ${selected.label}` : "Nothing sold yet"}>
+          <p>Realised gain is what a sale actually banked. Record a sale on a holding and it appears here, split into short and long term the way a return needs it.</p>
+        </Banner>
       ) : (
         <>
-          <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Stat
+          <KpiStrip>
+            <Kpi
               label="Realised"
-              value={view.total.total}
-              hint={`${view.total.disposals} disposal${view.total.disposals === 1 ? "" : "s"} ${scope}`}
+              value={rupee(view.total.total)}
+              detail={`${view.total.disposals} disposal${view.total.disposals === 1 ? "" : "s"} ${scope}`}
             />
-            <Stat
+            <Kpi
               label="Short term"
-              value={view.total.shortTerm}
-              hint="Held under 365 days, at the tier fixed on the day of sale"
+              value={rupee(view.total.shortTerm)}
+              detail="Held under 365 days, at the tier fixed on the day of sale"
             />
-            <Stat label="Long term" value={view.total.longTerm} hint="Held 365 days or more" />
-            <Stat
+            <Kpi label="Long term" value={rupee(view.total.longTerm)} detail="Held 365 days or more" />
+            <Kpi
               label="After charges"
-              value={netOfCharges}
-              hint={`${view.total.charges.toString()} in brokerage and statutory charges`}
+              value={rupee(netOfCharges)}
+              detail={`${view.total.charges.toString()} in brokerage and statutory charges`}
             />
-          </div>
+          </KpiStrip>
 
           {view.unattributed > 0 && (
-            <Card title="Disposals with no holding behind them" className="mb-6">
-              <p className="text-sm text-gray-300">
+            <Panel title="Disposals with no holding behind them">
+              <p className="text-sm text-(--fg-secondary)">
                 {view.unattributed} disposal(s) reference an instrument that is no longer readable,
                 so they are in the totals above but in none of the breakdowns below. That gap is
                 shown rather than hidden — the gain is still taxable, and a breakdown quietly
                 missing a slice of the total is the kind of thing nobody notices until a return
                 does not add up.
               </p>
-            </Card>
+            </Panel>
           )}
 
           {yearOptions.length > 1 && (
@@ -152,100 +155,97 @@ export default async function Page({
               subtitle="Which broker, app or vault the profit came from."
               rows={view.platforms}
               total={view.total}
+              marks
             />
           </div>
 
           {!selected && view.years.length > 0 && (
-            <Card
+            <Panel
               title="By financial year"
-              subtitle="The split a return is filed on. The tier was fixed on the day of each sale."
-              className="mb-6"
+              description="The split a return is filed on. The tier was fixed on the day of each sale."
+              flush
             >
-              <div className="table-scroll">
-                <table className="w-full text-sm">
-                  <caption className="sr-only">Realised gain by financial year</caption>
-                  <thead>
-                    <tr className="border-b border-gray-600">
-                      <th scope="col" className="metric-label px-3 py-2 text-left">Year</th>
-                      <th scope="col" className="metric-label px-3 py-2 text-right">Disposals</th>
-                      <th scope="col" className="metric-label px-3 py-2 text-right">Short term</th>
-                      <th scope="col" className="metric-label px-3 py-2 text-right">Long term</th>
-                      <th scope="col" className="metric-label px-3 py-2 text-right">Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {[...view.years].reverse().map((year) => (
-                      <tr key={year.key} className="border-b border-gray-600/50 last:border-0">
-                        <td className="px-3 py-2">
-                          <Link
-                            href={`/investments/history?fy=${encodeURIComponent(year.key)}`}
-                            className="text-gray-100 hover:text-brand-400"
-                          >
-                            {year.key}
-                          </Link>
-                        </td>
-                        <td className="tnum px-3 py-2 text-right text-gray-400">{year.disposals}</td>
-                        <td className="px-3 py-2 text-right"><MoneyText value={year.shortTerm} /></td>
-                        <td className="px-3 py-2 text-right"><MoneyText value={year.longTerm} /></td>
-                        <td className="px-3 py-2 text-right"><MoneyText value={year.total} /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
+              <Table>
+                <caption className="sr-only">Realised gain by financial year</caption>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="text-left">Year</TableHead>
+                    <TableHead className="text-right">Disposals</TableHead>
+                    <TableHead className="text-right">Short term</TableHead>
+                    <TableHead className="text-right">Long term</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {[...view.years].reverse().map((year) => (
+                    <TableRow key={year.key}>
+                      <TableCell>
+                        <Link
+                          href={`/investments/history?fy=${encodeURIComponent(year.key)}`}
+                          className="text-(--fg) hover:text-brand-400"
+                        >
+                          {year.key}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="tnum text-right text-(--fg-secondary)">{year.disposals}</TableCell>
+                      <FigureCell value={year.shortTerm} tone="change" />
+                      <FigureCell value={year.longTerm} tone="change" />
+                      <FigureCell value={year.total} tone="change" />
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Panel>
           )}
 
-          <Card
+          <Panel
             title="By holding"
-            subtitle="Every position that has been sold from, best first. Closed holdings included — an exited position is exactly the one you look back at."
+            description="Every position that has been sold from, best first. Closed holdings included — an exited position is exactly the one you look back at."
           >
-            <div className="table-scroll">
-              <table className="w-full text-sm">
-                <caption className="sr-only">Realised gain by holding</caption>
-                <thead>
-                  <tr className="border-b border-gray-600">
-                    <th scope="col" className="metric-label px-3 py-2 text-left">Holding</th>
-                    <th scope="col" className="metric-label px-3 py-2 text-right">Disposals</th>
-                    <th scope="col" className="metric-label px-3 py-2 text-right">Proceeds</th>
-                    <th scope="col" className="metric-label px-3 py-2 text-right">Cost</th>
-                    <th scope="col" className="metric-label px-3 py-2 text-right">Charges</th>
-                    <th scope="col" className="metric-label px-3 py-2 text-right">Realised</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {view.instruments.map((row) => (
-                    <tr key={row.key} className="border-b border-gray-600/50 last:border-0">
-                      <td className="px-3 py-2">
-                        <Link
-                          href={`/investments/${row.key}`}
-                          className="text-gray-100 hover:text-brand-400"
-                        >
-                          {row.label}
-                        </Link>
-                      </td>
-                      <td className="tnum px-3 py-2 text-right text-gray-400">{row.disposals}</td>
-                      <td className="px-3 py-2 text-right"><MoneyText value={row.proceeds} tone="neutral" /></td>
-                      <td className="px-3 py-2 text-right"><MoneyText value={row.costBasis} tone="neutral" /></td>
-                      <td className="px-3 py-2 text-right"><MoneyText value={row.charges} tone="neutral" /></td>
-                      <td className="px-3 py-2 text-right"><MoneyText value={row.total} /></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Table>
+              <caption className="sr-only">Realised gain by holding</caption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-left">Holding</TableHead>
+                  <TableHead className="text-right">Disposals</TableHead>
+                  <TableHead className="text-right">Proceeds</TableHead>
+                  <TableHead className="text-right">Cost</TableHead>
+                  <TableHead className="text-right">Charges</TableHead>
+                  <TableHead className="text-right">Realised</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {view.instruments.map((row) => (
+                  <TableRow key={row.key}>
+                    <TableCell>
+                      <Link
+                        href={`/investments/${row.key}`}
+                        className="text-(--fg) hover:text-brand-400"
+                      >
+                        {row.label}
+                      </Link>
+                    </TableCell>
+                    <TableCell className="tnum text-right text-(--fg-secondary)">{row.disposals}</TableCell>
+                    <FigureCell value={row.proceeds} />
+                    <FigureCell value={row.costBasis} />
+                    <FigureCell value={row.charges} />
+                    <FigureCell value={row.total} tone="change" />
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
             {returnOnCost && (
-              <p className="mt-3 text-xs text-gray-500">
+              <p className="mt-3 text-xs text-(--fg-muted)">
                 Over what those units cost, the realised gain is {returnOnCost.toFixed(2)}%. It is
                 not an annualised return — a gain taken after six months and one taken after six
                 years are both in it, which is why the holding-period split above is the number
                 that decides the tax.
               </p>
             )}
-          </Card>
+          </Panel>
         </>
       )}
-    </>
+    </Shell>
   );
 }
 
@@ -262,16 +262,19 @@ function Breakdown({
   subtitle,
   rows,
   total,
+  marks = false,
 }: {
   title: string;
   subtitle: string;
   rows: readonly RealisedBucket[];
   total: RealisedBucket;
+  /** Rows are platforms: show each one's institution mark (DESIGN.md §9). */
+  marks?: boolean;
 }) {
   return (
-    <Card title={title} subtitle={subtitle}>
+    <Panel title={title} description={subtitle}>
       {rows.length === 0 ? (
-        <p className="text-sm text-gray-500">Nothing to break down yet.</p>
+        <p className="text-sm text-(--fg-muted)">Nothing to break down yet.</p>
       ) : (
         <ul className="space-y-3">
           {rows.map((row) => {
@@ -279,13 +282,16 @@ function Breakdown({
             return (
               <li key={row.key}>
                 <div className="mb-1 flex items-baseline justify-between gap-3 text-sm">
-                  <span className="text-gray-200">
-                    {row.label}
-                    <span className="text-xs text-gray-600"> · {row.disposals}</span>
+                  <span className="flex items-center gap-2 text-(--fg)">
+                    {marks && <InstitutionMark institution={row.label} />}
+                    <span>
+                      {row.label}
+                      <span className="text-xs text-(--fg-disabled)"> · {row.disposals}</span>
+                    </span>
                   </span>
-                  <MoneyText value={row.total} />
+                  <FigureText value={row.total} tone="change" />
                 </div>
-                <div className="flex items-baseline justify-between gap-3 text-xs text-gray-500">
+                <div className="flex items-baseline justify-between gap-3 text-xs text-(--fg-muted)">
                   <span>
                     {row.shortTerm.isZero ? null : <>short {row.shortTerm.toString()} </>}
                     {row.longTerm.isZero ? null : <>long {row.longTerm.toString()}</>}
@@ -297,7 +303,7 @@ function Breakdown({
           })}
         </ul>
       )}
-    </Card>
+    </Panel>
   );
 }
 

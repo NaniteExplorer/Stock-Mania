@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { UserId } from "@/core/kernel";
+import { Count, Ordinal, SortKey } from "@/core/units";
 import { AccountCode, AccountId } from "@/domain/accounts";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 import {
@@ -12,6 +13,7 @@ import {
   StatementParseError,
   describeBreaks,
   parseStatementFile,
+  toBankingStatement,
 } from "@/infra/statements";
 import { COUNTER_ACCOUNT_KINDS, counterAccountKindNames } from "./counter-accounts";
 import { fail, ok, type ActionState } from "@/ui/action-state";
@@ -165,18 +167,18 @@ export async function stageStatementAction(
     accountId: AccountId.from(accountId),
     fileName: file.name,
     fileHash,
-    statement,
+    statement: toBankingStatement(statement),
     allowReimport,
     diagnostics: {
       verdict: {
         trust: statement.verdict.trust,
-        checked: statement.verdict.checked,
-        breaks: statement.verdict.breaks.map((brk) => ({ ...brk })),
-        mapping: { ...statement.verdict.mapping } as Record<string, number>,
+        checked: Count(statement.verdict.checked),
+        breaks: statement.verdict.breaks.map((brk) => ({ ...brk, rowIndex: Ordinal(brk.rowIndex) })),
+        mapping: Object.fromEntries(Object.entries(statement.verdict.mapping).map(([key, index]) => [key, Ordinal(index)])),
         closingBalance: statement.verdict.closingBalance,
         controls: { ...statement.verdict.controls },
       },
-      problems: statement.problems.map((problem) => ({ ...problem })),
+      problems: statement.problems.map((problem) => ({ ...problem, rowIndex: Ordinal(problem.rowIndex) })),
       override:
         importAnyway === null
           ? null
@@ -644,7 +646,7 @@ export async function createRuleFromRowAction(
       appliesTo: parsed.data.appliesTo,
       // Above the shipped defaults, so a rule the user wrote themselves beats a
       // built-in one that happens to match the same narration.
-      priority: 10,
+      priority: SortKey(10),
       isEnabled: true,
     },
   ]);

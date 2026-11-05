@@ -1,5 +1,6 @@
 import type { Clock, UserId } from "@/core/kernel";
 import { Money } from "@/core/money";
+import { Count } from "@/core/units";
 import { CalendarDate, DateRange } from "@/core/time";
 import type { Bar, BarRepository, Indicator } from "@/domain/analysis";
 import { groupOf, type AssetGroup } from "@/domain/asset-groups";
@@ -50,6 +51,7 @@ export interface InvestmentAnalysisRow {
   }[];
   readonly indicators: readonly {
     readonly name: string;
+    readonly unit: Indicator["unit"];
     readonly window: number;
     readonly status: "AVAILABLE" | "UNAVAILABLE";
     readonly value: number | null;
@@ -175,7 +177,7 @@ export class ViewInvestmentTracker {
         instrument.id.value,
         key.quoteType,
         input.asOf,
-        50,
+        Count(50),
       )).filter((quote) => !quote.supersededBy);
       return toTrackerRow(instrument, quotes, input.asOf, this.clock.now(), this.entitlements);
     }));
@@ -255,6 +257,7 @@ function toAnalysisRow(
 function toIndicator(indicator: Indicator): InvestmentAnalysisRow["indicators"][number] {
   return {
     name: indicator.name,
+    unit: indicator.unit,
     window: indicator.window,
     status: indicator.value === null ? "UNAVAILABLE" : "AVAILABLE",
     value: indicator.value,

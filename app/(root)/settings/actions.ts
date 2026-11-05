@@ -5,6 +5,7 @@ import { z } from "zod";
 import { Money } from "@/core/money";
 import { Percentage } from "@/core/numeric";
 import { FinancialYear } from "@/core/time";
+import { parseBornOn } from "./dob";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 
 export interface SettingsActionState {
@@ -93,4 +94,27 @@ export async function saveTaxSettingsAction(
     ok: true,
     message: `Saved for ${year.label}. The tax panel now computes at ${parsed.data.marginalSlabPercent}%.`,
   };
+}
+
+/**
+ * Saves (or clears) the date of birth (task 4.1). Optional: with none, the
+ * projection's current age stays unknown and nothing is guessed. The owner comes
+ * from the session inside `projection()`.
+ */
+export async function saveDateOfBirthAction(
+  _previous: SettingsActionState | null,
+  formData: FormData,
+): Promise<SettingsActionState> {
+  const parsed = parseBornOn(formData.get("bornOn"));
+  if (!parsed.ok) return { ok: false, message: "Check the form.", fieldErrors: { bornOn: [parsed.message] } };
+
+  const { userId, setDateOfBirth } = await services().projection();
+  const result = await setDateOfBirth.execute({ userId, bornOn: parsed.bornOn });
+  if (!result.ok) {
+    const fieldErrors = "fieldErrors" in result.error ? (result.error.fieldErrors as Record<string, string[]>) : undefined;
+    return { ok: false, message: result.error.userMessage, fieldErrors };
+  }
+  revalidatePath("/settings");
+  revalidatePath("/projection");
+  return { ok: true, message: parsed.bornOn ? "Date of birth saved." : "Date of birth cleared; your age is now unknown." };
 }

@@ -18,6 +18,7 @@ import { users } from "@/infra/db/schema";
 import type { Database } from "@/infra/db/client";
 import { FixedClock, UserId } from "@/core/kernel";
 import { Money } from "@/core/money";
+import { Ordinal } from "@/core/units";
 import { CalendarDate } from "@/core/time";
 import type { StatementInput } from "@/domain/banking";
 import {
@@ -39,7 +40,7 @@ const on = (value: string) => CalendarDate.parse(value);
 const statement = (): StatementInput => ({
   rows: [
     {
-      rowIndex: 1,
+      rowIndex: Ordinal(1),
       date: on("2026-01-10"),
       description: "Salary credit",
       reference: null,
@@ -47,7 +48,7 @@ const statement = (): StatementInput => ({
       amount: rupees("500.00"),
       direction: "CREDIT",
       balanceAfter: rupees("90500.00"),
-      occurrence: 0,
+      occurrence: Ordinal(0),
       raw: "10/01/2026 | Salary credit | | 500.00 | 90,500.00",
     },
   ],

@@ -19,7 +19,7 @@ import {
  * These wrap the utility classes in `tokens.css`; they do not re-derive them.
  * The point is that a screen is composed of `Card`, `Stat`, `DataTable` and
  * `MoneyText` rather than of raw Tailwind strings — v1 repeated
- * `rounded-xl border border-gray-600 bg-gray-700/40 px-4 py-3` verbatim in a
+ * `rounded-xl border border-(--border) bg-(--bg-hover)/40 px-4 py-3` verbatim in a
  * dozen places, and that is how a design system drifts.
  *
  * Radix and shadcn already supply `components/ui/*`; anything with real
@@ -58,7 +58,7 @@ export function MoneyText({
   if (value === null) {
     return (
       <span
-        className={cn("tnum text-gray-500", className)}
+        className={cn("tnum text-(--fg-muted)", className)}
         aria-label={emptyLabel}
       >
         —
@@ -86,8 +86,8 @@ export function MoneyText({
     <span
       className={cn(
         "tnum",
-        resolved === "pos" && "text-green-500",
-        resolved === "neg" && "text-red-500",
+        resolved === "pos" && "text-(--gain)",
+        resolved === "neg" && "text-(--loss)",
         className,
       )}
     >
@@ -135,10 +135,10 @@ export function Card({
           <div className="min-w-0">
             {kicker && <p className="section-kicker mb-1">{kicker}</p>}
             {title && (
-              <h2 className="text-base font-semibold text-gray-100">{title}</h2>
+              <h2 className="text-base font-semibold text-(--fg)">{title}</h2>
             )}
             {subtitle && (
-              <p className="mt-1 text-sm text-gray-500">{subtitle}</p>
+              <p className="mt-1 text-sm text-(--fg-muted)">{subtitle}</p>
             )}
           </div>
           {action && <div className="shrink-0">{action}</div>}
@@ -249,7 +249,7 @@ export function Stat({
           </span>
         )}
       </div>
-      <p className={cn("mt-2 font-semibold text-gray-100", valueClass)}>
+      <p className={cn("mt-2 font-semibold text-(--fg)", valueClass)}>
         {isMoney ? (
           <MoneyText value={value as Money | null} tone="neutral" />
         ) : (
@@ -259,7 +259,7 @@ export function Stat({
       {(delta !== undefined || hint) && (
         <div className="mt-1 flex items-center gap-2">
           {delta !== undefined && <Delta value={delta} />}
-          {hint && <span className="text-xs text-gray-500">{hint}</span>}
+          {hint && <span className="text-xs text-(--fg-muted)">{hint}</span>}
         </div>
       )}
     </div>
@@ -298,7 +298,7 @@ export function TableFrame({
 }) {
   return (
     <section className="panel p-0">
-      <div className="table-scroll border-b border-gray-600">
+      <div className="table-scroll border-b border-(--border)">
         <table className="w-full text-sm">
           <caption className="sr-only">{caption}</caption>
           <thead>
@@ -342,8 +342,8 @@ export function EmptyState({
       <span className="icon-chip mb-4 h-12 w-12">
         <Icon className="h-5 w-5" aria-hidden />
       </span>
-      <p className="mb-2 text-lg font-semibold text-gray-100">{title}</p>
-      <p className="max-w-md text-sm text-gray-500">{body}</p>
+      <p className="mb-2 text-lg font-semibold text-(--fg)">{title}</p>
+      <p className="max-w-md text-sm text-(--fg-muted)">{body}</p>
       {action && <div className="mt-5">{action}</div>}
     </div>
   );
@@ -413,7 +413,7 @@ export function Field({
       <label htmlFor={name} className="form-label">
         {label}
         {required && (
-          <span className="ml-1 text-red-500" aria-hidden>
+          <span className="ml-1 text-(--loss)" aria-hidden>
             *
           </span>
         )}
@@ -424,11 +424,11 @@ export function Field({
         "aria-describedby": describedBy,
       })}
       {error ? (
-        <p id={`${name}-error`} className="text-sm text-red-500">
+        <p id={`${name}-error`} className="text-sm text-(--loss)">
           {error}
         </p>
       ) : hint ? (
-        <p id={`${name}-hint`} className="text-xs text-gray-500">
+        <p id={`${name}-hint`} className="text-xs text-(--fg-muted)">
           {hint}
         </p>
       ) : null}

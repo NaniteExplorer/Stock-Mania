@@ -22,6 +22,7 @@
  * instead of letting the next reader add a sleep.
  */
 
+import { Count, Millis } from "@/core/units";
 import { Err, Ok } from "@/core/kernel";
 import { CalendarDate, DateRange } from "@/core/time";
 import { HealthStatus, ProviderError, RateLimitBudget } from "@/domain/pricing";
@@ -129,7 +130,7 @@ export abstract class MarketDataSource implements MarketDataPort {
 
   /** Overridden by a source with a known published limit. Politeness, not a ceiling. */
   rateLimit(): RateLimitBudget {
-    return { requests: 60, perMillis: 60_000, burst: 10 };
+    return { requests: Count(60), perMillis: Millis(60_000), burst: Count(10) };
   }
 
   health(): HealthStatus {

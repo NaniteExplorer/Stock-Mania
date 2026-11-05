@@ -16,6 +16,7 @@
  *     is not a wall.
  */
 
+import { Days } from "@/core/units";
 import { readFileSync, readdirSync } from "node:fs";
 import { UserId } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
@@ -93,8 +94,9 @@ section("the gate — no engine switched on the new kinds");
  */
 const offenders: string[] = [];
 for (const directory of ["src/domain", "src/app"]) {
-  for (const file of readdirSync(directory)) {
-    if (file === "instruments.ts") continue;
+  // Recursive: subfolders such as src/domain/scoring/ are held to the same rule.
+  for (const file of readdirSync(directory, { recursive: true, encoding: "utf8" })) {
+    if (!file.endsWith(".ts") || file === "instruments.ts") continue;
     const source = readFileSync(`${directory}/${file}`, "utf8");
     for (const literal of ['"OPTION"', '"FUTURE"']) {
       if (source.includes(`=== ${literal}`) || source.includes(`case ${literal}`)) {
@@ -201,7 +203,7 @@ const fnoEvent = (id: string, gain: string, date = "2026-09-24"): TaxableEvent =
   taxCategory: "FNO_BUSINESS",
   instrumentId: future.id.value,
   acquiredOn: on("2026-09-01"),
-  holdingDays: 23,
+  holdingDays: Days(23),
   proceeds: null,
   costBasis: null,
   gain: rupees(gain),
@@ -218,7 +220,7 @@ const equityEvent = (id: string, gain: string): TaxableEvent => ({
   taxCategory: "LISTED_EQUITY",
   instrumentId: "instrument-infy",
   acquiredOn: on("2024-01-10"),
-  holdingDays: 1004,
+  holdingDays: Days(1004),
   proceeds: rupees("1000000"),
   costBasis: rupees("500000"),
   gain: rupees(gain),

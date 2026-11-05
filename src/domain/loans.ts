@@ -28,6 +28,7 @@ import { UserId } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { Percentage, Rate } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
+import { Count, Months, Ordinal } from "@/core/units";
 import { Account, AccountId, AccountType } from "@/domain/accounts";
 
 /* ═══ Rate arithmetic ═════════════════════════════════════════════════ */
@@ -44,16 +45,15 @@ function periodRate(annual: Rate, periodsPerYear: number): { numerator: bigint; 
 
 export type PaymentFrequency = "MONTHLY" | "QUARTERLY" | "ANNUALLY";
 
-export function paymentsPerYear(frequency: PaymentFrequency): number {
-  switch (frequency) {
-    case "MONTHLY":
-      return 12;
-    case "QUARTERLY":
-      return 4;
-    case "ANNUALLY":
-      return 1;
-  }
+export function paymentsPerYear(frequency: PaymentFrequency): Count {
+  return PAYMENTS_PER_YEAR[frequency];
 }
+
+const PAYMENTS_PER_YEAR: Readonly<Record<PaymentFrequency, Count>> = Object.freeze({
+  MONTHLY: Count(12),
+  QUARTERLY: Count(4),
+  ANNUALLY: Count(1),
+});
 
 /**
  * The equated instalment: `P · r · (1+r)ⁿ / ((1+r)ⁿ − 1)`.
@@ -73,7 +73,7 @@ export function paymentsPerYear(frequency: PaymentFrequency): number {
 export function equatedInstalment(
   principal: Money,
   annualRate: Rate,
-  periods: number,
+  periods: Count,
   frequency: PaymentFrequency = "MONTHLY",
 ): Money {
   if (!Number.isInteger(periods) || periods < 1) {
@@ -103,13 +103,22 @@ export function equatedInstalment(
 /* ═══ Amortisation ════════════════════════════════════════════════════ */
 
 export interface AmortisationRow {
-  readonly period: number;
+  readonly period: Ordinal;
   readonly on: CalendarDate;
   readonly opening: Money;
   readonly instalment: Money;
   readonly interest: Money;
   readonly principal: Money;
   readonly closing: Money;
+  /**
+   * What this row *is*, structurally.
+   *
+   * A prepayment row is not a recurring obligation — it happened once. Anything
+   * asking "what is due next" must exclude it, and two call sites already did so
+   * by matching `note.startsWith("Prepayment")`, which is prose load-bearing as a
+   * contract. `note` stays for the reader; `kind` is for the code.
+   */
+  readonly kind: "INSTALMENT" | "PREPAYMENT";
   /** Set when this row is not a plain instalment. */
   readonly note?: string;
 }
@@ -144,7 +153,7 @@ export interface LoanTerms {
   readonly principal: Money;
   readonly annualRate: Rate;
   /** Total scheduled payments. */
-  readonly periods: number;
+  readonly periods: Count;
   readonly frequency: PaymentFrequency;
   readonly disbursedOn: CalendarDate;
   /** The date of the first instalment; defaults to one period after disbursement. */
@@ -201,11 +210,11 @@ export abstract class Loan {
   }
 
   get firstPaymentOn(): CalendarDate {
-    return this.terms.firstPaymentOn ?? this.paymentDate(1);
+    return this.terms.firstPaymentOn ?? this.paymentDate(Ordinal(1));
   }
 
   /** The date of instalment `period`, counting from disbursement. */
-  paymentDate(period: number): CalendarDate {
+  paymentDate(period: Ordinal): CalendarDate {
     const monthsPerPeriod = 12 / paymentsPerYear(this.terms.frequency);
     const anchor = this.terms.firstPaymentOn ?? this.terms.disbursedOn.plusMonths(monthsPerPeriod);
     return anchor.plusMonths((period - 1) * monthsPerPeriod);
@@ -234,6 +243,53 @@ export abstract class Loan {
       this.terms.periods,
       this.terms.frequency,
     );
+  }
+
+  /**
+   * The instalment restated as a monthly figure.
+   *
+   * {@link instalment} is per *period*, and a period is not a month for a
+   * quarterly or annual loan. Every ratio that puts debt service over monthly
+   * income needs the monthly figure, and computing it at the call site would mean
+   * the caller reading `frequency` and dividing — which is the caller knowing how
+   * a loan is shaped (`RULES.md` §8.2). It is a question the loan answers.
+   *
+   * A quarterly instalment is a third of itself each month; an annual one a
+   * twelfth. Nothing here is a projection — it is the same contractual obligation
+   * expressed over a month.
+   *
+   * **It takes `asOf` because the instalment is not a constant.** A prepayment that
+   * reduces the instalment re-solves it over the periods that remain, and
+   * {@link instalment} returns the *original* contractual figure for the whole life
+   * of the loan. Reading it here reported a payment the borrower had stopped making
+   * — on a half-prepaid loan, double the real one, and a debt-to-income ratio twice
+   * its true value (independent QA, 2026-10-25). The schedule already knows the
+   * answer; this asks it.
+   *
+   * The figure is **the next instalment falling due after `asOf`**, not the last one
+   * paid: debt service is what you are committed to from here, and the two differ
+   * for exactly one month after every instalment-reducing prepayment — which is the
+   * month someone checks. A loan with nothing left to pay services zero debt, and
+   * that is a measured zero, not an unmeasured one (`RULES.md` §3.1).
+   *
+   * Prepayment rows are excluded by `kind`, never by matching their note text. A
+   * lump sum is not a monthly commitment.
+   *
+   * The schedule is read **as observed on `asOf`**. A historical report loads every
+   * recorded prepayment, including ones made after the date being reported on, and
+   * reading the canonical schedule would answer June's question with September's
+   * facts — reporting a reduced instalment months before the borrower paid to
+   * reduce it (independent QA, 2026-10-25). The canonical schedule is unchanged;
+   * this asks what was true then.
+   */
+  monthlyDebtService(asOf: CalendarDate): Money {
+    const next = this.schedule(asOf).rows.find(
+      (row) => row.kind === "INSTALMENT" && row.on.isAfter(asOf),
+    );
+    if (!next) return Money.zero(this.currency);
+    const perYear = paymentsPerYear(this.terms.frequency);
+    if (perYear === 12) return next.instalment;
+    return next.instalment.timesRatio(BigInt(perYear), 12n, "HALF_UP");
   }
 
   /**
@@ -278,7 +334,7 @@ export abstract class Loan {
    * Interest rounds `HALF_EVEN`, as the document specifies: over 360 periods,
    * `HALF_UP` biases the total upward by a systematic half-paisa per period.
    */
-  schedule(): AmortisationSchedule {
+  schedule(observedOn?: CalendarDate): AmortisationSchedule {
     const zero = Money.zero(this.currency);
     const rows: AmortisationRow[] = [];
     const { numerator: rateNumerator, denominator: rateDenominator } = periodRate(
@@ -294,13 +350,19 @@ export abstract class Loan {
 
     let instalment = this.instalment();
     let outstanding = this.terms.principal;
-    const prepayments = [...(this.terms.prepayments ?? [])].sort((a, b) => a.on.compareTo(b.on));
+    // `observedOn` is the observation date, not a filter on output rows: a
+    // prepayment recorded on a date after it reduces the instalment of every
+    // period that follows, so a schedule asked for from before it must not have
+    // seen it. Omitted, nothing is hidden and this is the canonical schedule.
+    const prepayments = [...(this.terms.prepayments ?? [])]
+      .filter((prepayment) => observedOn === undefined || prepayment.on.isOnOrBefore(observedOn))
+      .sort((a, b) => a.on.compareTo(b.on));
     let prepaymentIndex = 0;
     let closedOn: CalendarDate | null = null;
 
     for (let period = 1; period <= this.terms.periods; period += 1) {
       if (outstanding.isZero) break;
-      const on = this.paymentDate(period);
+      const on = this.paymentDate(Ordinal(period));
 
       // Prepayments land before the instalment they precede, which is what a
       // lender does: the lump sum reduces the balance interest is charged on.
@@ -312,13 +374,14 @@ export abstract class Loan {
         const opening = outstanding;
         outstanding = outstanding.minus(applied);
         rows.push({
-          period,
+          period: Ordinal(period),
           on: prepayment.on,
           opening,
           instalment: applied.plus(penalty),
           interest: penalty,
           principal: applied,
           closing: outstanding,
+          kind: "PREPAYMENT",
           note:
             prepayment.reduces === "TERM"
               ? "Prepayment — term reduced"
@@ -330,7 +393,7 @@ export abstract class Loan {
           const remaining = this.terms.periods - period + 1;
           instalment = flat
             ? instalment
-            : equatedInstalment(outstanding, this.terms.annualRate, remaining, this.terms.frequency);
+            : equatedInstalment(outstanding, this.terms.annualRate, Count(remaining), this.terms.frequency);
         }
         if (outstanding.isZero) closedOn = prepayment.on;
       }
@@ -350,13 +413,14 @@ export abstract class Loan {
       outstanding = outstanding.minus(principal);
 
       rows.push({
-        period,
+        period: Ordinal(period),
         on,
         opening,
         instalment: paid,
         interest,
         principal,
         closing: outstanding,
+        kind: "INSTALMENT",
         note: isFinal ? "Final instalment — adjusted to close the loan exactly" : undefined,
       });
 
@@ -478,7 +542,7 @@ export interface PayoffDebt {
 }
 
 export interface PayoffMonth {
-  readonly month: number;
+  readonly month: Ordinal;
   readonly payments: readonly { readonly id: string; readonly amount: Money; readonly interest: Money }[];
   readonly totalPaid: Money;
   readonly remaining: Money;
@@ -488,7 +552,7 @@ export interface PayoffPlan {
   readonly strategy: "AVALANCHE" | "SNOWBALL";
   readonly months: readonly PayoffMonth[];
   readonly totalInterest: Money;
-  readonly monthsToClear: number;
+  readonly monthsToClear: Months;
   /** The order debts were cleared in — the visible difference between strategies. */
   readonly order: readonly string[];
 }
@@ -587,7 +651,7 @@ export function payoffPlan(
 
     const remaining = Money.total([...balances.values()], currency);
     months.push({
-      month,
+      month: Ordinal(month),
       payments,
       totalPaid: Money.total(payments.map((payment) => payment.amount), currency),
       remaining,
@@ -599,7 +663,7 @@ export function payoffPlan(
     strategy,
     months,
     totalInterest,
-    monthsToClear: months.length,
+    monthsToClear: Months(months.length),
     order: order.map((id) => byId.get(id)?.label ?? id),
   };
 }
@@ -612,7 +676,7 @@ export function comparePayoffStrategies(
   avalanche: PayoffPlan;
   snowball: PayoffPlan;
   interestSavedByAvalanche: Money;
-  monthsSavedByAvalanche: number;
+  monthsSavedByAvalanche: Months;
 } {
   const avalanche = payoffPlan(debts, monthlyBudget, "AVALANCHE");
   const snowball = payoffPlan(debts, monthlyBudget, "SNOWBALL");
@@ -620,7 +684,8 @@ export function comparePayoffStrategies(
     avalanche,
     snowball,
     interestSavedByAvalanche: snowball.totalInterest.minus(avalanche.totalInterest),
-    monthsSavedByAvalanche: snowball.monthsToClear - avalanche.monthsToClear,
+    // Avalanche pays the least interest from the same budget, so it never clears later.
+    monthsSavedByAvalanche: Months(snowball.monthsToClear - avalanche.monthsToClear),
   };
 }
 
@@ -631,7 +696,7 @@ export interface StoredLoanTerms {
   readonly kind: LoanKind;
   readonly principal: Money;
   readonly annualRate: Rate;
-  readonly periods: number;
+  readonly periods: Count;
   readonly frequency: PaymentFrequency;
   readonly disbursedOn: CalendarDate;
   readonly firstPaymentOn: CalendarDate | null;
@@ -654,7 +719,7 @@ export interface LoanTermsInput {
   readonly kind: LoanKind;
   readonly principal: Money;
   readonly annualRate: Rate;
-  readonly periods: number;
+  readonly periods: Count;
   readonly frequency: PaymentFrequency;
   readonly disbursedOn: CalendarDate;
   readonly firstPaymentOn?: CalendarDate;

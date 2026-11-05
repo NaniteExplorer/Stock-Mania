@@ -20,6 +20,7 @@
  * whether the prices live in the database or in a test's `Map`.
  */
 
+import { Count } from "@/core/units";
 import { Err, Ok } from "@/core/kernel";
 import { Currency } from "@/core/money";
 import { CalendarDate } from "@/core/time";
@@ -73,7 +74,7 @@ export class InMemoryManualPriceStore implements ManualPriceStore {
 
 const ALWAYS_HEALTHY: HealthStatus = {
   state: "HEALTHY",
-  consecutiveFailures: 0,
+  consecutiveFailures: Count(0),
   lastError: null,
   circuitOpenUntil: null,
 };

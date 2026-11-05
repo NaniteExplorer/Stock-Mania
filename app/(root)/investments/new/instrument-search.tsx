@@ -30,6 +30,7 @@ import { Check, Search, TriangleAlert } from "lucide-react";
 import type { InvestmentSearchCandidate, InvestmentSearchResult } from "../catalog-actions";
 import { searchInstrumentCatalogAction } from "../catalog-actions";
 import { addableReference } from "../entry-identity";
+import { Input } from "../../../../components/ui/input";
 
 export interface ConfirmedInstrument {
   candidate: InvestmentSearchCandidate | null;
@@ -164,12 +165,12 @@ export default function InstrumentSearch({
     <div className="space-y-4">
       <div className="flex gap-2">
         <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-500" aria-hidden />
-          <input
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-(--fg-muted)" aria-hidden />
+          <Input
             id="instrumentSearch"
             aria-label="Search the instrument catalogue"
             aria-describedby="instrument-search-hint"
-            value={query}
+           value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "ArrowDown" && candidates.length > 0) {
@@ -192,19 +193,19 @@ export default function InstrumentSearch({
             aria-controls={listboxId}
             aria-activedescendant={open ? `instrument-option-${highlighted}` : undefined}
             autoComplete="off"
-            /* `form-input` carries its own `px-3.5`, which ties on specificity
+            /* The library Input carries its own horizontal padding, which ties on specificity
                with a plain `pl-9` and wins on order — the magnifier then sits on
                top of the first character. The important flag settles it. */
-            className="form-input w-full !pl-9 !pr-10"
+            className="w-full !pl-9 !pr-10"
             placeholder="NSE ticker, AMFI scheme code, ISIN or US ticker"
-          />
+         />
           {/* The spinner is a static ring under reduced motion: `motion-safe`
               leaves it still for anyone who asked for less movement. */}
           {pending && (
             <span
               aria-hidden
-              className="absolute right-3 top-1/2 size-4 -translate-y-1/2 rounded-full border-2 border-gray-600 border-t-brand-400 motion-safe:animate-spin"
-            />
+              className="absolute right-3 top-1/2 size-4 -translate-y-1/2 rounded-full border-2 border-(--border) border-t-brand-400 motion-safe:animate-spin"
+           />
           )}
         </div>
         <button type="button" className="ghost-btn h-10 px-4 text-xs" disabled={pending} onClick={submitSearch}>
@@ -212,7 +213,7 @@ export default function InstrumentSearch({
         </button>
       </div>
 
-      <p id="instrument-search-hint" className="text-xs text-gray-500">
+      <p id="instrument-search-hint" className="text-xs text-(--fg-muted)">
         Results appear as you type, from {MIN_QUERY} characters. Search covers Indian exchange listings, AMFI mutual
         funds and SEC-listed US companies. Names and ambiguous matches always need your confirmation, and a listing no
         price source has accepted cannot be added.
@@ -230,10 +231,10 @@ export default function InstrumentSearch({
       </p>
 
       {failure && (
-        <div role="alert" className="flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/[0.06] p-3">
-          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-red-400" aria-hidden />
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-(--loss)/40 bg-(--loss)/[0.06] p-3">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0 text-(--loss)" aria-hidden />
           <div className="min-w-0">
-            <p className="text-sm text-red-300">{failure}</p>
+            <p className="text-sm text-(--loss)">{failure}</p>
             <div className="mt-2 flex flex-wrap gap-2">
               <button type="button" className="ghost-btn h-9 px-3 text-xs" onClick={submitSearch}>
                 Retry
@@ -247,30 +248,30 @@ export default function InstrumentSearch({
       )}
 
       {result && (
-        <div className="rounded-lg border border-gray-600/70 p-3">
+        <div className="rounded-lg border border-(--border)/70 p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-medium text-gray-100">
+            <p className="text-sm font-medium text-(--fg)">
               {result.matchState === "EXACT"
                 ? "Exact symbol or ISIN match"
                 : result.matchState === "CONFIRM"
                   ? "Choose the matching listing"
                   : "Manual entry"}
             </p>
-            <p className="text-xs text-gray-500">
+            <p className="text-xs text-(--fg-muted)">
               Cache {result.cache.status.toLowerCase()}
               {result.cache.stale ? " · refresh due" : ""}
             </p>
           </div>
 
           {candidates.length === 0 && !pending && (
-            <p className="mt-3 rounded-md border border-gray-600/70 p-3 text-sm text-gray-500">
+            <p className="mt-3 rounded-md border border-(--border)/70 p-3 text-sm text-(--fg-muted)">
               Nothing in the catalogue matches “{query.trim()}”. Try the exchange ticker or the ISIN, or record the
               identity manually below.
             </p>
           )}
 
           {candidates.length > 0 && (
-            <ul id={listboxId} role="listbox" className="mt-3 divide-y divide-gray-600/60 rounded-md border border-gray-600/70">
+            <ul id={listboxId} role="listbox" className="mt-3 divide-y divide-(--border)/60 rounded-md border border-(--border)/70">
               {candidates.map((candidate, index) => {
                 const reference = addableReference(candidate);
                 return (
@@ -280,7 +281,7 @@ export default function InstrumentSearch({
                     role="option"
                     aria-selected={staged?.listing.id === candidate.listing.id}
                     aria-disabled={!reference.ok}
-                    className={index === highlighted ? "bg-gray-700/50" : undefined}
+                    className={index === highlighted ? "bg-(--bg-hover)/50" : undefined}
                   >
                     <button
                       type="button"
@@ -291,16 +292,16 @@ export default function InstrumentSearch({
                     >
                       <span className="min-w-0">
                         <span className="flex flex-wrap items-center gap-2">
-                          <span className={reference.ok ? "font-medium text-gray-100" : "font-medium text-gray-400 line-through"}>
+                          <span className={reference.ok ? "font-medium text-(--fg)" : "font-medium text-(--fg-secondary) line-through"}>
                             {candidate.listing.symbol}
                           </span>
                           {/* Exchange and currency on every row, never only on
                               the staged one: RELIANCE on NSE and RELIANCE on BSE
                               are two rows that otherwise read identically. */}
-                          <span className="rounded border border-gray-600 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-400">
+                          <span className="rounded border border-(--border) px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-(--fg-secondary)">
                             {candidate.listing.exchange}
                           </span>
-                          <span className="rounded border border-gray-600 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-gray-400">
+                          <span className="rounded border border-(--border) px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-(--fg-secondary)">
                             {candidate.listing.currency}
                           </span>
                           {!reference.ok && (
@@ -308,25 +309,25 @@ export default function InstrumentSearch({
                                would price it" are different facts. Rendering the
                                queue as a refusal is what makes a perfectly
                                addable stock look permanently unaddable. */
-                            <span className="rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">
+                            <span className="rounded border border-(--warn)/50 bg-(--warn)/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-(--warn)">
                               {candidate.quoteChecked ? "Not priceable" : "Checking price source"}
                             </span>
                           )}
                           {candidate.quoteStale && (
-                            <span className="rounded border border-amber-500/50 bg-amber-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-amber-300">
+                            <span className="rounded border border-(--warn)/50 bg-(--warn)/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-(--warn)">
                               Quote stale
                             </span>
                           )}
                         </span>
-                        <span className="mt-1 block text-xs text-gray-500">
+                        <span className="mt-1 block text-xs text-(--fg-muted)">
                           {candidate.name} · {candidate.instrumentType}
                           {candidate.firstTradeDate ? ` · from ${candidate.firstTradeDate}` : ""}
                         </span>
-                        {candidate.isin && <span className="block text-xs text-gray-600">{candidate.isin}</span>}
-                        {!reference.ok && <span className="mt-1 block text-xs text-amber-400/90">{reference.reason}</span>}
+                        {candidate.isin && <span className="block text-xs text-(--fg-disabled)">{candidate.isin}</span>}
+                        {!reference.ok && <span className="mt-1 block text-xs text-(--warn)/90">{reference.reason}</span>}
                       </span>
                       {staged?.listing.id === candidate.listing.id && reference.ok && (
-                        <Check className="size-4 shrink-0 text-green-500" aria-hidden />
+                        <Check className="size-4 shrink-0 text-(--gain)" aria-hidden />
                       )}
                     </button>
                   </li>
@@ -336,12 +337,12 @@ export default function InstrumentSearch({
           )}
 
           {staged && (
-            <div className="mt-3 rounded-md bg-gray-700/40 p-3">
-              <p className="text-sm font-medium text-gray-100">{staged.listing.symbol} selected</p>
-              <p className="text-xs text-gray-500">
+            <div className="mt-3 rounded-md bg-(--bg-hover)/40 p-3">
+              <p className="text-sm font-medium text-(--fg)">{staged.listing.symbol} selected</p>
+              <p className="text-xs text-(--fg-muted)">
                 {staged.name} · {staged.listing.exchange} · {staged.listing.currency}
               </p>
-              <p className="mt-1 text-xs text-gray-500">
+              <p className="mt-1 text-xs text-(--fg-muted)">
                 {stagedReference?.ok
                   ? `Quote reference: ${stagedReference.quoteRef}. This reference never fills the execution price.`
                   : (stagedReference?.reason ?? "")}

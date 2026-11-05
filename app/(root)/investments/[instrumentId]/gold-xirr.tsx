@@ -12,7 +12,7 @@ import { formatPercent } from "@/ui/format";
 export function XirrValue({ value, size = "md" }: { value: Xirr; size?: "sm" | "md" }) {
   if (value.ok) {
     const percent = value.rate.percent;
-    const tone = percent.isNegative ? "text-red-500" : "text-green-500";
+    const tone = percent.isNegative ? "text-(--loss)" : "text-(--gain)";
     return (
       <span className={`tnum font-semibold ${tone} ${size === "sm" ? "text-sm" : "text-xl"}`}>
         {formatPercent(percent)}
@@ -21,7 +21,7 @@ export function XirrValue({ value, size = "md" }: { value: Xirr; size?: "sm" | "
     );
   }
   return (
-    <span className={`text-gray-400 ${size === "sm" ? "text-xs" : "text-xs"}`}>
+    <span className={`text-(--fg-secondary) ${size === "sm" ? "text-xs" : "text-xs"}`}>
       <span className="sr-only">No return could be computed. </span>
       {value.because}
     </span>
@@ -31,7 +31,7 @@ export function XirrValue({ value, size = "md" }: { value: Xirr; size?: "sm" | "
 /** The provenance the numbers were computed against. Never optional. */
 export function AsOfStamp({ asOf, source }: { asOf: string; source: string }) {
   return (
-    <span className="text-xs text-gray-500">
+    <span className="text-xs text-(--fg-muted)">
       as of {asOf} · {source}
     </span>
   );

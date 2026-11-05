@@ -14,9 +14,10 @@
  * other path from a row to the ledger.
  */
 
-import { AppError, Clock, Err, NotFoundError, Ok, Result, UseCase, UserId, ValidationError, newUuid } from "@/core/kernel";
+import { AppError, Clock, Err, NotFoundError, Ok, Query, Result, UseCase, UserId, ValidationError, newUuid } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { Percentage, Quantity } from "@/core/numeric";
+import { Count, Ordinal } from "@/core/units";
 import { CalendarDate, DateRange } from "@/core/time";
 import { Account, AccountCode, AccountId, AccountRepository, AccountSubtype, AccountType, SystemAccountCodes } from "@/domain/accounts";
 import { BalanceSource, BillingCycle, CardMovement, CardStatement, CardTerms, CardTermsRepository, CashAsset, CreditCard, LiquidPosition, RewardPointBalance, liquidPositions, totalLiquid } from "@/domain/assets";
@@ -26,6 +27,7 @@ import {
   Categoriser,
   CategoriserContext,
   CategoryRuleRepository,
+  type CoverageGap,
   DuplicateMatcher,
   ImportBatchRecord,
   type ImportDiagnostics,
@@ -40,7 +42,9 @@ import {
   StagedRow,
   StatementInput,
   StatementMovement,
+  coverageGap,
   fingerprintOf,
+  impliedOpeningBalance,
   normalizeNarration,
   reconcile,
   resolveBudgets,
@@ -312,7 +316,7 @@ export class RecordAccountTransfer
  * account's recent history: an overlap or a gap is with the statements around
  * it, not with one from four years ago.
  */
-const HISTORY_DEPTH = 200;
+const HISTORY_DEPTH = Count(200);
 
 /**
  * A column mapping as a sentence, for comparing one import against another.
@@ -614,7 +618,7 @@ export class StageStatementImport
     const existing = await this.journal.find(input.userId, {
       accountIds: [input.accountId],
       range: window,
-      limit: 5000,
+      limit: Count(5000),
     });
     const targets = StageStatementImport.targetsFor(existing.transactions, input.accountId);
 
@@ -670,7 +674,7 @@ export class StageStatementImport
         matchedTransactionId: outcome.matchedTransactionId,
         // Zero means "the fingerprint already exists", which is a stronger claim
         // than any of the three sweeps and needs to be distinguishable from them.
-        matchPass: fingerprintSeen ? 0 : outcome.pass,
+        matchPass: fingerprintSeen ? Ordinal(0) : outcome.pass,
         rejectedReason: null,
       };
     });
@@ -687,10 +691,10 @@ export class StageStatementImport
       accountId: input.accountId,
       fileName: input.fileName,
       fileHash: input.fileHash,
-      rowsRead: staged.length + unreadable,
-      rowsImported: 0,
-      rowsDuplicate: staged.filter((row) => row.status === "MATCHED").length,
-      rowsFailed: unreadable,
+      rowsRead: Count(staged.length + unreadable),
+      rowsImported: Count(0),
+      rowsDuplicate: Count(staged.filter((row) => row.status === "MATCHED").length),
+      rowsFailed: Count(unreadable),
       // Not COMPLETED: nothing has been posted yet, and a batch that says
       // "completed" before the user has reviewed it is a lie the UI would repeat.
       status: "PARTIAL",
@@ -703,7 +707,7 @@ export class StageStatementImport
         input.diagnostics ?? {
           verdict: {
             trust: "UNVERIFIED",
-            checked: 0,
+            checked: Count(0),
             breaks: [],
             mapping: {},
             closingBalance: null,
@@ -1193,7 +1197,7 @@ export class PostImportBatch
     let posted = 0;
     const problems: { rowId: string; reason: string }[] = [];
     const opening = await this.impliedOpeningBalance(input.userId, account, rows);
-    if (opening && opening.isPositive) {
+    if (opening && !opening.isZero) {
       const equity = await this.accounts.findByCode(
         input.userId,
         AccountCode.parse(SystemAccountCodes.openingBalances),
@@ -1209,9 +1213,9 @@ export class PostImportBatch
       const firstRow = [...rows].sort((a, b) => a.date.compareTo(b.date) || a.rowIndex - b.rowIndex)[0];
       const result = await this.record.execute({
         userId: input.userId,
-        fromAccountId: equity.id,
-        toAccountId: account.id,
-        amount: opening,
+        fromAccountId: opening.isPositive ? equity.id : account.id,
+        toAccountId: opening.isPositive ? account.id : equity.id,
+        amount: opening.isPositive ? opening : opening.negated(),
         postedOn: firstRow.date.plusDays(-1),
         narration: `Opening balance from ${batch.fileName}`,
         source: "IMPORT",
@@ -1219,7 +1223,7 @@ export class PostImportBatch
         // The unique live fingerprint makes concurrent clicks idempotent. Row
         // postings already have fingerprints; the inferred opening previously
         // did not, so two simultaneous post actions could create it twice.
-        fingerprint: `import-opening:${input.batchId}`,
+        fingerprint: importOpeningFingerprint(input.batchId),
       });
       if (!result.ok) {
         problems.push({ rowId: firstRow.id, reason: result.error.message });
@@ -1296,7 +1300,7 @@ export class PostImportBatch
      */
     await this.imports.setBatchOutcome(input.userId, input.batchId, {
       status: problems.length === 0 && !stillPending ? "COMPLETED" : "PARTIAL",
-      rowsImported: importedRows,
+      rowsImported: Count(importedRows),
       completedAt: problems.length === 0 && !stillPending ? this.clock.now() : undefined,
     });
 
@@ -1334,10 +1338,10 @@ export class PostImportBatch
       statementClosing: closing,
       ledgerClosing: await this.balances.balanceOf(userId, batch.accountId, asOf),
       asOf,
-      unmatchedStatementRows: rows.filter(
+      unmatchedStatementRows: Count(rows.filter(
         (row) => row.status === "PARSED" || row.status === "DRAFT",
-      ).length,
-      unexplainedTransactions: 0,
+      ).length),
+      unexplainedTransactions: Count(0),
     });
   }
 
@@ -1407,7 +1411,7 @@ export class UndoImport
     const reversed = await this.journal.softDeleteByImportBatch(input.userId, input.batchId, at);
     await this.imports.setBatchOutcome(input.userId, input.batchId, {
       status: "UNDONE",
-      rowsImported: 0,
+      rowsImported: Count(0),
       completedAt: at,
     });
 
@@ -1461,8 +1465,8 @@ export class ReconcileAccount implements UseCase<ReconcileAccountInput, Reconcil
         statementClosing: input.statementClosing,
         ledgerClosing,
         asOf: input.asOf,
-        unmatchedStatementRows: unmatched,
-        unexplainedTransactions: 0,
+        unmatchedStatementRows: Count(unmatched),
+        unexplainedTransactions: Count(0),
       }),
     );
   }
@@ -1795,7 +1799,7 @@ export class ViewCard implements UseCase<CardDetailInput, CardDetail> {
       return Err(new ValidationError(`${account.displayName} is not a credit card.`));
     }
 
-    const cycles = card.recentCycles(input.asOf, input.cycles ?? 6);
+    const cycles = card.recentCycles(input.asOf, Count(input.cycles ?? 6));
     const statements = await Promise.all(
       cycles.map((cycle) =>
         buildCardStatement({
@@ -1852,7 +1856,7 @@ async function buildCardStatement(context: {
 
   const [opening, page] = await Promise.all([
     balances.balanceOf(userId, card.id, cycle.from.plusDays(-1)),
-    journal.find(userId, { accountIds: [card.id], range: cycle.range, limit: 5000 }),
+    journal.find(userId, { accountIds: [card.id], range: cycle.range, limit: Count(5000) }),
   ]);
 
   const movements: CardMovement[] = [];
@@ -2048,6 +2052,155 @@ export class AccrueCardCharges
 
     return Ok({ interest: finance.interest, fees, gst, transactionIds });
   }
+}
+
+/* ═══ AccountCoverageGaps ═════════════════════════════════════════════ */
+
+/** The fingerprint `PostImportBatch` gives the opening balance it books for a batch. */
+export function importOpeningFingerprint(batchId: string): string {
+  return `import-opening:${batchId}`;
+}
+
+/** One live bank-statement batch, checked against the ledger it lands in. */
+export interface StatementCoverage {
+  readonly batchId: string;
+  /** The first date the statement covers. */
+  readonly resumesOn: CalendarDate;
+  /** What the statement says it inherited the day before `resumesOn`. */
+  readonly impliedOpening: Money;
+  /** The ledger on the day before `resumesOn`, everything included. */
+  readonly ledgerBalance: Money;
+  /** The same figure without this batch's own booked opening entry. */
+  readonly ledgerBeforeOwnOpening: Money;
+  /** Newest posting before `resumesOn` other than this batch's own opening. */
+  readonly coveredTo: CalendarDate | null;
+  /** `null` when the statement starts where the ledger left off. */
+  readonly gap: CoverageGap | null;
+  /**
+   * The account had no history before this statement except the opening this
+   * batch booked for itself — DESIGN.md §9a's "first statement" line.
+   */
+  readonly isFirstStatement: boolean;
+}
+
+export interface AccountCoverageGapsOutput {
+  /** Every checkable statement, oldest first. */
+  readonly statements: readonly StatementCoverage[];
+  /** The gaps among them, oldest first. */
+  readonly gaps: readonly CoverageGap[];
+  /** Where history starts, when the oldest statement is the account's first. */
+  readonly firstStatementOn: CalendarDate | null;
+}
+
+const COVERAGE_BATCH_DEPTH = Count(200);
+const COVERAGE_EPOCH = CalendarDate.of(1900, 1, 1);
+
+/**
+ * Every coverage gap on one account (task 0.4.b, DESIGN.md §9a).
+ *
+ * Each live bank-statement batch is checked: the opening its first running-balance
+ * row implies, against what the ledger holds the day before. A batch with no
+ * running balance yields nothing — that is a format, not evidence.
+ *
+ * The batch's own opening entry (booked by {@link PostImportBatch} on an empty
+ * account) is left out when deciding whether there was earlier history: with it
+ * the ledger matches and the statement looks like any other; without it, an
+ * account whose only prior entry is that opening is a new account, and the
+ * account page says so instead of saying nothing. Read-only; nothing is posted.
+ */
+export class AccountCoverageGaps
+  implements Query<{ userId: UserId; accountId: AccountId }, AccountCoverageGapsOutput>
+{
+  constructor(
+    private readonly accounts: AccountRepository,
+    private readonly imports: ImportRepository,
+    private readonly journal: TransactionRepository,
+    private readonly balances: BalanceSource,
+  ) {}
+
+  async execute(input: { userId: UserId; accountId: AccountId }): Promise<AccountCoverageGapsOutput> {
+    const account = await this.accounts.findById(input.userId, input.accountId);
+    if (!account) return { statements: [], gaps: [], firstStatementOn: null };
+
+    const batches = (await this.imports.listBatches(input.userId, COVERAGE_BATCH_DEPTH)).filter(
+      (batch) =>
+        batch.kind === "BANK_STATEMENT" &&
+        batch.accountId?.equals(account.id) &&
+        batch.status !== "UNDONE" &&
+        batch.status !== "FAILED",
+    );
+
+    const checked = await Promise.all(batches.map((batch) => this.check(input.userId, account, batch)));
+    const statements = checked
+      .filter((statement): statement is StatementCoverage => statement !== null)
+      .sort((a, b) => a.resumesOn.compareTo(b.resumesOn) || (a.batchId < b.batchId ? -1 : 1));
+
+    return {
+      statements,
+      gaps: statements.flatMap((statement) => (statement.gap ? [statement.gap] : [])),
+      firstStatementOn: statements.find((statement) => statement.isFirstStatement)?.resumesOn ?? null,
+    };
+  }
+
+  private async check(
+    userId: UserId,
+    account: Account,
+    batch: ImportBatchRecord,
+  ): Promise<StatementCoverage | null> {
+    const rows = [...(await this.imports.listRows(userId, batch.id))].sort(
+      (a, b) => a.date.compareTo(b.date) || a.rowIndex - b.rowIndex,
+    );
+    if (rows.length === 0) return null;
+    const implied = impliedOpeningBalance(rows);
+    if (!implied) return null;
+
+    const resumesOn = rows[0].date;
+    const dayBefore = resumesOn.plusDays(-1);
+    const searchable = dayBefore.compareTo(COVERAGE_EPOCH) >= 0;
+    const [ledgerBalance, earlier, own] = await Promise.all([
+      this.balances.balanceOf(userId, account.id, dayBefore),
+      // Two, not one: at most one of them is this batch's own opening.
+      searchable
+        ? this.journal.find(userId, { accountIds: [account.id], range: DateRange.of(COVERAGE_EPOCH, dayBefore), limit: Count(2) })
+        : null,
+      searchable
+        ? this.journal.find(userId, { accountIds: [account.id], importBatchId: batch.id, range: DateRange.of(dayBefore, dayBefore) })
+        : null,
+    ]);
+
+    const fingerprint = importOpeningFingerprint(batch.id);
+    const opening = own?.transactions.find((txn) => txn.context.fingerprint === fingerprint) ?? null;
+    const ownEffect = opening ? signedEffectOn(opening, account) : Money.zero(ledgerBalance.currency);
+    const ledgerBeforeOwnOpening = ledgerBalance.minus(ownEffect);
+    const coveredTo =
+      earlier?.transactions.find((txn) => !opening || !txn.id.equals(opening.id))?.txnDate ?? null;
+
+    const gap = coverageGap({ coveredTo, resumesOn, ledgerBalance, impliedOpening: implied });
+    return {
+      batchId: batch.id,
+      resumesOn,
+      impliedOpening: implied,
+      ledgerBalance,
+      ledgerBeforeOwnOpening,
+      coveredTo,
+      gap,
+      // A mismatch still gets the full notice (§9a "known hole"); only an account
+      // whose ledger was empty before this statement's own opening is "new".
+      isFirstStatement: gap === null && coveredTo === null && ledgerBeforeOwnOpening.isZero,
+    };
+  }
+}
+
+/** What a transaction did to one account's balance, in that account's own sign. */
+function signedEffectOn(txn: Transaction, account: Account): Money {
+  const increasesOnDebit = account.type.normalBalance === "DEBIT";
+  return txn
+    .postings()
+    .filter((posting) => posting.accountId.equals(account.id))
+    .reduce(
+      (sum, posting) => sum.plus(posting.isDebit === increasesOnDebit ? posting.amount : posting.amount.negated()),
+      Money.zero(account.currency),
+    );
 }
 
 /* ═══ Re-exports for the UI layer ═════════════════════════════════════ */

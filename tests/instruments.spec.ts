@@ -135,8 +135,9 @@ const KIND_LITERALS = MarketInstrument.kinds()
   .map((kind) => `"${kind}"`);
 const offenders: string[] = [];
 for (const directory of ["src/domain", "src/app"]) {
-  for (const file of readdirSync(directory)) {
-    if (file === "instruments.ts") continue;
+  // Recursive: subfolders such as src/domain/scoring/ are held to the same rule.
+  for (const file of readdirSync(directory, { recursive: true, encoding: "utf8" })) {
+    if (!file.endsWith(".ts") || file === "instruments.ts") continue;
     const source = readFileSync(`${directory}/${file}`, "utf8");
     for (const literal of KIND_LITERALS) {
       if (source.includes(`=== ${literal}`) || source.includes(`case ${literal}`)) {
@@ -363,9 +364,16 @@ throws(
 );
 
 check(
-  "a schema is published per kind, so a form can be generated from it",
-  MarketInstrument.metadataSchemaFor("OPTION").safeParse({}).success,
-  false,
+  "per-kind metadata rules are published, so a form can validate against them",
+  MarketInstrument.metadataIssuesFor("OPTION", {}).length > 0,
+  true,
+);
+check(
+  "a fully specified option passes the published rules",
+  MarketInstrument.metadataIssuesFor("OPTION", {
+    underlyingSymbol: "NIFTY", right: "CALL", strike: "22500.55", expiry: "2026-12-31", lotSize: 50,
+  }).length,
+  0,
 );
 
 section("bad construction is refused");

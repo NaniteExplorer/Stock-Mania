@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { BriefcaseBusiness } from "lucide-react";
 import { connection } from "next/server";
 import { CalendarDate } from "@/core/time";
 import type { InvestmentWorkspaceOutput } from "@/app/investing.usecases";
-import { Card, EmptyState, PageHeader, Pill } from "@/ui/primitives";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { Page as Shell, Masthead, Panel } from "../../../../components/ui/page-shell";
+import { Banner } from "../../../../components/ui/banner";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 import HoldingsTable, { type HoldingStatusFilter } from "./holdings-table";
 
@@ -22,39 +23,34 @@ export default async function Page({
 
   if (!workspace) {
     return (
-      <>
-        <PageHeader
+      <Shell>
+        <Masthead
           title="Holdings"
-          subtitle="Open positions appear here once a trade creates units and cost basis."
-          badge={<Pill tone="brand">Holdings</Pill>}
-          action={<Link href="/investments/new" className="primary-btn h-10 px-4 text-xs">Add investment</Link>}
+          side={<><StatusBadge tone="accent">Holdings</StatusBadge><Link href="/investments/new" className="primary-btn h-10 px-4 text-xs">Add investment</Link></>}
         />
-        <section className="panel p-0">
-          <EmptyState
-            icon={BriefcaseBusiness}
-            title="No holdings yet"
-            body="Register an investment and record the purchase to create the first holding row."
-          />
-        </section>
-      </>
+        <p className="text-sm text-(--fg-muted)">Open positions appear here once a trade creates units and cost basis.</p>
+        <Banner title="No holdings yet">
+          <p>Register an investment and record the purchase to create the first holding row.</p>
+        </Banner>
+      </Shell>
     );
   }
 
   return (
-    <>
-      <PageHeader
+    <Shell>
+      <Masthead
         title="Holdings"
-        subtitle="Search positions by symbol, name or platform, then open the durable holding record."
-        badge={<Pill tone={workspace.dataQuality.status === "COMPLETE" ? "brand" : "neutral"}>{workspace.dataQuality.status.toLowerCase()}</Pill>}
+        side={<StatusBadge tone={workspace.dataQuality.status === "COMPLETE" ? "accent" : "neutral"}>{workspace.dataQuality.status.toLowerCase()}</StatusBadge>}
       />
+      <p className="text-sm text-(--fg-muted)">Search positions by symbol, name or platform, then open the durable holding record.</p>
 
       {workspace.dataQuality.status === "PARTIAL" && (
-        <Card className="mb-6" title="Complete totals are unavailable">
-          <p className="text-sm text-gray-300">
+        <Panel title="Complete totals are unavailable">
+          <p className="text-sm text-(--fg-secondary)">
             {workspace.dataQuality.unpricedPositions.concat(workspace.dataQuality.unconvertedPositions).join(", ")}
             {" "}need a price or FX conversion before a complete portfolio total can be shown.
           </p>
-        </Card>
+        </Panel>
       )}
 
       <HoldingsTable
@@ -63,7 +59,7 @@ export default async function Page({
         status={parseStatus(params.status)}
         kind={params.kind ?? ""}
       />
-    </>
+    </Shell>
   );
 }
 

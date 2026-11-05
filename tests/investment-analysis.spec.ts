@@ -1,3 +1,4 @@
+import { Count } from "@/core/units";
 import { AccountId } from "@/domain/accounts";
 import { ViewInvestmentAnalysis, ViewInvestmentTracker } from "@/app/investment-analysis.usecases";
 import { FixedClock, UserId } from "@/core/kernel";
@@ -32,7 +33,7 @@ class Instruments implements InstrumentRepository {
   async isSymbolReserved() { return false; }
   async save() {}
   async softDelete() {}
-  async countTrades() { return 0; }
+  async countTrades() { return Count(0); }
 }
 
 async function main() {

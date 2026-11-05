@@ -1,0 +1,10 @@
+.chart{display:block;width:100%;height:auto}
+.outer{stroke:none}
+.middle{fill:var(--c1);fill-opacity:.16;stroke:none}
+.inner{fill:var(--c1);fill-opacity:.32;stroke:none}
+.median{fill:none;stroke:var(--c1);stroke-width:2}
+.target{stroke:var(--fg-muted);stroke-width:1;stroke-dasharray:4 3}
+.axis{font-size:11px;fill:var(--fg-secondary)}
+.headline{margin:0;font-size:var(--fs-sec);color:var(--fg)}
+.caveat{margin:0;font-size:var(--fs-sec);color:var(--fg-secondary)}
+.reasons{margin:0;padding-left:18px}

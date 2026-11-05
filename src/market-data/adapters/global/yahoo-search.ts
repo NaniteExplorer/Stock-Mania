@@ -13,6 +13,7 @@
  * otherwise offers futures, options and currencies for an equity query.
  */
 
+import { Count, Millis } from "@/core/units";
 import { Ok } from "@/core/kernel";
 import { Currency } from "@/core/money";
 import { RateLimitBudget } from "@/domain/pricing";
@@ -77,7 +78,7 @@ export class YahooSearchAdapter extends MarketDataSource implements SymbolSearch
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 20, perMillis: 60_000, burst: 4 };
+    return { requests: Count(20), perMillis: Millis(60_000), burst: Count(4) };
   }
 
   async search(query: SymbolSearchQuery): Promise<MarketDataResult<readonly SymbolCandidate[]>> {

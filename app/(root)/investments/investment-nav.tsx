@@ -33,8 +33,8 @@ export default function InvestmentNav() {
             className={cn(
               "focus-brand inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border px-3 text-sm transition-colors",
               active
-                ? "border-brand-500 bg-brand-500/10 text-gray-100"
-                : "border-gray-600 text-gray-400 hover:border-gray-500 hover:text-gray-100",
+                ? "border-brand-500 bg-brand-500/10 text-(--fg)"
+                : "border-(--border) text-(--fg-secondary) hover:border-(--border-control) hover:text-(--fg)",
             )}
           >
             <Icon className="h-4 w-4" aria-hidden />

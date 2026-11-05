@@ -14,6 +14,7 @@
  * `adjusted: true`: like Yahoo, the series is restated into post-split terms.
  */
 
+import { Count, Millis } from "@/core/units";
 import { Err } from "@/core/kernel";
 import { CalendarDate } from "@/core/time";
 import { ProviderError, RateLimitBudget } from "@/domain/pricing";
@@ -72,7 +73,7 @@ export class NasdaqChartHistoryAdapter extends MarketDataSource implements Histo
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 20, perMillis: 60_000, burst: 4 };
+    return { requests: Count(20), perMillis: Millis(60_000), burst: Count(4) };
   }
 
   async history(request: HistoryRequest): Promise<MarketDataResult<HistoricalSeries>> {

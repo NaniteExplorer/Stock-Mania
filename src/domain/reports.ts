@@ -18,6 +18,7 @@
 
 import { Money } from "@/core/money";
 import { Percentage } from "@/core/numeric";
+import { Months } from "@/core/units";
 import { CalendarDate, DateRange } from "@/core/time";
 import { AccountType, AccountTypeName } from "@/domain/accounts";
 
@@ -174,21 +175,38 @@ export function cashflowStatement(input: {
 
 /** Which section an account's movement belongs in. */
 export function cashflowCategoryFor(type: AccountTypeName, subtype: string | null): CashflowCategory {
-  if (type === "INCOME" || type === "EXPENSE") return "OPERATING";
-  if (type === "LIABILITY") return "FINANCING";
-  if (type === "EQUITY") return "FINANCING";
-  switch (subtype) {
-    case "DEPOSIT":
-    case "RETIREMENT":
-    case "BROKERAGE":
-    case "REAL_ESTATE":
-    case "PRECIOUS_METAL":
-    case "VEHICLE":
-      return "INVESTING";
-    default:
-      return "OPERATING";
-  }
+  const rule = CASHFLOW_BY_TYPE[type];
+  // `hasOwn`, because `subtype` is a free string: indexing a plain object with
+  // "constructor" would return an inherited function and call it a category.
+  return subtype !== null && Object.hasOwn(rule.bySubtype, subtype) ? rule.bySubtype[subtype] : rule.otherwise;
 }
+
+/**
+ * Investing, for an asset, is holding something that is not cash. Listed once,
+ * rather than as a `switch` (`RULES.md` §8.3).
+ */
+const INVESTING_ASSETS: Readonly<Record<string, CashflowCategory>> = {
+  DEPOSIT: "INVESTING",
+  RETIREMENT: "INVESTING",
+  BROKERAGE: "INVESTING",
+  REAL_ESTATE: "INVESTING",
+  PRECIOUS_METAL: "INVESTING",
+  VEHICLE: "INVESTING",
+};
+
+/** Exhaustive over account types: a new type fails to compile until it is placed. */
+const CASHFLOW_BY_TYPE: Readonly<
+  Record<
+    AccountTypeName,
+    { readonly bySubtype: Readonly<Record<string, CashflowCategory>>; readonly otherwise: CashflowCategory }
+  >
+> = {
+  INCOME: { bySubtype: {}, otherwise: "OPERATING" },
+  EXPENSE: { bySubtype: {}, otherwise: "OPERATING" },
+  LIABILITY: { bySubtype: {}, otherwise: "FINANCING" },
+  EQUITY: { bySubtype: {}, otherwise: "FINANCING" },
+  ASSET: { bySubtype: INVESTING_ASSETS, otherwise: "OPERATING" },
+};
 
 /* ═══ B02 ═════════════════════════════════════════════════════════════ */
 
@@ -250,7 +268,9 @@ export interface PersonalMetrics {
   /** Trailing mean of non-discretionary monthly spending. */
   readonly burnRate: Money | null;
   /** Months of liquid net worth at the burn rate. `null` when nothing is spent. */
-  readonly runwayMonths: number | null;
+  readonly runwayMonths: Months | null;
+  /** Deficit in spendable assets, stated separately from measured runway. */
+  readonly liquidShortfall: Money | null;
   /** Monthly debt payments over monthly gross income. */
   readonly debtToIncome: Percentage | null;
   readonly creditUtilisation: Percentage | null;
@@ -264,7 +284,13 @@ export interface MetricsInput {
   readonly periodExpenses: Money;
   /** Monthly non-discretionary expenses, most recent last. */
   readonly essentialMonthlyExpenses: readonly Money[];
-  readonly monthlyDebtPayments: Money;
+  /**
+   * Scheduled monthly debt service. **`null` means unmeasured, not zero.** A zero
+   * here is a claim that the person services no debt; `null` is the admission that
+   * we have not computed it. The two produce different output and must not be
+   * collapsed (`RULES.md` §3.1, §3.2).
+   */
+  readonly monthlyDebtPayments: Money | null;
   readonly monthlyGrossIncome: Money;
   readonly cardBalances: Money;
   readonly cardLimits: Money;
@@ -276,8 +302,11 @@ export interface MetricsInput {
  * Two of them are honest about not being answerable: `runwayMonths` is `null` when
  * nothing is being spent (dividing by zero would report infinite runway, which is
  * true and useless), and `debtToIncome` is `null` with no income rather than
- * infinite. Every one of these is a figure someone might make a decision on, and
- * "cannot say" is a better input to a decision than a number that means nothing.
+ * infinite, **and `null` again when debt payments are unmeasured rather than known
+ * to be zero**. Every one of these is a figure someone might make a decision on,
+ * and "cannot say" is a better input to a decision than a number that means
+ * nothing. A person with income and loans who is shown 0% reads it as solvency;
+ * that is the worst available failure, because it is confident and wrong.
  *
  * The **burn rate is trailing-mean over the supplied months**, and the caller
  * decides which expenses are non-discretionary — that judgement belongs to the
@@ -287,7 +316,7 @@ export function personalMetrics(input: MetricsInput): PersonalMetrics {
   const burnRate =
     input.essentialMonthlyExpenses.length === 0
       ? null
-      : Money.total(input.essentialMonthlyExpenses).dividedBy(
+      : Money.total(input.essentialMonthlyExpenses, input.liquidNetWorth.currency).dividedBy(
           BigInt(input.essentialMonthlyExpenses.length),
           "HALF_UP",
         );
@@ -295,19 +324,21 @@ export function personalMetrics(input: MetricsInput): PersonalMetrics {
   return {
     netWorth: input.netWorth,
     liquidNetWorth: input.liquidNetWorth,
+    liquidShortfall: input.liquidNetWorth.isNegative ? input.liquidNetWorth.negated() : null,
     savingsRate: input.periodIncome.isZero
       ? null
       : Percentage.ratio(input.periodIncome.minus(input.periodExpenses), input.periodIncome),
     burnRate,
     runwayMonths:
       burnRate && burnRate.isPositive
-        ? Number(
+        ? Months(input.liquidNetWorth.isNegative ? 0 : Number(
             (input.liquidNetWorth.minor * 100n) / burnRate.minor,
-          ) / 100
+          ) / 100)
         : null,
-    debtToIncome: input.monthlyGrossIncome.isZero
-      ? null
-      : Percentage.ratio(input.monthlyDebtPayments, input.monthlyGrossIncome),
+    debtToIncome:
+      input.monthlyDebtPayments === null || input.monthlyGrossIncome.isZero
+        ? null
+        : Percentage.ratio(input.monthlyDebtPayments, input.monthlyGrossIncome),
     creditUtilisation: input.cardLimits.isZero
       ? null
       : Percentage.ratio(input.cardBalances, input.cardLimits),
@@ -333,7 +364,8 @@ export function allocationByClass(balances: readonly ReportedBalance[]): readonl
   const buckets = new Map<string, Money>();
   for (const row of balances) {
     if (row.type !== "ASSET" || row.balance.isZero) continue;
-    const label = ASSET_CLASS_LABELS[row.subtype ?? "OTHER"] ?? "Other";
+    const key = row.subtype ?? "OTHER";
+    const label = Object.hasOwn(ASSET_CLASS_LABELS, key) ? ASSET_CLASS_LABELS[key] : "Other";
     buckets.set(label, (buckets.get(label) ?? Money.zero(row.balance.currency)).plus(row.balance));
   }
 
@@ -410,3 +442,22 @@ export const STATEMENT_ORDER: readonly AccountType[] = [
   AccountType.INCOME,
   AccountType.EXPENSE,
 ];
+
+/* ═══ Emergency fund (task 3.6) ═══════════════════════════════════════ */
+
+/**
+ * Months of essential expenses the liquid emergency fund covers, to two decimals
+ * (truncated, so the figure never overstates cover).
+ *
+ * **`null` when monthly expenses are unknown** (`null`) or not positive — never a
+ * zero-filled denominator and never a guessed one. A negative fund covers zero
+ * months. Mixed currencies are refused.
+ */
+export function emergencyFundMonths(liquidFund: Money, monthlyEssentialExpenses: Money | null): Months | null {
+  if (monthlyEssentialExpenses === null || !monthlyEssentialExpenses.isPositive) return null;
+  if (liquidFund.currency.code !== monthlyEssentialExpenses.currency.code) {
+    throw new RangeError("Emergency fund refused: the fund and the expenses are in different currencies.");
+  }
+  if (liquidFund.isNegative) return Months(0);
+  return Months(Number((liquidFund.minor * 100n) / monthlyEssentialExpenses.minor) / 100);
+}

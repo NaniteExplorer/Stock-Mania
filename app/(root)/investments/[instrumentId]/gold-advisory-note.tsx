@@ -9,13 +9,13 @@
 export default function GoldAdvisoryNote({ isLeased }: { isLeased: boolean }) {
   return (
     <aside
-      className="mb-6 rounded-lg border border-amber-600/40 bg-amber-500/5 px-4 py-3"
+      className="mb-6 rounded-lg border border-(--warn)/40 bg-(--warn)/5 px-4 py-3"
       aria-label="Regulatory advisory"
     >
-      <p className="text-xs font-semibold text-amber-500">
+      <p className="text-xs font-semibold text-(--warn)">
         Digital gold is unregulated — SEBI advisory, 8 November 2025
       </p>
-      <p className="mt-1 text-xs text-gray-400">
+      <p className="mt-1 text-xs text-(--fg-secondary)">
         Digital gold (also sold as e-gold or digital gold receipts) is neither a security nor
         a commodity derivative, so it falls outside SEBI&apos;s regulatory framework. No
         statutory investor protection applies: no exchange settlement guarantee, no investor

@@ -24,6 +24,7 @@ import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { SystemClock, UserId } from "@/core/kernel";
 import { CalendarDate, DateRange } from "@/core/time";
+import { Count } from "@/core/units";
 import { BalanceCalculator } from "@/domain/transactions";
 import { checkAccountingIdentity } from "@/domain/reports";
 import * as schema from "@/infra/db/schema";
@@ -158,7 +159,7 @@ async function main(): Promise<void> {
 
   /* ── Cutover readiness ─────────────────────────────────────────────── */
 
-  const everything = await journal.find(userId, { limit: 100_000 });
+  const everything = await journal.find(userId, { limit: Count(100_000) });
   const calculator = new BalanceCalculator();
   const today = CalendarDate.parse(new Date().toISOString().slice(0, 10));
   const sheet = await balances.balanceSheet(userId, today, { includeClosed: true });

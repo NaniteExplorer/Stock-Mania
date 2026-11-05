@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { InvestmentEvent } from "@/domain/investment-activity";
-import { MoneyText, Pill } from "@/ui/primitives";
+import { Panel } from "../../../../components/ui/page-shell";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "../../../../components/ui/table";
+import { FigureCell, FigureText } from "../../../../components/ui/data-cell";
 
 /**
  * The full record behind one holding: what was entered, what it cost, and what
@@ -23,15 +25,12 @@ export default function InvestmentActivity({
 }) {
   if (events.length === 0) {
     return (
-      <section className="panel mb-6 p-5" aria-labelledby="investment-activity-heading">
-        <h2 id="investment-activity-heading" className="text-sm font-semibold text-gray-100">
-          Transaction details
-        </h2>
-        <p className="mt-2 text-sm text-gray-500">
+      <Panel title="Transaction details">
+        <p className="text-sm text-(--fg-muted)">
           Nothing has been posted against this holding yet. Once a purchase, a sale or an
           income event is recorded, every leg of it is listed here.
         </p>
-      </section>
+      </Panel>
     );
   }
 
@@ -40,48 +39,39 @@ export default function InvestmentActivity({
   const ordered = [...events].reverse();
 
   return (
-    <section className="panel mb-6 p-0" aria-labelledby="investment-activity-heading">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-600 px-5 py-4">
-        <div>
-          <h2 id="investment-activity-heading" className="text-sm font-semibold text-gray-100">
-            Transaction details
-          </h2>
-          <p className="mt-1 text-xs text-gray-500">
-            Every event recorded against this holding, with its charges itemised and both
-            sides of the journal entry it wrote.
-          </p>
-        </div>
-        <Pill tone="neutral">{ordered.length} events</Pill>
-      </div>
-
-      <ul className="divide-y divide-gray-600/50">
+    <Panel
+      title="Transaction details"
+      description="Every event recorded against this holding, with its charges itemised and both sides of the journal entry it wrote."
+      actions={<span className="text-xs text-(--fg-muted)">{ordered.length} events</span>}
+    >
+      <ul className="divide-y divide-(--border)/50">
         {ordered.map((event) => (
-          <li key={event.transactionId} className="px-5 py-4">
+          <li key={event.transactionId} className="py-4 first:pt-0 last:pb-0">
             <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
               <div className="flex flex-wrap items-baseline gap-2">
-                <span className="tnum text-xs text-gray-400">{event.on.toISO()}</span>
+                <span className="tnum text-xs text-(--fg-secondary)">{event.on.toISO()}</span>
                 <EventKind event={event} />
-                <span className="text-sm text-gray-100">{event.description}</span>
+                <span className="text-sm text-(--fg)">{event.description}</span>
               </div>
               <div className="text-right">
-                <MoneyText value={event.netToHolding} tone="auto" />
-                <p className="text-[11px] text-gray-500">
+                <FigureText value={event.netToHolding} tone="change" />
+                <p className="text-[11px] text-(--fg-muted)">
                   {event.kind === "INCOME" ? "Income earned" : "Movement on this holding"}
                 </p>
               </div>
             </div>
 
             {event.quantity && event.pricePerUnit && (
-              <p className="mt-2 text-xs text-gray-400">
-                <span className="tnum text-gray-200">
+              <p className="mt-2 text-xs text-(--fg-secondary)">
+                <span className="tnum text-(--fg)">
                   {event.quantity.toDecimalString()}
                   {unit ?? ""}
                 </span>{" "}
-                at <MoneyText value={event.pricePerUnit} tone="neutral" /> each
+                at <FigureText value={event.pricePerUnit} /> each
                 {event.consideration && (
                   <>
                     {" "}
-                    = <MoneyText value={event.consideration} tone="neutral" /> before charges
+                    = <FigureText value={event.consideration} /> before charges
                   </>
                 )}
               </p>
@@ -92,13 +82,13 @@ export default function InvestmentActivity({
                 {event.charges.map((charge) => (
                   <span
                     key={charge.label}
-                    className="rounded-full border border-gray-600 px-2 py-0.5 text-[11px] text-gray-300"
+                    className="rounded-full border border-(--border) px-2 py-0.5 text-[11px] text-(--fg-secondary)"
                   >
-                    {charge.label} <MoneyText value={charge.amount} tone="neutral" />
+                    {charge.label} <FigureText value={charge.amount} />
                   </span>
                 ))}
-                <span className="text-[11px] text-gray-500">
-                  total <MoneyText value={event.chargeTotal} tone="neutral" />
+                <span className="text-[11px] text-(--fg-muted)">
+                  total <FigureText value={event.chargeTotal} />
                 </span>
               </div>
             )}
@@ -110,7 +100,7 @@ export default function InvestmentActivity({
              * making about a holding whose charges were simply never recorded.
              */}
             {event.kind === "TRADE" && event.charges.length === 0 && (
-              <p className="mt-2 text-[11px] text-gray-500">
+              <p className="mt-2 text-[11px] text-(--fg-muted)">
                 No charges were recorded against this trade.
               </p>
             )}
@@ -119,53 +109,51 @@ export default function InvestmentActivity({
               <summary className="cursor-pointer text-xs text-brand-400 hover:underline">
                 Journal entry — {event.postings.length} postings
               </summary>
-              <div className="table-scroll mt-2">
-                <table className="w-full text-xs">
-                  <caption className="sr-only">
+              <div className="mt-2">
+                <Table density="compact">
+                  <TableCaption className="sr-only">
                     Journal postings for {event.description}
-                  </caption>
-                  <thead>
-                    <tr className="border-b border-gray-600">
-                      <th scope="col" className="metric-label px-3 py-2 text-left">
+                  </TableCaption>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>
                         Account
-                      </th>
-                      <th scope="col" className="metric-label px-3 py-2 text-left">
+                      </TableHead>
+                      <TableHead>
                         Side
-                      </th>
-                      <th scope="col" className="metric-label px-3 py-2 text-right">
+                      </TableHead>
+                      <TableHead className="text-right">
                         Amount
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
                     {event.postings.map((posting, index) => (
-                      <tr
+                      <TableRow
                         key={`${event.transactionId}-${index}`}
-                        className="border-b border-gray-600/40 last:border-0"
+                        className="border-b border-(--border)/40 last:border-0"
                       >
-                        <td className="px-3 py-2">
-                          <span className="text-gray-200">{posting.accountName}</span>
-                          <span className="ml-2 text-[11px] text-gray-500">
+                        <TableCell>
+                          <span className="text-(--fg)">{posting.accountName}</span>
+                          <span className="ml-2 text-[11px] text-(--fg-muted)">
                             {posting.accountCode}
                           </span>
                           {posting.memo && (
-                            <p className="text-[11px] text-gray-500">{posting.memo}</p>
+                            <p className="text-[11px] text-(--fg-muted)">{posting.memo}</p>
                           )}
-                        </td>
-                        <td className="px-3 py-2 text-gray-400">
+                        </TableCell>
+                        <TableCell className="text-(--fg-secondary)">
                           {posting.direction === "DEBIT" ? "Debit" : "Credit"}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <MoneyText value={posting.amount} tone="neutral" />
-                        </td>
-                      </tr>
+                        </TableCell>
+                        <FigureCell value={posting.amount} />
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
             </details>
 
-            <p className="mt-2 text-[11px] text-gray-500">
+            <p className="mt-2 text-[11px] text-(--fg-muted)">
               {sourceLabel(event.origin.source)}
               {event.origin.reference && <> · ref {event.origin.reference}</>}
               {event.origin.importBatchId && (
@@ -184,7 +172,7 @@ export default function InvestmentActivity({
           </li>
         ))}
       </ul>
-    </section>
+    </Panel>
   );
 }
 
@@ -194,8 +182,8 @@ function EventKind({ event }: { event: InvestmentEvent }) {
       <span
         className={
           event.side === "BUY"
-            ? "rounded-full border border-green-600/50 px-2 py-0.5 text-[11px] text-green-500"
-            : "rounded-full border border-amber-600/50 px-2 py-0.5 text-[11px] text-amber-500"
+            ? "rounded-full border border-(--gain)/50 px-2 py-0.5 text-[11px] text-(--gain)"
+            : "rounded-full border border-(--warn)/50 px-2 py-0.5 text-[11px] text-(--warn)"
         }
       >
         {event.side === "BUY" ? "Bought" : "Sold"}
@@ -203,7 +191,7 @@ function EventKind({ event }: { event: InvestmentEvent }) {
     );
   }
   return (
-    <span className="rounded-full border border-gray-600 px-2 py-0.5 text-[11px] text-gray-300">
+    <span className="rounded-full border border-(--border) px-2 py-0.5 text-[11px] text-(--fg-secondary)">
       {event.kind === "INCOME" ? "Income" : "Adjustment"}
     </span>
   );

@@ -13,6 +13,7 @@
  * calculator will print.
  */
 
+import { Count, Ordinal } from "@/core/units";
 import { Money } from "@/core/money";
 import { Percentage, Rate } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
@@ -61,40 +62,40 @@ section("the equated instalment");
 // ₹50,00,000 at 8.5% p.a. over 240 months. Any lender's calculator: ₹43,391.
 check(
   "a 20-year home loan at 8.5%",
-  equatedInstalment(rupees("5000000"), Rate.annual("8.5"), 240).toDecimalString(),
+  equatedInstalment(rupees("5000000"), Rate.annual("8.5"), Count(240)).toDecimalString(),
   "43391.16",
 );
 // ₹5,00,000 at 14% over 60 months. Worked independently:
 //   r = 0.14/12, (1+r)^60 = 2.005617…, EMI = 500000·r·(1+r)^60 / ((1+r)^60 − 1).
 check(
   "a five-year personal loan at 14%",
-  equatedInstalment(rupees("500000"), Rate.annual("14"), 60).toDecimalString(),
+  equatedInstalment(rupees("500000"), Rate.annual("14"), Count(60)).toDecimalString(),
   "11634.13",
 );
 // ₹8,00,000 at 9.2% over 84 months: r = 0.092/12, (1+r)^84 = 1.899444…
 check(
   "a seven-year car loan at 9.2%",
-  equatedInstalment(rupees("800000"), Rate.annual("9.2"), 84).toDecimalString(),
+  equatedInstalment(rupees("800000"), Rate.annual("9.2"), Count(84)).toDecimalString(),
   "12952.61",
 );
 check(
   "a zero-interest scheme is the principal spread evenly",
-  equatedInstalment(rupees("36000"), Rate.annual("0"), 12).toDecimalString(),
+  equatedInstalment(rupees("36000"), Rate.annual("0"), Count(12)).toDecimalString(),
   "3000.00",
 );
 check(
   "and it rounds up, so no 13th payment is left over",
-  equatedInstalment(rupees("10000"), Rate.annual("0"), 3).toDecimalString(),
+  equatedInstalment(rupees("10000"), Rate.annual("0"), Count(3)).toDecimalString(),
   "3333.34",
 );
 check(
   "quarterly payments are priced off a quarterly rate",
-  equatedInstalment(rupees("1000000"), Rate.annual("12"), 20, "QUARTERLY").toDecimalString(),
+  equatedInstalment(rupees("1000000"), Rate.annual("12"), Count(20), "QUARTERLY").toDecimalString(),
   "67215.71",
 );
 
-throws("a zero-period loan is refused", () => equatedInstalment(rupees("1000"), Rate.annual("10"), 0), "whole number");
-throws("a negative rate is refused", () => equatedInstalment(rupees("1000"), Rate.annual("-1"), 12), "cannot be negative");
+throws("a zero-period loan is refused", () => equatedInstalment(rupees("1000"), Rate.annual("10"), Count(0)), "whole number");
+throws("a negative rate is refused", () => equatedInstalment(rupees("1000"), Rate.annual("-1"), Count(12)), "cannot be negative");
 
 /* ═══ The schedule and its invariants ═════════════════════════════════ */
 
@@ -103,7 +104,7 @@ section("N01–N03 on a worked schedule");
 const HOME_TERMS: LoanTerms = {
   principal: rupees("5000000"),
   annualRate: Rate.annual("8.5"),
-  periods: 240,
+  periods: Count(240),
   frequency: "MONTHLY",
   disbursedOn: on("2026-04-01"),
   interestType: "REDUCING_BALANCE",
@@ -114,7 +115,7 @@ const schedule = homeLoan.schedule();
 check("240 rows", schedule.rows.length, 240);
 check("N01: the principal column sums to the principal exactly", schedule.principalRepaid, rupees("5000000"));
 check("N02: the final closing balance is exactly zero", schedule.rows[239].closing, rupees("0"));
-check("the loan closes on the last payment date", schedule.closedOn?.toISO(), homeLoan.paymentDate(240).toISO());
+check("the loan closes on the last payment date", schedule.closedOn?.toISO(), homeLoan.paymentDate(Ordinal(240)).toISO());
 check("the final row is marked as adjusted", schedule.rows[239].note?.includes("adjusted"), true);
 checkTrue("the final instalment differs from the rest", !schedule.rows[239].instalment.equals(schedule.rows[0].instalment));
 
@@ -148,7 +149,7 @@ assertProperty(
     const loan = new PersonalLoan(personal, {
       principal: Money.fromMinor(principalMinor),
       annualRate: Rate.annual((rateScaled / 100).toFixed(2)),
-      periods,
+      periods: Count(periods),
       frequency,
       disbursedOn: on("2026-01-01"),
       interestType: "REDUCING_BALANCE",
@@ -172,7 +173,7 @@ assertProperty(
     const loan = new PersonalLoan(personal, {
       principal: Money.fromMinor(principalMinor),
       annualRate: Rate.annual((rateScaled / 100).toFixed(2)),
-      periods,
+      periods: Count(periods),
       frequency: "MONTHLY",
       disbursedOn: on("2026-01-01"),
       interestType: "REDUCING_BALANCE",
@@ -191,7 +192,7 @@ section("flat versus reducing — the number a lender does not print");
 const flatLoan = new PersonalLoan(personal, {
   principal: rupees("100000"),
   annualRate: Rate.annual("10"),
-  periods: 36,
+  periods: Count(36),
   frequency: "MONTHLY",
   disbursedOn: on("2026-04-01"),
   interestType: "FLAT",
@@ -213,7 +214,7 @@ checkTrue("and it is not double-counted as more than 20%", comparison.effective.
 
 // Sanity: the effective rate reproduces the flat instalment through the ordinary
 // reducing-balance formula, to within a paisa.
-const reconstructed = equatedInstalment(rupees("100000"), comparison.effective, 36);
+const reconstructed = equatedInstalment(rupees("100000"), comparison.effective, Count(36));
 checkTrue(
   "the solved rate reproduces the flat instalment",
   reconstructed.minus(flatLoan.instalment()).abs().isLessThanOrEqual(rupees("0.01")),
@@ -235,7 +236,7 @@ assertProperty(
     const loan = new PersonalLoan(personal, {
       principal: rupees("100000"),
       annualRate: Rate.annual((rateScaled / 100).toFixed(2)),
-      periods,
+      periods: Count(periods),
       frequency: "MONTHLY",
       disbursedOn: on("2026-01-01"),
       interestType: "FLAT",
@@ -332,7 +333,7 @@ check(
 const education = new EducationLoan(personal, {
   principal: rupees("1000000"),
   annualRate: Rate.annual("10.5"),
-  periods: 96,
+  periods: Count(96),
   frequency: "MONTHLY",
   disbursedOn: on("2026-04-01"),
   interestType: "REDUCING_BALANCE",
@@ -357,7 +358,7 @@ const rebuilt = loanFor(home, {
   kind: "HOME",
   principal: rupees("5000000"),
   annualRate: Rate.annual("8.5"),
-  periods: 240,
+  periods: Count(240),
   frequency: "MONTHLY",
   disbursedOn: on("2026-04-01"),
   firstPaymentOn: null,
@@ -366,6 +367,115 @@ const rebuilt = loanFor(home, {
 });
 checkTrue("a HOME loan rebuilds as a HomeLoan", rebuilt instanceof HomeLoan);
 check("with the same instalment", rebuilt.instalment().toDecimalString(), homeLoan.instalment().toDecimalString());
+
+section("the instalment restated monthly");
+
+/*
+ * Hand-computable on purpose. A 0% loan's instalment is the principal spread
+ * evenly, so ₹1,20,000 over 12 months is ₹10,000 a month and over 4 quarters is
+ * ₹30,000 a quarter — and a quarterly ₹30,000 is ₹10,000 a month. Both arrive at
+ * the same monthly figure by different routes, which is the whole point of the
+ * restatement: a ratio over monthly income cannot take a per-period instalment.
+ */
+const monthlyZero = loanFor(personal, {
+  accountId: personal.id,
+  kind: "PERSONAL",
+  principal: rupees("120000"),
+  annualRate: Rate.annual("0"),
+  periods: Count(12),
+  frequency: "MONTHLY",
+  disbursedOn: on("2026-04-01"),
+  firstPaymentOn: null,
+  interestType: "REDUCING_BALANCE",
+  prepaymentPenalty: null,
+});
+const quarterlyZero = loanFor(personal, {
+  accountId: personal.id,
+  kind: "PERSONAL",
+  principal: rupees("120000"),
+  annualRate: Rate.annual("0"),
+  periods: Count(4),
+  frequency: "QUARTERLY",
+  disbursedOn: on("2026-04-01"),
+  firstPaymentOn: null,
+  interestType: "REDUCING_BALANCE",
+  prepaymentPenalty: null,
+});
+
+const midApril = on("2026-04-15");
+
+check("a monthly instalment is already monthly", monthlyZero.monthlyDebtService(midApril).toDecimalString(), "10000.00");
+check("a quarterly instalment is a quarter of itself", quarterlyZero.instalment().toDecimalString(), "30000.00");
+check("restated to a month, it matches the monthly loan", quarterlyZero.monthlyDebtService(midApril).toDecimalString(), "10000.00");
+
+/*
+ * The defect independent QA found on 2026-10-25, as its own repro.
+ *
+ * `instalment()` is the original contractual figure and never moves. A
+ * prepayment that reduces the instalment halves what is actually due, and the
+ * first version of `monthlyDebtService()` kept reporting the old number —
+ * doubling the debt-to-income ratio of exactly the person who had just paid
+ * down their loan.
+ */
+const prepaidZero = loanFor(personal, {
+  accountId: personal.id,
+  kind: "PERSONAL",
+  principal: rupees("120000"),
+  annualRate: Rate.annual("0"),
+  periods: Count(12),
+  frequency: "MONTHLY",
+  disbursedOn: on("2026-01-01"),
+  firstPaymentOn: null,
+  interestType: "REDUCING_BALANCE",
+  prepaymentPenalty: null,
+  prepayments: [{ on: on("2026-02-01"), amount: rupees("60000"), reduces: "INSTALMENT" }],
+});
+
+check(
+  "the contractual instalment is unchanged by a prepayment",
+  prepaidZero.instalment().toDecimalString(),
+  "10000.00",
+);
+check(
+  "but debt service is what is due from here, not what was agreed",
+  prepaidZero.monthlyDebtService(on("2026-03-15")).toDecimalString(),
+  "5000.00",
+);
+check(
+  "and it is halved the instant the prepayment lands, not a period later",
+  prepaidZero.monthlyDebtService(on("2026-02-01")).toDecimalString(),
+  "5000.00",
+);
+/*
+ * A historical report loads every recorded prepayment, including ones made
+ * after the date it reports on. Answering June's question with September's
+ * facts would credit the borrower with a reduction they had not yet paid for.
+ * The canonical schedule still carries every prepayment; debt service reads the
+ * schedule as observed on `asOf`.
+ */
+check(
+  "before the prepayment it is still the original",
+  prepaidZero.monthlyDebtService(on("2026-01-15")).toDecimalString(),
+  "10000.00",
+);
+check(
+  "and the canonical schedule is untouched by that",
+  prepaidZero.schedule().rows.filter((row) => row.kind === "PREPAYMENT").length,
+  1,
+);
+check(
+  "a loan with nothing left to pay services zero debt",
+  prepaidZero.monthlyDebtService(on("2030-01-01")).toDecimalString(),
+  "0.00",
+);
+check(
+  "a prepayment is not a monthly commitment",
+  prepaidZero
+    .schedule()
+    .rows.filter((row) => row.kind === "PREPAYMENT")
+    .length,
+  1,
+);
 
 /* ═══ Payoff strategies ═══════════════════════════════════════════════ */
 

@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
-import { CheckCheck, Sparkles, Trash2, Undo2, Upload } from "lucide-react";
+import { CheckCheck, Sparkles, Trash2, Undo2 } from "lucide-react";
 import { AccountType, DEFAULT_CHART } from "@/domain/accounts";
-import { Card, PageHeader, Pill, Stat } from "@/ui/primitives";
+import type { Figure } from "@/core/format";
+import { Kpi, KpiStrip, Masthead, Page as PageShell, Panel } from "../../../../components/ui/page-shell";
+import { Banner } from "../../../../components/ui/banner";
+import { Button } from "../../../../components/ui/button";
 import { formatMoney } from "@/ui/format";
 import { checkBalanceContinuity } from "@/infra/statements";
 import { ActionForm, SubmitButton } from "@/ui/action-form";
@@ -128,30 +131,32 @@ export default async function Page({ params }: { params: Promise<{ batchId: stri
   };
 
   return (
-    <>
-      <PageHeader
+    <PageShell>
+      <Masthead
         title={batch.fileName}
-        subtitle={
-          intoAccount
-            ? `Into ${intoAccount.displayName}. Nothing here is in the ledger yet — confirm what is real, skip what you already have, then post.`
-            : "Nothing here is in the ledger yet. Confirm what is real, skip what you already have, then post."
-        }
-        badge={<Pill tone="brand">{STATUS_LABELS[batch.status]}</Pill>}
-        action={
-          <Link href="/imports" className="ghost-btn h-10 px-4 text-xs">
-            All imports
-          </Link>
+        side={
+          <>
+            <span className="text-xs text-(--fg-secondary)">{STATUS_LABELS[batch.status]}</span>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/imports">All imports</Link>
+            </Button>
+          </>
         }
       />
+      <p className="text-sm text-(--fg-secondary)">
+        {intoAccount
+          ? `Into ${intoAccount.displayName}. Nothing here is in the ledger yet — confirm what is real, skip what you already have, then post.`
+          : "Nothing here is in the ledger yet. Confirm what is real, skip what you already have, then post."}
+      </p>
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <Stat label="Ready" value={<span className="tnum">{counts.ready}</span>} hint="Categorised, unconfirmed" />
-        <Stat label="Needs choice" value={<span className="tnum">{counts.needsChoice}</span>} hint="Pick an account" />
-        <Stat label="Look familiar" value={<span className="tnum">{counts.flagged}</span>} hint="Possible duplicates" />
-        <Stat label="Confirmed" value={<span className="tnum">{counts.confirmed}</span>} hint="Waiting to post" />
-        <Stat label="Posted" value={<span className="tnum">{counts.posted}</span>} hint="In the ledger" />
-        <Stat label="Skipped" value={<span className="tnum">{counts.rejected}</span>} hint="Kept as evidence" />
-      </div>
+      <KpiStrip>
+        <Kpi label="Ready" value={String(counts.ready) as Figure} detail="Categorised, unconfirmed" />
+        <Kpi label="Needs choice" value={String(counts.needsChoice) as Figure} detail="Pick an account" />
+        <Kpi label="Look familiar" value={String(counts.flagged) as Figure} detail="Possible duplicates" />
+        <Kpi label="Confirmed" value={String(counts.confirmed) as Figure} detail="Waiting to post" />
+        <Kpi label="Posted" value={String(counts.posted) as Figure} detail="In the ledger" />
+        <Kpi label="Skipped" value={String(counts.rejected) as Figure} detail="Kept as evidence" />
+      </KpiStrip>
 
       {/*
         * The statement checks its own arithmetic.
@@ -166,46 +171,45 @@ export default async function Page({ params }: { params: Promise<{ batchId: stri
         * it, so the answer was computed by the specs and never shown to anyone.
         */}
       {continuity.checked > 0 && (
-        <Card
-          className="mb-6"
+        <Panel
           title={
             continuity.breaks.length === 0
               ? "The statement agrees with itself"
               : `${continuity.breaks.length} row(s) break the running balance`
           }
-          subtitle={
+          description={
             continuity.breaks.length === 0
               ? `${continuity.checked} rows checked against the balance the bank printed beside them. Every debit and credit was read the right way round.`
               : "The bank's own printed balance does not follow from the row above it plus this row's amount. Either a column was read the wrong way round, or the file has a gap in it."
           }
         >
           {continuity.breaks.length === 0 && printedClosing ? (
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-(--fg-secondary)">
               Closing balance on the file:{" "}
-              <span className="tnum text-gray-100">{formatMoney(printedClosing)}</span>. When every
+              <span className="tnum text-(--fg)">{formatMoney(printedClosing)}</span>. When every
               row is posted, the account should read exactly this.
             </p>
           ) : (
             <ul className="space-y-2 text-sm">
               {continuity.breaks.slice(0, 10).map((brk) => (
-                <li key={brk.rowIndex} className="text-gray-300">
+                <li key={brk.rowIndex} className="text-(--fg-secondary)">
                   Line <span className="tnum">{brk.rowIndex}</span> — printed{" "}
-                  <span className="tnum text-gray-100">{formatMoney(brk.printed)}</span>, expected{" "}
-                  <span className="tnum text-gray-100">{formatMoney(brk.expected)}</span> (off by{" "}
-                  <span className="tnum text-amber-500">
+                  <span className="tnum text-(--fg)">{formatMoney(brk.printed)}</span>, expected{" "}
+                  <span className="tnum text-(--fg)">{formatMoney(brk.expected)}</span> (off by{" "}
+                  <span className="tnum text-(--warn)">
                     {formatMoney(brk.printed.minus(brk.expected))}
                   </span>
                   )
                 </li>
               ))}
               {continuity.breaks.length > 10 && (
-                <li className="text-xs text-gray-500">
+                <li className="text-xs text-(--fg-muted)">
                   and {continuity.breaks.length - 10} more.
                 </li>
               )}
             </ul>
           )}
-        </Card>
+        </Panel>
       )}
 
       {/*
@@ -217,11 +221,9 @@ export default async function Page({ params }: { params: Promise<{ batchId: stri
         * look identical, so the absence has to be stated.
         */}
       {continuity.checked === 0 && (
-        <Card
-          className="mb-6"
-          title="This statement cannot check itself"
-          subtitle="The file printed no running balance, so there is nothing to test the reading against. The rows may well be right — but nothing here proves it, and a statement that cannot be checked should not look the same as one that passed."
-        />
+        <Banner tone="warning" title="This statement cannot check itself">
+          <p>The file printed no running balance, so there is nothing to test the reading against. The rows may well be right — but nothing here proves it, and a statement that cannot be checked should not look the same as one that passed.</p>
+        </Banner>
       )}
 
       {/*
@@ -232,7 +234,7 @@ export default async function Page({ params }: { params: Promise<{ batchId: stri
       {batch.diagnostics && (
         <>
           {Object.keys(batch.diagnostics.verdict.mapping).length > 0 && (
-            <p className="mb-6 -mt-3 text-xs text-gray-500">
+            <p className="mb-6 -mt-3 text-xs text-(--fg-muted)">
               Columns read as:{" "}
               {Object.entries(batch.diagnostics.verdict.mapping)
                 .sort((a, b) => a[1] - b[1])
@@ -248,16 +250,14 @@ export default async function Page({ params }: { params: Promise<{ batchId: stri
             * one can notice a transaction nobody read.
             */}
           {batch.diagnostics.verdict.controls.status === "MATCHED" && (
-            <p className="mb-6 -mt-3 text-xs text-gray-500">
+            <p className="mb-6 -mt-3 text-xs text-(--fg-muted)">
               Checked against the totals the bank printed on the statement, and they agree.
             </p>
           )}
           {batch.diagnostics.verdict.controls.status === "MISMATCHED" && (
-            <Card
-              className="mb-6"
-              title="This does not match the bank's own totals"
-              subtitle={batch.diagnostics.verdict.controls.detail ?? undefined}
-            />
+            <Banner tone="warning" title="This does not match the bank's own totals">
+              {batch.diagnostics.verdict.controls.detail && <p>{batch.diagnostics.verdict.controls.detail}</p>}
+            </Banner>
           )}
 
           {/*
@@ -267,26 +267,24 @@ export default async function Page({ params }: { params: Promise<{ batchId: stri
             * its own, and every one of them can make the balance sheet wrong.
             */}
           {batch.diagnostics.warnings.length > 0 && (
-            <Card className="mb-6" title="Worth checking before you post this">
-              <ul className="list-disc space-y-1 pl-5 text-sm text-gray-600">
+            <Panel title="Worth checking before you post this">
+              <ul className="list-disc space-y-1 pl-5 text-sm text-(--fg-disabled)">
                 {batch.diagnostics.warnings.map((warning) => (
                   <li key={warning}>{warning}</li>
                 ))}
               </ul>
-            </Card>
+            </Panel>
           )}
 
           {batch.diagnostics.override && (
-            <Card
-              className="mb-6"
-              title="Imported over a failed balance check"
-              subtitle={`Someone chose to import this statement even though it does not agree with its own printed balance. Their reason: "${batch.diagnostics.override.reason}"`}
-            />
+            <Banner tone="warning" title="Imported over a failed balance check">
+              <p>{`Someone chose to import this statement even though it does not agree with its own printed balance. Their reason: "${batch.diagnostics.override.reason}"`}</p>
+            </Banner>
           )}
         </>
       )}
 
-      <Card className="mb-6">
+      <div>
         <div className="flex flex-wrap items-center gap-3">
           <ActionForm action={confirmUnmatchedAction} fields={{ batchId }}>
             <SubmitButton
@@ -364,15 +362,10 @@ export default async function Page({ params }: { params: Promise<{ batchId: stri
             )}
           </div>
         </div>
-      </Card>
+      </div>
 
       {reviewRows.length === 0 ? (
-        <Card>
-          <p className="py-6 text-center text-sm text-gray-500">
-            <Upload className="mx-auto mb-2 h-5 w-5 text-gray-600" aria-hidden />
-            No rows were staged from this file.
-          </p>
-        </Card>
+        <Banner title="No rows were staged from this file." />
       ) : (
         <ReviewTable
           batchId={batchId}
@@ -383,37 +376,36 @@ export default async function Page({ params }: { params: Promise<{ batchId: stri
       )}
 
       {batch.diagnostics && batch.diagnostics.problems.length > 0 ? (
-        <Card
-          className="mt-6"
+        <Panel
           title={`${batch.diagnostics.problems.length} line(s) could not be read`}
-          subtitle="Listed rather than counted: a line the parser could not read is a transaction your ledger will simply not contain, and a number alone gives you no way to find out which."
+          description="Listed rather than counted: a line the parser could not read is a transaction your ledger will simply not contain, and a number alone gives you no way to find out which."
         >
           <ul className="space-y-2 text-sm">
             {batch.diagnostics.problems.slice(0, 25).map((problem) => (
-              <li key={problem.rowIndex} className="text-gray-300">
-                <span className="tnum text-gray-500">Line {problem.rowIndex}</span>{" "}
+              <li key={problem.rowIndex} className="text-(--fg-secondary)">
+                <span className="tnum text-(--fg-muted)">Line {problem.rowIndex}</span>{" "}
                 &mdash; {problem.reason}
-                <pre className="mt-1 overflow-x-auto rounded-lg bg-black/30 p-2 text-xs text-gray-400">
+                <pre className="mt-1 overflow-x-auto rounded-lg bg-(--bg-sunken)/30 p-2 text-xs text-(--fg-secondary)">
                   {problem.raw}
                 </pre>
               </li>
             ))}
           </ul>
           {batch.diagnostics.problems.length > 25 && (
-            <p className="mt-2 text-xs text-gray-500">
+            <p className="mt-2 text-xs text-(--fg-muted)">
               &hellip; and {batch.diagnostics.problems.length - 25} more.
             </p>
           )}
-        </Card>
+        </Panel>
       ) : (
         batch.rowsFailed > 0 && (
-          <p className="mt-3 text-xs text-gray-500">
+          <p className="mt-3 text-xs text-(--fg-muted)">
             {batch.rowsFailed} line(s) of the file could not be read and were not staged. This
             import predates the change that records which lines, and why.
           </p>
         )
       )}
-    </>
+    </PageShell>
   );
 }
 

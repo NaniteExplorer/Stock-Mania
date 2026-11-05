@@ -1,4 +1,5 @@
 import { ValueObject } from "@/core/kernel";
+import { Count } from "@/core/units";
 import { Money, ROUNDING, type RoundingMode } from "@/core/money";
 import { Percentage, Quantity } from "@/core/numeric";
 import type { CalendarDate } from "@/core/time";
@@ -93,7 +94,7 @@ export interface TradeFacts {
    * the count rather than deriving it from one trade is what makes that
    * expressible — a single trade cannot know what else happened that day.
    */
-  readonly scripDayCount?: number;
+  readonly scripDayCount?: Count;
 }
 
 /* ═══ ChargeItem and ChargeBreakdown ════════════════════════════════════ */

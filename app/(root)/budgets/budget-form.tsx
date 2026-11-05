@@ -1,8 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { Field } from "@/ui/primitives";
+import { Field } from "@/components/ui/field";
 import { setBudgetAction, type BudgetActionState } from "./actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 
 export interface CategoryOption {
   id: string;
@@ -25,7 +28,7 @@ export default function BudgetForm({
     <form action={action} className="grid gap-4 md:grid-cols-2">
       <Field name="accountId" label="Category" required>
         {(props) => (
-          <select {...props} name="accountId" className="form-input" required defaultValue="">
+          <NativeSelect {...props} name="accountId" required defaultValue="">
             <option value="" disabled>
               Choose a category
             </option>
@@ -34,13 +37,13 @@ export default function BudgetForm({
                 {category.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
       <Field name="limit" label="Monthly limit" required>
         {(props) => (
-          <input {...props} name="limit" className="form-input tnum" inputMode="decimal" placeholder="10000.00" required />
+          <Input {...props} name="limit" className="tabular-nums" inputMode="decimal" placeholder="10000.00" required />
         )}
       </Field>
 
@@ -49,32 +52,32 @@ export default function BudgetForm({
         label="Month"
         hint={`Blank for a recurring limit; ${defaultMonth} to override just this month.`}
       >
-        {(props) => <input {...props} name="month" className="form-input" placeholder={defaultMonth} />}
+        {(props) => <Input {...props} name="month" placeholder={defaultMonth} />}
       </Field>
 
       <Field name="warnAtPercent" label="Warn at (%)">
         {(props) => (
-          <input
+          <Input
             {...props}
             name="warnAtPercent"
-            className="form-input tnum"
+            className="tabular-nums"
             inputMode="numeric"
             defaultValue={80}
           />
         )}
       </Field>
 
-      <label className="flex items-center gap-2 text-sm text-gray-300 md:col-span-2">
-        <input type="checkbox" name="carryover" className="h-4 w-4 rounded border-gray-600 bg-gray-800" />
+      <label className="flex items-center gap-2 text-sm text-(--fg-secondary) md:col-span-2">
+        <input type="checkbox" name="carryover" className="h-4 w-4 rounded border-(--border) bg-(--bg-surface)" />
         Carry the leftover — and any overspend — into next month
       </label>
 
       <div className="md:col-span-2 flex flex-wrap items-center gap-3">
-        <button type="submit" className="btn-glow" disabled={pending}>
+        <Button type="submit" loading={pending} disabled={pending}>
           {pending ? "Saving…" : "Set budget"}
-        </button>
+        </Button>
         {state && (
-          <p className={state.ok ? "text-sm text-green-500" : "text-sm text-red-500"} role="status">
+          <p className={state.ok ? "text-sm text-(--gain)" : "text-sm text-(--loss)"} role="status">
             {state.message}
           </p>
         )}

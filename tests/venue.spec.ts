@@ -19,6 +19,7 @@
 
 import { Ok } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
+import { Count, Minutes } from "@/core/units";
 import { Percentage, Quantity } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
 import { UserId } from "@/core/kernel";
@@ -43,8 +44,8 @@ const limits: RiskLimits = {
   maxOrderValue: rupees("200000"),
   fatFingerTolerance: Percentage.of("5"),
   maxDailyLoss: rupees("50000"),
-  maxOrdersPerWindow: 10,
-  windowMinutes: 60,
+  maxOrdersPerWindow: Count(10),
+  windowMinutes: Minutes(60),
   killSwitchEngaged: false,
   availableMargin: rupees("500000"),
 };
@@ -54,7 +55,7 @@ const context: RiskContext = {
   positionValue: rupees("100000"),
   exposureValue: rupees("300000"),
   lossToday: rupees("0"),
-  ordersInWindow: 1,
+  ordersInWindow: Count(1),
   keyAlreadyUsed: false,
   unitsHeld: units("100"),
 };

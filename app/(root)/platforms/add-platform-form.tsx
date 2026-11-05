@@ -1,10 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { Field } from "@/ui/primitives";
+import { Field } from "@/components/ui/field";
 import { ProviderPicker } from "@/ui/provider-picker";
 import { INSTITUTION_KINDS, institutionKindLabel } from "@/domain/institutions";
 import { addPlatformAction, type PlatformActionState } from "./actions";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 
 /**
  * Register a platform.
@@ -38,18 +40,18 @@ export default function AddPlatformForm() {
         error={errors.kind?.[0]}
       >
         {(props) => (
-          <select {...props} name="kind" className="form-input" defaultValue="BROKER">
+          <NativeSelect {...props} name="kind" defaultValue="BROKER">
             {INSTITUTION_KINDS.map((kind) => (
               <option key={kind} value={kind}>
                 {institutionKindLabel(kind)}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
       <Field name="notes" label="Notes" hint="Optional — a client code, which family member's it is." error={errors.notes?.[0]}>
-        {(props) => <input {...props} name="notes" className="form-input" maxLength={500} />}
+        {(props) => <Input {...props} name="notes" maxLength={500} />}
       </Field>
 
       <div className="md:col-span-3 flex items-center gap-3">
@@ -57,7 +59,7 @@ export default function AddPlatformForm() {
           {pending ? "Adding…" : "Add platform"}
         </button>
         {state && (
-          <p className={state.ok ? "text-sm text-green-500" : "text-sm text-red-500"} role="status">
+          <p className={state.ok ? "text-sm text-(--gain)" : "text-sm text-(--loss)"} role="status">
             {state.message}
           </p>
         )}

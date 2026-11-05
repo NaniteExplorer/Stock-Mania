@@ -23,6 +23,7 @@
  * because there is nothing here that can be unavailable.
  */
 
+import { Count } from "@/core/units";
 import { Ok } from "@/core/kernel";
 import { Currency } from "@/core/money";
 import type { HealthStatus } from "@/domain/pricing";
@@ -64,7 +65,7 @@ const SCORE = {
 
 const ALWAYS_HEALTHY: HealthStatus = {
   state: "HEALTHY",
-  consecutiveFailures: 0,
+  consecutiveFailures: Count(0),
   lastError: null,
   circuitOpenUntil: null,
 };

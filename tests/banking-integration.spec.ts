@@ -23,6 +23,8 @@ import { users } from "@/infra/db/schema";
 import type { Database } from "@/infra/db/client";
 import { FixedClock, UserId } from "@/core/kernel";
 import { Money } from "@/core/money";
+import { Percentage } from "@/core/numeric";
+import { Count, Ordinal } from "@/core/units";
 import { CalendarDate } from "@/core/time";
 import { AccountCode, SystemAccountCodes } from "@/domain/accounts";
 import { BalanceCalculator } from "@/domain/transactions";
@@ -51,7 +53,7 @@ import {
   StageStatementImport,
   UndoImport,
 } from "@/app/banking.usecases";
-import { parseDelimitedText, parseStatementRows } from "@/infra/statements";
+import { parseDelimitedText, parseStatementRows, toBankingStatement } from "@/infra/statements";
 import { check, checkTrue, done, section } from "./harness";
 
 const DB_FILE = "./tmp/banking-integration.db";
@@ -204,17 +206,17 @@ async function main() {
     accountId: hdfcId,
     fileName: "hdfc-april.csv",
     fileHash: "sha256-april",
-    statement: april,
+    statement: toBankingStatement(april),
     diagnostics: {
       verdict: {
         trust: april.verdict.trust,
-        checked: april.verdict.checked,
-        breaks: april.verdict.breaks.map((brk) => ({ ...brk })),
-        mapping: { ...april.verdict.mapping } as Record<string, number>,
+        checked: Count(april.verdict.checked),
+        breaks: april.verdict.breaks.map((brk) => ({ ...brk, rowIndex: Ordinal(brk.rowIndex) })),
+        mapping: Object.fromEntries(Object.entries(april.verdict.mapping).map(([key, index]) => [key, Ordinal(index)])),
         controls: { ...april.verdict.controls },
         closingBalance: april.verdict.closingBalance,
       },
-      problems: april.problems.map((problem) => ({ ...problem })),
+      problems: april.problems.map((problem) => ({ ...problem, rowIndex: Ordinal(problem.rowIndex) })),
       override: { reason: "recorded so the round-trip is testable", at: "2026-04-30T00:00:00.000Z" },
       statement: { accountSuffix: "7890", periodFrom: "2026-04-01", periodTo: "2026-04-30" },
       warnings: [],
@@ -246,7 +248,7 @@ async function main() {
 
   const prematurePost = await post.execute({ userId, batchId });
   check("posting a wholly unreviewed batch posts nothing", prematurePost.ok && prematurePost.value.posted, 0);
-  const afterPremature = await txnRepo.find(userId, { accountIds: [hdfcId], limit: 100 });
+  const afterPremature = await txnRepo.find(userId, { accountIds: [hdfcId], limit: Count(100) });
   check("the ledger still has only the opening balance", afterPremature.totalCount, 1);
 
   /* ── Review and post ──────────────────────────────────────────────── */
@@ -337,7 +339,7 @@ async function main() {
   section("SQL balances agree with the pure fold");
 
   const allAccounts = await accountRepo.list(userId, { includeClosed: true });
-  const everything = await txnRepo.find(userId, { limit: 10_000 });
+  const everything = await txnRepo.find(userId, { limit: Count(10_000) });
   const pure = new BalanceCalculator().balancesAsOf(allAccounts, everything.transactions, asOf);
   const sheet = await balances.balanceSheet(userId, asOf, { includeClosed: true });
   const mismatches = sheet.filter((row) => !pure.get(row.accountId.value)!.equals(row.balance));
@@ -353,7 +355,7 @@ async function main() {
     accountId: hdfcId,
     fileName: "hdfc-april-again.csv",
     fileHash: "sha256-april",
-    statement: april,
+    statement: toBankingStatement(april),
   });
   check("nothing is staged", sameFile.ok && sameFile.value.rowsStaged, 0);
   check("and the original batch is named", sameFile.ok && sameFile.value.alreadyImportedBatchId, batchId);
@@ -366,7 +368,7 @@ async function main() {
     accountId: hdfcId,
     fileName: "hdfc-may.csv",
     fileHash: "sha256-may",
-    statement: may,
+    statement: toBankingStatement(may),
   });
   check("six rows staged", mayStaged.ok && mayStaged.value.rowsStaged, 6);
   check("four are recognised as already present", mayStaged.ok && mayStaged.value.rowsLikelyDuplicate, 4);
@@ -379,7 +381,7 @@ async function main() {
   const mayPosted = await post.execute({ userId, batchId: mayBatchId });
   check("and only two transactions are added", mayPosted.ok && mayPosted.value.posted, 2);
 
-  const afterMay = await txnRepo.find(userId, { accountIds: [hdfcId], limit: 100 });
+  const afterMay = await txnRepo.find(userId, { accountIds: [hdfcId], limit: Count(100) });
   check("nine transactions on the account in total", afterMay.totalCount, 9);
   const mayBalance = await balances.balanceOf(userId, hdfcId, CalendarDate.parse("2026-05-31"));
   check("and the May closing balance matches the statement", mayBalance.toDecimalString(), "282781.09");
@@ -431,7 +433,7 @@ async function main() {
     accountId: hdfcId,
     fileName: "hdfc-may.csv",
     fileHash: "sha256-may",
-    statement: may,
+    statement: toBankingStatement(may),
   });
   check(
     "an undone import frees its file hash, so a corrected re-import is possible",
@@ -499,21 +501,21 @@ async function main() {
     accountId: rent.id,
     month: null,
     limit: Money.fromRupees("20000"),
-    warnAtPercent: 80,
+    warnAtPercent: Percentage.of("80"),
     carryover: false,
   });
   await budgetRepo.upsert(userId, {
     accountId: eatingOut.id,
     month: null,
     limit: Money.fromRupees("1000"),
-    warnAtPercent: 80,
+    warnAtPercent: Percentage.of("80"),
     carryover: true,
   });
   await budgetRepo.upsert(userId, {
     accountId: eatingOut.id,
     month: "2026-04",
     limit: Money.fromRupees("2000"),
-    warnAtPercent: 90,
+    warnAtPercent: Percentage.of("90"),
     carryover: true,
   });
 
@@ -552,7 +554,7 @@ async function main() {
     accountId: emptyAxis.value.accountId,
     fileName: "axis-empty.csv",
     fileHash: "sha256-axis-empty",
-    statement: emptyStatement,
+    statement: toBankingStatement(emptyStatement),
   });
   if (!emptyStaged.ok) throw new Error("empty-account staging failed");
   await confirmRest.execute({ userId, batchId: emptyStaged.value.batchId });
@@ -590,7 +592,7 @@ async function main() {
     accountId: smartAxis.value.accountId,
     fileName: "axis-smart.csv",
     fileHash: "sha256-axis-smart",
-    statement: smartStatement,
+    statement: toBankingStatement(smartStatement),
   });
   if (!smartStaged.ok) throw new Error("smart-review staging failed");
 
@@ -646,7 +648,7 @@ async function main() {
     accountId: parkAccount.value.accountId,
     fileName: "axis-parking.csv",
     fileHash: "sha256-axis-parking",
-    statement: parseStatementRows(parseDelimitedText(PARK_CSV)),
+    statement: toBankingStatement(parseStatementRows(parseDelimitedText(PARK_CSV))),
   });
   if (!parkStaged.ok) throw new Error("parking staging failed");
 
@@ -698,7 +700,7 @@ async function main() {
     accountId: parkAccount.value.accountId,
     fileName: "bank-only-card-payment.csv",
     fileHash: "sha256-bank-only-card-payment",
-    statement: cardOnly,
+    statement: toBankingStatement(cardOnly),
   });
   if (!cardOnlyStaged.ok) throw new Error("bank-only card staging failed");
 
@@ -739,14 +741,14 @@ async function main() {
     accountId: hdfcId,
     fileName: "hdfc-overlap-probe.csv",
     fileHash: "sha256-overlap-probe",
-    statement: { ...april, rows: [april.rows[0]!] },
+    statement: toBankingStatement({ ...april, rows: [april.rows[0]!] }),
     allowReimport: true,
     diagnostics: {
       verdict: {
         trust: "RECONCILED",
-        checked: 5,
+        checked: Count(5),
         breaks: [],
-        mapping: { date: 0, description: 1, debit: 4, credit: 5, balance: 6 },
+        mapping: { date: Ordinal(0), description: Ordinal(1), debit: Ordinal(4), credit: Ordinal(5), balance: Ordinal(6) },
         closingBalance: null,
         controls: { status: "ABSENT", detail: null },
       },
@@ -813,7 +815,7 @@ async function main() {
     accountId: repairAccount.value.accountId,
     fileName: "match-repair.csv",
     fileHash: "sha256-match-repair",
-    statement: repairStatement,
+    statement: toBankingStatement(repairStatement),
   });
   if (!repairStaged.ok) throw new Error("match repair staging failed");
   check("the live transaction is initially matched", repairStaged.value.rowsLikelyDuplicate, 1);
@@ -825,6 +827,67 @@ async function main() {
   check("the stale match is released for confirmation", released.length, 1);
   check("and no deleted transaction remains attached", released[0]?.matchedTransactionId, null);
 
+
+  section("a first statement preserves its overdrawn opening without plugging later gaps");
+  const overdrawn = await openCash.execute({ userId, name: "Overdrawn first import", subtype: "BANK" });
+  if (!overdrawn.ok) throw new Error("overdrawn account setup failed");
+  const overdraftStatement = parseStatementRows(parseDelimitedText(`Date,Narration,Withdrawal (Dr),Deposit (Cr),Closing Balance
+01/06/2026,BANK SERVICE CHARGE,100.00,,-600.00
+02/06/2026,INTEREST CREDIT,,50.00,-550.00`));
+  check("the signed running balance survives parsing", overdraftStatement.rows[0]?.balanceAfter?.toDecimalString(), "-600.00");
+  const overdraftBatch = await stage.execute({ userId, accountId: overdrawn.value.accountId,
+    fileName: "overdrawn-opening.csv", fileHash: "sha256-overdrawn-opening", statement: toBankingStatement(overdraftStatement) });
+  if (!overdraftBatch.ok) throw new Error("overdrawn statement staging failed");
+  await confirmRest.execute({ userId, batchId: overdraftBatch.value.batchId });
+  const overdraftPosted = await post.execute({ userId, batchId: overdraftBatch.value.batchId });
+  check("overdrawn statement posts both movements", overdraftPosted.ok && overdraftPosted.value.posted, 2);
+  check("overdrawn import has no posting failures", overdraftPosted.ok && overdraftPosted.value.failed, 0);
+  const openingDate = CalendarDate.parse("2026-05-31");
+  const closingDate = CalendarDate.parse("2026-06-02");
+  check("the bank's negative opening is recorded before its movements",
+    (await balances.balanceOf(userId, overdrawn.value.accountId, openingDate)).toDecimalString(), "-500.00");
+  check("the closing balance agrees to the paisa",
+    (await balances.balanceOf(userId, overdrawn.value.accountId, closingDate)).toDecimalString(), "-550.00");
+  await post.execute({ userId, batchId: overdraftBatch.value.batchId });
+  check("posting again cannot duplicate the negative opening",
+    (await balances.balanceOf(userId, overdrawn.value.accountId, closingDate)).toDecimalString(), "-550.00");
+  const laterStatement = parseStatementRows(parseDelimitedText(`Date,Narration,Withdrawal (Dr),Deposit (Cr),Closing Balance
+01/07/2026,BANK SERVICE CHARGE,10.00,,-910.00`));
+  const laterBatch = await stage.execute({ userId, accountId: overdrawn.value.accountId,
+    fileName: "overdrawn-later-gap.csv", fileHash: "sha256-overdrawn-later-gap", statement: toBankingStatement(laterStatement) });
+  if (!laterBatch.ok) throw new Error("later statement staging failed");
+  await confirmRest.execute({ userId, batchId: laterBatch.value.batchId });
+  await post.execute({ userId, batchId: laterBatch.value.batchId });
+  check("an existing ledger receives the movement and no manufactured gap balance",
+    (await balances.balanceOf(userId, overdrawn.value.accountId, CalendarDate.parse("2026-07-01"))).toDecimalString(), "-560.00");
+  await undo.execute({ userId, batchId: laterBatch.value.batchId });
+  await undo.execute({ userId, batchId: overdraftBatch.value.batchId });
+  check("undo removes the negative opening together with the imported movements",
+    (await balances.balanceOf(userId, overdrawn.value.accountId, closingDate)).toDecimalString(), "0.00");
+  const zeroOpeningBatch = await stage.execute({ userId, accountId: overdrawn.value.accountId,
+    fileName: "zero-opening.csv", fileHash: "sha256-zero-opening",
+    statement: toBankingStatement(parseStatementRows(parseDelimitedText(`Date,Narration,Withdrawal (Dr),Deposit (Cr),Closing Balance
+01/08/2026,INTEREST CREDIT,,10.00,10.00`))) });
+  if (!zeroOpeningBatch.ok) throw new Error("zero-opening staging failed");
+  await confirmRest.execute({ userId, batchId: zeroOpeningBatch.value.batchId });
+  const zeroPosted = await post.execute({ userId, batchId: zeroOpeningBatch.value.batchId });
+  check("a zero printed opening does not produce an invalid zero posting", zeroPosted.ok && zeroPosted.value.failed, 0);
+  check("only the bank's movement enters the zero-opening ledger", await accountRepo.countPostings(userId, overdrawn.value.accountId), 1);
+  check("zero-opening import retains its printed closing balance",
+    (await balances.balanceOf(userId, overdrawn.value.accountId, CalendarDate.parse("2026-08-01"))).toDecimalString(), "10.00");
+  const manualOverdraft = await openCash.execute({ userId, name: "Manual overdrawn opening", subtype: "BANK",
+    openingBalance: Money.fromRupees("-250.00"), openingBalanceOn: CalendarDate.parse("2026-09-01") });
+  if (!manualOverdraft.ok) throw new Error("manual overdrawn opening failed");
+  check("account creation preserves a negative opening entered by the owner",
+    (await balances.balanceOf(userId, manualOverdraft.value.accountId, CalendarDate.parse("2026-09-01"))).toDecimalString(), "-250.00");
+  const openingEquity = await accountRepo.findByCode(userId, AccountCode.parse(SystemAccountCodes.openingBalances));
+  if (!openingEquity) throw new Error("opening equity account missing");
+  const downward = await record.execute({ userId, fromAccountId: manualOverdraft.value.accountId,
+    toAccountId: openingEquity.id, amount: Money.fromRupees("50.00"), postedOn: CalendarDate.parse("2026-09-02"),
+    narration: "Statement balance correction downward" });
+  check("a downward statement correction records successfully", downward.ok, true);
+  check("a downward correction reduces the account rather than doubling the error",
+    (await balances.balanceOf(userId, manualOverdraft.value.accountId, CalendarDate.parse("2026-09-02"))).toDecimalString(), "-300.00");
 
   done();
 }

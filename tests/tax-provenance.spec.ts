@@ -1,4 +1,5 @@
 import { Money, ROUNDING } from "@/core/money";
+import { Days } from "@/core/units";
 import { Percentage } from "@/core/numeric";
 import { CalendarDate, FinancialYear } from "@/core/time";
 import { TaxEngine, type TaxableEvent, type TaxSettings } from "@/domain/tax";
@@ -63,7 +64,7 @@ function eventFor(c: Case): TaxableEvent {
     taxCategory: c.category,
     instrumentId: "X",
     acquiredOn,
-    holdingDays: c.holdingDays,
+    holdingDays: Days(c.holdingDays),
     proceeds,
     costBasis: cost,
     gain: proceeds.minus(cost),
@@ -86,7 +87,7 @@ const sample = assess({
   category: "LISTED_EQUITY",
   proceeds: 900000,
   cost: 100000,
-  holdingDays: 3714,
+  holdingDays: Days(3714),
   grandfathered: true,
 });
 

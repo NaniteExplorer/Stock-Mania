@@ -116,6 +116,51 @@ throws(
 );
 reversalRestores("OpeningBalance", openingAsset);
 
+/*
+ * Direction. `buildPostings` used to `abs()` the amount and ignore which way the
+ * arrow pointed, so every opening was booked as a rise. An overdrawn first
+ * statement came out positive, and a downward balance correction moved the
+ * balance up (QA, 2026-10-26). The arrow says rise or fall; a negative amount is
+ * a fall; the role says which posting side a rise is.
+ */
+const assetFalls = OpeningBalance.record(
+  ctx(hdfc, openingEquity, "2026-07-01", "Correction down — HDFC"),
+  { amount: rupees("500"), account: accountRef(hdfc) },
+);
+check("account → equity lowers an asset", moved(assetFalls, hdfc), "-500.00");
+check("...and the equity leg takes the other side", moved(assetFalls, openingEquity), "-500.00");
+
+const overdrawn = OpeningBalance.record(
+  ctx(openingEquity, hdfc, "2026-07-01", "Opening balance — overdrawn"),
+  { amount: rupees("-600"), account: accountRef(hdfc) },
+);
+check("a negative opening is an overdrawn asset, not a positive one", moved(overdrawn, hdfc), "-600.00");
+
+const bothFlips = OpeningBalance.record(
+  ctx(hdfc, openingEquity, "2026-07-01", "both flips"),
+  { amount: rupees("-250"), account: accountRef(hdfc) },
+);
+check("a negative amount on a reversed arrow is a rise: the two compose", moved(bothFlips, hdfc), "250.00");
+
+const debtFalls = OpeningBalance.record(
+  ctx(card, openingEquity, "2026-07-01", "Correction down — ICICI card"),
+  { amount: rupees("4000"), account: accountRef(card) },
+);
+check("account → equity lowers a liability too", moved(debtFalls, card), "-4000.00");
+
+const cardInCredit = OpeningBalance.record(
+  ctx(openingEquity, card, "2026-07-01", "Opening balance — card in credit"),
+  { amount: rupees("-300"), account: accountRef(card) },
+);
+check("a negative liability opening is a card in credit", moved(cardInCredit, card), "-300.00");
+check(
+  "and the existing positive openings are unchanged",
+  [moved(openingAsset, hdfc), moved(openingDebt, card)].join(" "),
+  "200000.00 15000.00",
+);
+reversalRestores("OpeningBalance (falling)", assetFalls);
+reversalRestores("OpeningBalance (negative)", overdrawn);
+
 /* ══ 2–4. Expense, Income, Transfer ══════════════════════════════════ */
 
 section("Expense, Income, Transfer");

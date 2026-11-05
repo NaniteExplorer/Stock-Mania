@@ -9,6 +9,7 @@
  * which account sits on the other leg.
  */
 
+import { Count, Days, Ordinal } from "@/core/units";
 import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
@@ -97,7 +98,7 @@ async function main() {
 
   const TERMS: CardTerms = {
     creditLimit: rupees("200000"),
-    cycle: new BillingCycleRule(18, 20),
+    cycle: new BillingCycleRule(Ordinal(18), Days(20)),
     financeRate: Rate.annual("42"),
     minimumDuePercent: Percentage.of("5"),
     minimumDueFloor: rupees("500"),
@@ -136,7 +137,7 @@ async function main() {
   check("net worth is assets less liabilities", totalsAtOpen.netWorth.toDecimalString(), "281760.00");
 
   const accounts = await accountRepo.list(userId, { includeClosed: true });
-  const everythingAtOpen = await txnRepo.find(userId, { limit: 5000 });
+  const everythingAtOpen = await txnRepo.find(userId, { limit: Count(5000) });
   const pureAtOpen = new BalanceCalculator().netWorthAsOf(accounts, everythingAtOpen.transactions, on("2026-06-30"));
   check("and the pure fold agrees", pureAtOpen.netWorth.toDecimalString(), "281760.00");
 
@@ -197,7 +198,7 @@ async function main() {
   const paymentPage = await txnRepo.find(userId, {
     accountIds: [cardId],
     range: DateRange.of(on("2026-06-25"), on("2026-06-25")),
-    limit: 10,
+    limit: Count(10),
   });
   check("it is a TRANSFER", paymentPage.transactions[0]?.kind, "TRANSFER");
   checkTrue(
@@ -397,7 +398,7 @@ async function main() {
 
   section("the ledger is still internally consistent");
 
-  const finalPage = await txnRepo.find(userId, { limit: 20_000 });
+  const finalPage = await txnRepo.find(userId, { limit: Count(20_000) });
   check("debits equal credits", new BalanceCalculator().verifyIntegrity(finalPage.transactions).ok, true);
   check("card is a liability throughout", card.type.netWorthSign, -1);
 

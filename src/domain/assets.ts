@@ -21,7 +21,9 @@ import { UserId, ValueObject } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { Percentage, Quantity, Rate, UnitPrice } from "@/core/numeric";
 import { CalendarDate, DateRange } from "@/core/time";
+import { Count, Days, DaySpan, Ordinal } from "@/core/units";
 import { Account, AccountId, AccountSubtype, AccountType } from "@/domain/accounts";
+import { DecliningBalance, type DepreciationModel, type ModelledValue, type Purchase } from "@/domain/depreciation";
 
 /* ═══ BalanceSource (port) ════════════════════════════════════════════ */
 
@@ -459,8 +461,8 @@ export class BillingCycle extends ValueObject {
   }
 
   /** Days from the statement date to the due date — the interest-free window. */
-  get graceDays(): number {
-    return this.through.daysUntil(this.dueOn);
+  get graceDays(): Days {
+    return Days(this.through.daysUntil(this.dueOn));
   }
 
   /** `YYYY-MM` of the statement date, which is how issuers label a statement. */
@@ -489,9 +491,9 @@ export class BillingCycle extends ValueObject {
 export class BillingCycleRule extends ValueObject {
   constructor(
     /** Day of month the statement is generated. 29–31 are clamped per month. */
-    readonly statementDay: number,
+    readonly statementDay: Ordinal,
     /** Days after the statement date that payment is due. */
-    readonly graceDays: number,
+    readonly graceDays: Days,
   ) {
     super();
     if (!Number.isInteger(statementDay) || statementDay < 1 || statementDay > 31) {
@@ -731,7 +733,7 @@ export interface FinanceChargeBreakdown {
   readonly interest: Money;
   readonly gstOnInterest: Money;
   readonly total: Money;
-  readonly days: number;
+  readonly days: Days;
 }
 
 /**
@@ -782,7 +784,7 @@ export class CreditCard extends CreditProduct {
   }
 
   /** The `count` cycles ending on or before `date`, oldest first. */
-  recentCycles(date: CalendarDate, count: number): readonly BillingCycle[] {
+  recentCycles(date: CalendarDate, count: Count): readonly BillingCycle[] {
     const cycles: BillingCycle[] = [];
     let cursor = this.cycleFor(date);
     for (let index = 0; index < count; index += 1) {
@@ -857,7 +859,7 @@ export class CreditCard extends CreditProduct {
     const factor = this.terms.financeRate.accrualFactor(1);
     const interest = balanceDays.timesRatio(factor.numerator, factor.denominator);
     const gst = this.terms.gstOnCharges.applyTo(interest);
-    return { interest, gstOnInterest: gst, total: interest.plus(gst), days };
+    return { interest, gstOnInterest: gst, total: interest.plus(gst), days: Days(days) };
   }
 
   /**
@@ -900,7 +902,7 @@ export class CreditCard extends CreditProduct {
   static defaultTerms(currency: Currency = Currency.reporting): CardTerms {
     return {
       creditLimit: Money.zero(currency),
-      cycle: new BillingCycleRule(18, 20),
+      cycle: new BillingCycleRule(Ordinal(18), Days(20)),
       financeRate: Rate.annual("42"),
       minimumDuePercent: Percentage.of("5"),
       minimumDueFloor: Money.fromRupees("500", currency),
@@ -949,6 +951,7 @@ export interface CardTermsRepository {
 export type PhysicalAssetKind =
   | "REAL_ESTATE"
   | "VEHICLE"
+  | "OTHER"
   | "PHYSICAL_GOLD"
   | "ESOP_GRANT"
   | "GOLD_LEASE";
@@ -1011,14 +1014,14 @@ export abstract class PhysicalAsset {
    * price silently substituted. An asset nobody has valued is an asset whose value
    * is unknown, and that is a different statement from "it is worth nothing".
    */
-  valuationOn(asOf: CalendarDate): { valuation: AssertedValuation; ageDays: number; isStale: boolean } | null {
+  valuationOn(asOf: CalendarDate): { valuation: AssertedValuation; ageDays: Days; isStale: boolean } | null {
     const eligible = this.valuations
       .filter((valuation) => valuation.on.isOnOrBefore(asOf))
       .sort((a, b) => b.on.compareTo(a.on));
     const latest = eligible[0];
     if (!latest) return null;
 
-    const ageDays = latest.on.daysUntil(asOf);
+    const ageDays = Days(latest.on.daysUntil(asOf));
     return {
       valuation: latest,
       ageDays,
@@ -1032,45 +1035,74 @@ export abstract class PhysicalAsset {
   }
 }
 
+/** Purchase terms and observed history for the three owner-valued physical kinds. */
+export abstract class PurchasedPhysicalAsset extends PhysicalAsset {
+  readonly purchase: Purchase | undefined;
+
+  protected constructor(account: Account, valuations: readonly AssertedValuation[], purchase?: Purchase) {
+    if (purchase !== undefined) {
+      if (!purchase.price.isPositive) throw new RangeError("A physical asset purchase price must be positive.");
+      if (purchase.price.currency.code !== account.currency.code) throw new RangeError("Purchase currency must match the asset account.");
+    }
+    const dates = new Set<string>();
+    const copied = valuations.map((valuation) => {
+      if (valuation.value.isNegative) throw new RangeError("An asserted valuation cannot be negative.");
+      if (valuation.value.currency.code !== account.currency.code) throw new RangeError("Valuation currency must match the asset account.");
+      if (purchase !== undefined && valuation.on.isBefore(purchase.on)) throw new RangeError("An asserted valuation cannot predate the purchase.");
+      if (!Object.hasOwn(VALUATION_SHELF_LIFE_DAYS, valuation.source)) throw new RangeError("Unknown valuation source.");
+      const date = valuation.on.toISO();
+      if (dates.has(date)) throw new RangeError("Only one asserted valuation is allowed per date.");
+      dates.add(date);
+      return Object.freeze({ ...valuation });
+    });
+    super(account, Object.freeze(copied));
+    this.purchase = purchase === undefined ? undefined : Object.freeze({ ...purchase });
+  }
+
+  /** Explicit model output, separate from the assertion-only valueOn contract. */
+  modelledValueOn(asOf: CalendarDate, model: DepreciationModel): ModelledValue | null {
+    return this.purchase === undefined ? null : model.valueOn(this.purchase, asOf);
+  }
+}
+
 /** A flat, a plot, a house. */
-export class RealEstate extends PhysicalAsset {
+export class RealEstate extends PurchasedPhysicalAsset {
   readonly kind = "REAL_ESTATE" as const;
 
-  constructor(account: Account, valuations: readonly AssertedValuation[]) {
-    super(account, valuations);
+  constructor(account: Account, valuations: readonly AssertedValuation[], purchase?: Purchase) {
+    super(account, valuations, purchase);
+  }
+}
+
+/** Gadgets, appliances and other major physical purchases. */
+export class OtherPhysicalAsset extends PurchasedPhysicalAsset {
+  readonly kind = "OTHER" as const;
+
+  constructor(account: Account, valuations: readonly AssertedValuation[], purchase?: Purchase) {
+    super(account, valuations, purchase);
   }
 }
 
 /** A car or a two-wheeler — the one asset most people know depreciates. */
-export class Vehicle extends PhysicalAsset {
+export class Vehicle extends PurchasedPhysicalAsset {
   readonly kind = "VEHICLE" as const;
 
   constructor(
     account: Account,
     valuations: readonly AssertedValuation[],
-    readonly purchase?: { readonly on: CalendarDate; readonly price: Money },
+    purchase?: Purchase,
   ) {
-    super(account, valuations);
+    super(account, valuations, purchase);
   }
 
   /**
-   * Straight-line depreciation from the purchase price, as a *fallback* when
-   * nothing has been asserted.
-   *
-   * Offered explicitly rather than folded into `valueOn`, because it is a model
-   * and not an observation: 15% a year is the Indian insurance convention and is
-   * not what any particular car sold for. A caller that wants it asks for it, and
-   * the screen can say which it is showing.
+   * The figure alone, at a declining-balance rate. *(Corrected 2026-10-28: this
+   * was described as straight-line and as "the Indian insurance convention"; it
+   * is declining-balance, and the motor tariff's IDV schedule is age-banded —
+   * see `MOTOR_IDV_SCHEDULE`.)* Prefer `modelledValueOn`, which keeps the label.
    */
   depreciatedValueOn(asOf: CalendarDate, annualRate = Percentage.of("15")): Money | null {
-    if (!this.purchase) return null;
-    const years = Math.max(0, this.purchase.on.daysUntil(asOf)) / 365;
-    const wholeYears = Math.floor(years);
-    let value = this.purchase.price;
-    for (let year = 0; year < wholeYears; year += 1) {
-      value = value.minus(annualRate.applyTo(value));
-    }
-    return value;
+    return this.modelledValueOn(asOf, new DecliningBalance(annualRate, "Owner's assumed annual rate"))?.value ?? null;
   }
 }
 
@@ -1235,8 +1267,8 @@ export class EsopGrant extends PhysicalAsset {
   }
 
   /** Holding period for the capital gain runs from **exercise**, never from grant. */
-  gainTermFrom(exercisedOn: CalendarDate, soldOn: CalendarDate): { days: number; longTerm: boolean } {
-    const days = exercisedOn.daysUntil(soldOn);
+  gainTermFrom(exercisedOn: CalendarDate, soldOn: CalendarDate): { days: DaySpan; longTerm: boolean } {
+    const days = DaySpan(exercisedOn.daysUntil(soldOn));
     // Listed: 12 months. Unlisted: 24 months.
     const threshold = this.terms.listed ? 365 : 730;
     return { days, longTerm: days >= threshold };
@@ -1285,9 +1317,9 @@ export class GoldLease extends PhysicalAsset {
   }
 
   /** Days the metal has been out, capped at the lease term. */
-  daysElapsed(asOf: CalendarDate): number {
+  daysElapsed(asOf: CalendarDate): Days {
     const end = CalendarDate.min(asOf, this.terms.returnsOn);
-    return Math.max(0, this.terms.leasedOn.daysUntil(end));
+    return Days(Math.max(0, this.terms.leasedOn.daysUntil(end)));
   }
 
   /**

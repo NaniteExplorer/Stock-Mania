@@ -58,7 +58,8 @@ console.log("-- the dependency arrow --");
 // test without a database.
 import { check, done } from "./harness";
 const FORBIDDEN_IN_DOMAIN = ["drizzle-orm", "next/", "@/infra/", "@/app/", "server-only"];
-for (const file of readdirSync("src/domain")) {
+// Recursive, so a subfolder such as src/domain/scoring/ cannot escape the dependency rule.
+for (const file of readdirSync("src/domain", { recursive: true, encoding: "utf8" }).filter((f) => f.endsWith(".ts"))) {
   const src = readFileSync(`src/domain/${file}`, "utf8");
   const imports = [...src.matchAll(/^import[^;]*from\s+"([^"]+)";/gm)].map((m) => m[1]);
   const bad = imports.filter((i) => FORBIDDEN_IN_DOMAIN.some((f) => i.startsWith(f)));

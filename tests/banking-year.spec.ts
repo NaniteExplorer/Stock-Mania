@@ -16,6 +16,7 @@
  * flips a direction or rounds anything, at least one of the three moves.
  */
 
+import { Count } from "@/core/units";
 import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
@@ -27,7 +28,7 @@ import { Money } from "@/core/money";
 import { CalendarDate, DateRange } from "@/core/time";
 import { AccountCode } from "@/domain/accounts";
 import { BalanceCalculator } from "@/domain/transactions";
-import { checkBalanceContinuity, parseDelimitedText, parseStatementRows } from "@/infra/statements";
+import { checkBalanceContinuity, parseDelimitedText, parseStatementRows, toBankingStatement } from "@/infra/statements";
 import {
   DrizzleAccountRepository,
   DrizzleBalanceQuery,
@@ -278,7 +279,7 @@ async function main() {
     accountId,
     fileName: "hdfc-fy2026-27.csv",
     fileHash: "sha256-year",
-    statement,
+    statement: toBankingStatement(statement),
   });
   check("all rows staged", staged.ok && staged.value.rowsStaged, year.lineCount);
   check("none looks like a duplicate", staged.ok && staged.value.rowsLikelyDuplicate, 0);
@@ -313,7 +314,7 @@ async function main() {
   );
 
   const allAccounts = await accountRepo.list(userId, { includeClosed: true });
-  const everything = await txnRepo.find(userId, { limit: 20_000 });
+  const everything = await txnRepo.find(userId, { limit: Count(20_000) });
   const calculator = new BalanceCalculator();
   const pure = calculator.balancesAsOf(allAccounts, everything.transactions, asOf);
   check(
@@ -388,7 +389,7 @@ async function main() {
     // A different file hash, so I02 does not short-circuit it: this is the
     // duplicate matcher's job, not the hash's.
     fileHash: "sha256-year-copy",
-    statement,
+    statement: toBankingStatement(statement),
   });
   check("every row is recognised as already present", again.ok && again.value.rowsLikelyDuplicate, year.lineCount);
   if (!again.ok) throw new Error("re-staging failed");

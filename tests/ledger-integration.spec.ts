@@ -1,3 +1,4 @@
+import { Count } from "@/core/units";
 import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
@@ -148,7 +149,7 @@ async function main() {
   console.log("\n== SQL BalanceQuery vs pure BalanceCalculator ==");
   const asOf = CalendarDate.parse("2026-08-31");
   const allAccounts = await accountRepo.list(userId, { includeClosed: true });
-  const page = await txnRepo.find(userId, { limit: 10_000 });
+  const page = await txnRepo.find(userId, { limit: Count(10_000) });
   const calc = new BalanceCalculator();
   const pure = calc.balancesAsOf(allAccounts, page.transactions, asOf);
   const sqlSheet = await balances.balanceSheet(userId, asOf, { includeClosed: true });
@@ -209,7 +210,7 @@ async function main() {
     afterReversal.liabilities.toDecimalString(), "-1240.00");
   const twice = await reverse.execute({ userId, transactionId: groceryTxn.transactionId });
   check("cannot reverse the same entry twice", !twice.ok, true);
-  const reReversed = await txnRepo.find(userId, { limit: 10_000 });
+  const reReversed = await txnRepo.find(userId, { limit: Count(10_000) });
   check("history preserved (nothing deleted)", reReversed.transactions.length, page.transactions.length + 1);
   check("still balanced after reversal", calc.verifyIntegrity(reReversed.transactions).ok, true);
 

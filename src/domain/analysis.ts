@@ -26,6 +26,7 @@
  * `analyse` returns no `Money` at all, which is what keeps that line clean.
  */
 
+import { Count, Ratio, PriceLevel, IndexPoints } from "@/core/units";
 import { Currency } from "@/core/money";
 import { UnitPrice } from "@/core/numeric";
 import { CalendarDate, DateRange } from "@/core/time";
@@ -119,7 +120,7 @@ export interface BarRepository {
   coverage(
     instrumentId: string,
     granularity: BarGranularity,
-  ): Promise<{ from: CalendarDate; through: CalendarDate; count: number } | null>;
+  ): Promise<{ from: CalendarDate; through: CalendarDate; count: Count } | null>;
 
   /** Marks a bar corrected by a later one, keeping both. */
   supersede(supersededBarId: string, bySupersedingBarId: string): Promise<void>;
@@ -138,7 +139,7 @@ export interface BarRepository {
    * its replacement. Nothing is deleted — "what did the chart show last March"
    * stays answerable, which is the entire reason the table has two time axes.
    */
-  restate(bars: readonly Bar[]): Promise<{ appended: number; superseded: number }>;
+  restate(bars: readonly Bar[]): Promise<{ appended: Count; superseded: Count }>;
 
   /**
    * The weekday stretches inside `range` that have no live bar.
@@ -203,11 +204,16 @@ export function weekdayGaps(
  * shortening its window — a chart drawn from silently-shortened windows looks
  * exactly like a correct one.
  */
-export interface Indicator {
+export type IndicatorUnit = PriceLevel | IndexPoints | Ratio;
+
+export type IndicatorUnitName<U extends IndicatorUnit> = U extends PriceLevel ? "PRICE_LEVEL" : U extends IndexPoints ? "INDEX_POINTS" : "RATIO";
+
+export interface Indicator<U extends IndicatorUnit = IndicatorUnit> {
+  readonly unit: IndicatorUnitName<U>;
   readonly name: string;
-  readonly value: number | null;
+  readonly value: U | null;
   /** Bars the calculation needs. */
-  readonly window: number;
+  readonly window: Count;
   /** How the number was produced, or why there is none. */
   readonly because: string;
 }
@@ -215,7 +221,7 @@ export interface Indicator {
 export interface InstrumentAnalysis {
   readonly instrumentId: string;
   readonly asOf: CalendarDate;
-  readonly barsUsed: number;
+  readonly barsUsed: Count;
   readonly indicators: readonly Indicator[];
   /** Facts about the series itself: duplicates, corrections, an empty series. */
   readonly warnings: readonly string[];
@@ -228,11 +234,12 @@ const priceOf = (bar: Bar, field: "open" | "high" | "low" | "close"): number =>
 
 const closes = (series: readonly Bar[]): number[] => series.map((bar) => priceOf(bar, "close"));
 
-function insufficient(name: string, window: number, have: number): Indicator {
+function insufficient<U extends IndicatorUnit>(name: string, window: number, have: number, unit: IndicatorUnitName<U>): Indicator<U> {
   return {
     name,
+    unit,
     value: null,
-    window,
+    window: Count(window),
     because:
       `${name} needs ${window} bars and the series has ${have}. Reported as unavailable rather ` +
       `than computed over a shorter window, which would be a different indicator wearing this ` +
@@ -241,13 +248,13 @@ function insufficient(name: string, window: number, have: number): Indicator {
 }
 
 /** Simple moving average of the closes. */
-export function sma(series: readonly Bar[], window: number): Indicator {
-  if (series.length < window) return insufficient(`SMA(${window})`, window, series.length);
+export function sma(series: readonly Bar[], window: Count): Indicator<PriceLevel> {
+  if (series.length < window) return insufficient<PriceLevel>(`SMA(${window})`, window, series.length, "PRICE_LEVEL");
   const slice = closes(series).slice(-window);
   return {
     name: `SMA(${window})`,
-    value: slice.reduce((sum, close) => sum + close, 0) / window,
-    window,
+    unit: "PRICE_LEVEL", value: PriceLevel(slice.reduce((sum, close) => sum + close, 0) / window),
+    window: Count(window),
     because: `Mean close of the last ${window} bars.`,
   };
 }
@@ -269,12 +276,13 @@ function emaSeries(values: readonly number[], window: number): number[] {
  * implementations: seeding with the first close instead makes the early series
  * wrong for roughly `window` bars, and by then nobody is looking.
  */
-export function ema(series: readonly Bar[], window: number): Indicator {
-  if (series.length < window) return insufficient(`EMA(${window})`, window, series.length);
+export function ema(series: readonly Bar[], window: Count): Indicator<PriceLevel> {
+  if (series.length < window) return insufficient<PriceLevel>(`EMA(${window})`, window, series.length, "PRICE_LEVEL");
+  const value = emaSeries(closes(series), window).at(-1) ?? null;
   return {
     name: `EMA(${window})`,
-    value: emaSeries(closes(series), window).at(-1) ?? null,
-    window,
+    unit: "PRICE_LEVEL", value: value === null ? null : PriceLevel(value),
+    window: Count(window),
     because: `Smoothing factor 2/(${window}+1), seeded with the SMA of the first ${window} bars.`,
   };
 }
@@ -287,9 +295,9 @@ export function ema(series: readonly Bar[], window: number): Indicator {
  * bars has an unbounded relative strength, reported as 100 by convention rather
  * than by dividing by zero.
  */
-export function rsi(series: readonly Bar[], window = 14): Indicator {
+export function rsi(series: readonly Bar[], window: Count = Count(14)): Indicator<IndexPoints> {
   const name = `RSI(${window})`;
-  if (series.length < window + 1) return insufficient(name, window + 1, series.length);
+  if (series.length < window + 1) return insufficient<IndexPoints>(name, window + 1, series.length, "INDEX_POINTS");
 
   const values = closes(series);
   let gains = 0;
@@ -311,8 +319,8 @@ export function rsi(series: readonly Bar[], window = 14): Indicator {
   if (averageLoss === 0) {
     return {
       name,
-      value: 100,
-      window: window + 1,
+      unit: "INDEX_POINTS", value: IndexPoints(100),
+      window: Count(window + 1),
       because:
         "No down bars in the window, so the relative strength is unbounded — reported as 100 by convention.",
     };
@@ -320,8 +328,8 @@ export function rsi(series: readonly Bar[], window = 14): Indicator {
   const rs = averageGain / averageLoss;
   return {
     name,
-    value: 100 - 100 / (1 + rs),
-    window: window + 1,
+    unit: "INDEX_POINTS", value: IndexPoints(100 - 100 / (1 + rs)),
+    window: Count(window + 1),
     because: `Wilder-smoothed average gain over average loss across ${window} bars.`,
   };
 }
@@ -329,12 +337,12 @@ export function rsi(series: readonly Bar[], window = 14): Indicator {
 /** MACD line, its signal and the histogram, in scaled price units. */
 export function macd(
   series: readonly Bar[],
-  fast = 12,
-  slow = 26,
-  signalWindow = 9,
-): readonly Indicator[] {
+  fast: Count = Count(12),
+  slow: Count = Count(26),
+  signalWindow: Count = Count(9),
+): readonly Indicator<PriceLevel>[] {
   const name = `MACD(${fast},${slow},${signalWindow})`;
-  if (series.length < slow) return [insufficient(name, slow, series.length)];
+  if (series.length < slow) return [insufficient<PriceLevel>(name, slow, series.length, "PRICE_LEVEL")];
 
   const values = closes(series);
   const fastSeries = emaSeries(values, fast);
@@ -348,29 +356,30 @@ export function macd(
       slowSeries[slowSeries.length - overlap + index],
   );
 
-  const macdLine: Indicator = {
+  const latestLine = line.at(-1) ?? null;
+  const macdLine: Indicator<PriceLevel> = {
     name,
-    value: line.at(-1) ?? null,
+    unit: "PRICE_LEVEL", value: latestLine === null ? null : PriceLevel(latestLine),
     window: slow,
     because: `EMA(${fast}) less EMA(${slow}) of the close.`,
   };
 
   if (line.length < signalWindow) {
-    return [macdLine, insufficient(`${name} signal`, slow + signalWindow, series.length)];
+    return [macdLine, insufficient<PriceLevel>(`${name} signal`, slow + signalWindow, series.length, "PRICE_LEVEL")];
   }
   const signal = emaSeries(line, signalWindow).at(-1) ?? null;
   return [
     macdLine,
     {
       name: `${name} signal`,
-      value: signal,
-      window: slow + signalWindow,
+      unit: "PRICE_LEVEL", value: signal === null ? null : PriceLevel(signal),
+      window: Count(slow + signalWindow),
       because: `EMA(${signalWindow}) of the MACD line.`,
     },
     {
       name: `${name} histogram`,
-      value: signal === null || macdLine.value === null ? null : macdLine.value - signal,
-      window: slow + signalWindow,
+      unit: "PRICE_LEVEL", value: signal === null || macdLine.value === null ? null : PriceLevel(macdLine.value - signal),
+      window: Count(slow + signalWindow),
       because: "MACD line less its signal. Positive is a widening upward divergence.",
     },
   ];
@@ -379,32 +388,32 @@ export function macd(
 /** Bollinger bands: the SMA and `sigmas` sample standard deviations either side. */
 export function bollinger(
   series: readonly Bar[],
-  window = 20,
-  sigmas = 2,
-): readonly Indicator[] {
+  window: Count = Count(20),
+  sigmas: Ratio = Ratio(2),
+): readonly Indicator<PriceLevel | Ratio>[] {
   const name = `Bollinger(${window},${sigmas})`;
-  if (series.length < window) return [insufficient(name, window, series.length)];
+  if (series.length < window) return [insufficient<PriceLevel>(name, window, series.length, "PRICE_LEVEL")];
   const slice = closes(series).slice(-window);
   const middle = slice.reduce((sum, value) => sum + value, 0) / window;
-  const deviation = stdDev(slice);
+  const deviation = stdDev(slice.map(PriceLevel), PriceLevel);
   return [
-    { name: `${name} middle`, value: middle, window, because: `SMA(${window}) of the close.` },
+    { name: `${name} middle`, unit: "PRICE_LEVEL", value: PriceLevel(middle), window: Count(window), because: `SMA(${window}) of the close.` },
     {
       name: `${name} upper`,
-      value: middle + sigmas * deviation,
-      window,
+      unit: "PRICE_LEVEL", value: PriceLevel(middle + sigmas * deviation),
+      window: Count(window),
       because: `${sigmas} sample standard deviations above the mean.`,
     },
     {
       name: `${name} lower`,
-      value: middle - sigmas * deviation,
-      window,
+      unit: "PRICE_LEVEL", value: PriceLevel(middle - sigmas * deviation),
+      window: Count(window),
       because: `${sigmas} sample standard deviations below the mean.`,
     },
     {
       name: `${name} bandwidth`,
-      value: middle === 0 ? null : (2 * sigmas * deviation) / middle,
-      window,
+      unit: "RATIO", value: middle === 0 ? null : Ratio((2 * sigmas * deviation) / middle),
+      window: Count(window),
       because:
         "Band width relative to the mean — a scale-free measure of how quiet the series is.",
     },
@@ -418,9 +427,9 @@ export function bollinger(
  * today's range is real movement, and ignoring it understates the range of
  * exactly the days that matter.
  */
-export function atr(series: readonly Bar[], window = 14): Indicator {
+export function atr(series: readonly Bar[], window: Count = Count(14)): Indicator<PriceLevel> {
   const name = `ATR(${window})`;
-  if (series.length < window + 1) return insufficient(name, window + 1, series.length);
+  if (series.length < window + 1) return insufficient<PriceLevel>(name, window + 1, series.length, "PRICE_LEVEL");
 
   const ranges: number[] = [];
   for (let index = 1; index < series.length; index += 1) {
@@ -438,22 +447,22 @@ export function atr(series: readonly Bar[], window = 14): Indicator {
   }
   return {
     name,
-    value: average,
-    window: window + 1,
+    unit: "PRICE_LEVEL", value: PriceLevel(average),
+    window: Count(window + 1),
     because: `Wilder-smoothed true range over ${window} bars, gaps included.`,
   };
 }
 
 /**
- * Annualised realised volatility of the closes, as a percentage.
+ * Annualised realised volatility of the closes, as a return fraction.
  *
  * Reuses `stdDev` and `TRADING_DAYS` from `domain/portfolio.ts` rather than
  * recomputing them: the sample-versus-population choice is made once in this
  * codebase, and a second copy of it is a second answer.
  */
-export function realisedVolatility(series: readonly Bar[], window = 21): Indicator {
+export function realisedVolatility(series: readonly Bar[], window: Count = Count(21)): Indicator<Ratio> {
   const name = `Realised volatility(${window}d, annualised)`;
-  if (series.length < window + 1) return insufficient(name, window + 1, series.length);
+  if (series.length < window + 1) return insufficient<Ratio>(name, window + 1, series.length, "RATIO");
   const values = closes(series).slice(-(window + 1));
   const returns: number[] = [];
   for (let index = 1; index < values.length; index += 1) {
@@ -462,9 +471,9 @@ export function realisedVolatility(series: readonly Bar[], window = 21): Indicat
   }
   return {
     name,
-    value: stdDev(returns) * Math.sqrt(TRADING_DAYS) * 100,
-    window: window + 1,
-    because: `Sample standard deviation of ${returns.length} daily returns, times the square root of ${TRADING_DAYS}, as a percentage.`,
+    unit: "RATIO", value: Ratio(stdDev(returns.map(Ratio), Ratio) * Math.sqrt(TRADING_DAYS)),
+    window: Count(window + 1),
+    because: `Sample standard deviation of ${returns.length} daily returns, times the square root of ${TRADING_DAYS}, as a return fraction.`,
   };
 }
 
@@ -494,7 +503,7 @@ export function analyseSeries(
     return {
       instrumentId,
       asOf: series[0]?.asOf ?? CalendarDate.parse("1970-01-01"),
-      barsUsed: 0,
+      barsUsed: Count(0),
       indicators: [],
       warnings: ["There are no current bars to analyse. No indicator is reported, and none is zero."],
       extras,
@@ -519,11 +528,11 @@ export function analyseSeries(
   }
 
   const indicators: Indicator[] = [
-    sma(current, 20),
-    sma(current, 50),
-    sma(current, 200),
-    ema(current, 20),
-    rsi(current, 14),
+    sma(current, Count(20)),
+    sma(current, Count(50)),
+    sma(current, Count(200)),
+    ema(current, Count(20)),
+    rsi(current, Count(14)),
     ...macd(current),
     ...bollinger(current),
     atr(current),
@@ -533,7 +542,7 @@ export function analyseSeries(
   return {
     instrumentId,
     asOf: current[current.length - 1].asOf,
-    barsUsed: current.length,
+    barsUsed: Count(current.length),
     indicators,
     warnings,
     extras,

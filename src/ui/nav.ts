@@ -16,16 +16,34 @@ import {
   LineChart,
   PiggyBank,
   Upload,
-  Wallet,
   Gem,
   CreditCard,
   Building2,
   TrendingUp,
+  Banknote,
+  ShieldCheck,
+  Repeat,
+  Gauge,
+  Radar,
 } from "lucide-react";
 
 /**
  * Sidebar navigation, grouped INDmoney-style. `NAV_ITEMS` (flat) is derived for
  * any consumer that just needs the full list (e.g. mobile menus).
+ *
+ * Grouping follows DESIGN.md §9c (D.2, binding): "Debt" holds exactly Cards and
+ * Loans (Payoff is a tab of `/loans`, not an item); Deposits and Assets sit under
+ * "Savings & assets"; Platforms stays under Investments. `/liabilities` is retired
+ * and permanently redirects to `/loans` (`next.config.ts`), so it has no entry.
+ *
+ * §9c also puts three figures in the Debt group header (Total outstanding, Blended
+ * rate, Monthly outgo). Total outstanding is rendered (Batch 5): the layout computes
+ * it from the card and loan usecases via `src/ui/debt-header.ts`, and `Sidebar`
+ * shows it under the Debt label, hidden when unknown. Blended rate and Monthly outgo
+ * remain a recorded follow-up.
+ *
+ * "Planning" is not placed by §9c; it holds the newer screens unchanged so that
+ * no destination was dropped by the regroup.
  */
 export const NAV_GROUPS = [
   {
@@ -33,28 +51,58 @@ export const NAV_GROUPS = [
     items: [
       { href: "/dashboard", label: "Net Worth", icon: LayoutDashboard },
       { href: "/history", label: "History", icon: CalendarClock },
+      { href: "/activity", label: "Activity", icon: History },
     ],
   },
   {
-    label: "Wealth",
+    label: "Cash & spending",
     items: [
       { href: "/accounts", label: "Accounts", icon: Landmark },
       { href: "/transactions", label: "Transactions", icon: History },
       { href: "/budgets", label: "Budgets", icon: PiggyBank },
       { href: "/imports", label: "Import", icon: Upload },
+    ],
+  },
+  {
+    label: "Investments",
+    items: [
       { href: "/investments", label: "Investments", icon: LineChart },
-      { href: "/platforms", label: "Platforms", icon: Building2 },
       { href: "/investments/history", label: "Realised gains", icon: TrendingUp },
-      { href: "/assets", label: "Assets", icon: Gem },
+      { href: "/platforms", label: "Platforms", icon: Building2 },
+    ],
+  },
+  {
+    label: "Savings & assets",
+    items: [
       { href: "/deposits", label: "Deposits", icon: PiggyBank },
+      { href: "/assets", label: "Assets", icon: Gem },
+    ],
+  },
+  {
+    label: "Debt",
+    items: [
       { href: "/cards", label: "Cards", icon: CreditCard },
       { href: "/loans", label: "Loans", icon: Landmark },
-      { href: "/liabilities", label: "Liabilities", icon: Wallet },
+    ],
+  },
+  {
+    label: "Planning",
+    items: [
+      { href: "/income", label: "Income", icon: Banknote },
+      { href: "/insurance", label: "Insurance", icon: ShieldCheck },
+      { href: "/commitments", label: "Commitments", icon: Repeat },
+      { href: "/projection", label: "Projection", icon: TrendingUp },
+      { href: "/standing", label: "Standing", icon: Gauge },
+      { href: "/signals", label: "Signals", icon: Radar },
     ],
   },
   {
     label: "Account",
-    items: [{ href: "/settings", label: "Settings", icon: Settings }],
+    items: [
+      { href: "/settings", label: "Settings", icon: Settings },
+      { href: "/settings/cpi", label: "CPI Urban", icon: LineChart },
+      { href: "/settings/allocation", label: "Target allocation", icon: Radar },
+    ],
   },
 ];
 

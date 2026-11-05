@@ -4,6 +4,8 @@ import * as React from "react";
 import { Trash2, Undo2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ActionForm, SubmitButton } from "@/ui/action-form";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ActionCell, TextCell } from "@/components/ui/data-cell";
 import {
   bulkDeleteTransactionsAction,
   deleteTransactionAction,
@@ -62,8 +64,8 @@ export default function LedgerTable({
   return (
     <>
       {chosen.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-red-500/30 bg-red-500/5 px-4 py-3">
-          <p className="text-xs font-medium text-gray-200">
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-(--loss)/30 bg-(--loss)/5 px-4 py-3">
+          <p className="text-xs font-medium text-(--fg)">
             {chosen.length} transaction{chosen.length === 1 ? "" : "s"} selected
           </p>
           <ActionForm
@@ -85,7 +87,7 @@ export default function LedgerTable({
           </ActionForm>
           <button
             type="button"
-            className="text-xs text-gray-400 hover:underline"
+            className="text-xs text-(--fg-secondary) hover:underline"
             onClick={() => setSelected(new Set())}
           >
             Clear selection
@@ -93,15 +95,13 @@ export default function LedgerTable({
         </div>
       )}
 
-      <div className="table-scroll">
-        <table className="w-full text-sm">
-          <caption className="sr-only">Transactions touching this account, newest first</caption>
-          <thead>
-            <tr className="border-b border-gray-600">
-              <th scope="col" className="px-4 py-3 text-left">
+      <Table aria-label="Transactions touching this account, newest first">
+          <TableHeader>
+            <TableRow>
+              <TableHead>
                 <input
                   type="checkbox"
-                  className="h-4 w-4 accent-brand-500"
+                  className="h-4 w-4 accent-(--accent)"
                   checked={allSelected}
                   ref={(node) => {
                     if (node) node.indeterminate = chosen.length > 0 && !allSelected;
@@ -110,51 +110,39 @@ export default function LedgerTable({
                   onChange={() => setSelected(allSelected ? new Set() : new Set(ids))}
                   aria-label="Select every transaction on this page"
                 />
-              </th>
-              <th scope="col" className="metric-label px-4 py-3 text-left">Date</th>
-              <th scope="col" className="metric-label px-4 py-3 text-left">Narration</th>
-              <th scope="col" className="metric-label px-4 py-3 text-left">Other side</th>
-              <th scope="col" className="metric-label px-4 py-3 text-right">Amount</th>
-              <th scope="col" className="metric-label px-4 py-3 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
+              </TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Narration</TableHead>
+              <TableHead>Other side</TableHead>
+              <TableHead className="text-right">Amount</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {rows.map((row) => (
-              <tr
+              <TableRow
                 key={row.id}
-                className={cn(
-                  "border-b border-gray-600/50 last:border-0",
-                  selected.has(row.id) && "bg-red-500/5",
-                )}
+                aria-selected={selected.has(row.id) || undefined}
+                className={cn(selected.has(row.id) && "bg-(--loss)/5")}
               >
-                <td className="px-4 py-3">
+                <TableCell>
                   <input
                     type="checkbox"
-                    className="h-4 w-4 accent-brand-500"
+                    className="h-4 w-4 accent-(--accent)"
                     checked={selected.has(row.id)}
                     onChange={() => toggle(row.id)}
                     aria-label={`Select ${row.narration}`}
                   />
-                </td>
-                <td className="tnum px-4 py-3 text-gray-400">{row.date}</td>
-                <td className="px-4 py-3 text-gray-100">
-                  {row.narration}
-                  {row.isReversal && (
-                    <span className="ml-2 text-xs text-gray-500">reversal</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-gray-400">{row.otherSide}</td>
-                <td
-                  className={
-                    row.incoming
-                      ? "tnum px-4 py-3 text-right font-medium text-green-400"
-                      : "tnum px-4 py-3 text-right font-medium text-red-400"
-                  }
-                >
+                </TableCell>
+                <TextCell className="tabular-nums">{row.date}</TextCell>
+                <TextCell secondary={row.isReversal ? "reversal" : undefined}>{row.narration}</TextCell>
+                <TextCell>{row.otherSide}</TextCell>
+                {/* Library gap: FigureCell has no gain/loss tone, so direction is coloured here. */}
+                <TextCell className={cn("text-right tabular-nums", row.incoming ? "text-(--gain)" : "text-(--loss)")}>
                   {row.incoming ? "+" : "−"}
                   {row.amount}
-                </td>
-                <td className="px-4 py-3">
+                </TextCell>
+                <ActionCell>
                   <div className="flex justify-end gap-2">
                     {/*
                      * Hidden on a reversal because the use case refuses it: the
@@ -198,12 +186,11 @@ export default function LedgerTable({
                       </SubmitButton>
                     </ActionForm>
                   </div>
-                </td>
-              </tr>
+                </ActionCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </TableBody>
+      </Table>
     </>
   );
 }

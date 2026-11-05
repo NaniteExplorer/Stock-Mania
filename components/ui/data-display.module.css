@@ -1,0 +1,32 @@
+.table { width:100%; border-collapse:separate; border-spacing:0; color:var(--fg); font-family:var(--sans); font-size:13px; line-height:18px; }
+.table th, .table td { box-sizing:border-box; height:var(--row-h); padding:var(--cell-pad); border-bottom:1px solid var(--border-subtle); border-radius:0; text-align:left; vertical-align:middle; white-space:nowrap; }
+.table[data-density="compact"] { --row-h:var(--h-md); --cell-pad:6px 12px; }
+.table thead th { background:var(--bg-surface); color:var(--fg-muted); font-size:12px; font-weight:500; letter-spacing:.015em; border-bottom:1px solid var(--border); }
+.table tbody tr { transition:background-color var(--t-fast) var(--ease); }
+.table tbody tr:hover { background:var(--bg-hover); }
+.table tr[data-state="selected"] { box-shadow:inset 2px 0 0 var(--accent); }
+.table tfoot td { background:var(--bg-subtle); font-weight:600; border-top:1px solid var(--border); border-bottom:0; }
+.caption { caption-side:bottom; text-align:left; color:var(--fg-muted); padding:var(--cell-pad); }
+.text > span { display:block; }
+.secondary { color:var(--fg-muted); font-size:11.5px; line-height:15px; }
+.table .figure { text-align:right; font-family:var(--fig-face); font-variant-numeric:var(--fig-vn); }
+.table .action { text-align:right; }
+.table th[data-align="right"] { text-align:right; }
+.figureText { font-family:var(--fig-face); font-variant-numeric:var(--fig-vn); white-space:nowrap; }
+/* Gain/loss tone always ships with an explicit sign (FigureTone "change"); colour is redundant, never the only cue. */
+[data-tone="gain"].figure, [data-tone="gain"].figureText { color:var(--gain); }
+[data-tone="loss"].figure, [data-tone="loss"].figureText { color:var(--loss); }
+.unknownGroup { display:inline-flex; align-items:baseline; gap:8px; }
+.unknown { color:var(--fg-muted); text-decoration:underline dotted; text-underline-offset:3px; cursor:help; border-radius:var(--r-1); }
+.unknown:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+/* Inline disclosure never obscures other content and remains in the accessibility tree. */
+.reason { position:absolute; width:1px; height:1px; padding:0; overflow:hidden; clip-path:inset(50%); white-space:normal; }
+.unknownGroup:hover .reason, .unknownGroup:focus-within .reason { position:static; width:auto; height:auto; overflow:visible; clip-path:none; color:var(--fg-secondary); font-family:var(--sans); text-align:left; }
+.badge { display:inline-flex; align-items:center; box-sizing:border-box; height:20px; padding:0 7px; border:1px solid var(--border-control); border-radius:var(--r-2); color:var(--fg-secondary); font-family:var(--fig-face); font-variant-numeric:var(--fig-vn); font-size:11.5px; line-height:16px; }
+.badge[data-tone="gain"] { color:var(--gain); border-color:var(--gain); background:var(--gain-bg); }
+.badge[data-tone="loss"] { color:var(--loss); border-color:var(--loss); background:var(--loss-bg); }
+.badge[data-tone="warning"] { color:var(--warn); border-color:var(--warn); background:var(--warn-bg); }
+.badge[data-tone="accent"] { color:var(--accent); border-color:var(--accent-line); background:var(--accent-soft); }
+.badge[data-tone="info"] { color:var(--info); border-color:var(--info-line); background:var(--info-bg); }
+.badge { white-space:nowrap; font-family:var(--sans); }
+@media (prefers-reduced-motion:reduce) { .table tbody tr { transition-duration:1ms; } }

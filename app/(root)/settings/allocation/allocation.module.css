@@ -1,0 +1,16 @@
+/* Local layout only; every value is a design token. */
+.muted { color:var(--fg-muted); }
+.note { display:block; color:var(--fg-muted); font-size:11.5px; line-height:15px; }
+.form { display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:var(--gap-block); }
+.field { display:flex; flex-direction:column; gap:6px; min-width:0; font-size:var(--fs-sec); color:var(--fg); }
+.base { color:var(--fg-secondary); font-family:var(--fig-face); font-variant-numeric:var(--fig-vn); }
+.hint { color:var(--fg-muted); font-size:11.5px; }
+.error { color:var(--loss); font-size:11.5px; }
+.footer { grid-column:1 / -1; display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
+.inline { display:inline-flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.verbs { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.loading { display:flex; flex-direction:column; gap:var(--gap-block); }
+.skelHero { height:56px; width:240px; }
+.skelRow { height:var(--row-h); }
+.share { max-width:120px; text-align:right; }
+.figure { text-align:right; font-family:var(--fig-face); font-variant-numeric:var(--fig-vn); }

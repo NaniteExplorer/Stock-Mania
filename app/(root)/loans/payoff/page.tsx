@@ -3,7 +3,14 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { Money } from "@/core/money";
 import { CalendarDate } from "@/core/time";
-import { Card, MoneyText, PageHeader, Pill, Stat } from "@/ui/primitives";
+import { rupee, type Figure } from "@/core/format";
+import { Columns, Kpi, KpiStrip, Masthead, Page as PageShell, Panel } from "@/components/ui/page-shell";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { FigureCell, TextCell } from "@/components/ui/data-cell";
+import { Banner } from "@/components/ui/banner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { currentUserId, services } from "@/infra/container";
 
 export const metadata: Metadata = { title: "Payoff plans" };
@@ -41,127 +48,125 @@ export default async function Page({
     : null;
 
   return (
-    <>
-      <PageHeader
+    <PageShell>
+      <Masthead
         title="Payoff plans"
-        subtitle="Both strategies pay every minimum and throw what is left at one debt. They differ only in which — and in what that costs."
-        badge={<Pill tone="brand">Phase 4</Pill>}
-        action={
-          <Link href="/loans" className="ghost-btn h-10 px-4 text-xs">
-            All loans
-          </Link>
+        side={
+          <Button asChild variant="ghost" size="sm">
+            <Link href="/loans">All loans</Link>
+          </Button>
         }
       />
+      <p className="text-sm text-(--fg-secondary)">
+        Both strategies pay every minimum and throw what is left at one debt. They differ only in which — and in what that costs.{" "}
+        <span className="text-(--fg-muted)">Phase 4</span>
+      </p>
 
-      <Card title="Monthly budget" subtitle="What you can put toward debt each month, including the minimums." className="mb-6">
+      <Panel title="Monthly budget" description="What you can put toward debt each month, including the minimums.">
         <form className="flex flex-wrap items-end gap-3" action="/loans/payoff" method="get">
-          <label className="form-label" htmlFor="budget">
-            Amount
-          </label>
-          <input
+          <Label htmlFor="budget">Amount</Label>
+          <Input
             id="budget"
             name="budget"
-            className="form-input tnum w-48"
+            className="w-48 tabular-nums"
             inputMode="decimal"
             placeholder="60000.00"
             defaultValue={budget ?? ""}
           />
-          <button type="submit" className="btn-glow">
-            Compare
-          </button>
+          <Button type="submit">Compare</Button>
         </form>
-      </Card>
+      </Panel>
 
       {result && !result.ok && (
-        <Card title="That budget will not clear the debts">
-          <p className="text-sm text-red-500">{result.error.message}</p>
-          <p className="mt-2 text-xs text-gray-500">
+        <Banner tone="error" title="That budget will not clear the debts">
+          <p>{result.error.message}</p>
+          <p className="mt-2 text-xs text-(--fg-muted)">
             A plan that never closes is not a plan, so it is refused rather than projected out to a
             date that would never arrive.
           </p>
-        </Card>
+        </Banner>
       )}
 
       {result?.ok && (
         <>
-          <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <Stat
+          <KpiStrip>
+            <Kpi
               label="Avalanche interest"
-              value={result.value.avalanche.totalInterest}
-              hint={`${result.value.avalanche.monthsToClear} months`}
+              value={rupee(result.value.avalanche.totalInterest)}
+              detail={`${result.value.avalanche.monthsToClear} months`}
             />
-            <Stat
+            <Kpi
               label="Snowball interest"
-              value={result.value.snowball.totalInterest}
-              hint={`${result.value.snowball.monthsToClear} months`}
+              value={rupee(result.value.snowball.totalInterest)}
+              detail={`${result.value.snowball.monthsToClear} months`}
             />
-            <Stat
+            <Kpi
               label="Avalanche saves"
-              value={result.value.interestSavedByAvalanche}
-              hint="In interest, over the whole plan"
+              value={rupee(result.value.interestSavedByAvalanche)}
+              detail="In interest, over the whole plan"
             />
-            <Stat
+            <Kpi
               label="And finishes"
               value={
-                <span className="tnum">
-                  {result.value.monthsSavedByAvalanche === 0
-                    ? "same month"
-                    : `${result.value.monthsSavedByAvalanche} months earlier`}
-                </span>
+                (result.value.monthsSavedByAvalanche === 0
+                  ? "same month"
+                  : `${result.value.monthsSavedByAvalanche} months earlier`) as Figure
               }
-              hint="Snowball clears a debt sooner, though"
+              detail="Snowball clears a debt sooner, though"
             />
-          </div>
+          </KpiStrip>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            {[result.value.avalanche, result.value.snowball].map((plan) => (
-              <Card
-                key={plan.strategy}
-                title={plan.strategy === "AVALANCHE" ? "Avalanche — highest rate first" : "Snowball — smallest balance first"}
-                subtitle={
-                  plan.strategy === "AVALANCHE"
-                    ? "Always the cheaper plan. The first debt cleared may take a long time."
-                    : "Costs more interest. The first debt clears sooner, which is why people finish it."
-                }
-              >
-                <p className="metric-label">Order cleared</p>
-                <ol className="mt-1 space-y-1 text-sm text-gray-300">
-                  {plan.order.map((label, index) => (
-                    <li key={`${plan.strategy}-${label}`} className="tnum">
-                      {index + 1}. {label}
-                    </li>
-                  ))}
-                </ol>
-
-                <p className="mt-4 metric-label">First twelve months</p>
-                <div className="table-scroll mt-1">
-                  <table className="w-full text-sm">
-                    <caption className="sr-only">
-                      {plan.strategy} plan: monthly total paid and remaining balance
-                    </caption>
-                    <thead>
-                      <tr className="border-b border-gray-600">
-                        <th scope="col" className="metric-label px-2 py-2 text-left">Month</th>
-                        <th scope="col" className="metric-label px-2 py-2 text-right">Paid</th>
-                        <th scope="col" className="metric-label px-2 py-2 text-right">Remaining</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {plan.months.slice(0, 12).map((month) => (
-                        <tr key={`${plan.strategy}-${month.month}`} className="border-b border-gray-600/50 last:border-0">
-                          <td className="tnum px-2 py-1.5 text-gray-500">{month.month}</td>
-                          <td className="px-2 py-1.5 text-right"><MoneyText value={month.totalPaid} tone="neutral" /></td>
-                          <td className="px-2 py-1.5 text-right"><MoneyText value={month.remaining} tone="neutral" /></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </Card>
-            ))}
-          </div>
+          <Columns>
+            <PlanPanel plan={result.value.avalanche} />
+            <PlanPanel plan={result.value.snowball} />
+          </Columns>
         </>
       )}
-    </>
+    </PageShell>
+  );
+}
+
+type PayoffPlan = Extract<Awaited<ReturnType<ReturnType<typeof services>["lending"]["comparePayoff"]["execute"]>>, { ok: true }>["value"]["avalanche"];
+
+/** One strategy's plan: the order it clears debts in and its first year. */
+function PlanPanel({ plan }: { plan: PayoffPlan }) {
+  return (
+    <Panel
+      title={plan.strategy === "AVALANCHE" ? "Avalanche — highest rate first" : "Snowball — smallest balance first"}
+      description={
+        plan.strategy === "AVALANCHE"
+          ? "Always the cheaper plan. The first debt cleared may take a long time."
+          : "Costs more interest. The first debt clears sooner, which is why people finish it."
+      }
+    >
+      <p className="text-xs text-(--fg-muted)">Order cleared</p>
+      <ol className="mt-1 space-y-1 text-sm text-(--fg-secondary)">
+        {plan.order.map((label, index) => (
+          <li key={`${plan.strategy}-${label}`} className="tabular-nums">
+            {index + 1}. {label}
+          </li>
+        ))}
+      </ol>
+
+      <p className="mt-4 text-xs text-(--fg-muted)">First twelve months</p>
+      <Table density="compact" aria-label={`${plan.strategy} plan: monthly total paid and remaining balance`}>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Month</TableHead>
+            <TableHead className="text-right">Paid</TableHead>
+            <TableHead className="text-right">Remaining</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {plan.months.slice(0, 12).map((month) => (
+            <TableRow key={`${plan.strategy}-${month.month}`}>
+              <TextCell className="tabular-nums">{month.month}</TextCell>
+              <FigureCell value={month.totalPaid} />
+              <FigureCell value={month.remaining} />
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </Panel>
   );
 }

@@ -16,6 +16,7 @@
  * history valued with both shows a return the portfolio never earned.
  */
 
+import { Count, Millis } from "@/core/units";
 import { CalendarDate } from "@/core/time";
 import { RateLimitBudget } from "@/domain/pricing";
 import { ProviderOptions, ProviderRuntime } from "@/infra/providers";
@@ -62,7 +63,7 @@ export class FrankfurterFxAdapter extends MarketDataSource implements FxRatePort
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 30, perMillis: 60_000, burst: 10 };
+    return { requests: Count(30), perMillis: Millis(60_000), burst: Count(10) };
   }
 
   async rate(request: FxRateRequest): Promise<MarketDataResult<FxRate>> {

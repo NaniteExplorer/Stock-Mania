@@ -30,7 +30,27 @@ import {
   DrizzleTransactionRepository,
 } from "@/infra/repositories";
 import { OpenAccount, RecordTransaction, ReverseTransaction, SeedChartOfAccounts } from "@/app/ledger.usecases";
+import { CreateCommitment, CreateIncomeStream, CreateInsurancePolicy } from "@/app/manual-finance.usecases";
+import { DrizzleCommitmentRepository, DrizzleIncomeRepository, DrizzleInsuranceRepository } from "@/infra/manual-finance";
+import { DrizzleCommitmentWriter, DrizzleIncomeWriter, DrizzleInsuranceWriter } from "@/infra/manual-finance-writes";
+import { newRequestContext } from "@/infra/unit-of-work";
+import { LoadProjectionAssumptions, SaveProjectionAssumptions, SetDateOfBirth } from "@/app/projection.usecases";
+import { DrizzleOwnerProfileStore, DrizzleProjectionAssumptionStore } from "@/infra/projection-store";
+import { AcquisitionCandidates, AssetAcquisitionFor, LinkAssetAcquisition, RestoreAssetAcquisition, UnlinkAssetAcquisition } from "@/app/asset-acquisition.usecases";
+import { DrizzleAssetAcquisitionRepository, DrizzleAssetAcquisitionWriter } from "@/infra/asset-acquisition-store";
+import { AssertPhysicalValuation, CreatePhysicalAsset, ListPhysicalAssets, RemovePhysicalAsset, ReplacePhysicalModel } from "@/app/physical-asset.usecases";
+import { DrizzlePhysicalAssetRepository, DrizzlePhysicalAssetWriter } from "@/infra/physical-asset-store";
+import { StandingMeasurements, standingSourcesFrom } from "@/app/standing.usecases";
+import { RecordStandingTier } from "@/app/standing-tier.usecases";
+import { DrizzleTierHistoryReader, DrizzleTierHistoryWriter } from "@/infra/tier-history-store";
+import { LoadCpiSeries, RecordCpiPoint, RemoveCpiPoint } from "@/app/cpi-series.usecases";
+import { LoadRebalancingBand, LoadTargetAllocation, RecordRebalancingBand, RecordTargetAllocation, RemoveRebalancingBand, RemoveTargetAllocation } from "@/app/target-allocation.usecases";
+import { LoadCardMinimumDues, RecordCardMinimumDue, RemoveCardMinimumDue } from "@/app/card-minimum-due.usecases";
+import { DrizzleCardMinimumDueReader, DrizzleCardMinimumDueWriter } from "@/infra/card-minimum-due-store";
+import { DrizzleRebalancingBandReader, DrizzleRebalancingBandWriter, DrizzleTargetAllocationReader, DrizzleTargetAllocationWriter } from "@/infra/target-allocation-store";
+import { DrizzleCpiSeriesReader, DrizzleCpiSeriesWriter } from "@/infra/cpi-series-store";
 import {
+  AccountCoverageGaps,
   AccrueCardCharges,
   ConfirmUnmatchedRows,
   ListCards,
@@ -126,12 +146,16 @@ import {
   systemRuntime,
 } from "@/infra/providers";
 import { getCurrentSession } from "@/infra/auth/session";
+import { DrizzleActivityLog } from "@/infra/activity-log";
+import { ListActivity, activityRedoCursors } from "@/app/activity.usecases";
 import {
   LinkPortfolioInstrumentCatalog,
   RefreshInstrumentCatalog,
   SearchInstrumentCatalog,
 } from "@/app/instrument-catalog.usecases";
 import { ViewLiveDataCenter } from "@/app/live-data.usecases";
+import { ViewSourceHealth } from "@/app/source-health.usecases";
+import { FetchAttemptWriter, processFetchAttempts, withFetchRecording } from "@/infra/market-data/fetch-attempts";
 import { ViewInvestmentAnalysis, ViewInvestmentTracker } from "@/app/investment-analysis.usecases";
 import {
   AmfiMutualFundMaster,
@@ -174,6 +198,12 @@ export const services = cache(() => {
   const clock = new SystemClock();
 
   const accounts = new DrizzleAccountRepository(db);
+  const income = new DrizzleIncomeRepository(db);
+  const insurance = new DrizzleInsuranceRepository(db);
+  const commitments = new DrizzleCommitmentRepository(db);
+  // Read-only: the previous tier for /standing hysteresis. Writes go through `standing.recordTier`.
+  const tierHistory = new DrizzleTierHistoryReader(db);
+  const assetAcquisitions = new DrizzleAssetAcquisitionRepository(db);
   const journal = new DrizzleTransactionRepository(db);
   const imports = new DrizzleImportRepository(db);
   const rules = new DrizzleCategoryRuleRepository(db);
@@ -192,6 +222,8 @@ export const services = cache(() => {
   const taxSettings = new DrizzleTaxSettingsRepository(db);
   const fxRates = new DrizzleFxRateRepository(db);
   const instrumentCatalog = new DrizzleInstrumentCatalogRepository(db);
+  // Read-only, owner-scoped view of `audit_events` for the Activity screen (2.7.b).
+  const activityLog = new DrizzleActivityLog(db);
 
   /*
    * The price ladder, adapted to the one method an instrument needs.
@@ -203,6 +235,8 @@ export const services = cache(() => {
    */
   const http = new FetchHttpClient();
   const providerRuntime = systemRuntime(http);
+  // 6.4: every provider call is timed and recorded for source health; recording never fails a fetch.
+  const fetchAttempts = new FetchAttemptWriter(processFetchAttempts, () => clock.now());
   const marketDataConfig = config.marketData();
   const zerodhaAuthorization = marketDataConfig.zerodhaApiKey && marketDataConfig.zerodhaAccessToken
     ? `token ${marketDataConfig.zerodhaApiKey}:${marketDataConfig.zerodhaAccessToken}`
@@ -213,7 +247,7 @@ export const services = cache(() => {
       zerodhaAuthorization,
       // D-4: a paid feed is opt-in, not "we happen to have a key".
       allowPaidQuoteProviders: marketDataConfig.allowPaidQuoteProviders,
-    }),
+    }).map((provider) => fetchAttempts.wrap(provider)),
     quotes,
   );
 
@@ -226,7 +260,7 @@ export const services = cache(() => {
    * says which date and which *kind* of rate it is, and whether a quote key
    * resolves at all.
    */
-  const marketData = buildMarketDataEngine(providerRuntime);
+  const marketData = withFetchRecording(buildMarketDataEngine(providerRuntime), fetchAttempts);
 
   /*
    * Frankfurter first, then Exchangerate.dev and currency-api through the engine's
@@ -238,7 +272,7 @@ export const services = cache(() => {
   const fxBook = new FxBook(
     shippedFxProviders(providerRuntime, [
       new EngineFxProvider(marketData.chain, marketData.registry, () => clock.now().getTime()),
-    ]),
+    ]).map((provider) => fetchAttempts.wrap(provider)),
     fxRates,
     clock,
   );
@@ -311,7 +345,108 @@ export const services = cache(() => {
 
   return {
     clock,
-    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms, lending, instruments, instrumentCatalog, investmentActivity, lots, quotes, bars, taxSettings, leases, platforms },
+    repositories: { accounts, journal, balances, imports, rules, selfPayees, budgets, cardTerms, lending, instruments, instrumentCatalog, investmentActivity, lots, quotes, bars, taxSettings, leases, platforms, income, insurance, commitments, activityLog, tierHistory, assetAcquisitions },
+    /** Resolve the owner from the session, never from action/form input. */
+    /** Projection assumptions and the date of birth; the owner comes from the session. */
+    projection: async () => {
+      const userId = await currentUserId();
+      const store = new DrizzleProjectionAssumptionStore(db);
+      const profiles = new DrizzleOwnerProfileStore(db);
+      return {
+        userId,
+        load: new LoadProjectionAssumptions(store, profiles, clock),
+        save: new SaveProjectionAssumptions(store, profiles, clock),
+        setDateOfBirth: new SetDateOfBirth(profiles, clock),
+      };
+    },
+    /** Physical assets (1.4): reads, and audited writes bound to the session owner. */
+    physicalAssets: {
+      list: new ListPhysicalAssets(new DrizzlePhysicalAssetRepository(db)),
+      writes: async () => {
+        const userId = await currentUserId();
+        const writer = new DrizzlePhysicalAssetWriter(db, newRequestContext(userId.value, clock));
+        return {
+          userId,
+          create: new CreatePhysicalAsset(openAccount, writer),
+          assertValuation: new AssertPhysicalValuation(writer),
+          replaceModel: new ReplacePhysicalModel(writer),
+          remove: new RemovePhysicalAsset(writer),
+        };
+      },
+    },
+    /** Expense-to-asset-acquisition links (1.8); the owner comes from the session. */
+    assetAcquisitions: async () => {
+      const userId = await currentUserId();
+      const writer = new DrizzleAssetAcquisitionWriter(db, newRequestContext(userId.value, clock));
+      return {
+        userId,
+        link: new LinkAssetAcquisition(writer),
+        unlink: new UnlinkAssetAcquisition(writer),
+        restore: new RestoreAssetAcquisition(writer),
+        forAsset: new AssetAcquisitionFor(assetAcquisitions),
+        candidates: new AcquisitionCandidates(assetAcquisitions),
+      };
+    },
+    /**
+     * Tier history writes. Server-action-free: the caller names the owner, so a
+     * system caller (the cron route's per-user loop) can record without a session.
+     * Not called anywhere yet; see standing-screen.md § "Tier history".
+     */
+    standing: {
+      recordTier: (userId: UserId) =>
+        new RecordStandingTier(
+          new StandingMeasurements(standingSourcesFrom({ accounts, balances, cardTerms, lending, insurance, commitments, tierHistory })),
+          new DrizzleTierHistoryWriter(db, newRequestContext(userId.value, clock)),
+        ),
+    },
+    /**
+     * Owner-entered CPI Urban (net-worth-age-chart.md § "CPI series"). `load` takes
+     * the owner id (the dashboard loader already has it); writes resolve the owner
+     * from the session. Entry screen: `/settings/cpi`.
+     */
+    cpiSeries: {
+      load: new LoadCpiSeries(new DrizzleCpiSeriesReader(db)),
+      writes: async () => {
+        const userId = await currentUserId();
+        const writer = new DrizzleCpiSeriesWriter(db, newRequestContext(userId.value, clock));
+        return { userId, record: new RecordCpiPoint(writer), remove: new RemoveCpiPoint(writer) };
+      },
+    },
+    /**
+     * The owner's stored target allocation (financial-health-scoring.md § 3.6
+     * persistence). Replaced as a whole; read by the signals board.
+     */
+    targetAllocation: {
+      load: new LoadTargetAllocation(new DrizzleTargetAllocationReader(db)),
+      writes: async () => {
+        const userId = await currentUserId();
+        const writer = new DrizzleTargetAllocationWriter(db, newRequestContext(userId.value, clock));
+        return { userId, record: new RecordTargetAllocation(writer), remove: new RemoveTargetAllocation(writer) };
+      },
+    },
+    /** The owner's rebalancing band (one per user, no default). Entry screen: `/settings/allocation`. */
+    rebalancingBand: {
+      load: new LoadRebalancingBand(new DrizzleRebalancingBandReader(db)),
+      writes: async () => {
+        const userId = await currentUserId();
+        const writer = new DrizzleRebalancingBandWriter(db, newRequestContext(userId.value, clock));
+        return { userId, record: new RecordRebalancingBand(writer), remove: new RemoveRebalancingBand(writer) };
+      },
+    },
+    manualFinance: async () => {
+      const userId = await currentUserId();
+      const context = newRequestContext(userId.value, clock);
+      return {
+        userId,
+        createIncomeStream: new CreateIncomeStream(new DrizzleIncomeWriter(db, context)),
+        createInsurancePolicy: new CreateInsurancePolicy(new DrizzleInsuranceWriter(db, context)),
+        createCommitment: new CreateCommitment(new DrizzleCommitmentWriter(db, context)),
+      };
+    },
+    /** The Activity screen: audited changes in the D2 window, with Undo/Redo state. */
+    activity: {
+      list: new ListActivity(activityLog, journal, activityRedoCursors(), clock),
+    },
     ledger: {
       seedChart: new SeedChartOfAccounts(accounts),
       openAccount,
@@ -340,6 +475,8 @@ export const services = cache(() => {
       postBatch: new PostImportBatch(imports, accounts, record, clock, balances),
       undoImport: new UndoImport(imports, journal, clock),
       reconcile: new ReconcileAccount(accounts, balances, imports),
+      /** The account page's coverage gap notice and first-statement line (DESIGN.md §9a). */
+      coverageGaps: new AccountCoverageGaps(accounts, imports, journal, balances),
       planBudgets: new PlanBudgets(budgets, balances),
       seedRules: new SeedCategoryRules(accounts, rules),
     },
@@ -350,6 +487,19 @@ export const services = cache(() => {
       view: new ViewCard(accounts, journal, balances, cardTerms),
       pay: new PayCard(accounts, transfer),
       accrueCharges: new AccrueCardCharges(accounts, journal, balances, cardTerms, record),
+      /** Owner-typed minimum dues per statement (card-minimum-due.md); the card's rule applies otherwise. */
+      minimumDues: {
+        load: new LoadCardMinimumDues(new DrizzleCardMinimumDueReader(db)),
+        writes: async () => {
+          const userId = await currentUserId();
+          const writer = new DrizzleCardMinimumDueWriter(db, newRequestContext(userId.value, clock));
+          return {
+            userId,
+            record: new RecordCardMinimumDue(new ViewCard(accounts, journal, balances, cardTerms), writer),
+            remove: new RemoveCardMinimumDue(writer),
+          };
+        },
+      },
     },
     investing: {
       addInstrument: new AddInstrument(accounts, instruments, openAccount, platforms),
@@ -456,6 +606,7 @@ export const services = cache(() => {
       ),
       link: new LinkPortfolioInstrumentCatalog(instrumentCatalog, clock),
     },
+    sourceHealth: { view: new ViewSourceHealth(processFetchAttempts) },
     liveData: {
       view: new ViewLiveDataCenter(instruments, instrumentCatalog, clock, {
         finnhubConfigured: Boolean(marketDataConfig.finnhubToken),
@@ -473,7 +624,7 @@ export const services = cache(() => {
     reports: {
       statements: new BuildStatements(balances),
       netWorthSeries: new NetWorthSeries(balances),
-      personal: new PersonalReport(accounts, balances, cardTerms),
+      personal: new PersonalReport(accounts, balances, cardTerms, lending),
       tax: new TaxReport(lots, instruments),
       harvest: new SuggestHarvest(instruments, lots, prices),
     },

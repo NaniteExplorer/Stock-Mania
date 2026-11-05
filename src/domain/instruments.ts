@@ -25,6 +25,7 @@
  *     set off against anything.
  */
 
+import { Count, Days, DaySpan, Months } from "@/core/units";
 import { z } from "zod";
 import { UserId, ValueObject } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
@@ -111,7 +112,7 @@ export interface InstrumentTaxProfile {
    * which is 1,096 days later — a day-count check would have released them a day
    * early, and a registrar would have refused the redemption.
    */
-  readonly lockInMonths: number | null;
+  readonly lockInMonths: Months | null;
   /** Whether STT applies — it is a cost that is never deductible against gains. */
   readonly securitiesTransactionTax: boolean;
   /** VDA: losses cannot be set off, and there is no indexation or exemption. */
@@ -236,27 +237,27 @@ const moneyString = z
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "A date in metadata is an ISO calendar date.");
 
 /** What an ETF holds. Gold ETFs changed tax class in the 2023 budget. */
-export const ETF_METADATA = z.object({
+const ETF_METADATA = z.object({
   underlying: z.enum(["EQUITY", "DEBT", "GOLD"]).default("EQUITY"),
 });
 
 /** Whether these are pre-April-2023 debt-fund units, which keep indexation. */
-export const DEBT_FUND_METADATA = z.object({
+const DEBT_FUND_METADATA = z.object({
   legacyUnits: z.boolean().default(false),
 });
 
-export const BOND_METADATA = z.object({
+const BOND_METADATA = z.object({
   faceValue: moneyString,
   couponRatePercent: z.string(),
   maturesOn: isoDate,
 });
 
-export const SGB_METADATA = z.object({
+const SGB_METADATA = z.object({
   issuedOn: isoDate,
   maturesOn: isoDate,
 });
 
-export const OPTION_METADATA = z.object({
+const OPTION_METADATA = z.object({
   underlyingSymbol: z.string().min(1),
   right: z.enum(["CALL", "PUT"]),
   strike: moneyString,
@@ -267,7 +268,7 @@ export const OPTION_METADATA = z.object({
   settlement: z.enum(["CASH", "PHYSICAL"]).default("CASH"),
 });
 
-export const FUTURE_METADATA = z.object({
+const FUTURE_METADATA = z.object({
   underlyingSymbol: z.string().min(1),
   expiry: isoDate,
   /** `2026-09` — which monthly series this is, for rolling. */
@@ -508,11 +509,18 @@ export abstract class MarketInstrument {
   /* ─── Construction ───────────────────────────────────────────────── */
 
   /**
-   * The metadata schema for a kind, so a form can be generated from it rather
-   * than hand-written per instrument type and drifting from the parser.
+   * Why this metadata would be refused for a kind, as readable issues; an empty
+   * list means the constructor would accept it. A form validates against the same
+   * per-kind rules the constructor parses with, so the two cannot drift.
+   *
+   * Deliberately not the Zod schema itself: the domain's public surface carries
+   * no validation-library types (ARCHITECTURE layer rules). The schemas stay a
+   * private parsing detail of this module.
    */
-  static metadataSchemaFor(kind: InstrumentKind): z.ZodType {
-    return METADATA_SCHEMAS[kind];
+  static metadataIssuesFor(kind: InstrumentKind, metadata: unknown): readonly string[] {
+    const result = METADATA_SCHEMAS[kind].safeParse(metadata ?? {});
+    if (result.success) return [];
+    return result.error.issues.map((issue) => `${issue.path.join(".") || "(root)"}: ${issue.message}`);
   }
 
   /**
@@ -802,7 +810,7 @@ export class DebtFund extends MarketInstrument {
 /* ═══ ELSS ════════════════════════════════════════════════════════════ */
 
 /** The statutory ELSS lock-in: three years, counted as calendar months. */
-export const ELSS_LOCK_IN_MONTHS = 36;
+export const ELSS_LOCK_IN_MONTHS: Months = Months(36);
 
 /**
  * An equity-linked savings scheme.
@@ -921,7 +929,7 @@ export class Bond extends MarketInstrument {
    * is expressible and `times` takes only whole factors — the rounding of the
    * fractional part has to be stated, and `valueAt` states it.
    */
-  couponFor(held: Quantity, periodsPerYear = 2): Money | null {
+  couponFor(held: Quantity, periodsPerYear: Count = Count(2)): Money | null {
     if (!this.terms) return null;
     const perBondPerPeriod = this.terms.couponRate
       .applyTo(this.terms.faceValue)
@@ -1259,7 +1267,7 @@ abstract class DerivativeContract extends MarketInstrument {
 
   abstract readonly expiry: CalendarDate;
   abstract readonly underlyingSymbol: string;
-  abstract readonly lotSize: number;
+  abstract readonly lotSize: Count;
 
   /** Whole units of the underlying behind a position. Lots times lot size. */
   underlyingUnits(lots: Quantity): Quantity {
@@ -1284,8 +1292,9 @@ abstract class DerivativeContract extends MarketInstrument {
     );
   }
 
-  daysToExpiry(asOf: CalendarDate): number {
-    return asOf.daysUntil(this.expiry);
+  /** Signed: negative once expired, so `DaySpan`, not `Days`. */
+  daysToExpiry(asOf: CalendarDate): DaySpan {
+    return DaySpan(asOf.daysUntil(this.expiry));
   }
 
   /**
@@ -1335,7 +1344,7 @@ export class Option extends DerivativeContract {
   readonly right: "CALL" | "PUT";
   readonly strike: Money;
   readonly expiry: CalendarDate;
-  readonly lotSize: number;
+  readonly lotSize: Count;
   readonly settlement: "CASH" | "PHYSICAL";
 
   constructor(props: InstrumentProps) {
@@ -1345,7 +1354,7 @@ export class Option extends DerivativeContract {
     this.right = meta.right;
     this.strike = Money.fromRupees(meta.strike, props.currency);
     this.expiry = CalendarDate.parse(meta.expiry);
-    this.lotSize = meta.lotSize;
+    this.lotSize = Count(meta.lotSize);
     this.settlement = meta.settlement;
     if (!this.strike.isPositive) {
       throw new TypeError(`${props.symbol}: an option strike is a positive amount.`);
@@ -1408,7 +1417,7 @@ export class Future extends DerivativeContract {
   readonly expiry: CalendarDate;
   /** `2026-09` — the monthly series, for rolling a position forward. */
   readonly contractMonth: string;
-  readonly lotSize: number;
+  readonly lotSize: Count;
   readonly settlement: "CASH" | "PHYSICAL";
 
   constructor(props: InstrumentProps) {
@@ -1417,7 +1426,7 @@ export class Future extends DerivativeContract {
     this.underlyingSymbol = meta.underlyingSymbol;
     this.expiry = CalendarDate.parse(meta.expiry);
     this.contractMonth = meta.contractMonth;
-    this.lotSize = meta.lotSize;
+    this.lotSize = Count(meta.lotSize);
     this.settlement = meta.settlement;
   }
 
@@ -1461,5 +1470,5 @@ export interface InstrumentRepository {
   softDelete(userId: UserId, id: InstrumentId, at: Date): Promise<void>;
 
   /** How many live trades reference it — a delete is refused if any do. */
-  countTrades(userId: UserId, id: InstrumentId): Promise<number>;
+  countTrades(userId: UserId, id: InstrumentId): Promise<Count>;
 }

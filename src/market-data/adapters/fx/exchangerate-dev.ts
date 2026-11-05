@@ -14,6 +14,7 @@
  * (C1).
  */
 
+import { Count, Millis } from "@/core/units";
 import { CalendarDate } from "@/core/time";
 import { RateLimitBudget } from "@/domain/pricing";
 import { ProviderOptions, ProviderRuntime } from "@/infra/providers";
@@ -56,7 +57,7 @@ export class ExchangerateDevFxAdapter extends MarketDataSource implements FxRate
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 20, perMillis: 60_000, burst: 5 };
+    return { requests: Count(20), perMillis: Millis(60_000), burst: Count(5) };
   }
 
   async rate(request: FxRateRequest): Promise<MarketDataResult<FxRate>> {

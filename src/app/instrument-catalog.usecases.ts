@@ -1,4 +1,5 @@
 import { Clock, UserId } from "@/core/kernel";
+import { Count } from "@/core/units";
 import {
   CatalogIngestReport,
   CatalogSearchOutput,
@@ -41,7 +42,7 @@ export class SearchInstrumentCatalog {
       };
     }
 
-    const rows = await this.catalog.search(query, Math.min(Math.max(input.limit ?? 20, 1), 50));
+    const rows = await this.catalog.search(query, Count(Math.min(Math.max(input.limit ?? 20, 1), 50)));
     const candidates = rows.candidates.map(toCatalogSearchCandidate);
     const selected = rows.exactIdentifierMatches.length === 1
       ? toCatalogSearchCandidate(rows.exactIdentifierMatches[0])

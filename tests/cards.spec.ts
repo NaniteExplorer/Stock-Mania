@@ -19,6 +19,7 @@
 import { Currency, Money } from "@/core/money";
 import { Percentage, Quantity, Rate, UnitPrice } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
+import { Days, Ordinal } from "@/core/units";
 import { UserId } from "@/core/kernel";
 import { Account, AccountCode, AccountType } from "@/domain/accounts";
 import {
@@ -58,7 +59,7 @@ const bankAccount = Account.open({
 
 const TERMS: CardTerms = {
   creditLimit: rupees("200000"),
-  cycle: new BillingCycleRule(18, 20),
+  cycle: new BillingCycleRule(Ordinal(18), Days(20)),
   financeRate: Rate.annual("42"),
   minimumDuePercent: Percentage.of("5"),
   minimumDueFloor: rupees("500"),
@@ -115,7 +116,7 @@ check("the 19th already belongs to September's", card.cycleFor(on("2026-08-19"))
 
 section("February, and why the statement day is clamped");
 
-const lateCard = new CreditCard(cardAccount, { ...TERMS, cycle: new BillingCycleRule(31, 15) });
+const lateCard = new CreditCard(cardAccount, { ...TERMS, cycle: new BillingCycleRule(Ordinal(31), Days(15)) });
 check("a 31st statement day becomes the 28th in February 2026", lateCard.cycleFor(on("2026-02-10")).through.toISO(), "2026-02-28");
 check("and the 29th in a leap February", lateCard.cycleFor(on("2028-02-10")).through.toISO(), "2028-02-29");
 check("the cycle after February starts on 1 March", lateCard.cycleFor(on("2026-03-10")).from.toISO(), "2026-03-01");
@@ -135,7 +136,7 @@ assertProperty(
     year: genInt(2024, 2029)(rng),
   }),
   ({ statementDay, graceDays, startMonth, year }) => {
-    const rule = new BillingCycleRule(statementDay, graceDays);
+    const rule = new BillingCycleRule(Ordinal(statementDay), Days(graceDays));
     let cycle = rule.cycleContaining(CalendarDate.of(year, startMonth, 15));
     for (let step = 0; step < 13; step += 1) {
       const next = rule.next(cycle);

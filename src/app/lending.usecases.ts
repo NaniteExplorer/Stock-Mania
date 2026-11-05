@@ -47,6 +47,7 @@ import {
 } from "@/domain/loans";
 import { TransactionRepository } from "@/domain/transactions";
 import { OpenAccount, RecordTransaction } from "@/app/ledger.usecases";
+import { Count, Months } from "@/core/units";
 
 /* ═══ Opening a deposit ═══════════════════════════════════════════════ */
 
@@ -144,7 +145,7 @@ export class OpenDeposit implements UseCase<OpenDepositInput, { accountId: Accou
       rate: input.rate,
       principal: input.principal,
       instalment: input.instalment,
-      months: input.months,
+      months: input.months === undefined ? undefined : Months(input.months),
       maturesOn: input.maturesOn,
       prematurePenalty: input.prematurePenalty,
       npsTier: input.npsTier,
@@ -391,7 +392,7 @@ export class OpenLoan implements UseCase<OpenLoanInput, { accountId: AccountId; 
       kind: input.kind,
       principal: input.principal,
       annualRate: input.annualRate,
-      periods: input.periods,
+      periods: Count(input.periods),
       frequency: input.frequency ?? "MONTHLY",
       disbursedOn: input.disbursedOn,
       firstPaymentOn: input.firstPaymentOn,
@@ -418,7 +419,7 @@ export class OpenLoan implements UseCase<OpenLoanInput, { accountId: AccountId; 
           kind: input.kind,
           principal: input.principal,
           annualRate: input.annualRate,
-          periods: input.periods,
+          periods: Count(input.periods),
           frequency: input.frequency ?? "MONTHLY",
           disbursedOn: input.disbursedOn,
           firstPaymentOn: input.firstPaymentOn ?? null,
@@ -520,7 +521,7 @@ export class RecordLoanInstalment implements UseCase<RecordInstalmentInput, Reco
     const loan = loans.find((candidate) => candidate.id.equals(input.loanAccountId));
     if (!loan) return Err(new ValidationError(`${account.displayName} has no loan terms.`));
 
-    const row = loan.schedule().rows.find((candidate) => candidate.period === input.period && !candidate.note?.startsWith("Prepayment"));
+    const row = loan.schedule().rows.find((candidate) => candidate.period === input.period && candidate.kind === "INSTALMENT");
     if (!row) {
       return Err(
         new ValidationError(

@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
-import { Building2 } from "lucide-react";
 import { connection } from "next/server";
 import { Money } from "@/core/money";
 import { Percentage } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
 import { groupLabel, groupOf } from "@/domain/asset-groups";
 import { institutionKindLabel, type InstitutionKind } from "@/domain/institutions";
-import { Card, EmptyState, MoneyText, PageHeader, Pill, Stat } from "@/ui/primitives";
+import { rupee, unknown, type Figure } from "@/core/format";
+import { Kpi, KpiStrip, Masthead, Page as PageShell, Panel } from "@/components/ui/page-shell";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ActionCell, FigureCell, TextCell, UnknownCell } from "@/components/ui/data-cell";
+import { Banner } from "@/components/ui/banner";
+import { InstitutionMark } from "@/ui/provider-picker";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 import AddPlatformForm from "./add-platform-form";
 import PlatformRowActions from "./platform-row-actions";
@@ -134,123 +138,116 @@ export default async function Page() {
   const totalValue = sum(rows.map((row) => row.value));
 
   return (
-    <>
-      <PageHeader
-        title="Platforms"
-        subtitle="The same holdings as the investments screen, grouped by where they are held. Every figure is a rollup — nothing here is stored a second time."
-        badge={<Pill tone="brand">{inUse.length} in use</Pill>}
-      />
+    <PageShell>
+      <Masthead title="Platforms" hero={rows.length > 0 ? (totalValue ? rupee(totalValue) : unknown(UNPRICED_REASON)) : undefined} />
+      <p className="text-sm text-(--fg-secondary)">
+        The same holdings as the investments screen, grouped by where they are held. Every figure is a rollup — nothing here is stored a second time.{" "}
+        <span className="text-(--fg-muted)">{inUse.length} in use</span>
+      </p>
 
       {rows.length > 0 && (
-        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Stat label="Platforms in use" value={<span className="tnum">{inUse.length}</span>} hint={`${idle.length} registered but empty`} />
-          <Stat label="Holdings" value={<span className="tnum">{positions.length}</span>} hint="Across every platform" />
-          <Stat label="Market value" value={totalValue} hint="At the latest resolved price" />
-          <Stat
+        <KpiStrip>
+          <Kpi label="Platforms in use" value={String(inUse.length) as Figure} detail={`${idle.length} registered but empty`} />
+          <Kpi label="Holdings" value={String(positions.length) as Figure} detail="Across every platform" />
+          <Kpi label="Market value" value={totalValue ? rupee(totalValue) : unknown(UNPRICED_REASON)} detail="At the latest resolved price" />
+          <Kpi
             label="Unattributed"
-            value={<span className="tnum">{unassigned?.count ?? 0}</span>}
-            hint={
+            value={String(unassigned?.count ?? 0) as Figure}
+            detail={
               unassigned
                 ? "Holdings with no platform recorded — set one on the holding"
                 : "Every holding has a platform"
             }
           />
-        </div>
+        </KpiStrip>
       )}
 
-      <section className="panel mb-6 p-0">
-        {rows.length === 0 ? (
-          <EmptyState
-            icon={Building2}
-            title="Nothing held anywhere yet"
-            body="Register a holding on the investments screen and choose its platform. This page groups what you own by broker, app or vault — and shows what each one has actually made you."
-          />
-        ) : (
-          <div className="table-scroll">
-            <table className="w-full text-sm">
-              <caption className="sr-only">
-                Platforms with invested amount, market value, unrealised and realised gain
-              </caption>
-              <thead>
-                <tr className="border-b border-gray-600">
-                  <th scope="col" className="metric-label px-4 py-3 text-left">Platform</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Holdings</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Invested</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Value</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Unrealised</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Realised</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Return</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-left">Do</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.key} className="border-b border-gray-600/50 last:border-0">
-                    <td className="px-4 py-3">
-                      <span className="font-medium text-gray-100">{row.name}</span>
-                      <p className="text-xs text-gray-500">
-                        {row.kindLabel ?? "No platform recorded"}
-                        {row.groups.length > 0 && ` · ${row.groups.join(", ")}`}
-                      </p>
-                      {row.unpriced > 0 && (
-                        <p className="text-xs text-amber-500">
-                          {row.unpriced} unpriced, so the totals are blank rather than light
+      {rows.length === 0 ? (
+        <Banner title="Nothing held anywhere yet">
+          <p>Register a holding on the investments screen and choose its platform. This page groups what you own by broker, app or vault — and shows what each one has actually made you.</p>
+        </Banner>
+      ) : (
+        <Panel title="Where your holdings are" flush>
+          <Table aria-label="Platforms with invested amount, market value, unrealised and realised gain">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Platform</TableHead>
+                <TableHead className="text-right">Holdings</TableHead>
+                <TableHead className="text-right">Invested</TableHead>
+                <TableHead className="text-right">Value</TableHead>
+                <TableHead className="text-right">Unrealised</TableHead>
+                <TableHead className="text-right">Realised</TableHead>
+                <TableHead className="text-right">Return</TableHead>
+                <TableHead>Do</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row) => (
+                <TableRow key={row.key}>
+                  <TableCell>
+                    <div className="flex items-center gap-3">
+                      {/* "Unassigned" is a bucket, not a platform, so it gets no mark. */}
+                      <InstitutionMark institution={row.key === UNASSIGNED ? null : row.name} />
+                      <div>
+                        <span className="font-medium text-(--fg)">{row.name}</span>
+                        <p className="text-xs text-(--fg-muted)">
+                          {row.kindLabel ?? "No platform recorded"}
+                          {row.groups.length > 0 && ` · ${row.groups.join(", ")}`}
                         </p>
-                      )}
-                    </td>
-                    <td className="tnum px-4 py-3 text-right text-gray-300">{row.count}</td>
-                    <td className="px-4 py-3 text-right">
-                      <MoneyText value={row.invested} tone="neutral" />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <MoneyText value={row.value} tone="neutral" />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <MoneyText value={row.unrealised} />
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <MoneyText value={row.realised} />
-                    </td>
-                    <td className="tnum px-4 py-3 text-right text-gray-300">
-                      {row.returnPercent ? `${row.returnPercent.toFixed(2)}%` : "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      {row.key === UNASSIGNED ? (
-                        <span className="text-xs text-gray-600">—</span>
-                      ) : (
-                        <PlatformRowActions
-                          platformId={row.key}
-                          name={row.name}
-                          kind={row.kind}
-                          sellSpread={row.sellSpread}
-                          isArchived={row.isArchived}
-                          canDelete={row.count === 0}
-                        />
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+                        {row.unpriced > 0 && (
+                          <p className="text-xs text-(--warn)">
+                            {row.unpriced} unpriced, so the totals are blank rather than light
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </TableCell>
+                  <TextCell className="text-right tabular-nums">{row.count}</TextCell>
+                  <MoneyCell value={row.invested} id={`${row.key}-invested`} />
+                  <MoneyCell value={row.value} id={`${row.key}-value`} />
+                  <MoneyCell value={row.unrealised} id={`${row.key}-unrealised`} toned />
+                  <MoneyCell value={row.realised} id={`${row.key}-realised`} toned />
+                  <TextCell className="text-right tabular-nums">
+                    {row.returnPercent ? `${row.returnPercent.toFixed(2)}%` : "—"}
+                  </TextCell>
+                  <ActionCell>
+                    {row.key === UNASSIGNED ? (
+                      <span className="text-xs text-(--fg-disabled)">—</span>
+                    ) : (
+                      <PlatformRowActions
+                        platformId={row.key}
+                        name={row.name}
+                        kind={row.kind}
+                        sellSpread={row.sellSpread}
+                        isArchived={row.isArchived}
+                        canDelete={row.count === 0}
+                      />
+                    )}
+                  </ActionCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </Panel>
+      )}
 
       {idle.length > 0 && (
-        <Card
+        <Panel
           title="Registered, holding nothing"
-          subtitle="Shipped with the app so the picker is useful on day one. Archive the ones you do not use — it hides them from every form and changes nothing else."
-          className="mb-6"
+          description="Shipped with the app so the picker is useful on day one. Archive the ones you do not use — it hides them from every form and changes nothing else."
         >
           <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {idle.map((row) => (
               <li
                 key={row.key}
-                className="flex items-center justify-between gap-3 rounded-xl border border-gray-600 px-3 py-2"
+                className="flex items-center justify-between gap-3 rounded-xl border border-(--border) px-3 py-2"
               >
-                <span>
-                  <span className="block text-sm text-gray-200">{row.name}</span>
-                  <span className="block text-xs text-gray-500">{row.kindLabel}</span>
+                <span className="flex min-w-0 items-center gap-3">
+                  <InstitutionMark institution={row.name} />
+                  <span>
+                    <span className="block text-sm text-(--fg)">{row.name}</span>
+                    <span className="block text-xs text-(--fg-muted)">{row.kindLabel}</span>
+                  </span>
                 </span>
                 <PlatformRowActions
                   platformId={row.key}
@@ -264,25 +261,27 @@ export default async function Page() {
               </li>
             ))}
           </ul>
-        </Card>
+        </Panel>
       )}
 
       {archived.length > 0 && (
-        <Card
+        <Panel
           title="Archived"
-          subtitle="Hidden from every picker, and still holding everything they ever held."
-          className="mb-6"
+          description="Hidden from every picker, and still holding everything they ever held."
         >
           <ul className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {archived.map((row) => (
               <li
                 key={row.key}
-                className="flex items-center justify-between gap-3 rounded-xl border border-gray-600 px-3 py-2"
+                className="flex items-center justify-between gap-3 rounded-xl border border-(--border) px-3 py-2"
               >
-                <span>
-                  <span className="block text-sm text-gray-300">{row.name}</span>
-                  <span className="block text-xs text-gray-500">
-                    {row.kindLabel} · {row.count} holding{row.count === 1 ? "" : "s"}
+                <span className="flex min-w-0 items-center gap-3">
+                  <InstitutionMark institution={row.name} />
+                  <span>
+                    <span className="block text-sm text-(--fg-secondary)">{row.name}</span>
+                    <span className="block text-xs text-(--fg-muted)">
+                      {row.kindLabel} · {row.count} holding{row.count === 1 ? "" : "s"}
+                    </span>
                   </span>
                 </span>
                 <PlatformRowActions
@@ -297,17 +296,29 @@ export default async function Page() {
               </li>
             ))}
           </ul>
-        </Card>
+        </Panel>
       )}
 
-      <Card
+      <Panel
         title="Add a platform"
-        subtitle="Anything that holds an investment for you — a broker, an app, a bullion vault. It holds no money of its own; the value stays in the holdings underneath it."
+        description="Anything that holds an investment for you — a broker, an app, a bullion vault. It holds no money of its own; the value stays in the holdings underneath it."
       >
         <AddPlatformForm />
-      </Card>
-    </>
+      </Panel>
+    </PageShell>
   );
+}
+
+const UNPRICED_REASON = "Unpriced holdings, so the total is blank rather than light";
+
+/**
+ * A money figure that may be unknown (an unpriced holding). Library gap
+ * (F.7 Recompose A): FigureCell has no gain/loss tone, so `toned` applies it here.
+ */
+function MoneyCell({ value, id, toned = false }: { value: Money | null; id: string; toned?: boolean }) {
+  if (value === null) return <UnknownCell reason={UNPRICED_REASON} reasonId={`platform-${id}`} />;
+  const tone = !toned ? undefined : value.isNegative ? "text-(--loss)" : value.isPositive ? "text-(--gain)" : undefined;
+  return <FigureCell value={value} className={tone} />;
 }
 
 /** The bucket for holdings with no platform recorded. Not a real id. */

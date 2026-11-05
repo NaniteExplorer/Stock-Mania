@@ -1,0 +1,5 @@
+.field { display:flex; flex-direction:column; gap:6px; min-width:0; }
+.label { font-family:var(--sans); font-size:12px; line-height:16px; font-weight:500; color:var(--fg-secondary); }
+.required { margin-left:4px; color:var(--loss); }
+.hint { font-size:11.5px; line-height:15px; color:var(--fg-muted); }
+.error { font-size:12px; line-height:16px; color:var(--loss); }

@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CreditCard as CardIcon } from "lucide-react";
 import { connection } from "next/server";
 import { Money } from "@/core/money";
 import { CalendarDate } from "@/core/time";
-import { Card, EmptyState, MoneyText, PageHeader, Pill, Stat } from "@/ui/primitives";
+import { rupee, type Figure } from "@/core/format";
+import { Kpi, KpiStrip, Masthead, Page as PageShell, Panel } from "@/components/ui/page-shell";
+import { Banner } from "@/components/ui/banner";
+import { Button } from "@/components/ui/button";
+import { InstitutionMark } from "@/ui/provider-picker";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 import AddCardForm from "./add-card-form";
+import { resolveMinimumDue } from "@/app/card-minimum-due.usecases";
 import UtilisationGauge from "./utilisation-gauge";
 
 export const metadata: Metadata = { title: "Cards" };
@@ -31,105 +35,92 @@ export default async function Page() {
   if (!result.ok) throw new Error(result.error.message);
 
   const cards = result.value.cards;
+  const entered = await services().cards.minimumDues.load.execute({ userId, accountIds: cards.map((summary) => summary.card.id.value) });
+  if (!entered.ok) throw new Error(entered.error.message);
+  const minimumOf = (summary: (typeof cards)[number]) => resolveMinimumDue(summary.statement, summary.card.id.value, entered.value);
   const totalOwed = Money.total(cards.map((summary) => summary.owed));
 
   return (
-    <>
-      <PageHeader
-        title="Credit cards"
-        subtitle="Balances reduce net worth because the account type says so — there is no card special case anywhere in the ledger."
-        badge={<Pill tone="brand">Phase 3</Pill>}
-      />
+    <PageShell>
+      <Masthead title="Credit cards" hero={cards.length > 0 ? rupee(totalOwed) : undefined} />
+      <p className="text-sm text-(--fg-secondary)">
+        Balances reduce net worth because the account type says so — there is no card special case anywhere in the ledger.{" "}
+        <span className="text-(--fg-muted)">Phase 3</span>
+      </p>
 
       {cards.length > 0 && (
-        <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Stat label="Total owed" value={totalOwed} hint="Across every card" />
-          <Stat
-            label="Cards"
-            value={<span className="tnum">{cards.length}</span>}
-            hint="Open"
-          />
-          <Stat
+        <KpiStrip>
+          <Kpi label="Total owed" value={rupee(totalOwed)} detail="Across every card" />
+          <Kpi label="Cards" value={String(cards.length) as Figure} detail="Open" />
+          <Kpi
             label="Due soonest"
-            value={
-              <span className="tnum">
-                {Math.min(...cards.map((summary) => summary.daysToDue))} days
-              </span>
-            }
-            hint="Until a due date"
+            value={`${Math.min(...cards.map((summary) => summary.daysToDue))} days` as Figure}
+            detail="Until a due date"
           />
-          <Stat
+          <Kpi
             label="Billed last cycle"
-            value={cards[0].statement.totalDue}
-            hint={cards[0].statement.cycle.label}
+            value={rupee(cards[0].statement.totalDue)}
+            detail={cards[0].statement.cycle.label}
           />
-        </div>
+        </KpiStrip>
       )}
 
       {cards.length === 0 ? (
-        <section className="panel mb-6 p-0">
-          <EmptyState
-            icon={CardIcon}
-            title="No cards yet"
-            body="Add a card with its statement day, limit and finance rate. Statements are then rebuilt from your postings — including for months before you started."
-          />
-        </section>
+        <Banner title="No cards yet">
+          <p>Add a card with its statement day, limit and finance rate. Statements are then rebuilt from your postings — including for months before you started.</p>
+        </Banner>
       ) : (
-        <div className="mb-6 grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2">
           {cards.map((summary) => (
-            <Card
+            <Panel
               key={summary.card.id.value}
-              title={
-                <Link href={`/cards/${summary.card.id.value}`} className="hover:text-brand-400">
-                  {summary.card.displayName}
-                </Link>
-              }
-              subtitle={summary.card.account.institution ?? undefined}
-              kicker={`Statement ${summary.statement.cycle.label}`}
-              action={
-                <Pill tone={summary.daysToDue <= 3 ? "brand" : "neutral"}>
-                  {summary.daysToDue < 0
-                    ? `Overdue by ${Math.abs(summary.daysToDue)}d`
-                    : `Due in ${summary.daysToDue}d`}
-                </Pill>
+              title={summary.card.displayName}
+              description={`Statement ${summary.statement.cycle.label} · ${
+                summary.daysToDue < 0
+                  ? `Overdue by ${Math.abs(summary.daysToDue)}d`
+                  : `Due in ${summary.daysToDue}d`
+              }`}
+              actions={
+                <Button asChild variant="ghost" size="sm">
+                  <Link href={`/cards/${summary.card.id.value}`}>Open</Link>
+                </Button>
               }
             >
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="metric-label">Owed today</p>
-                  <p className="mt-1 text-2xl font-semibold text-gray-100">
-                    <MoneyText value={summary.owed} tone="neutral" />
-                  </p>
-                  <p className="mt-3 metric-label">Billed last cycle</p>
-                  <p className="mt-1 text-sm text-gray-300">
-                    <MoneyText value={summary.statement.totalDue} tone="neutral" />
-                    <span className="ml-2 text-xs text-gray-500">
-                      minimum <MoneyText value={summary.statement.minimumDue} tone="neutral" />
-                    </span>
-                  </p>
-                </div>
-                <div>
-                  <UtilisationGauge
-                    percentText={summary.utilisation.toFixed(1)}
-                    percentValue={summary.utilisation.toApproximateNumber()}
-                  />
-                  <p className="mt-3 metric-label">Available</p>
-                  <p className="mt-1 text-sm text-gray-300">
-                    <MoneyText value={summary.available} tone="neutral" />
-                  </p>
-                </div>
+              {summary.card.account.institution ? (
+                <p className="mb-3 inline-flex items-center gap-2 text-sm text-(--fg-secondary)">
+                  <InstitutionMark institution={summary.card.account.institution} />
+                  {summary.card.account.institution}
+                </p>
+              ) : undefined}
+              <KpiStrip>
+                <Kpi label="Owed today" value={rupee(summary.owed)} />
+                <Kpi
+                  label="Billed last cycle"
+                  value={rupee(summary.statement.totalDue)}
+                  detail={(() => {
+                    const minimum = minimumOf(summary);
+                    return `minimum ${rupee(minimum.statement.minimumDue)} · ${minimum.entered ? "typed from statement" : "card rule"}${minimum.refused ? " (typed figure refused)" : ""}`;
+                  })()}
+                />
+                <Kpi label="Available" value={rupee(summary.available)} />
+              </KpiStrip>
+              <div className="mt-3">
+                <UtilisationGauge
+                  percentText={summary.utilisation.toFixed(1)}
+                  percentValue={summary.utilisation.toApproximateNumber()}
+                />
               </div>
-            </Card>
+            </Panel>
           ))}
         </div>
       )}
 
-      <Card
+      <Panel
         title="Add a card"
-        subtitle="The terms are what every figure is computed from: statement day and grace period generate the cycles, the finance rate prices a revolved balance, and the minimum-due rule is the issuer's."
+        description="The terms are what every figure is computed from: statement day and grace period generate the cycles, the finance rate prices a revolved balance, and the minimum-due rule is the issuer's."
       >
         <AddCardForm />
-      </Card>
-    </>
+      </Panel>
+    </PageShell>
   );
 }

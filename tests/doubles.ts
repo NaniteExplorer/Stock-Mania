@@ -19,6 +19,7 @@
  */
 
 import { Money } from "@/core/money";
+import { Count } from "@/core/units";
 import { Quantity, UnitPrice } from "@/core/numeric";
 import { CalendarDate, DateRange } from "@/core/time";
 import type { HttpClient, HttpResponse, ProviderRuntime } from "@/infra/providers";
@@ -238,7 +239,7 @@ export class InMemoryQuoteRepository implements QuoteRepository {
     instrumentId: string,
     quoteType: QuoteType,
     asOf: CalendarDate,
-    limit = 50,
+    limit: Count = Count(50),
   ): Promise<readonly Quote[]> {
     return this.rows
       .filter(
@@ -323,14 +324,14 @@ export class InMemoryBarRepository implements BarRepository {
   async coverage(
     instrumentId: string,
     granularity: BarGranularity,
-  ): Promise<{ from: CalendarDate; through: CalendarDate; count: number } | null> {
+  ): Promise<{ from: CalendarDate; through: CalendarDate; count: Count } | null> {
     const mine = this.rows.filter(
       (row) =>
         row.instrumentId === instrumentId && row.granularity === granularity && !row.supersededBy,
     );
     if (mine.length === 0) return null;
     const dates = mine.map((row) => row.asOf).sort((a, b) => a.compareTo(b));
-    return { from: dates[0], through: dates[dates.length - 1], count: mine.length };
+    return { from: dates[0], through: dates[dates.length - 1], count: Count(mine.length) };
   }
 
   async supersede(supersededBarId: string, bySupersedingBarId: string): Promise<void> {
@@ -338,7 +339,7 @@ export class InMemoryBarRepository implements BarRepository {
     if (index >= 0) this.rows[index] = { ...this.rows[index], supersededBy: bySupersedingBarId };
   }
 
-  async restate(bars: readonly Bar[]): Promise<{ appended: number; superseded: number }> {
+  async restate(bars: readonly Bar[]): Promise<{ appended: Count; superseded: Count }> {
     let superseded = 0;
     for (const bar of bars) {
       const checked = makeBar(bar);
@@ -357,7 +358,7 @@ export class InMemoryBarRepository implements BarRepository {
       }
       this.rows.push({ ...checked, id });
     }
-    return { appended: bars.length, superseded };
+    return { appended: Count(bars.length), superseded: Count(superseded) };
   }
 
   async gaps(
@@ -394,7 +395,7 @@ export class InMemoryFxRateRepository implements FxRateRepository {
     quote: string,
     asOf: CalendarDate,
     userIdValue?: { value: string },
-    limit = 50,
+    limit: Count = Count(50),
   ): Promise<readonly StoredFxRate[]> {
     return this.rows
       .filter(
@@ -475,9 +476,9 @@ export class CatalogQuoteKeyStubs {
     this.touches.push(listingId);
   }
 
-  async recordMoneycontrolScIds(rows: readonly { listingId: string; scId: string }[]): Promise<number> {
+  async recordMoneycontrolScIds(rows: readonly { listingId: string; scId: string }[]): Promise<Count> {
     for (const row of rows) this.scIds.set(row.listingId, row.scId);
-    return rows.length;
+    return Count(rows.length);
   }
 
   async moneycontrolScIdMap(): Promise<ReadonlyMap<string, string>> {

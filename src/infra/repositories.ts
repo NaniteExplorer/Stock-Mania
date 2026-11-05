@@ -11,8 +11,10 @@
  * audit event.
  */
 
-import { AppError, Result, UserId, newUuid } from "@/core/kernel";
+import { AppError, FixedClock, Result, UserId, newUuid } from "@/core/kernel";
+import { UnitOfWork, newRequestContext } from "@/infra/unit-of-work";
 import { Currency, Money } from "@/core/money";
+import { Count, Days, DaySpan, Months, Ordinal, SortKey } from "@/core/units";
 import { CalendarDate, DateRange, FinancialYear } from "@/core/time";
 import { Account, AccountCode, AccountId, AccountRepository, AccountSubtype, AccountType, AccountTypeName, PostingDirection } from "@/domain/accounts";
 import { BillingCycleRule, CardTerms, CardTermsRepository } from "@/domain/assets";
@@ -46,11 +48,11 @@ import {
   normalizeCatalogText,
   verifiedIsin,
 } from "@/domain/instrument-catalog";
-import { AccountBalance, AccountFlow, BalanceQuery, MonthlyFlow, Posting, PostingId, PostingStatus, StoredTransaction, Transaction, TransactionId, TransactionKind, TransactionPage, TransactionQuery, TransactionRepository, TransactionSource, TypeTotals } from "@/domain/transactions";
+import { AccountBalance, AccountFlow, BalanceQuery, MonthlyFlow, Posting, PostingId, PostingStatus, StoredTransaction, Transaction, TransactionId, TransactionKind, TransactionPage, TransactionQuery, TransactionRepository, TransactionSource, TypeTotals, RestoreRefusedError, TombstoneRefusedError, UNDO_MESSAGES, UndoRefusedError, restoreRefusal, tombstoneRefusal, undoPlan, type AuditOptions, type BatchAction, type BatchEntry, type InvertedBatch, type RestoreFacts } from "@/domain/transactions";
 import { BudgetRepository, CategoryRuleRepository, ImportBatchRecord, ImportBatchStatus, ImportDiagnostics, ImportRepository, ImportRowStatus, ImportTrust, KeywordRule, MovementIntent, RowDirection, SelfPayeeQuery, StagedRow, StoredBudget } from "@/domain/banking";
-import { goldLeases, institutions, users as usersTable, ledgerEvents, netWorthSnapshots, projectionCache, taxSettings, priceBars, budgets, categoryRules, corporateActions, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, instrumentCatalog, instrumentCatalogFetches, instrumentCatalogLinks, instrumentCatalogListings, instrumentProviderMappings, instruments, ledgerAccounts, loanPrepayments, loanTerms, lotMatches, lots, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, trades, transactions } from "@/infra/db/schema";
+import { auditEvents, goldLeases, institutions, users as usersTable, ledgerEvents, netWorthSnapshots, projectionCache, taxSettings, priceBars, budgets, categoryRules, corporateActions, counterparties, creditCardTerms, depositContributions, depositTerms, fxRates, importBatches, importRows, instrumentCatalog, instrumentCatalogFetches, instrumentCatalogLinks, instrumentCatalogListings, instrumentProviderMappings, instruments, ledgerAccounts, loanPrepayments, loanTerms, lotMatches, lots, npsHoldings, postings, priceDivergences, priceQuotes, schemeRates, trades, transactions } from "@/infra/db/schema";
 import { Database } from "@/infra/db/client";
-import { and, asc, count, desc, eq, gte, inArray, isNotNull, isNull, like, lt, lte, max, min, ne, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, gt, gte, inArray, isNotNull, isNull, like, lt, lte, max, min, ne, or, sql } from "drizzle-orm";
 /* ═══ AccountMapper ═══════════════════════════════════════════════════ */
 
 type AccountRow = typeof ledgerAccounts.$inferSelect;
@@ -79,7 +81,7 @@ export const AccountMapper = {
       accountNumberSuffix: row.accountNumberSuffix,
       isClosed: row.isClosed,
       isSystem: row.isSystem,
-      sortOrder: row.sortOrder,
+      sortOrder: SortKey(row.sortOrder),
     });
   },
 
@@ -148,7 +150,7 @@ export const TransactionMapper = {
           accountId: AccountId.from(row.accountId),
           direction: row.direction as PostingDirection,
           amount: Money.fromMinor(row.amountMinor, Currency.of(row.currency)),
-          seq: row.seq,
+          seq: Ordinal(row.seq),
           memo: row.memo,
           instrumentId: row.instrumentId,
           quantity: row.quantityScaled === null ? null : Quantity.fromScaled(row.quantityScaled),
@@ -346,7 +348,7 @@ export class DrizzleAccountRepository implements AccountRepository {
    * to delete a history that was already gone — a dead end with no way out of it
    * from the UI.
    */
-  async countPostings(userId: UserId, id: AccountId): Promise<number> {
+  async countPostings(userId: UserId, id: AccountId): Promise<Count> {
     const [row] = await this.db
       .select({ total: count() })
       .from(postings)
@@ -361,7 +363,7 @@ export class DrizzleAccountRepository implements AccountRepository {
           isNull(ledgerAccounts.deletedAt),
         ),
       );
-    return row?.total ?? 0;
+    return Count(row?.total ?? 0);
   }
 
   /**
@@ -401,6 +403,9 @@ const PARAM_CHUNK = 400;
  * state the whole design exists to make impossible. `Transaction`'s constructor
  * guards the in-memory shape; this transaction guards the stored one.
  */
+/** The audit entity type of a ledger transaction — what `batch()` reads back. */
+const TXN_ENTITY = "transaction";
+
 export class DrizzleTransactionRepository implements TransactionRepository {
   constructor(private readonly db: Database) {}
 
@@ -442,11 +447,17 @@ export class DrizzleTransactionRepository implements TransactionRepository {
   }
 
   async find(userId: UserId, query: TransactionQuery): Promise<TransactionPage> {
-    const conditions = [eq(transactions.userId, userId.value), isNull(transactions.deletedAt)];
+    const conditions = [eq(transactions.userId, userId.value)];
+    // Tombstones stay hidden unless asked for: the evidence an undo leaves sits behind this filter.
+    if (query.removed === "ONLY") conditions.push(isNotNull(transactions.deletedAt));
+    else if (query.removed !== "INCLUDE") conditions.push(isNull(transactions.deletedAt));
 
     if (query.range) {
       conditions.push(gte(transactions.txnDate, query.range.start.toISO()));
       conditions.push(lte(transactions.txnDate, query.range.end.toISO()));
+    }
+    if (query.kinds?.length) {
+      conditions.push(inArray(transactions.txnType, [...query.kinds]));
     }
     if (query.importBatchId) {
       conditions.push(eq(transactions.importBatchId, query.importBatchId));
@@ -488,7 +499,7 @@ export class DrizzleTransactionRepository implements TransactionRepository {
     ]);
 
     if (txnRows.length === 0) {
-      return { transactions: [], totalCount: totals?.total ?? 0 };
+      return { transactions: [], totalCount: Count(totals?.total ?? 0) };
     }
 
     const postingRows = await this.db
@@ -504,7 +515,7 @@ export class DrizzleTransactionRepository implements TransactionRepository {
 
     return {
       transactions: TransactionMapper.toDomainMany(txnRows, postingRows),
-      totalCount: totals?.total ?? 0,
+      totalCount: Count(totals?.total ?? 0),
     };
   }
 
@@ -563,22 +574,300 @@ export class DrizzleTransactionRepository implements TransactionRepository {
     userId: UserId,
     importBatchId: string,
     at: Date,
-  ): Promise<number> {
-    const updated = await this.db
-      .update(transactions)
-      .set({ deletedAt: at })
-      .where(
-        and(
-          eq(transactions.userId, userId.value),
-          eq(transactions.importBatchId, importBatchId),
-          isNull(transactions.deletedAt),
-        ),
-      )
-      .returning({ id: transactions.id });
-    return updated.length;
+    options?: AuditOptions,
+  ): Promise<Count> {
+    // One audited batch (task 2.2): the whole import undoes as one unit, its legs go
+    // with it, and a reconciled leg refuses the lot (L10) rather than half-undoing it.
+    return this.audited(userId, at, options, async (uow, q) => {
+      const live = await q
+        .select({ id: transactions.id })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.userId, userId.value),
+            eq(transactions.importBatchId, importBatchId),
+            isNull(transactions.deletedAt),
+          ),
+        );
+      await this.tombstoneAll(uow, q, userId, live.map((row) => row.id), at, true);
+      return Count(live.length);
+    });
   }
 
-  async softDeleteByAccount(userId: UserId, accountId: AccountId, at: Date): Promise<number> {
+  async softDeleteMany(
+    userId: UserId,
+    ids: readonly TransactionId[],
+    at: Date,
+    options?: AuditOptions,
+  ): Promise<{ requestId: string; count: Count }> {
+    return this.audited(userId, at, options, async (uow, q, requestId) => {
+      const unique = [...new Set(ids.map((id) => id.value))];
+      await this.tombstoneAll(uow, q, userId, unique, at, true);
+      return { requestId, count: Count(unique.length) };
+    });
+  }
+
+  async saveBatch(
+    userId: UserId,
+    txns: readonly Transaction[],
+    at: Date,
+    options?: AuditOptions,
+  ): Promise<{ requestId: string }> {
+    return this.audited(userId, at, options, async (uow, _q, requestId) => {
+      for (const txn of txns) {
+        if (txn.userId.value !== userId.value) throw new Error("saveBatch: transaction belongs to another user");
+        const legs = TransactionMapper.toPostingRows(txn);
+        await uow.mutateAtomic({
+          action: txn.isReversal ? "REVERSE" : "CREATE",
+          entityType: TXN_ENTITY,
+          entityId: txn.id.value,
+          before: null,
+          event: {
+            type: txn.isReversal ? "TransactionReversed" : "TransactionRecorded",
+            aggregateType: TXN_ENTITY,
+            aggregateId: txn.id.value,
+            payload: { transactionId: txn.id.value, reverses: txn.reversesTransactionId?.value ?? null },
+            effectiveOn: txn.txnDate,
+          },
+          touchedAccountIds: [...new Set(legs.map((leg) => leg.accountId))],
+          apply: async (tx) => {
+            await tx.insert(transactions).values(TransactionMapper.toTransactionRow(txn));
+            await tx.insert(postings).values(legs);
+            return { result: undefined, after: { at: at.toISOString() } };
+          },
+        });
+      }
+      return { requestId };
+    });
+  }
+
+  async batch(userId: UserId, requestId: string): Promise<readonly BatchEntry[]> {
+    return this.batchIn(this.db, userId, requestId);
+  }
+
+  async invertBatch(userId: UserId, requestId: string, at: Date, options?: AuditOptions): Promise<InvertedBatch> {
+    return this.audited(userId, at, options, async (uow, q, undoRequestId) => {
+      const plan = undoPlan(await this.batchIn(q, userId, requestId), at);
+      if (plan instanceof UndoRefusedError) throw plan;
+      const ids = plan.map((step) => step.transactionId);
+      if (await this.touchedSinceIn(q, userId, requestId, ids)) {
+        throw new UndoRefusedError("SUPERSEDED", UNDO_MESSAGES.SUPERSEDED);
+      }
+      const tombstoned = plan.filter((step) => step.op === "TOMBSTONE").map((step) => step.transactionId);
+      const restored = plan.filter((step) => step.op === "RESTORE").map((step) => step.transactionId);
+      try {
+        await this.tombstoneAll(uow, q, userId, tombstoned.map((id) => id.value), at, true);
+        for (const id of restored) await this.restoreAudited(uow, q, userId, id.value, at);
+      } catch (error) {
+        if (error instanceof RestoreRefusedError || error instanceof TombstoneRefusedError) {
+          throw new UndoRefusedError("BLOCKED", error.message, error);
+        }
+        throw error;
+      }
+      return { requestId: undoRequestId, tombstoned, restored };
+    });
+  }
+
+  async touchedSince(userId: UserId, requestId: string, ids: readonly TransactionId[]): Promise<boolean> {
+    return this.touchedSinceIn(this.db, userId, requestId, ids);
+  }
+
+  /**
+   * One SQL transaction whose audited steps each go through `mutateAtomic` (a
+   * savepoint inside it) under one request id — the undo unit (ARCHITECTURE §10.2).
+   * A throw anywhere rolls the whole batch back.
+   */
+  private async audited<T>(
+    userId: UserId,
+    at: Date,
+    options: AuditOptions | undefined,
+    work: (uow: UnitOfWork, q: Database, requestId: string) => Promise<T>,
+  ): Promise<T> {
+    const requestId = options?.requestId ?? newUuid();
+    return this.db.transaction(async (tx) => {
+      const q = tx as unknown as Database;
+      const uow = new UnitOfWork(q, newRequestContext(userId.value, new FixedClock(at), { requestId }));
+      return work(uow, q, requestId);
+    });
+  }
+
+  private async batchIn(q: Database, userId: UserId, requestId: string): Promise<readonly BatchEntry[]> {
+    const rows = await q
+      .select({ entityId: auditEvents.entityId, action: auditEvents.action, afterJson: auditEvents.afterJson, at: auditEvents.at })
+      .from(auditEvents)
+      .where(
+        and(
+          eq(auditEvents.userId, userId.value),
+          eq(auditEvents.requestId, requestId),
+          eq(auditEvents.entityType, TXN_ENTITY),
+        ),
+      )
+      .orderBy(sql`rowid`);
+    return rows
+      .filter((row) => row.action !== "UPDATE")
+      .map((row) => {
+        let at = row.at;
+        try {
+          const after = row.afterJson ? (JSON.parse(row.afterJson) as { at?: string }) : null;
+          if (after?.at) at = new Date(after.at);
+        } catch {
+          /* an after-image without a time: fall back to when it was written */
+        }
+        return { transactionId: TransactionId.from(row.entityId), action: row.action as BatchAction, at };
+      });
+  }
+
+  private async touchedSinceIn(q: Database, userId: UserId, requestId: string, ids: readonly TransactionId[]): Promise<boolean> {
+    if (ids.length === 0) return false;
+    const values = ids.map((id) => id.value);
+    const [mark] = await q
+      .select({ seq: max(ledgerEvents.seq) })
+      .from(ledgerEvents)
+      .where(and(eq(ledgerEvents.userId, userId.value), eq(ledgerEvents.requestId, requestId)));
+    if (mark?.seq == null) return false;
+    for (let i = 0; i < values.length; i += PARAM_CHUNK) {
+      const chunk = values.slice(i, i + PARAM_CHUNK);
+      const [newer] = await q
+        .select({ seq: ledgerEvents.seq })
+        .from(ledgerEvents)
+        .where(
+          and(
+            eq(ledgerEvents.userId, userId.value),
+            gt(ledgerEvents.seq, mark.seq),
+            eq(ledgerEvents.aggregateType, TXN_ENTITY),
+            inArray(ledgerEvents.aggregateId, chunk),
+          ),
+        )
+        .limit(1);
+      if (newer) return true;
+      // A reversal written outside the audited path still supersedes: a live row
+      // that reverses one of these, and is not itself part of the batch.
+      const reversals = await q
+        .select({ id: transactions.id })
+        .from(transactions)
+        .where(
+          and(
+            eq(transactions.userId, userId.value),
+            isNull(transactions.deletedAt),
+            inArray(transactions.reversesTransactionId, chunk),
+            gt(transactions.createdAt, sql`(SELECT max(${auditEvents.at}) FROM ${auditEvents} WHERE ${auditEvents.requestId} = ${requestId})`),
+          ),
+        )
+
+      if (reversals.some((row) => !values.includes(row.id))) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Tombstones transactions and their legs, one audited `SOFT_DELETE` each. `strict`
+   * refuses — before any write — an unknown or already-removed id and any reconciled
+   * leg (L10), naming every blocking row.
+   */
+  private async tombstoneAll(
+    uow: UnitOfWork,
+    q: Database,
+    userId: UserId,
+    ids: readonly string[],
+    at: Date,
+    strict: boolean,
+  ): Promise<void> {
+    if (ids.length === 0) return;
+    const rows: { id: string; deletedAt: Date | null; txnDate: string }[] = [];
+    const legs: { transactionId: string; accountId: string; status: string }[] = [];
+    for (let i = 0; i < ids.length; i += PARAM_CHUNK) {
+      const chunk = ids.slice(i, i + PARAM_CHUNK);
+      rows.push(
+        ...(await q
+          .select({ id: transactions.id, deletedAt: transactions.deletedAt, txnDate: transactions.txnDate })
+          .from(transactions)
+          .where(and(eq(transactions.userId, userId.value), inArray(transactions.id, chunk)))),
+      );
+      legs.push(
+        ...(await q
+          .select({ transactionId: postings.transactionId, accountId: postings.accountId, status: postings.status })
+          .from(postings)
+          .where(inArray(postings.transactionId, chunk))),
+      );
+    }
+    const found = new Map(rows.map((row) => [row.id, row]));
+    if (strict) {
+      const missing = ids.filter((id) => !found.has(id));
+      if (missing.length > 0) throw tombstoneRefusal("NOT_FOUND", missing);
+      const removed = rows.filter((row) => row.deletedAt !== null).map((row) => row.id);
+      if (removed.length > 0) throw tombstoneRefusal("ALREADY_REMOVED", removed);
+    }
+    const reconciled = [...new Set(legs.filter((leg) =>
+      leg.status === "RECONCILED" && found.get(leg.transactionId)?.deletedAt === null,
+    ).map((leg) => leg.transactionId))];
+    if (reconciled.length > 0) throw tombstoneRefusal("RECONCILED", reconciled);
+    for (const id of ids) {
+      const row = found.get(id);
+      if (!row || row.deletedAt !== null) continue;
+      await uow.mutateAtomic({
+        action: "SOFT_DELETE",
+        entityType: TXN_ENTITY,
+        entityId: id,
+        before: { deletedAt: null },
+        event: {
+          type: "TransactionRemoved",
+          aggregateType: TXN_ENTITY,
+          aggregateId: id,
+          payload: { transactionId: id },
+          effectiveOn: CalendarDate.parse(row.txnDate),
+        },
+        touchedAccountIds: [...new Set(legs.filter((leg) => leg.transactionId === id).map((leg) => leg.accountId))],
+        apply: async (tx) => {
+          await tx
+            .update(transactions)
+            .set({ deletedAt: at })
+            .where(and(eq(transactions.userId, userId.value), eq(transactions.id, id)));
+          await tx
+            .update(postings)
+            .set({ deletedAt: at })
+            .where(and(eq(postings.transactionId, id), isNull(postings.deletedAt)));
+          return { result: undefined, after: { deletedAt: at.toISOString(), at: at.toISOString() } };
+        },
+      });
+    }
+  }
+
+  /** Restore one tombstone as an audited `RESTORE`; the policy check happens inside its savepoint. */
+  private async restoreAudited(uow: UnitOfWork, q: Database, userId: UserId, id: string, at: Date): Promise<void> {
+    const [row] = await q
+      .select({ txnDate: transactions.txnDate })
+      .from(transactions)
+      .where(and(eq(transactions.userId, userId.value), eq(transactions.id, id)));
+    const legs = await q.select({ accountId: postings.accountId }).from(postings).where(eq(postings.transactionId, id));
+    await uow.mutateAtomic({
+      action: "RESTORE",
+      entityType: TXN_ENTITY,
+      entityId: id,
+      before: null,
+      event: {
+        type: "TransactionRestored",
+        aggregateType: TXN_ENTITY,
+        aggregateId: id,
+        payload: { transactionId: id },
+        effectiveOn: row ? CalendarDate.parse(row.txnDate) : null,
+      },
+      touchedAccountIds: [...new Set(legs.map((leg) => leg.accountId))],
+      apply: async (tx) => {
+        // The facts are read and the rows cleared inside one savepoint, so nothing can
+        // change between the check and the write; a refusal throws before any write.
+        await DrizzleTransactionRepository.assertRestorable(tx as unknown as Database, userId, id, at);
+        await tx
+          .update(transactions)
+          .set({ deletedAt: null })
+          .where(and(eq(transactions.userId, userId.value), eq(transactions.id, id)));
+        // Postings are only ever tombstoned with their transaction, so all of them come back.
+        await tx.update(postings).set({ deletedAt: null }).where(eq(postings.transactionId, id));
+        return { result: undefined, after: { deletedAt: null, at: at.toISOString() } };
+      },
+    });
+  }
+
+  async softDeleteByAccount(userId: UserId, accountId: AccountId, at: Date): Promise<Count> {
     const transactionIds = this.db
       .select({ id: postings.transactionId })
       .from(postings)
@@ -620,7 +909,7 @@ export class DrizzleTransactionRepository implements TransactionRepository {
             ),
           );
       }
-      return updated.length;
+      return Count(updated.length);
     });
   }
 
@@ -632,11 +921,62 @@ export class DrizzleTransactionRepository implements TransactionRepository {
    * are visible. This is for an txn that should never have existed at all, such
    * as a duplicate from a re-import.
    */
-  async softDelete(userId: UserId, id: TransactionId, at: Date): Promise<void> {
-    await this.db
-      .update(transactions)
-      .set({ deletedAt: at })
-      .where(and(eq(transactions.userId, userId.value), eq(transactions.id, id.value)));
+  async softDelete(userId: UserId, id: TransactionId, at: Date, options?: AuditOptions): Promise<void> {
+    // Unknown or already-removed ids remain no-ops; live reconciled rows refuse
+    // under L10, exactly as they do on the batch paths.
+    await this.audited(userId, at, options, (uow, q) => this.tombstoneAll(uow, q, userId, [id.value], at, false));
+  }
+
+  /**
+   * Undo of a tombstone (task 2.1). The facts are read and the rows cleared inside
+   * one SQL transaction, so nothing can change between the check and the write; a
+   * refusal throws before any write, leaving the database as it was. Audited as
+   * `RESTORE` (2.2).
+   */
+  async restore(userId: UserId, id: TransactionId, at: Date, options?: AuditOptions): Promise<void> {
+    await this.audited(userId, at, options, (uow, q) => this.restoreAudited(uow, q, userId, id.value, at));
+  }
+
+  private static async assertRestorable(tx: Database, userId: UserId, id: string, at: Date): Promise<void> {
+    const [txn] = await tx
+      .select({ deletedAt: transactions.deletedAt, fingerprint: transactions.fingerprint, externalId: transactions.externalId })
+      .from(transactions)
+      .where(and(eq(transactions.userId, userId.value), eq(transactions.id, id)));
+
+    let facts: RestoreFacts | null = null;
+    if (txn) {
+      const legs = await tx
+        .select({ status: postings.status, accountName: ledgerAccounts.name, accountDeletedAt: ledgerAccounts.deletedAt })
+        .from(postings)
+        .innerJoin(ledgerAccounts, eq(ledgerAccounts.id, postings.accountId))
+        .where(eq(postings.transactionId, id));
+      const clashes = txn.fingerprint === null && txn.externalId === null
+        ? []
+        : await tx
+            .select({ id: transactions.id })
+            .from(transactions)
+            .where(
+              and(
+                eq(transactions.userId, userId.value),
+                ne(transactions.id, id),
+                isNull(transactions.deletedAt),
+                or(
+                  txn.fingerprint === null ? sql`0` : eq(transactions.fingerprint, txn.fingerprint),
+                  txn.externalId === null ? sql`0` : eq(transactions.externalId, txn.externalId),
+                ),
+              ),
+            )
+            .limit(1);
+      facts = {
+        deletedAt: txn.deletedAt,
+        reconciled: legs.some((leg) => leg.status === "RECONCILED"),
+        removedAccount: legs.find((leg) => leg.accountDeletedAt !== null)?.accountName ?? null,
+        duplicate: clashes.length > 0,
+      };
+    }
+
+    const refusal = restoreRefusal(facts, at);
+    if (refusal) throw refusal;
   }
 
   async earliestTxnDate(userId: UserId): Promise<CalendarDate | null> {
@@ -775,7 +1115,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
         institution: row.institution,
         isClosed: row.isClosed,
         balance: Money.fromMinor(row.balance ?? 0, Currency.of(row.currency)),
-        postingCount: Number(row.postingCount),
+        postingCount: Count(Number(row.postingCount)),
       }));
   }
 
@@ -1079,7 +1419,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
           range.end,
           userId,
         ),
-        postingCount: Number(row.postingCount),
+        postingCount: Count(Number(row.postingCount)),
       })),
     );
 
@@ -1108,7 +1448,7 @@ export class DrizzleBalanceQuery implements BalanceQuery {
         const ancestor = byCode.get(ancestorCode);
         if (ancestor) {
           ancestor.amount = ancestor.amount.plus(flow.amount);
-          ancestor.postingCount += flow.postingCount;
+          ancestor.postingCount = Count(ancestor.postingCount + flow.postingCount);
         }
       }
     }
@@ -1209,7 +1549,7 @@ export class DrizzleQuoteRepository implements QuoteRepository {
     instrumentId: string,
     quoteType: QuoteType,
     asOf: CalendarDate,
-    limit = 50,
+    limit: Count = Count(50),
   ): Promise<readonly Quote[]> {
     const rows = await this.db
       .select()
@@ -1730,7 +2070,7 @@ export class DrizzleBarRepository implements BarRepository {
   async coverage(
     instrumentId: string,
     granularity: BarGranularity,
-  ): Promise<{ from: CalendarDate; through: CalendarDate; count: number } | null> {
+  ): Promise<{ from: CalendarDate; through: CalendarDate; count: Count } | null> {
     const [row] = await this.db
       .select({ from: min(priceBars.asOf), through: max(priceBars.asOf), rows: count() })
       .from(priceBars)
@@ -1746,7 +2086,7 @@ export class DrizzleBarRepository implements BarRepository {
     return {
       from: CalendarDate.parse(row.from),
       through: CalendarDate.parse(row.through),
-      count: Number(row.rows),
+      count: Count(Number(row.rows)),
     };
   }
 
@@ -1769,8 +2109,8 @@ export class DrizzleBarRepository implements BarRepository {
    * round trip and the whole thing is a fixed number of statements regardless of
    * how many years a newly logged split just invalidated.
    */
-  async restate(bars: readonly Bar[]): Promise<{ appended: number; superseded: number }> {
-    if (bars.length === 0) return { appended: 0, superseded: 0 };
+  async restate(bars: readonly Bar[]): Promise<{ appended: Count; superseded: Count }> {
+    if (bars.length === 0) return { appended: Count(0), superseded: Count(0) };
 
     const rows = bars.map((bar) => {
       const checked = makeBar(bar);
@@ -1813,7 +2153,7 @@ export class DrizzleBarRepository implements BarRepository {
       }
     });
 
-    return { appended: rows.length, superseded };
+    return { appended: Count(rows.length), superseded: Count(superseded) };
   }
 
   async gaps(
@@ -1897,7 +2237,7 @@ export class DrizzleFxRateRepository implements FxRateRepository {
     quote: string,
     asOf: CalendarDate,
     userId?: UserId,
-    limit = 50,
+    limit: Count = Count(50),
   ): Promise<readonly StoredFxRate[]> {
     const rows = await this.db
       .select()
@@ -2029,7 +2369,7 @@ export class DrizzleImportRepository implements ImportRepository {
    */
   async pendingRowCounts(
     userId: UserId,
-  ): Promise<readonly { accountId: string; rows: number; batches: number }[]> {
+  ): Promise<readonly { accountId: string; rows: Count; batches: Count }[]> {
     const rows = await this.db
       .select({
         accountId: importBatches.accountId,
@@ -2056,8 +2396,8 @@ export class DrizzleImportRepository implements ImportRepository {
       .filter((row): row is typeof row & { accountId: string } => row.accountId !== null)
       .map((row) => ({
         accountId: row.accountId,
-        rows: Number(row.rows),
-        batches: Number(row.batches),
+        rows: Count(Number(row.rows)),
+        batches: Count(Number(row.batches)),
       }));
   }
 
@@ -2213,7 +2553,7 @@ export class DrizzleImportRepository implements ImportRepository {
     userId: UserId,
     accountId: AccountId,
     at: Date,
-  ): Promise<number> {
+  ): Promise<Count> {
     return this.db.transaction(async (tx) => {
       const batchIds = await tx
         .select({ id: importBatches.id })
@@ -2225,7 +2565,7 @@ export class DrizzleImportRepository implements ImportRepository {
             isNull(importBatches.deletedAt),
           ),
         );
-      if (batchIds.length === 0) return 0;
+      if (batchIds.length === 0) return Count(0);
 
       const ids = batchIds.map((row) => row.id);
       await tx
@@ -2242,7 +2582,7 @@ export class DrizzleImportRepository implements ImportRepository {
         .update(importBatches)
         .set({ deletedAt: at })
         .where(and(eq(importBatches.userId, userId.value), inArray(importBatches.id, ids)));
-      return ids.length;
+      return Count(ids.length);
     });
   }
 
@@ -2323,10 +2663,10 @@ export const ImportMapper = {
       accountId: row.accountId ? AccountId.from(row.accountId) : null,
       fileName: row.fileName,
       fileHash: row.fileHash,
-      rowsRead: row.rowsRead,
-      rowsImported: row.rowsImported,
-      rowsDuplicate: row.rowsDuplicate,
-      rowsFailed: row.rowsFailed,
+      rowsRead: Count(row.rowsRead),
+      rowsImported: Count(row.rowsImported),
+      rowsDuplicate: Count(row.rowsDuplicate),
+      rowsFailed: Count(row.rowsFailed),
       status: row.status,
       diagnostics: ImportMapper.fromDiagnosticsJson(row.problemsJson),
     };
@@ -2391,19 +2731,19 @@ export const ImportMapper = {
     return {
       verdict: {
         trust: payload.verdict.trust,
-        checked: payload.verdict.checked,
+        checked: Count(payload.verdict.checked),
         breaks: (payload.verdict.breaks ?? []).map((brk: DiagnosticsJson["verdict"]["breaks"][number]) => ({
-          rowIndex: brk.rowIndex,
+          rowIndex: Ordinal(brk.rowIndex),
           expected: money(brk.expectedMinor)!,
           printed: money(brk.printedMinor)!,
         })),
-        mapping: payload.verdict.mapping ?? {},
+        mapping: Object.fromEntries(Object.entries(payload.verdict.mapping ?? {}).map(([key, index]) => [key, Ordinal(index)])),
         closingBalance: money(payload.verdict.closingMinor),
         // Absent on every batch written before the control check existed, which
         // is honest: nothing checked them.
         controls: payload.verdict.controls ?? { status: "ABSENT", detail: null },
       },
-      problems: payload.problems ?? [],
+      problems: (payload.problems ?? []).map((problem) => ({ ...problem, rowIndex: Ordinal(problem.rowIndex) })),
       override: payload.override ?? null,
       statement: payload.statement ?? null,
       warnings: payload.warnings ?? [],
@@ -2435,7 +2775,7 @@ export const ImportMapper = {
     return {
       id: row.id,
       batchId: row.batchId,
-      rowIndex: row.rowIndex,
+      rowIndex: Ordinal(row.rowIndex),
       status: row.status,
       date: CalendarDate.parse(parsed.date ?? "1970-01-01"),
       description: parsed.description ?? "",
@@ -2452,13 +2792,13 @@ export const ImportMapper = {
               BigInt(parsed.balanceAfterMinor),
               Currency.of(parsed.currency ?? Currency.reporting.code),
             ),
-      occurrence: parsed.occurrence ?? 0,
+      occurrence: Ordinal(parsed.occurrence ?? 0),
       raw: row.rawJson,
       proposedAccountId: parsed.proposedAccountId ? AccountId.from(parsed.proposedAccountId) : null,
       intent: parsed.intent ?? "SPEND",
       because: parsed.because ?? "",
       matchedTransactionId: row.matchedTransactionId,
-      matchPass: row.matchPass,
+      matchPass: row.matchPass === null ? null : Ordinal(row.matchPass),
       rejectedReason: row.rejectedReason,
     };
   },
@@ -2487,7 +2827,7 @@ export class DrizzleCategoryRuleRepository implements CategoryRuleRepository {
       matchType: row.matchType,
       accountId: AccountId.from(row.accountId),
       appliesTo: row.appliesTo,
-      priority: row.priority,
+      priority: SortKey(row.priority),
       isEnabled: row.isEnabled,
     }));
   }
@@ -2501,8 +2841,8 @@ export class DrizzleCategoryRuleRepository implements CategoryRuleRepository {
    * disagrees with what happened is worse than no count, because the screen
    * repeats it.
    */
-  async saveMany(userId: UserId, rules: readonly Omit<KeywordRule, "id">[]): Promise<number> {
-    if (rules.length === 0) return 0;
+  async saveMany(userId: UserId, rules: readonly Omit<KeywordRule, "id">[]): Promise<Count> {
+    if (rules.length === 0) return Count(0);
     const before = await this.count(userId);
     for (let index = 0; index < rules.length; index += PARAM_CHUNK) {
       const chunk = rules.slice(index, index + PARAM_CHUNK);
@@ -2525,7 +2865,7 @@ export class DrizzleCategoryRuleRepository implements CategoryRuleRepository {
         // collapses a keyword that two built-in groups both claim.
         .onConflictDoNothing();
     }
-    return (await this.count(userId)) - before;
+    return Count((await this.count(userId)) - before);
   }
 
   private async count(userId: UserId): Promise<number> {
@@ -2591,7 +2931,7 @@ export class DrizzleBudgetRepository implements BudgetRepository {
       accountId: AccountId.from(row.accountId),
       month: row.month,
       limit: Money.fromMinor(row.limitMinor),
-      warnAtPercent: row.warnAtPercent,
+      warnAtPercent: Percentage.of(row.warnAtPercent.toString()),
       carryover: row.carryover,
     }));
   }
@@ -2603,7 +2943,7 @@ export class DrizzleBudgetRepository implements BudgetRepository {
       accountId: budget.accountId.value,
       month: budget.month,
       limitMinor: budget.limit.toMinorNumber(),
-      warnAtPercent: budget.warnAtPercent,
+      warnAtPercent: budget.warnAtPercent.toApproximateNumber(),
       carryover: budget.carryover,
       updatedAt: new Date(),
     };
@@ -2718,7 +3058,7 @@ export const CardTermsMapper = {
     const currency = Currency.of(row.currency);
     return {
       creditLimit: Money.fromMinor(row.creditLimitMinor, currency),
-      cycle: new BillingCycleRule(row.statementDay, row.graceDays),
+      cycle: new BillingCycleRule(Ordinal(row.statementDay), Days(row.graceDays)),
       financeRate: Rate.fromScaled(row.financeRateScaled, row.financeConvention),
       minimumDuePercent: Percentage.fromScaled(row.minimumDuePercentScaled),
       minimumDueFloor: Money.fromMinor(row.minimumDueFloorMinor, currency),
@@ -3002,7 +3342,7 @@ export const DepositMapper = {
           instalment: Money.fromMinor(row.instalmentMinor, currency),
           rate: rate(),
           openedOn: CalendarDate.parse(row.openedOn),
-          months: row.months,
+          months: Months(row.months),
           compounding: row.compounding,
         });
       }
@@ -3014,7 +3354,7 @@ export const DepositMapper = {
             amount: Money.fromMinor(entry.amountMinor, Currency.of(entry.currency)),
           })),
           ratesByFinancialYear: rateMap("PPF"),
-          extensionBlocks: row.extensionBlocks ?? undefined,
+          extensionBlocks: row.extensionBlocks === null ? undefined : Count(row.extensionBlocks),
         });
       case "EPF":
         return new EmployeeProvidentFund(account, {
@@ -3065,7 +3405,7 @@ export const LoanMapper = {
       kind: row.kind,
       principal: Money.fromMinor(row.principalMinor, currency),
       annualRate: Rate.fromScaled(row.interestRateScaled, row.dayCountConvention),
-      periods: row.periods,
+      periods: Count(row.periods),
       frequency: row.paymentFrequency,
       disbursedOn: CalendarDate.parse(row.disbursedOn),
       firstPaymentOn: row.firstPaymentOn ? CalendarDate.parse(row.firstPaymentOn) : null,
@@ -3184,7 +3524,7 @@ export class DrizzleInstrumentRepository implements InstrumentRepository {
       .where(and(eq(instruments.userId, userId.value), eq(instruments.id, id.value)));
   }
 
-  async countTrades(userId: UserId, id: InstrumentId): Promise<number> {
+  async countTrades(userId: UserId, id: InstrumentId): Promise<Count> {
     const [row] = await this.db
       .select({ n: count() })
       .from(trades)
@@ -3195,7 +3535,7 @@ export class DrizzleInstrumentRepository implements InstrumentRepository {
           eq(trades.instrumentId, id.value),
         ),
       );
-    return Number(row?.n ?? 0);
+    return Count(Number(row?.n ?? 0));
   }
 }
 
@@ -3579,7 +3919,7 @@ export class DrizzleLotRepository implements LotRepository {
       buyCharges: Money.fromMinor(match.buyChargesMinor, Currency.of(match.currency)),
       sellCharges: Money.fromMinor(match.sellChargesMinor, Currency.of(match.currency)),
       gain: Money.fromMinor(match.realizedGainMinor, Currency.of(match.currency)),
-      holdingDays: match.holdingDays,
+      holdingDays: DaySpan(match.holdingDays),
     }));
   }
 
@@ -3905,7 +4245,7 @@ export class DrizzleInstrumentCatalogRepository implements InstrumentCatalogRepo
       .orderBy(desc(instrumentCatalogFetches.fetchedAt))
       .limit(1);
     return row
-      ? { source: row.source, fetchedAt: row.fetchedAt, checksum: row.checksum, rowCount: row.rowCount }
+      ? { source: row.source, fetchedAt: row.fetchedAt, checksum: row.checksum, rowCount: Count(row.rowCount) }
       : null;
   }
 
@@ -3927,10 +4267,10 @@ export class DrizzleInstrumentCatalogRepository implements InstrumentCatalogRepo
     }).onConflictDoNothing();
   }
 
-  async count(): Promise<number> {
+  async count(): Promise<Count> {
     const [row] = await this.db.select({ value: count() }).from(instrumentCatalog)
       .where(isNull(instrumentCatalog.deletedAt));
-    return row?.value ?? 0;
+    return Count(row?.value ?? 0);
   }
 
   async ingest(snapshot: CatalogSnapshot) {
@@ -4084,7 +4424,7 @@ export class DrizzleInstrumentCatalogRepository implements InstrumentCatalogRepo
       set: { checksum: snapshot.checksum, rowCount: snapshot.instruments.length + snapshot.mappings.length },
     });
 
-    return { instruments: instrumentCount, listings: listingCount, mappings: mappingCount, unmatchedMappings };
+    return { instruments: Count(instrumentCount), listings: Count(listingCount), mappings: Count(mappingCount), unmatchedMappings: Count(unmatchedMappings) };
   }
 
   async search(normalizedQuery: string, limit: number) {
@@ -4350,7 +4690,7 @@ export class DrizzleInstrumentCatalogRepository implements InstrumentCatalogRepo
     }).where(eq(instrumentCatalogListings.id, listingId));
   }
 
-  async recordMoneycontrolScIds(rows: readonly MoneycontrolScIdRow[]): Promise<number> {
+  async recordMoneycontrolScIds(rows: readonly MoneycontrolScIdRow[]): Promise<Count> {
     let written = 0;
     for (const row of rows) {
       await this.db.update(instrumentCatalogListings)
@@ -4358,7 +4698,7 @@ export class DrizzleInstrumentCatalogRepository implements InstrumentCatalogRepo
         .where(eq(instrumentCatalogListings.id, row.listingId));
       written += 1;
     }
-    return written;
+    return Count(written);
   }
 
   async moneycontrolScIdMap(): Promise<ReadonlyMap<string, string>> {

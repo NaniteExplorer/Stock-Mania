@@ -75,7 +75,7 @@ export default function RefreshPricesButton({
         </button>
       </form>
       {state && (
-        <p className={state.ok ? "text-xs text-green-500" : "text-xs text-red-500"} role="status" aria-live="polite">
+        <p className={state.ok ? "text-xs text-(--gain)" : "text-xs text-(--loss)"} role="status" aria-live="polite">
           {state.message}
         </p>
       )}

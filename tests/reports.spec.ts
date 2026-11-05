@@ -16,6 +16,7 @@
  */
 
 import { Currency, Money } from "@/core/money";
+import { Count, Minutes } from "@/core/units";
 import { Percentage, Quantity, Rate, UnitPrice } from "@/core/numeric";
 import { CalendarDate, DateRange } from "@/core/time";
 import { UserId } from "@/core/kernel";
@@ -251,6 +252,8 @@ check("a deposit is investing", cashflowCategoryFor("ASSET", "DEPOSIT"), "INVEST
 check("a holding is investing", cashflowCategoryFor("ASSET", "BROKERAGE"), "INVESTING");
 check("a bank account is operating", cashflowCategoryFor("ASSET", "BANK"), "OPERATING");
 check("a loan is financing", cashflowCategoryFor("LIABILITY", "LOAN"), "FINANCING");
+check("an inherited property name is not a subtype", cashflowCategoryFor("ASSET", "constructor"), "OPERATING");
+check("nor is a prototype method", cashflowCategoryFor("ASSET", "toString"), "OPERATING");
 
 const cashflow = cashflowStatement({
   period,
@@ -315,8 +318,98 @@ const noSpending = personalMetrics({
 check("no income, no savings rate", noSpending.savingsRate, null);
 check("no spending, no burn rate", noSpending.burnRate, null);
 check("and no runway rather than an infinite one", noSpending.runwayMonths, null);
+check("positive liquid assets have no shortfall", metrics.liquidShortfall, null);
+throws("burn refuses expenses outside the report currency", () => personalMetrics({
+  netWorth: Money.zero(Currency.USD), liquidNetWorth: Money.zero(Currency.USD),
+  periodIncome: Money.zero(Currency.USD), periodExpenses: Money.zero(Currency.USD),
+  essentialMonthlyExpenses: [rupees("10000")],
+  monthlyDebtPayments: null, monthlyGrossIncome: Money.zero(Currency.USD),
+  cardBalances: Money.zero(Currency.USD), cardLimits: Money.zero(Currency.USD),
+}), "Cannot combine");
+for (const liquid of ["-42000", "5000"]) {
+  const usd = (value: string) => Money.fromRupees(value, Currency.USD);
+  const foreign = personalMetrics({
+    netWorth: usd(liquid), liquidNetWorth: usd(liquid),
+    periodIncome: usd("0"), periodExpenses: usd("0"),
+    essentialMonthlyExpenses: [usd("10000")],
+    monthlyDebtPayments: null, monthlyGrossIncome: usd("0"),
+    cardBalances: usd("0"), cardLimits: usd("0"),
+  });
+  check(`USD ${liquid} burn retains currency`, foreign.burnRate?.currency.code, "USD");
+  check(`USD ${liquid} runway`, foreign.runwayMonths, liquid.startsWith("-") ? 0 : 0.5);
+  check(`USD ${liquid} shortfall retains currency`, foreign.liquidShortfall?.currency.code ?? null, liquid.startsWith("-") ? "USD" : null);
+}
+for (const [liquid, expenses, expectedRunway, expectedShortfall] of [
+  ["-42000", ["10000"], 0, "42000.00"],
+  ["0", ["10000"], 0, null],
+  ["5000", ["10000"], 0.5, null],
+  ["-42000", [], null, "42000.00"],
+  ["-42000", ["0"], null, "42000.00"],
+] as const) {
+  const measured = personalMetrics({
+    netWorth: rupees(liquid), liquidNetWorth: rupees(liquid),
+    periodIncome: rupees("0"), periodExpenses: rupees("0"),
+    essentialMonthlyExpenses: expenses.map(rupees),
+    monthlyDebtPayments: null, monthlyGrossIncome: rupees("0"),
+    cardBalances: rupees("0"), cardLimits: rupees("0"),
+  });
+  check(`liquid ${liquid}, ${expenses.length} expense months: runway`, measured.runwayMonths, expectedRunway);
+  check(`liquid ${liquid}, ${expenses.length} expense months: explicit deficit`, measured.liquidShortfall?.toDecimalString() ?? null, expectedShortfall);
+}
 check("no income, no debt-to-income", noSpending.debtToIncome, null);
 check("no limit, no utilisation", noSpending.creditUtilisation, null);
+
+/*
+ * The distinction 0.1 exists for: **unmeasured is not zero.**
+ *
+ * Both of these people earn ₹1,25,000 a month. One has a loan book we have not
+ * loaded, the other has genuinely declared no debt. Before the fix both saw 0%,
+ * which the first of them would have read as solvency. `null` and `0%` are
+ * different claims and the metric now makes them differently.
+ */
+const unmeasuredDebt = personalMetrics({
+  netWorth: rupees("4999865.53"),
+  liquidNetWorth: rupees("592174.67"),
+  periodIncome: rupees("1500000"),
+  periodExpenses: rupees("366869.40"),
+  essentialMonthlyExpenses: [rupees("50000")],
+  monthlyDebtPayments: null,
+  monthlyGrossIncome: rupees("125000"),
+  cardBalances: rupees("0"),
+  cardLimits: rupees("200000"),
+});
+check("income but unmeasured debt service, no ratio", unmeasuredDebt.debtToIncome, null);
+
+const declaredNoDebt = personalMetrics({
+  netWorth: rupees("4999865.53"),
+  liquidNetWorth: rupees("592174.67"),
+  periodIncome: rupees("1500000"),
+  periodExpenses: rupees("366869.40"),
+  essentialMonthlyExpenses: [rupees("50000")],
+  monthlyDebtPayments: rupees("0"),
+  monthlyGrossIncome: rupees("125000"),
+  cardBalances: rupees("0"),
+  cardLimits: rupees("200000"),
+});
+check("measured at zero, the ratio is a real 0%", declaredNoDebt.debtToIncome?.toFixed(2), "0.00");
+
+/*
+ * 0.2: the ratio against a hand-computed instalment sum. Two 0% loans, so the
+ * arithmetic is checkable without the EMI formula — ₹10,000 + ₹10,000 against
+ * ₹1,00,000 of monthly income is exactly 20%.
+ */
+const fromRealLoans = personalMetrics({
+  netWorth: rupees("1000000"),
+  liquidNetWorth: rupees("500000"),
+  periodIncome: rupees("1200000"),
+  periodExpenses: rupees("600000"),
+  essentialMonthlyExpenses: [rupees("50000")],
+  monthlyDebtPayments: rupees("10000").plus(rupees("10000")),
+  monthlyGrossIncome: rupees("100000"),
+  cardBalances: rupees("0"),
+  cardLimits: rupees("100000"),
+});
+check("debt to income over a summed instalment", fromRealLoans.debtToIncome?.toFixed(2), "20.00");
 
 section("allocation by class");
 
@@ -342,8 +435,8 @@ const sensibleLimits: RiskLimits = {
   maxOrderValue: rupees("200000"),
   fatFingerTolerance: Percentage.of("10"),
   maxDailyLoss: rupees("25000"),
-  maxOrdersPerWindow: 10,
-  windowMinutes: 60,
+  maxOrdersPerWindow: Count(10),
+  windowMinutes: Minutes(60),
   killSwitchEngaged: false,
   availableMargin: rupees("500000"),
 };
@@ -353,7 +446,7 @@ const context: RiskContext = {
   positionValue: rupees("50000"),
   exposureValue: rupees("200000"),
   lossToday: rupees("0"),
-  ordersInWindow: 2,
+  ordersInWindow: Count(2),
   keyAlreadyUsed: false,
   unitsHeld: units("100"),
 };
@@ -440,7 +533,7 @@ check(
 );
 check(
   "a burst of orders blocks",
-  only({}, { ordersInWindow: 10 }).blockedBy.includes("RATE_LIMIT"),
+  only({}, { ordersInWindow: Count(10) }).blockedBy.includes("RATE_LIMIT"),
   true,
 );
 check(

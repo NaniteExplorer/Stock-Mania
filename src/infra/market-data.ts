@@ -17,6 +17,7 @@
 
 import "server-only";
 
+import { Count, Millis, Minutes, Years } from "@/core/units";
 import { Currency } from "@/core/money";
 import { Quantity } from "@/core/numeric";
 import { CalendarDate, DateRange } from "@/core/time";
@@ -168,8 +169,8 @@ export class EngineFxProvider implements FxProviderPort {
       // Frankfurter's INR series starts 2000-01-13 and silently clamps earlier
       // requests; `FxRate.clamped` reports it per rate, and this is the honest
       // upper bound for the chain as a whole.
-      maxHistoryYears: 26,
-      quoteDelayMinutes: 24 * 60,
+      maxHistoryYears: Years(26),
+      quoteDelayMinutes: Minutes(24 * 60),
       quoteTypes: ["CLOSE"],
     };
   }
@@ -178,11 +179,14 @@ export class EngineFxProvider implements FxProviderPort {
     // The chain's health is its primary's: the fallbacks exist precisely so a
     // degraded primary is not an outage.
     const [primary] = this.registry.fxChain();
-    return primary?.health() ?? { state: "HEALTHY", consecutiveFailures: 0 };
+    const health = primary?.health();
+    return health
+      ? { ...health, consecutiveFailures: Count(health.consecutiveFailures) }
+      : { state: "HEALTHY", consecutiveFailures: Count(0), lastError: null, circuitOpenUntil: null };
   }
 
   rateLimit(): RateLimitBudget {
-    return { requests: 30, perMillis: 60_000, burst: 10 };
+    return { requests: Count(30), perMillis: Millis(60_000), burst: Count(10) };
   }
 
   async fetchRates(request: {

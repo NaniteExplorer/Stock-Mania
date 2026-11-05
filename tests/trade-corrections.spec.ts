@@ -14,6 +14,7 @@
  * than no refusal at all, because the user believes nothing happened.
  */
 
+import { Count } from "@/core/units";
 import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
@@ -542,7 +543,7 @@ async function main() {
 
   section("the ledger still balances after every void");
 
-  const everything = await txnRepo.find(userId, { limit: 20_000 });
+  const everything = await txnRepo.find(userId, { limit: Count(20_000) });
   check(
     "debits equal credits",
     new BalanceCalculator().verifyIntegrity(everything.transactions).ok,

@@ -21,6 +21,7 @@
  * `ApprovedOrder`, which only the gate can mint.
  */
 
+import type { Count, Minutes } from "@/core/units";
 import { Money } from "@/core/money";
 import { Percentage, Quantity } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
@@ -76,8 +77,8 @@ export interface RiskLimits {
   /** Realised plus unrealised loss for the day at which trading stops. */
   readonly maxDailyLoss: Money | null;
   /** Orders allowed per rolling window. */
-  readonly maxOrdersPerWindow: number | null;
-  readonly windowMinutes: number | null;
+  readonly maxOrdersPerWindow: Count | null;
+  readonly windowMinutes: Minutes | null;
   /** When true, nothing is allowed. The one check that is *supposed* to block. */
   readonly killSwitchEngaged: boolean;
   /** Margin available; a buy needs its value covered. */
@@ -94,7 +95,7 @@ export interface RiskContext {
   /** Realised plus unrealised loss so far today, as a positive number. */
   readonly lossToday: Money;
   /** Orders already placed inside the rolling window. */
-  readonly ordersInWindow: number;
+  readonly ordersInWindow: Count;
   /** Whether this idempotency key has been seen. */
   readonly keyAlreadyUsed: boolean;
   /** Units held, for a sell. */

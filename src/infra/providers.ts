@@ -28,6 +28,7 @@ import type {
   BenchmarkSeriesKey,
   BenchmarkSeriesOutcome,
 } from "@/app/gold-benchmark.usecases";
+import { Count, Millis, Minutes, Years } from "@/core/units";
 import { Err, Ok, Result } from "@/core/kernel";
 import { Currency } from "@/core/money";
 import { Quantity, UnitPrice } from "@/core/numeric";
@@ -333,7 +334,7 @@ export class CircuitBreaker {
     const state = this.state;
     return {
       state: state === "OPEN" ? "UNAVAILABLE" : this.consecutiveFailures > 0 ? "DEGRADED" : "HEALTHY",
-      consecutiveFailures: this.consecutiveFailures,
+      consecutiveFailures: Count(this.consecutiveFailures),
       lastError: this.lastError,
       circuitOpenUntil: state === "OPEN" ? this.openUntil : null,
     };
@@ -395,7 +396,7 @@ export abstract class PriceProvider implements QuoteProviderPort {
 
   /** Overridden by providers with a known published limit. */
   rateLimit(): RateLimitBudget {
-    return { requests: 60, perMillis: 60_000, burst: 10 };
+    return { requests: Count(60), perMillis: Millis(60_000), burst: Count(10) };
   }
 
   health(): HealthStatus {
@@ -603,14 +604,14 @@ export class FinnhubQuoteProvider extends PriceProvider {
       supportsCorporateActions: false,
       supportsInstrumentSearch: false,
       identifierTypes: ["TICKER", "MIC_TICKER"],
-      maxHistoryYears: 0,
-      quoteDelayMinutes: 0,
+      maxHistoryYears: Years(0),
+      quoteDelayMinutes: Minutes(0),
       quoteTypes: ["LAST", "CLOSE"],
     };
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 60, perMillis: 60_000, burst: 10 };
+    return { requests: Count(60), perMillis: Millis(60_000), burst: Count(10) };
   }
 
   protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
@@ -671,14 +672,14 @@ export class ZerodhaQuoteProvider extends PriceProvider {
       supportsCorporateActions: false,
       supportsInstrumentSearch: true,
       identifierTypes: ["TICKER", "MIC_TICKER"],
-      maxHistoryYears: 0,
-      quoteDelayMinutes: 0,
+      maxHistoryYears: Years(0),
+      quoteDelayMinutes: Minutes(0),
       quoteTypes: ["LAST", "CLOSE"],
     };
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 1, perMillis: 1_000, burst: 1 };
+    return { requests: Count(1), perMillis: Millis(1_000), burst: Count(1) };
   }
 
   protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
@@ -747,8 +748,8 @@ export class MfApiNavProvider extends PriceProvider {
       supportsCorporateActions: false,
       supportsInstrumentSearch: false,
       identifierTypes: ["SCHEME_CODE"],
-      maxHistoryYears: 25,
-      quoteDelayMinutes: 24 * 60,
+      maxHistoryYears: Years(25),
+      quoteDelayMinutes: Minutes(24 * 60),
       quoteTypes: ["NAV"],
     };
   }
@@ -756,7 +757,7 @@ export class MfApiNavProvider extends PriceProvider {
   override rateLimit(): RateLimitBudget {
     // Undocumented, so a deliberately modest self-imposed limit: being a good
     // citizen of a free service is what keeps it available.
-    return { requests: 30, perMillis: 60_000, burst: 5 };
+    return { requests: Count(30), perMillis: Millis(60_000), burst: Count(5) };
   }
 
   protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
@@ -818,14 +819,14 @@ export class AmfiNavProvider extends PriceProvider {
       // The daily file is today only. History needs the archive endpoint, which is
       // slow and rate-limited; MFAPI is the right source for history, and saying so
       // in `maxHistoryYears: 0` is what makes the registry ask MFAPI for it.
-      maxHistoryYears: 0,
-      quoteDelayMinutes: 24 * 60,
+      maxHistoryYears: Years(0),
+      quoteDelayMinutes: Minutes(24 * 60),
       quoteTypes: ["NAV"],
     };
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 10, perMillis: 60_000, burst: 2 };
+    return { requests: Count(10), perMillis: Millis(60_000), burst: Count(2) };
   }
 
   protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
@@ -933,14 +934,14 @@ export class YahooQuoteProvider extends PriceProvider {
       supportsCorporateActions: false,
       supportsInstrumentSearch: true,
       identifierTypes: ["TICKER", "MIC_TICKER"],
-      maxHistoryYears: 30,
-      quoteDelayMinutes: 15,
+      maxHistoryYears: Years(30),
+      quoteDelayMinutes: Minutes(15),
       quoteTypes: ["CLOSE", "ADJUSTED_CLOSE"],
     };
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 20, perMillis: 60_000, burst: 4 };
+    return { requests: Count(20), perMillis: Millis(60_000), burst: Count(4) };
   }
 
   protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
@@ -1044,14 +1045,14 @@ export class NseQuoteProvider extends PriceProvider {
       supportsCorporateActions: true,
       supportsInstrumentSearch: true,
       identifierTypes: ["TICKER"],
-      maxHistoryYears: 0,
-      quoteDelayMinutes: 0,
+      maxHistoryYears: Years(0),
+      quoteDelayMinutes: Minutes(0),
       quoteTypes: ["CLOSE", "LAST"],
     };
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 12, perMillis: 60_000, burst: 3 };
+    return { requests: Count(12), perMillis: Millis(60_000), burst: Count(3) };
   }
 
   protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
@@ -1132,14 +1133,14 @@ export class MoneycontrolCloseProvider extends PriceProvider {
       supportsCorporateActions: false,
       supportsInstrumentSearch: false,
       identifierTypes: ["TICKER", "MIC_TICKER"],
-      maxHistoryYears: 0,
-      quoteDelayMinutes: 24 * 60,
+      maxHistoryYears: Years(0),
+      quoteDelayMinutes: Minutes(24 * 60),
       quoteTypes: ["CLOSE"],
     };
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 30, perMillis: 60_000, burst: 5 };
+    return { requests: Count(30), perMillis: Millis(60_000), burst: Count(5) };
   }
 
   protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
@@ -1221,14 +1222,14 @@ export class IbjaMetalProvider extends PriceProvider {
       supportsCorporateActions: false,
       supportsInstrumentSearch: false,
       identifierTypes: ["METAL"],
-      maxHistoryYears: 0,
-      quoteDelayMinutes: 24 * 60,
+      maxHistoryYears: Years(0),
+      quoteDelayMinutes: Minutes(24 * 60),
       quoteTypes: ["CLOSE"],
     };
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 10, perMillis: 60_000, burst: 2 };
+    return { requests: Count(10), perMillis: Millis(60_000), burst: Count(2) };
   }
 
   protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
@@ -1389,14 +1390,14 @@ export class MetalHistoryProvider extends PriceProvider {
       identifierTypes: ["METAL"],
       // GOLDBEES lists from 2009; SILVERBEES only from 2022-02, and a silver month
       // older than that stays unpriced rather than invented.
-      maxHistoryYears: 17,
-      quoteDelayMinutes: 24 * 60,
+      maxHistoryYears: Years(17),
+      quoteDelayMinutes: Minutes(24 * 60),
       quoteTypes: ["CLOSE"],
     };
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 20, perMillis: 60_000, burst: 4 };
+    return { requests: Count(20), perMillis: Millis(60_000), burst: Count(4) };
   }
 
   protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
@@ -1644,15 +1645,15 @@ export class IbjaPdfHistoryProvider extends PriceProvider {
       supportsInstrumentSearch: false,
       identifierTypes: ["METAL"],
       // A month, and the declaration says a month. Roughly 30/365.
-      maxHistoryYears: 0.08,
-      quoteDelayMinutes: 24 * 60,
+      maxHistoryYears: Years(0.08),
+      quoteDelayMinutes: Minutes(24 * 60),
       quoteTypes: ["CLOSE"],
     };
   }
 
   override rateLimit(): RateLimitBudget {
     // The sheet is ~700 KB and changes once a day. Asking often is pure waste.
-    return { requests: 4, perMillis: 60_000, burst: 1 };
+    return { requests: Count(4), perMillis: Millis(60_000), burst: Count(1) };
   }
 
   protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
@@ -1746,15 +1747,15 @@ export class CoinGeckoProvider extends PriceProvider {
       supportsCorporateActions: false,
       supportsInstrumentSearch: true,
       identifierTypes: ["COIN"],
-      maxHistoryYears: 10,
-      quoteDelayMinutes: 5,
+      maxHistoryYears: Years(10),
+      quoteDelayMinutes: Minutes(5),
       quoteTypes: ["CLOSE", "LAST"],
     };
   }
 
   override rateLimit(): RateLimitBudget {
     // The free tier's published limit is 10–30/min; the low end, deliberately.
-    return { requests: 10, perMillis: 60_000, burst: 3 };
+    return { requests: Count(10), perMillis: Millis(60_000), burst: Count(3) };
   }
 
   protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
@@ -1828,14 +1829,14 @@ export class ManualProvider extends PriceProvider {
       supportsCorporateActions: false,
       supportsInstrumentSearch: false,
       identifierTypes: ["TICKER", "ISIN", "SCHEME_CODE", "METAL", "COIN", "FIGI", "MIC_TICKER"],
-      maxHistoryYears: 100,
-      quoteDelayMinutes: 0,
+      maxHistoryYears: Years(100),
+      quoteDelayMinutes: Minutes(0),
       quoteTypes: ["CLOSE", "NAV", "MARK", "LAST", "MID", "BID", "ASK", "SETTLEMENT", "ADJUSTED_CLOSE"],
     };
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: Number.MAX_SAFE_INTEGER, perMillis: 1, burst: Number.MAX_SAFE_INTEGER };
+    return { requests: Count(Number.MAX_SAFE_INTEGER), perMillis: Millis(1), burst: Count(Number.MAX_SAFE_INTEGER) };
   }
 
   protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {
@@ -1885,8 +1886,8 @@ export class EcbFxProvider implements FxProviderPort {
       supportsCorporateActions: false,
       supportsInstrumentSearch: false,
       identifierTypes: ["TICKER"],
-      maxHistoryYears: 25,
-      quoteDelayMinutes: 24 * 60,
+      maxHistoryYears: Years(25),
+      quoteDelayMinutes: Minutes(24 * 60),
       quoteTypes: ["CLOSE"],
     };
   }
@@ -1896,7 +1897,7 @@ export class EcbFxProvider implements FxProviderPort {
   }
 
   rateLimit(): RateLimitBudget {
-    return { requests: 30, perMillis: 60_000, burst: 5 };
+    return { requests: Count(30), perMillis: Millis(60_000), burst: Count(5) };
   }
 
   async fetchRates(request: {
@@ -2144,8 +2145,8 @@ export class AmfiNavHistoryProvider extends PriceProvider {
       supportsCorporateActions: false,
       supportsInstrumentSearch: false,
       identifierTypes: ["SCHEME_CODE"],
-      maxHistoryYears: 20,
-      quoteDelayMinutes: 24 * 60,
+      maxHistoryYears: Years(20),
+      quoteDelayMinutes: Minutes(24 * 60),
       quoteTypes: ["NAV"],
     };
   }
@@ -2153,7 +2154,7 @@ export class AmfiNavHistoryProvider extends PriceProvider {
   override rateLimit(): RateLimitBudget {
     // The report is close to a megabyte per AMC-month. Asking slowly is the only
     // polite way to use it, and the replay needs it once a day at most.
-    return { requests: 6, perMillis: 60_000, burst: 2 };
+    return { requests: Count(6), perMillis: Millis(60_000), burst: Count(2) };
   }
 
   protected async fetchRaw(request: QuoteRequest): Promise<readonly Quote[]> {

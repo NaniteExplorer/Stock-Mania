@@ -66,8 +66,8 @@ export default function EntryLaneNav({ activeLane }: { activeLane: EntryLane }) 
               aria-current={active ? "page" : undefined}
               className={
                 active
-                  ? "focus-brand inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-brand-500 bg-brand-500/10 px-3 text-sm font-medium text-gray-100"
-                  : "focus-brand inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-gray-600 px-3 text-sm text-gray-400 transition-colors hover:border-gray-500 hover:text-gray-100"
+                  ? "focus-brand inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-brand-500 bg-brand-500/10 px-3 text-sm font-medium text-(--fg)"
+                  : "focus-brand inline-flex h-10 shrink-0 items-center gap-2 rounded-lg border border-(--border) px-3 text-sm text-(--fg-secondary) transition-colors hover:border-(--border-control) hover:text-(--fg)"
               }
             >
               {lane.label}

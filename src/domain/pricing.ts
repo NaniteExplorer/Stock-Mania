@@ -24,6 +24,7 @@
  * must answer, and knows nothing about HTTP.
  */
 
+import { Count, Days, Millis, Minutes, Ordinal, Years } from "@/core/units";
 import { AppError, Clock, DomainError, Err, Ok, Result, UserId } from "@/core/kernel";
 import { Currency, Money, divideRounded } from "@/core/money";
 import { Percentage, Quantity, UnitPrice } from "@/core/numeric";
@@ -125,16 +126,16 @@ export interface Quote {
  * failed fetch rather than a weekend. `OTHER` is generous because it covers assets
  * valued by assertion, where the last number the user gave is the best there is.
  */
-export const STALENESS_DAYS: Readonly<Record<PricedAssetClass, number>> = {
-  EQUITY: 4,
-  ETF: 4,
-  MUTUAL_FUND: 4,
-  BOND: 7,
-  COMMODITY: 4,
-  CRYPTO: 1,
-  FX: 4,
-  DERIVATIVE: 1,
-  OTHER: 30,
+export const STALENESS_DAYS: Readonly<Record<PricedAssetClass, Days>> = {
+  EQUITY: Days(4),
+  ETF: Days(4),
+  MUTUAL_FUND: Days(4),
+  BOND: Days(7),
+  COMMODITY: Days(4),
+  CRYPTO: Days(1),
+  FX: Days(4),
+  DERIVATIVE: Days(1),
+  OTHER: Days(30),
 };
 
 /* ═══ Provider errors ═════════════════════════════════════════════════ */
@@ -202,24 +203,24 @@ export interface ProviderCapabilities {
   readonly supportsCorporateActions: boolean;
   readonly supportsInstrumentSearch: boolean;
   readonly identifierTypes: readonly IdentifierType[];
-  readonly maxHistoryYears: number;
+  readonly maxHistoryYears: Years;
   /** 0 for realtime, 15 for a delayed feed. */
-  readonly quoteDelayMinutes: number;
+  readonly quoteDelayMinutes: Minutes;
   readonly quoteTypes: readonly QuoteType[];
 }
 
 /** Requests per window, and how many may burst. A token bucket, described. */
 export interface RateLimitBudget {
-  readonly requests: number;
-  readonly perMillis: number;
-  readonly burst: number;
+  readonly requests: Count;
+  readonly perMillis: Millis;
+  readonly burst: Count;
 }
 
 export type HealthState = "HEALTHY" | "DEGRADED" | "UNAVAILABLE";
 
 export interface HealthStatus {
   readonly state: HealthState;
-  readonly consecutiveFailures: number;
+  readonly consecutiveFailures: Count;
   readonly lastError: string | null;
   /** When a tripped circuit will next allow a probe. */
   readonly circuitOpenUntil: Date | null;
@@ -294,7 +295,7 @@ export interface QuoteRepository {
     instrumentId: string,
     quoteType: QuoteType,
     asOf: CalendarDate,
-    limit?: number,
+    limit?: Count,
   ): Promise<readonly Quote[]>;
 
   /** Everything current in a range, for a chart or a backfill gap check. */
@@ -337,7 +338,7 @@ export interface FxRateRepository {
     quote: string,
     asOf: CalendarDate,
     userId?: UserId,
-    limit?: number,
+    limit?: Count,
   ): Promise<readonly StoredFxRate[]>;
 
   /** Records the rate a user asserts for tax. Appended, like everything else. */
@@ -465,7 +466,7 @@ export interface PriceResolution {
   readonly providerId: string | null;
   readonly sourceType: PriceSourceType | null;
   /** Days between `pricedOn` and `requestedOn`. */
-  readonly ageDays: number;
+  readonly ageDays: Days;
   readonly isStale: boolean;
   /** Plain-language explanation, for the UI to show instead of a number. */
   readonly reason: string | null;
@@ -474,8 +475,8 @@ export interface PriceResolution {
 /* ═══ PriceBook ═══════════════════════════════════════════════════════ */
 
 export interface RefreshReport {
-  readonly requested: number;
-  readonly persisted: number;
+  readonly requested: Count;
+  readonly persisted: Count;
   readonly rejected: readonly { quote: Quote; reason: QuoteRejectionReason; detail: string }[];
   readonly divergences: readonly PriceDivergence[];
   readonly warnings: readonly string[];
@@ -483,7 +484,7 @@ export interface RefreshReport {
   readonly attempts: readonly {
     providerId: string;
     outcome: "OK" | "SKIPPED_UNHEALTHY" | "SKIPPED_UNSUPPORTED" | "FAILED";
-    quotes: number;
+    quotes: Count;
     error: string | null;
   }[];
 }
@@ -512,9 +513,9 @@ export class PriceBook {
   ) {}
 
   /** The provider order, for a UI that wants to show which source won. */
-  priorityOf(providerId: string): number {
+  priorityOf(providerId: string): Ordinal {
     const index = this.providers.findIndex((provider) => provider.id === providerId);
-    return index < 0 ? Number.MAX_SAFE_INTEGER : index;
+    return Ordinal(index < 0 ? Number.MAX_SAFE_INTEGER : index);
   }
 
   /**
@@ -535,14 +536,14 @@ export class PriceBook {
         capabilities.quoteTypes.includes(request.quoteType),
       );
       if (supported.length === 0) {
-        attempts.push({ providerId: provider.id, outcome: "SKIPPED_UNSUPPORTED", quotes: 0, error: null });
+        attempts.push({ providerId: provider.id, outcome: "SKIPPED_UNSUPPORTED", quotes: Count(0), error: null });
         continue;
       }
       if (provider.health().state === "UNAVAILABLE") {
         attempts.push({
           providerId: provider.id,
           outcome: "SKIPPED_UNHEALTHY",
-          quotes: 0,
+          quotes: Count(0),
           error: provider.health().lastError,
         });
         continue;
@@ -550,10 +551,10 @@ export class PriceBook {
 
       const result = await provider.fetchQuotes({ ...request, instruments: supported });
       if (!result.ok) {
-        attempts.push({ providerId: provider.id, outcome: "FAILED", quotes: 0, error: result.error.message });
+        attempts.push({ providerId: provider.id, outcome: "FAILED", quotes: Count(0), error: result.error.message });
         continue;
       }
-      attempts.push({ providerId: provider.id, outcome: "OK", quotes: result.value.length, error: null });
+      attempts.push({ providerId: provider.id, outcome: "OK", quotes: Count(result.value.length), error: null });
       byProvider.set(provider.id, result.value);
     }
 
@@ -566,7 +567,7 @@ export class PriceBook {
         const mine = quotes.filter((quote) => quote.instrumentId === ref.instrumentId);
         if (mine.length === 0) continue;
         const previous = (await this.quotes.findLatestOnOrBefore(
-          ref.instrumentId, request.quoteType, request.range.start, 1,
+          ref.instrumentId, request.quoteType, request.range.start, Count(1),
         ))[0] ?? null;
         const validation = this.validator.validate(mine, ref, previous);
         rejected.push(...validation.rejected);
@@ -582,8 +583,8 @@ export class PriceBook {
     for (const divergence of divergences) await this.quotes.recordDivergence(divergence);
 
     return {
-      requested: request.instruments.length,
-      persisted: toPersist.length,
+      requested: Count(request.instruments.length),
+      persisted: Count(toPersist.length),
       rejected,
       divergences,
       warnings: [
@@ -650,7 +651,7 @@ export class PriceBook {
    * `ingestedAt` breaks the tie — the newest belief, from the best source we have.
    */
   async priceOn(ref: InstrumentRef, asOf: CalendarDate, quoteType: QuoteType = "CLOSE"): Promise<PriceResolution> {
-    const candidates = await this.quotes.findLatestOnOrBefore(ref.instrumentId, quoteType, asOf, 50);
+    const candidates = await this.quotes.findLatestOnOrBefore(ref.instrumentId, quoteType, asOf, Count(50));
     const current = candidates.filter((quote) => !quote.supersededBy);
 
     if (current.length === 0) {
@@ -662,7 +663,7 @@ export class PriceBook {
         pricedOn: null,
         providerId: null,
         sourceType: null,
-        ageDays: 0,
+        ageDays: Days(0),
         isStale: true,
         reason:
           `No price for ${ref.symbol} on or before ${asOf.toISO()}. Reported as unavailable ` +
@@ -680,7 +681,7 @@ export class PriceBook {
       return byPriority !== 0 ? byPriority : b.ingestedAt.getTime() - a.ingestedAt.getTime();
     })[0];
 
-    const ageDays = chosen.asOf.daysUntil(asOf);
+    const ageDays = Days(chosen.asOf.daysUntil(asOf));
     const threshold = STALENESS_DAYS[ref.assetClass];
     const isStale = ageDays > threshold;
     const rung: PriceRung = ageDays === 0 ? "EXACT" : isStale ? "STALE" : "CARRIED_FORWARD";
@@ -731,7 +732,7 @@ export interface FxResolution {
   readonly ratedOn: CalendarDate | null;
   readonly providerId: string | null;
   readonly sourceType: PriceSourceType | null;
-  readonly ageDays: number;
+  readonly ageDays: Days;
   readonly isStale: boolean;
   /** True when the rate is one the user asserted rather than a vendor's. */
   readonly userAsserted: boolean;
@@ -770,7 +771,7 @@ export class FxBook {
     base: string,
     quotes: readonly string[],
     range: DateRange,
-  ): Promise<{ persisted: number; errors: readonly string[] }> {
+  ): Promise<{ persisted: Count; errors: readonly string[] }> {
     let persisted = 0;
     const errors: string[] = [];
     for (const provider of this.providers) {
@@ -782,7 +783,7 @@ export class FxBook {
       await this.rates.append(result.value);
       persisted += result.value.length;
     }
-    return { persisted, errors };
+    return { persisted: Count(persisted), errors };
   }
 
   async rateOn(
@@ -794,16 +795,16 @@ export class FxBook {
     if (base === quote) {
       return {
         base, quote, requestedOn: asOf, rate: Quantity.fromString("1"), ratedOn: asOf,
-        providerId: null, sourceType: "DERIVED", ageDays: 0, isStale: false,
+        providerId: null, sourceType: "DERIVED", ageDays: Days(0), isStale: false,
         userAsserted: false, reason: null,
       };
     }
 
-    const stored = await this.rates.findLatestOnOrBefore(base, quote, asOf, userId, 50);
+    const stored = await this.rates.findLatestOnOrBefore(base, quote, asOf, userId, Count(50));
     if (stored.length === 0) {
       return {
         base, quote, requestedOn: asOf, rate: null, ratedOn: null, providerId: null,
-        sourceType: null, ageDays: 0, isStale: true, userAsserted: false,
+        sourceType: null, ageDays: Days(0), isStale: true, userAsserted: false,
         reason: `No ${base}/${quote} rate on or before ${asOf.toISO()}.`,
       };
     }
@@ -818,7 +819,7 @@ export class FxBook {
     const chosen = asserted ?? newest;
     const rate = asserted?.userRate ?? chosen.rate;
 
-    const ageDays = chosen.asOf.daysUntil(asOf);
+    const ageDays = Days(chosen.asOf.daysUntil(asOf));
     const isStale = ageDays > STALENESS_DAYS.FX;
 
     return {

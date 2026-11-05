@@ -15,6 +15,7 @@
     "db:check": "node scripts/db-check.mjs",
     "migrate:v1": "node scripts/migrate-v1.mjs",
     "check:statement": "node scripts/check-statement.mjs",
+    "check:ui": "node scripts/ui-conformance.mjs",
     "verify:reproducibility": "node scripts/reproducibility.mjs",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio"

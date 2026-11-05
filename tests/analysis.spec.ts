@@ -13,6 +13,7 @@
  */
 
 import { Currency } from "@/core/money";
+import { Count } from "@/core/units";
 import { UnitPrice } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
 import { UserId } from "@/core/kernel";
@@ -125,11 +126,11 @@ section("SMA");
 
 // (10 + 11 + 12 + 13 + 14) / 5 = 12, in scaled units (1e8).
 const fivePoint = series(["10", "11", "12", "13", "14"]);
-check("mean of the last five closes", sma(fivePoint, 5).value, 12 * 1e8);
+check("mean of the last five closes", sma(fivePoint, Count(5)).value, 12 * 1e8);
 // The last three of the same series: (12 + 13 + 14) / 3 = 13.
-check("and it uses only the last `window` bars", sma(fivePoint, 3).value, 13 * 1e8);
+check("and it uses only the last `window` bars", sma(fivePoint, Count(3)).value, 13 * 1e8);
 
-const short = sma(fivePoint, 20);
+const short = sma(fivePoint, Count(20));
 check("a window longer than the series is unanswerable", short.value, null);
 checkTrue("and says how many bars it needed", short.because.includes("needs 20 bars and the series has 5"));
 
@@ -142,7 +143,7 @@ section("EMA");
  * published EMA uses. Three bars, window 2: seed = (10+20)/2 = 15, k = 2/3, so
  * the third bar gives 30 × 2/3 + 15 × 1/3 = 25.
  */
-const emaValue = ema(series(["10", "20", "30"]), 2).value;
+const emaValue = ema(series(["10", "20", "30"]), Count(2)).value;
 check("seeded with the SMA, then smoothed", emaValue, 25 * 1e8);
 
 /* ═══ RSI ═════════════════════════════════════════════════════════════ */
@@ -243,11 +244,11 @@ const gapped: Bar[] = [
     ingestedAt: new Date("2026-03-01T00:00:00Z"),
   }),
 ];
-check("a gap counts as movement", atr(gapped, 1).value, 3 * 1e8);
+check("a gap counts as movement", atr(gapped, Count(1)).value, 3 * 1e8);
 
 section("realised volatility");
 
-check("a flat series has zero volatility", realisedVolatility(flat, 19).value, 0);
+check("a flat series has zero volatility", realisedVolatility(flat, Count(19)).value, 0);
 check("and too short a series has none at all", realisedVolatility(series(["1", "2"])).value, null);
 
 /* ═══ analyse() through an instrument ═════════════════════════════════ */

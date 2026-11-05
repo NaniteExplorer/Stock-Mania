@@ -13,6 +13,7 @@
  * disposes.
  */
 
+import { Count, Millis } from "@/core/units";
 import { Currency } from "@/core/money";
 import { CalendarDate } from "@/core/time";
 import { RateLimitBudget } from "@/domain/pricing";
@@ -64,7 +65,7 @@ export class NseEquityMasterAdapter extends MarketDataSource implements Instrume
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 6, perMillis: 60_000, burst: 2 };
+    return { requests: Count(6), perMillis: Millis(60_000), burst: Count(2) };
   }
 
   async load(): Promise<MarketDataResult<readonly InstrumentMasterRow[]>> {

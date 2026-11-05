@@ -18,6 +18,7 @@
  *     leave the loan account exactly where the schedule says.**
  */
 
+import { Count } from "@/core/units";
 import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
@@ -538,7 +539,7 @@ async function main() {
    */
   const periodThirteen = afterPrepayment
     .schedule()
-    .rows.find((row) => row.period === 13 && !row.note?.startsWith("Prepayment"))!;
+    .rows.find((row) => row.period === 13 && row.kind === "INSTALMENT")!;
   const ledgerAfterPrepayment = await balances.balanceOf(userId, loan.value.accountId, on("2027-05-01"));
   check(
     "the ledger is ahead of the schedule by exactly the unpaid instalment's principal",
@@ -612,7 +613,7 @@ async function main() {
 
   section("the whole ledger still balances");
 
-  const everything = await txnRepo.find(userId, { limit: 20_000 });
+  const everything = await txnRepo.find(userId, { limit: Count(20_000) });
   const calculator = new BalanceCalculator();
   check("debits equal credits", calculator.verifyIntegrity(everything.transactions).ok, true);
 

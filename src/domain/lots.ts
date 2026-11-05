@@ -25,6 +25,7 @@
  * from its own history.
  */
 
+import { Days, DaySpan } from "@/core/units";
 import { UniqueId, UserId, ValueObject, newUuid } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { Quantity } from "@/core/numeric";
@@ -248,7 +249,8 @@ export interface Disposal {
   readonly sellCharges: Money;
   /** `proceeds − costBasis − deductible charges`. */
   readonly gain: Money;
-  readonly holdingDays: number;
+  /** Signed: a sale dated before its lot gives a negative span, so `DaySpan`, not `Days`. */
+  readonly holdingDays: DaySpan;
 }
 
 export interface DisposalResult {
@@ -522,7 +524,7 @@ export class LotBook {
         buyCharges: consumed.chargesTaken,
         sellCharges,
         gain,
-        holdingDays: take.lot.acquiredOn.daysUntil(sale.disposedOn),
+        holdingDays: DaySpan(take.lot.acquiredOn.daysUntil(sale.disposedOn)),
       });
     });
 
@@ -557,8 +559,8 @@ export class LotBook {
 
 /* ═══ Average cost ════════════════════════════════════════════════════ */
 
-export interface PositionEvent {
-  readonly kind: "BUY" | "SELL" | "RESCALE";
+/** The fields every position event is built from. */
+export interface PositionEventFields {
   readonly on: CalendarDate;
   readonly quantity: Quantity;
   /** BUY: what was paid. SELL: gross proceeds. RESCALE: unused. */
@@ -567,6 +569,118 @@ export interface PositionEvent {
   /** RESCALE only: units are multiplied by `to` and divided by `from`, exactly. */
   readonly ratio?: { readonly from: Quantity; readonly to: Quantity };
   readonly transactionId: string;
+}
+
+/**
+ * The running position while `AverageCostBook.recompute` folds. Mutable on
+ * purpose and never escapes the fold: each event advances it in place.
+ */
+export interface AverageCostRunning {
+  quantity: Quantity;
+  cost: Money;
+  realised: Money;
+  readonly disposals: Disposal[];
+  /** The earliest acquisition still held, for the holding-period clock. */
+  holdingSince: CalendarDate | null;
+}
+
+/** What an event needs from the book it is folded into. */
+export interface AverageCostContext {
+  readonly instrumentId: InstrumentId;
+  readonly currency: Currency;
+}
+
+/**
+ * One thing that happened to a position under average cost.
+ *
+ * **Each event advances the running position itself.** `recompute` used to test
+ * `event.kind` for each one — a type-tag switch inside an engine (`RULES.md`
+ * §8.3). A new kind of event is now one new subclass, and the fold does not change.
+ */
+export abstract class PositionEvent implements PositionEventFields {
+  abstract readonly kind: "BUY" | "SELL" | "RESCALE";
+  readonly on: CalendarDate;
+  readonly quantity: Quantity;
+  readonly amount: Money;
+  readonly charges: Money;
+  readonly ratio?: { readonly from: Quantity; readonly to: Quantity };
+  readonly transactionId: string;
+
+  constructor(fields: PositionEventFields) {
+    this.on = fields.on;
+    this.quantity = fields.quantity;
+    this.amount = fields.amount;
+    this.charges = fields.charges;
+    this.ratio = fields.ratio;
+    this.transactionId = fields.transactionId;
+  }
+
+  /** Builds the event for a stored kind — the persistence boundary (§8.3). */
+  static of(kind: PositionEvent["kind"], fields: PositionEventFields): PositionEvent {
+    switch (kind) {
+      case "BUY":
+        return new BuyEvent(fields);
+      case "SELL":
+        return new SellEvent(fields);
+      case "RESCALE":
+        return new RescaleEvent(fields);
+    }
+  }
+
+  abstract foldInto(running: AverageCostRunning, context: AverageCostContext): void;
+}
+
+/** Units and their full cost, charges included, join the position. */
+export class BuyEvent extends PositionEvent {
+  readonly kind = "BUY" as const;
+
+  foldInto(running: AverageCostRunning): void {
+    running.quantity = running.quantity.plus(this.quantity);
+    running.cost = running.cost.plus(this.amount).plus(this.charges);
+    running.holdingSince = running.holdingSince ?? this.on;
+  }
+}
+
+/** Units change, money does not — the average per unit falls by the ratio. */
+export class RescaleEvent extends PositionEvent {
+  readonly kind = "RESCALE" as const;
+
+  foldInto(running: AverageCostRunning): void {
+    const ratio = this.ratio ?? { from: Quantity.fromString("1"), to: Quantity.fromString("1") };
+    running.quantity = Quantity.fromScaled((running.quantity.scaled * ratio.to.scaled) / ratio.from.scaled);
+  }
+}
+
+/** Basis is the average, so the gain is proceeds less that average. */
+export class SellEvent extends PositionEvent {
+  readonly kind = "SELL" as const;
+
+  foldInto(running: AverageCostRunning, context: AverageCostContext): void {
+    const soldQuantity = Quantity.min(running.quantity, this.quantity);
+    if (!soldQuantity.isPositive) return;
+    const basis = soldQuantity.shareOf(running.cost, running.quantity, "HALF_EVEN");
+    const gain = this.amount.minus(basis).minus(this.charges);
+
+    running.disposals.push({
+      // No lot: under average cost the basis is the position's, not a lot's.
+      lotId: null,
+      instrumentId: context.instrumentId,
+      quantity: soldQuantity,
+      acquiredOn: running.holdingSince ?? this.on,
+      disposedOn: this.on,
+      proceeds: this.amount,
+      costBasis: basis,
+      buyCharges: Money.zero(context.currency),
+      sellCharges: this.charges,
+      gain,
+      holdingDays: DaySpan((running.holdingSince ?? this.on).daysUntil(this.on)),
+    });
+
+    running.quantity = running.quantity.minus(soldQuantity);
+    running.cost = running.cost.minus(basis);
+    running.realised = running.realised.plus(gain);
+    if (running.quantity.isZero) running.holdingSince = null;
+  }
 }
 
 export interface AverageCostState {
@@ -601,55 +715,17 @@ export class AverageCostBook {
       (a, b) => a.on.compareTo(b.on) || a.transactionId.localeCompare(b.transactionId),
     );
 
-    let quantity = Quantity.ZERO;
-    let cost = Money.zero(this.currency);
-    let realised = Money.zero(this.currency);
-    const disposals: Disposal[] = [];
-    // The earliest acquisition still held, for the holding-period clock.
-    let holdingSince: CalendarDate | null = null;
+    const running: AverageCostRunning = {
+      quantity: Quantity.ZERO,
+      cost: Money.zero(this.currency),
+      realised: Money.zero(this.currency),
+      disposals: [],
+      holdingSince: null,
+    };
+    const context: AverageCostContext = { instrumentId: this.instrumentId, currency: this.currency };
+    for (const event of ordered) event.foldInto(running, context);
 
-    for (const event of ordered) {
-      if (event.kind === "BUY") {
-        quantity = quantity.plus(event.quantity);
-        cost = cost.plus(event.amount).plus(event.charges);
-        holdingSince = holdingSince ?? event.on;
-        continue;
-      }
-
-      if (event.kind === "RESCALE") {
-        // Units change, money does not — the average per unit falls by the ratio.
-        const ratio = event.ratio ?? { from: Quantity.fromString("1"), to: Quantity.fromString("1") };
-        quantity = Quantity.fromScaled((quantity.scaled * ratio.to.scaled) / ratio.from.scaled);
-        continue;
-      }
-
-      // SELL: basis is the average, so the gain is proceeds less that average.
-      const soldQuantity = Quantity.min(quantity, event.quantity);
-      if (!soldQuantity.isPositive) continue;
-      const basis = soldQuantity.shareOf(cost, quantity, "HALF_EVEN");
-      const gain = event.amount.minus(basis).minus(event.charges);
-
-      disposals.push({
-        // No lot: under average cost the basis is the position's, not a lot's.
-        lotId: null,
-        instrumentId: this.instrumentId,
-        quantity: soldQuantity,
-        acquiredOn: holdingSince ?? event.on,
-        disposedOn: event.on,
-        proceeds: event.amount,
-        costBasis: basis,
-        buyCharges: Money.zero(this.currency),
-        sellCharges: event.charges,
-        gain,
-        holdingDays: (holdingSince ?? event.on).daysUntil(event.on),
-      });
-
-      quantity = quantity.minus(soldQuantity);
-      cost = cost.minus(basis);
-      realised = realised.plus(gain);
-      if (quantity.isZero) holdingSince = null;
-    }
-
+    const { quantity, cost, realised, disposals } = running;
     return {
       quantity,
       cost,

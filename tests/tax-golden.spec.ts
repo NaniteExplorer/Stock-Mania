@@ -1,4 +1,5 @@
 import { Money } from "@/core/money";
+import { Days } from "@/core/units";
 import { Percentage } from "@/core/numeric";
 import { CalendarDate, FinancialYear } from "@/core/time";
 import {
@@ -45,7 +46,7 @@ const disposal = (over: Partial<TaxableEvent> = {}): TaxableEvent => {
     taxCategory: "LISTED_EQUITY",
     instrumentId: "INFY",
     acquiredOn: CalendarDate.parse("2025-04-10"),
-    holdingDays: 153,
+    holdingDays: Days(153),
     proceeds,
     costBasis: cost,
     gain: proceeds.minus(cost),
@@ -95,7 +96,7 @@ const underExemption = assess([
     proceeds: Money.fromRupees("200000"),
     costBasis: Money.fromRupees("100000"),
     gain: Money.fromRupees("100000"),
-    holdingDays: 400,
+    holdingDays: Days(400),
     acquiredOn: CalendarDate.parse("2024-08-01"),
   }),
 ]);
@@ -120,7 +121,7 @@ const overExemption = assess([
     proceeds: Money.fromRupees("300000"),
     costBasis: Money.fromRupees("100000"),
     gain: Money.fromRupees("200000"),
-    holdingDays: 400,
+    holdingDays: Days(400),
     acquiredOn: CalendarDate.parse("2024-08-01"),
   }),
 ]);
@@ -143,7 +144,7 @@ const shared = assess([
     proceeds: Money.fromRupees("200000"),
     costBasis: Money.fromRupees("100000"),
     gain: Money.fromRupees("100000"),
-    holdingDays: 400,
+    holdingDays: Days(400),
     acquiredOn: CalendarDate.parse("2024-04-01"),
     instrumentId: "AAA",
   }),
@@ -152,7 +153,7 @@ const shared = assess([
     proceeds: Money.fromRupees("180000"),
     costBasis: Money.fromRupees("100000"),
     gain: Money.fromRupees("80000"),
-    holdingDays: 400,
+    holdingDays: Days(400),
     acquiredOn: CalendarDate.parse("2024-04-01"),
     instrumentId: "BBB",
   }),
@@ -183,7 +184,7 @@ const grandfathered = assess([
   disposal({
     onDate: CalendarDate.parse("2025-08-01"),
     acquiredOn: CalendarDate.parse("2015-06-01"),
-    holdingDays: 3714,
+    holdingDays: Days(3714),
     proceeds: Money.fromRupees("900000"),
     costBasis: Money.fromRupees("100000"),
     gain: Money.fromRupees("800000"),
@@ -223,7 +224,7 @@ const capped = assess([
   disposal({
     onDate: CalendarDate.parse("2025-08-01"),
     acquiredOn: CalendarDate.parse("2015-06-01"),
-    holdingDays: 3714,
+    holdingDays: Days(3714),
     proceeds: Money.fromRupees("300000"),
     costBasis: Money.fromRupees("100000"),
     gain: Money.fromRupees("200000"),
@@ -256,7 +257,7 @@ const indexed = assess(
       taxCategory: "DEBT_LEGACY",
       onDate: CalendarDate.parse("2023-03-15"),
       acquiredOn: CalendarDate.parse("2019-06-01"),
-      holdingDays: 1383,
+      holdingDays: Days(1383),
       proceeds: Money.fromRupees("600000"),
       costBasis: Money.fromRupees("500000"),
       gain: Money.fromRupees("100000"),
@@ -290,7 +291,7 @@ const debtSlab = assess([
     taxCategory: "DEBT",
     onDate: CalendarDate.parse("2025-06-01"),
     acquiredOn: CalendarDate.parse("2023-06-01"),
-    holdingDays: 731,
+    holdingDays: Days(731),
     proceeds: Money.fromRupees("600000"),
     costBasis: Money.fromRupees("500000"),
     gain: Money.fromRupees("100000"),
@@ -315,7 +316,7 @@ const vda = assess([
     proceeds: Money.fromRupees("500000"),
     costBasis: Money.fromRupees("400000"),
     gain: Money.fromRupees("100000"),
-    holdingDays: 900,
+    holdingDays: Days(900),
   }),
   disposal({
     taxCategory: "VDA",
@@ -323,7 +324,7 @@ const vda = assess([
     proceeds: Money.fromRupees("60000"),
     costBasis: Money.fromRupees("100000"),
     gain: Money.fromRupees("-40000"),
-    holdingDays: 900,
+    holdingDays: Days(900),
   }),
 ]);
 check("flat rate ignores the holding period", rateLine(vda, 0).rate.toFixed(2), "30.00");
@@ -350,7 +351,7 @@ const gold = assess([
     proceeds: Money.fromRupees("700000"),
     costBasis: Money.fromRupees("500000"),
     gain: Money.fromRupees("200000"),
-    holdingDays: 800,
+    holdingDays: Days(800),
   }),
 ]);
 check("term", rateLine(gold).term, "LONG_TERM");
@@ -378,7 +379,7 @@ const setOff = assess(
       proceeds: Money.fromRupees("130000"),
       costBasis: Money.fromRupees("100000"),
       gain: Money.fromRupees("30000"),
-      holdingDays: 100,
+      holdingDays: Days(100),
     }),
     disposal({
       onDate: CalendarDate.parse("2025-06-01"),
@@ -386,7 +387,7 @@ const setOff = assess(
       proceeds: Money.fromRupees("140000"),
       costBasis: Money.fromRupees("100000"),
       gain: Money.fromRupees("40000"),
-      holdingDays: 500,
+      holdingDays: Days(500),
       acquiredOn: CalendarDate.parse("2024-01-01"),
     }),
   ],
@@ -430,7 +431,7 @@ const carried = assess([
     proceeds: Money.fromRupees("70000"),
     costBasis: Money.fromRupees("100000"),
     gain: Money.fromRupees("-30000"),
-    holdingDays: 100,
+    holdingDays: Days(100),
   }),
 ]);
 check("one carry-forward recorded", carried.lossesCarriedForward.length, 1);
@@ -476,7 +477,7 @@ const banded = engine.assess(
       proceeds: Money.fromRupees("300000"),
       costBasis: Money.fromRupees("100000"),
       gain: Money.fromRupees("200000"),
-      holdingDays: 400,
+      holdingDays: Days(400),
       acquiredOn: CalendarDate.parse("2024-08-01"),
     }),
   ],
@@ -500,7 +501,7 @@ const before = assess(
     disposal({
       onDate: CalendarDate.parse("2024-07-01"),
       acquiredOn: CalendarDate.parse("2023-01-01"),
-      holdingDays: 547,
+      holdingDays: Days(547),
       proceeds: Money.fromRupees("400000"),
       costBasis: Money.fromRupees("100000"),
       gain: Money.fromRupees("300000"),
@@ -513,7 +514,7 @@ const after = assess(
     disposal({
       onDate: CalendarDate.parse("2024-08-01"),
       acquiredOn: CalendarDate.parse("2023-01-01"),
-      holdingDays: 578,
+      holdingDays: Days(578),
       proceeds: Money.fromRupees("400000"),
       costBasis: Money.fromRupees("100000"),
       gain: Money.fromRupees("300000"),

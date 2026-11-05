@@ -25,9 +25,11 @@
  * even. It did not; we simply cannot say.
  */
 
-import { Money } from "@/core/money";
+import { Count, Days, Ratio, type PriceLevel, type IndexPoints, type Months, type Years, type UnitFactory } from "@/core/units";
+import { Money, divideRounded, pow10 } from "@/core/money";
 import { Percentage, Quantity, Rate } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
+import { exactRatio } from "@/core/ratio";
 
 /* ═══ Cashflows ═══════════════════════════════════════════════════════ */
 
@@ -74,8 +76,8 @@ export interface XirrResult {
   readonly ok: true;
   readonly rate: Rate;
   /** The NPV at the returned rate, which should be ~0. Returned so it can be checked. */
-  readonly residual: number;
-  readonly iterations: number;
+  readonly residual: Money;
+  readonly iterations: Count;
   /** What went in, so the figure is traceable to exact money. */
   readonly flows: readonly Cashflow[];
 }
@@ -262,13 +264,24 @@ function finish(
   iterations: number,
   flows: readonly Cashflow[],
 ): XirrResult {
+  if (!Number.isFinite(residual)) throw new RangeError("A converged NPV residual must be finite.");
+  const currency = flows[0].amount.currency;
+  // Preserve the solver's decimal representation, including scientific notation,
+  // then round exactly once at the monetary output boundary.
+  const [coefficient, exponent = "0"] = residual.toString().split("e");
+  const [whole, fraction = ""] = coefficient.split(".");
+  const digits = BigInt(whole + fraction);
+  const shift = currency.exponent + Number(exponent) - fraction.length;
+  const minor = shift >= 0
+    ? digits * pow10(shift)
+    : divideRounded(digits, pow10(-shift), "HALF_EVEN");
   return {
     ok: true,
     // Back into an exact type immediately: `Rate` holds ten decimals of a percent,
     // so nothing downstream can keep iterating on the double.
     rate: Rate.annual((rate * 100).toFixed(10)),
-    residual,
-    iterations,
+    residual: Money.fromMinor(minor, currency),
+    iterations: Count(iterations),
     flows,
   };
 }
@@ -405,22 +418,24 @@ export function subPeriodsFrom(
 /* ═══ Return series ═══════════════════════════════════════════════════ */
 
 /** Trading days a year, for annualisation. 252, per §4.3. */
-export const TRADING_DAYS = 252;
+export const TRADING_DAYS = Count(252);
 
 /** Daily returns from a valuation series, as plain fractions. */
-export function dailyReturns(valuations: readonly ValuationPoint[]): readonly number[] {
-  const returns: number[] = [];
+export function dailyReturns(valuations: readonly ValuationPoint[]): readonly Ratio[] {
+  const returns: Ratio[] = [];
   for (let index = 1; index < valuations.length; index += 1) {
     const previous = valuations[index - 1].value.toApproximateNumber();
     if (previous === 0) continue;
-    returns.push(valuations[index].value.toApproximateNumber() / previous - 1);
+    returns.push(Ratio(valuations[index].value.toApproximateNumber() / previous - 1));
   }
   return returns;
 }
 
-function mean(values: readonly number[]): number {
-  if (values.length === 0) return 0;
-  return values.reduce((sum, value) => sum + value, 0) / values.length;
+export type Continuous = Ratio | PriceLevel | IndexPoints | Months | Years;
+
+function mean<U extends Continuous>(values: readonly NoInfer<U>[], unit: UnitFactory<U>): U {
+  if (values.length === 0) return unit(0);
+  return unit(values.reduce<number>((sum, value) => sum + value, 0) / values.length);
 }
 
 /**
@@ -431,12 +446,12 @@ function mean(values: readonly number[]): number {
  * by about 2.4%. Every finance text uses the sample form and a Sharpe ratio
  * computed with the other one is not comparable to anybody's.
  */
-export function stdDev(values: readonly number[]): number {
-  if (values.length < 2) return 0;
-  const average = mean(values);
+export function stdDev<U extends Continuous>(values: readonly NoInfer<U>[], unit: UnitFactory<U>): U {
+  if (values.length < 2) return unit(0);
+  const average = mean(values, unit);
   const variance =
     values.reduce((sum, value) => sum + (value - average) ** 2, 0) / (values.length - 1);
-  return Math.sqrt(variance);
+  return unit(Math.sqrt(variance));
 }
 
 /* ═══ Risk metrics ════════════════════════════════════════════════════ */
@@ -447,7 +462,7 @@ export interface DrawdownResult {
   readonly peakOn: CalendarDate | null;
   readonly troughOn: CalendarDate | null;
   /** Days from the peak to the trough. */
-  readonly durationDays: number;
+  readonly durationDays: Days;
   /** Whether the series ever regained the peak. */
   readonly recovered: boolean;
 }
@@ -497,14 +512,14 @@ export function maxDrawdown(valuations: readonly ValuationPoint[]): DrawdownResu
     maxDrawdown: Percentage.of((worst * 100).toFixed(6)),
     peakOn: worstPeakOn,
     troughOn: worstTroughOn,
-    durationDays: worstPeakOn && worstTroughOn ? worstPeakOn.daysUntil(worstTroughOn) : 0,
+    durationDays: Days(worstPeakOn && worstTroughOn ? worstPeakOn.daysUntil(worstTroughOn) : 0),
     recovered,
   };
 }
 
 /** Annualised volatility: the standard deviation of daily returns times √252. */
-export function volatility(returns: readonly number[]): Percentage {
-  return Percentage.of((stdDev(returns) * Math.sqrt(TRADING_DAYS) * 100).toFixed(6));
+export function volatility(returns: readonly Ratio[]): Percentage {
+  return Percentage.of((stdDev(returns, Ratio) * Math.sqrt(TRADING_DAYS) * 100).toFixed(6));
 }
 
 export interface RiskFreeSeries {
@@ -520,12 +535,12 @@ export interface RiskFreeSeries {
  * not always. `null` when volatility is zero — a constant series has no Sharpe, and
  * reporting infinity or zero would both be claims.
  */
-export function sharpe(returns: readonly number[], riskFree: RiskFreeSeries): number | null {
-  const sigma = stdDev(returns);
+export function sharpe(returns: readonly Ratio[], riskFree: RiskFreeSeries): Ratio | null {
+  const sigma = stdDev(returns, Ratio);
   if (sigma === 0) return null;
-  const annualisedReturn = mean(returns) * TRADING_DAYS;
+  const annualisedReturn = mean(returns, Ratio) * TRADING_DAYS;
   const rf = Number(riskFree.annual.percent.toFixed(10)) / 100;
-  return (annualisedReturn - rf) / (sigma * Math.sqrt(TRADING_DAYS));
+  return Ratio((annualisedReturn - rf) / (sigma * Math.sqrt(TRADING_DAYS)));
 }
 
 /**
@@ -536,40 +551,40 @@ export function sharpe(returns: readonly number[], riskFree: RiskFreeSeries): nu
  * than against the mean, which is the definition people usually get wrong.
  */
 export function sortino(
-  returns: readonly number[],
+  returns: readonly Ratio[],
   riskFree: RiskFreeSeries,
-  minimumAcceptable = 0,
-): number | null {
+  minimumAcceptable: Ratio = Ratio(0),
+): Ratio | null {
   const downside = returns.filter((value) => value < minimumAcceptable);
   if (downside.length === 0) return null;
   const deviation = Math.sqrt(
     downside.reduce((sum, value) => sum + (value - minimumAcceptable) ** 2, 0) / downside.length,
   );
   if (deviation === 0) return null;
-  const annualisedReturn = mean(returns) * TRADING_DAYS;
+  const annualisedReturn = mean(returns, Ratio) * TRADING_DAYS;
   const rf = Number(riskFree.annual.percent.toFixed(10)) / 100;
-  return (annualisedReturn - rf) / (deviation * Math.sqrt(TRADING_DAYS));
+  return Ratio((annualisedReturn - rf) / (deviation * Math.sqrt(TRADING_DAYS)));
 }
 
 /** Covariance of two aligned return series (sample form). */
-export function covariance(a: readonly number[], b: readonly number[]): number {
+export function covariance(a: readonly Ratio[], b: readonly Ratio[]): Ratio {
   const n = Math.min(a.length, b.length);
-  if (n < 2) return 0;
-  const meanA = mean(a.slice(0, n));
-  const meanB = mean(b.slice(0, n));
+  if (n < 2) return Ratio(0);
+  const meanA = mean(a.slice(0, n), Ratio);
+  const meanB = mean(b.slice(0, n), Ratio);
   let total = 0;
   for (let index = 0; index < n; index += 1) {
     total += (a[index] - meanA) * (b[index] - meanB);
   }
-  return total / (n - 1);
+  return Ratio(total / (n - 1));
 }
 
 /** Pearson correlation, in [−1, 1]. */
-export function correlation(a: readonly number[], b: readonly number[]): number | null {
-  const sigmaA = stdDev(a);
-  const sigmaB = stdDev(b);
+export function correlation(a: readonly Ratio[], b: readonly Ratio[]): Ratio | null {
+  const sigmaA = stdDev(a, Ratio);
+  const sigmaB = stdDev(b, Ratio);
   if (sigmaA === 0 || sigmaB === 0) return null;
-  return covariance(a, b) / (sigmaA * sigmaB);
+  return Ratio(covariance(a, b) / (sigmaA * sigmaB));
 }
 
 /**
@@ -580,23 +595,23 @@ export function correlation(a: readonly number[], b: readonly number[]): number 
  * Nifty Smallcap 250 has two different, both-correct betas, and the app must not
  * pick one silently.
  */
-export function beta(portfolio: readonly number[], benchmark: readonly number[]): number | null {
-  const variance = stdDev(benchmark) ** 2;
+export function beta(portfolio: readonly Ratio[], benchmark: readonly Ratio[]): Ratio | null {
+  const variance = stdDev(benchmark, Ratio) ** 2;
   if (variance === 0) return null;
-  return covariance(portfolio, benchmark) / variance;
+  return Ratio(covariance(portfolio, benchmark) / variance);
 }
 
 /** Jensen's alpha: return beyond what the beta-adjusted benchmark explains. */
 export function alpha(
-  portfolio: readonly number[],
-  benchmark: readonly number[],
+  portfolio: readonly Ratio[],
+  benchmark: readonly Ratio[],
   riskFree: RiskFreeSeries,
 ): Percentage | null {
   const b = beta(portfolio, benchmark);
   if (b === null) return null;
   const rf = Number(riskFree.annual.percent.toFixed(10)) / 100;
-  const rp = mean(portfolio) * TRADING_DAYS;
-  const rb = mean(benchmark) * TRADING_DAYS;
+  const rp = mean(portfolio, Ratio) * TRADING_DAYS;
+  const rb = mean(benchmark, Ratio) * TRADING_DAYS;
   return Percentage.of(((rp - (rf + b * (rb - rf))) * 100).toFixed(6));
 }
 
@@ -609,8 +624,8 @@ export function alpha(
  * claim at all — it reports what actually happened.
  */
 export function historicalVar(
-  returns: readonly number[],
-  confidence = 0.95,
+  returns: readonly Ratio[],
+  confidence: Ratio = Ratio(0.95),
 ): Percentage | null {
   if (returns.length < 20) return null;
   const sorted = [...returns].sort((a, b) => a - b);
@@ -764,4 +779,240 @@ export function summarise(positions: readonly PositionSummary[]): PortfolioSumma
     unpricedPositions: unpriced.map((position) => position.label),
     stalePositions: stale.map((position) => position.label),
   };
+}
+
+/* ═══ Threshold-band rebalancing (task 6.2) ═══════════════════════════ */
+
+/**
+ * A sleeve breaches when its share is further from target than
+ * `min(absolute, relative × target)` — the threshold-band rule. TASKS 6.2 requires
+ * bands **wider than 5/25**, so 5/25 itself and anything narrower is refused: tighter bands trade
+ * more often for no measured benefit.
+ *
+ * Exact throughout: the breach test compares minor units in BigInt. The
+ * percentages a screen shows are derived afterwards and never compared.
+ *
+ * The **cash-flow route comes first** (PRODUCT-REQUIREMENT §7): the contribution
+ * that lifts the most underweight sleeve back to target, realising no gain. No
+ * sale is ever produced here.
+ */
+export interface Band {
+  /** Percentage points either side of target. */
+  readonly absolute: Percentage;
+  /** Fraction of the target itself: 25% of a 20% target is 5 points. */
+  readonly relative: Percentage;
+}
+
+export interface Sleeve {
+  readonly id: string;
+  readonly name: string;
+  readonly value: Money;
+  readonly target: Percentage;
+}
+
+export interface SleeveStanding {
+  readonly id: string;
+  readonly name: string;
+  readonly actual: Percentage;
+  readonly target: Percentage;
+  /** Actual minus target, in percentage points; negative is underweight. */
+  readonly deviation: Percentage;
+  readonly tolerance: Percentage;
+  readonly breached: boolean;
+}
+
+export interface CashFlowRoute {
+  readonly sleeveId: string;
+  /** New money into this sleeve that brings it to target, rounded up to the paisa. */
+  readonly contribution: Money;
+  /** Whether that contribution alone puts every sleeve back inside its band. */
+  readonly restoresAll: boolean;
+}
+
+export interface BandStanding {
+  readonly total: Money;
+  readonly sleeves: readonly SleeveStanding[];
+  readonly breached: boolean;
+  /** Null when nothing is breached. */
+  readonly cashFlowRoute: CashFlowRoute | null;
+}
+
+const WHOLE = 100n * 1_000_000n; // 100% in Percentage's scaled units
+const MIN_ABSOLUTE = Percentage.of("5");
+const MIN_RELATIVE = Percentage.of("25");
+
+/** For display only; the breach test never compares this truncated figure. */
+function toleranceOf(target: Percentage, band: Band): Percentage {
+  const relative = Percentage.fromScaled((band.relative.scaled * target.scaled) / WHOLE);
+  return relative.scaled < band.absolute.scaled ? relative : band.absolute;
+}
+
+/** The tolerance × WHOLE, exactly: min(absolute, relative × target) with no division. */
+function toleranceTimesWhole(target: Percentage, band: Band): bigint {
+  const absolute = band.absolute.scaled * WHOLE;
+  const relative = band.relative.scaled * target.scaled;
+  return relative < absolute ? relative : absolute;
+}
+
+/** Exact rational test: |value / total − target| > tolerance, over minor units. */
+function isBreached(value: Money, total: Money, target: Percentage, band: Band): boolean {
+  const gap = value.minor * WHOLE - target.scaled * total.minor;
+  return (gap < 0n ? -gap : gap) * WHOLE > toleranceTimesWhole(target, band) * total.minor;
+}
+
+/**
+ * Validates an owner-stated band. The only constraint is the 6.2 floor; there is no
+ * default band — the owner states both figures. Each is also capped at 100.
+ */
+export function rebalancingBand(band: Band): Band {
+  // Strictly wider (owner decision, 2026-10-30): exactly 5/25 is the US rule this replaces.
+  if (band.absolute.scaled <= MIN_ABSOLUTE.scaled || band.relative.scaled <= MIN_RELATIVE.scaled) {
+    throw new RangeError("Rebalancing bands must be wider than 5 points absolute and 25% relative.");
+  }
+  if (band.absolute.scaled > WHOLE || band.relative.scaled > WHOLE) {
+    throw new RangeError("A rebalancing band cannot exceed 100 points absolute or 100% relative.");
+  }
+  return Object.freeze({ absolute: band.absolute, relative: band.relative });
+}
+
+export function bandStanding(sleeves: readonly Sleeve[], band: Band): BandStanding {
+  if (band.absolute.scaled <= MIN_ABSOLUTE.scaled || band.relative.scaled <= MIN_RELATIVE.scaled) {
+    throw new RangeError("Rebalancing bands must be wider than 5 points absolute and 25% relative.");
+  }
+  if (sleeves.length === 0) throw new RangeError("An allocation needs at least one sleeve.");
+  if (new Set(sleeves.map((s) => s.id)).size !== sleeves.length) throw new RangeError("Sleeve ids must be unique.");
+  if (sleeves.some((s) => s.target.scaled < 0n)) throw new RangeError("A target cannot be negative.");
+  if (sleeves.reduce((sum, s) => sum + s.target.scaled, 0n) !== WHOLE) throw new RangeError("Targets must sum to exactly 100%.");
+  const currency = sleeves[0]!.value.currency;
+  if (sleeves.some((s) => !s.value.currency.equals(currency))) throw new RangeError("Sleeves must share one currency.");
+  if (sleeves.some((s) => s.value.isNegative)) throw new RangeError("A sleeve's value cannot be negative.");
+  const total = sleeves.reduce((sum, s) => sum.plus(s.value), Money.zero(currency));
+  if (!total.isPositive) throw new RangeError("Nothing is invested, so there is no allocation to measure.");
+
+  const standings = sleeves.map((s): SleeveStanding => {
+    const actual = Percentage.ratio(s.value, total);
+    const tolerance = toleranceOf(s.target, band);
+    return Object.freeze({
+      id: s.id,
+      name: s.name,
+      actual,
+      target: s.target,
+      deviation: Percentage.fromScaled(actual.scaled - s.target.scaled),
+      tolerance,
+      breached: isBreached(s.value, total, s.target, band),
+    });
+  });
+  const breached = standings.some((s) => s.breached);
+
+  return Object.freeze({
+    total,
+    sleeves: Object.freeze(standings),
+    breached,
+    cashFlowRoute: breached ? cashFlowRoute(sleeves, total, band) : null,
+  });
+}
+
+/** Most underweight by exact gap; ties go to the earlier sleeve. */
+function cashFlowRoute(sleeves: readonly Sleeve[], total: Money, band: Band): CashFlowRoute | null {
+  const gapOf = (s: Sleeve) => s.target.scaled * total.minor - s.value.minor * WHOLE;
+  const under = sleeves.filter((s) => gapOf(s) > 0n && s.target.scaled < WHOLE);
+  if (under.length === 0) return null;
+  const pick = under.reduce((best, s) => (gapOf(s) > gapOf(best) ? s : best));
+  // (v + c) / (T + c) = t  ⇒  c = (t·T − v) / (1 − t), rounded up so the sleeve reaches target.
+  const numerator = gapOf(pick);
+  const denominator = WHOLE - pick.target.scaled;
+  const minor = (numerator + denominator - 1n) / denominator;
+  const contribution = Money.fromMinor(minor, total.currency);
+  const after = sleeves.map((s) => (s.id === pick.id ? s.value.plus(contribution) : s.value));
+  const newTotal = total.plus(contribution);
+  const restoresAll = sleeves.every((s, i) => !isBreached(after[i]!, newTotal, s.target, band));
+  return Object.freeze({ sleeveId: pick.id, contribution, restoresAll });
+}
+
+/* ═══ Task 3.6 metrics: CAGR, HHI, stored target allocation ═══════════ */
+
+/**
+ * Compound annual growth rate: `(end ÷ start)^(1 ÷ years) − 1`.
+ *
+ * A float root, so the output is a `Percentage` rounded to its six places and
+ * nothing downstream iterates on the double. **Refuses rather than guesses**: a
+ * non-positive start has no growth rate (the ratio is undefined or negative), a
+ * zero-length period would divide by zero, a negative end has no real root, and
+ * two currencies cannot be compared. Each refusal is a thrown `RangeError` naming
+ * the cause, never a quiet `0%`.
+ */
+export function cagr(start: Money, end: Money, years: Years): Percentage {
+  if (start.currency.code !== end.currency.code) {
+    throw new RangeError(`CAGR refused: start is ${start.currency.code}, end is ${end.currency.code}.`);
+  }
+  if (!start.isPositive) throw new RangeError("CAGR refused: the starting value must be positive.");
+  if (!(years > 0)) throw new RangeError("CAGR refused: the period must be longer than zero years.");
+  if (end.isNegative) throw new RangeError("CAGR refused: a negative ending value has no growth rate.");
+  // The end/start quotient is taken exactly in BigInt and rounded once (`exactRatio`);
+  // `Number(minor)` would lose paise past 2^53 minor units. Only the root is float.
+  const growth = Math.pow(exactRatio(end.minor, start.minor), 1 / years) - 1;
+  return Percentage.of((growth * 100).toFixed(6));
+}
+
+/**
+ * Herfindahl–Hirschman concentration: `Σ wᵢ²` with `wᵢ = vᵢ ÷ Σv`, as a percentage
+ * (100% is one holding; `100 ÷ n`% is n equal holdings).
+ *
+ * **Exact.** `Σ vᵢ² ÷ (Σ vᵢ)²` is computed in `bigint` and rounded once, half-up,
+ * to the percentage's six places — no float touches it. Mixed currencies are
+ * refused (a sum across currencies is not a portfolio total), as are negative
+ * values (a short or a liability is not a holding) and an empty or zero total.
+ */
+export function hhi(values: readonly Money[]): Percentage {
+  if (values.length === 0) throw new RangeError("HHI refused: no holdings.");
+  const currency = values[0]!.currency.code;
+  if (values.some((value) => value.currency.code !== currency)) {
+    throw new RangeError("HHI refused: holdings are in more than one currency.");
+  }
+  if (values.some((value) => value.isNegative)) throw new RangeError("HHI refused: a holding is negative.");
+  const total = values.reduce((sum, value) => sum + value.minor, 0n);
+  if (total === 0n) throw new RangeError("HHI refused: the holdings total zero.");
+  const squares = values.reduce((sum, value) => sum + value.minor * value.minor, 0n);
+  // Percentage scaled is 1e6 per percent, so a fraction f is f × 1e8.
+  return Percentage.fromScaled(divideRounded(squares * pow10(8), total * total, "HALF_UP"));
+}
+
+/** One sleeve of a stored target: an id the owner chose and its share of the whole. */
+export interface TargetShare {
+  readonly id: string;
+  readonly share: Percentage;
+}
+
+declare const validatedTarget: unique symbol;
+
+/**
+ * A target allocation the owner stored. **Only `targetAllocation()` makes one**, so
+ * holding a `TargetAllocation` is proof that its shares are positive, its ids are
+ * distinct and non-empty, and its shares sum to exactly 100%.
+ */
+export type TargetAllocation = {
+  readonly shares: readonly TargetShare[];
+  readonly [validatedTarget]: true;
+};
+
+const HUNDRED_PERCENT = Percentage.of("100").scaled;
+
+/** Validates and freezes a stored target allocation; throws naming the first defect. */
+export function targetAllocation(shares: readonly TargetShare[]): TargetAllocation {
+  if (shares.length === 0) throw new RangeError("Target allocation refused: no sleeves.");
+  const ids = new Set<string>();
+  for (const entry of shares) {
+    if (!entry.id.trim()) throw new RangeError("Target allocation refused: a sleeve has no id.");
+    if (ids.has(entry.id)) throw new RangeError(`Target allocation refused: sleeve "${entry.id}" appears twice.`);
+    ids.add(entry.id);
+    if (entry.share.scaled <= 0n) {
+      throw new RangeError(`Target allocation refused: sleeve "${entry.id}" must have a positive share.`);
+    }
+  }
+  const sum = shares.reduce((acc, entry) => acc + entry.share.scaled, 0n);
+  if (sum !== HUNDRED_PERCENT) {
+    throw new RangeError(`Target allocation refused: shares sum to ${Percentage.fromScaled(sum).toFixed(6)}%, not 100%.`);
+  }
+  const frozen = Object.freeze(shares.map((entry) => Object.freeze({ id: entry.id, share: entry.share })));
+  return Object.freeze({ shares: frozen }) as TargetAllocation;
 }

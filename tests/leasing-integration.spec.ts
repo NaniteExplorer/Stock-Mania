@@ -13,6 +13,7 @@
  * constraints and the mapper are exercised rather than mocked.
  */
 
+import { Count } from "@/core/units";
 import { readFileSync, readdirSync, rmSync } from "node:fs";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
@@ -332,7 +333,7 @@ async function main() {
     statements.value.incomeStatement.income.total.isPositive,
   );
 
-  const page = await journal.find(userId, { limit: 200 });
+  const page = await journal.find(userId, { limit: Count(200) });
   const integrity = new BalanceCalculator().verifyIntegrity(page.transactions);
   checkTrue("total debits equal total credits across every posting", integrity.ok);
   check("and no transaction is offending", integrity.offendingTransactionIds.length, 0);
@@ -458,7 +459,7 @@ async function main() {
     }
 
     const stillBalanced = new BalanceCalculator().verifyIntegrity(
-      (await journal.find(userId, { limit: 400 })).transactions,
+      (await journal.find(userId, { limit: Count(400) })).transactions,
     );
     checkTrue("and a two-legged posting still balances", stillBalanced.ok);
   }

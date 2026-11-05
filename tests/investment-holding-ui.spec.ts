@@ -39,7 +39,7 @@ for (const view of HOLDING_VIEWS) {
 
 section("branch source contracts");
 
-checkTrue("summary shows the headline holding metrics", pageSource.includes('activeView === "summary" && <div className="mb-6 grid grid-cols-2'));
+checkTrue("summary shows the headline holding metrics", pageSource.includes('activeView === "summary" && <KpiStrip>'));
 checkTrue("summary keeps the gold advisory out of other branches", pageSource.includes('activeView === "summary" && instrument.kind === "DIGITAL_GOLD" && <GoldAdvisoryNote'));
 checkTrue("digital-metal summary uses cash invested from gold analytics", pageSource.includes("const cashInvestedValue = isDigitalMetal ? (analytics?.investedCost ?? investedValue) : investedValue"));
 checkTrue("digital-metal average buy rate excludes lease credits", pageSource.includes("analytics?.effectiveCostPerGram?.toMoney() ?? null"));
@@ -53,18 +53,18 @@ checkTrue("performance has non-digital content", pageSource.includes('!isDigital
 checkTrue("non-digital performance renders existing position valuation", pageSource.includes("const holdingMarketValue = isDigitalMetal ? metalValue : (position?.marketValue ?? null)"));
 checkTrue("non-digital performance uses the consolidated returns panel", pageSource.includes("<ReturnsPanel returns={holdingReturns}"));
 
-checkTrue("lots and tax owns the non-metal lots table", pageSource.includes('!isDigitalMetal && activeView === "lots-tax" && <section'));
+checkTrue("lots and tax owns the non-metal lots table", pageSource.includes('!isDigitalMetal && activeView === "lots-tax" && <Panel'));
 checkTrue("lots and tax owns the method comparison", pageSource.includes('activeView === "lots-tax" && comparison?.ok'));
 checkTrue("lots and tax owns the gold lot ladder", pageSource.includes('activeView === "lots-tax" && <GoldLotLadder'));
 checkTrue("lots and tax owns the gold tax statement", pageSource.includes('activeView === "lots-tax" && instrument.kind === "DIGITAL_GOLD"'));
 
-checkTrue("activity owns digital-metal transaction history", pageSource.includes('activeView === "activity" && <section className="panel mb-6 p-0"'));
-checkTrue("activity owns the metal transaction form", pageSource.includes('activeView === "activity" && <Card title="Add investment transaction"'));
-checkTrue("activity owns non-metal trade history", pageSource.includes('!isDigitalMetal && activeView === "activity" && <section'));
-checkTrue("activity owns the non-metal trade form", pageSource.includes('!isDigitalMetal && activeView === "activity" && <Card'));
+checkTrue("activity owns digital-metal transaction history", pageSource.includes('activeView === "activity" && <Panel'));
+checkTrue("activity owns the metal transaction form", pageSource.includes('activeView === "activity" && <Panel title="Add investment transaction"'));
+checkTrue("activity owns non-metal trade history", pageSource.includes('!isDigitalMetal && activeView === "activity" && <Panel'));
+checkTrue("activity owns the non-metal trade form", pageSource.includes('!isDigitalMetal && activeView === "activity" && <Panel'));
 checkTrue("activity owns corporate actions", pageSource.includes('!isDigitalMetal && activeView === "activity" && actions.length > 0'));
 
-checkTrue("settings owns holding administration", pageSource.includes('activeView === "settings" && <Card'));
+checkTrue("settings owns holding administration", pageSource.includes('activeView === "settings" && <Panel'));
 checkTrue("settings contains the existing admin component", pageSource.includes("<InstrumentAdmin"));
 checkTrue("close feedback renders from the close action state", adminSource.includes("{closeState.message}"));
 checkTrue("update feedback renders from the update action state", adminSource.includes("{updateState.message}"));

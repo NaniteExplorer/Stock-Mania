@@ -18,6 +18,7 @@
 
 import { UserId } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
+import { Count, Ordinal, SortKey } from "@/core/units";
 import { CalendarDate } from "@/core/time";
 import { AccountId } from "@/domain/accounts";
 import {
@@ -26,6 +27,8 @@ import {
   Categoriser,
   DuplicateMatcher,
   builtInAccountCodes,
+  coverageGap,
+  impliedOpeningBalance,
   fingerprintOf,
   normalizeNarration,
   reconcile,
@@ -159,7 +162,7 @@ const userRules: readonly KeywordRule[] = [
     matchType: "CONTAINS",
     accountId: EATING_OUT,
     appliesTo: "ANY",
-    priority: 0,
+    priority: SortKey(0),
     isEnabled: true,
   },
   {
@@ -168,7 +171,7 @@ const userRules: readonly KeywordRule[] = [
     matchType: "CONTAINS",
     accountId: GROCERIES,
     appliesTo: "DEBIT",
-    priority: 0,
+    priority: SortKey(0),
     isEnabled: true,
   },
   {
@@ -178,7 +181,7 @@ const userRules: readonly KeywordRule[] = [
     accountId: SALARY,
     appliesTo: "ANY",
     // Same priority as rule-1 but a longer pattern, so it wins.
-    priority: 0,
+    priority: SortKey(0),
     isEnabled: true,
   },
   {
@@ -187,7 +190,7 @@ const userRules: readonly KeywordRule[] = [
     matchType: "CONTAINS",
     accountId: FALLBACK_EXPENSE,
     appliesTo: "ANY",
-    priority: 99,
+    priority: SortKey(99),
     isEnabled: false,
   },
 ];
@@ -219,7 +222,7 @@ const scoped: readonly KeywordRule[] = [
     matchType: "CONTAINS",
     accountId: SALARY,
     appliesTo: "CREDIT",
-    priority: 5,
+    priority: SortKey(5),
     isEnabled: true,
   },
 ];
@@ -242,7 +245,7 @@ const regexRule: KeywordRule = {
   matchType: "REGEX",
   accountId: GROCERIES,
   appliesTo: "ANY",
-  priority: 10,
+  priority: SortKey(10),
   isEnabled: true,
 };
 check(
@@ -558,7 +561,7 @@ const fingerprintInput = {
   amount: rupees("1234.56"),
   direction: "DEBIT" as const,
   description: "UPI-ZEPTO MARKETPLACE-UTR409218374",
-  occurrence: 0,
+  occurrence: Ordinal(0),
 };
 check(
   "the same row fingerprints identically however the reference varies",
@@ -567,7 +570,7 @@ check(
 );
 checkTrue(
   "but the second occurrence of an identical row does not",
-  fingerprintOf(fingerprintInput) !== fingerprintOf({ ...fingerprintInput, occurrence: 1 }),
+  fingerprintOf(fingerprintInput) !== fingerprintOf({ ...fingerprintInput, occurrence: Ordinal(1) }),
 );
 checkTrue(
   "and a different amount does not",
@@ -582,8 +585,8 @@ const agreed = reconcile({
   statementClosing: rupees("109800.03"),
   ledgerClosing: rupees("109800.03"),
   asOf: on("2026-04-30"),
-  unmatchedStatementRows: 0,
-  unexplainedTransactions: 0,
+  unmatchedStatementRows: Count(0),
+  unexplainedTransactions: Count(0),
 });
 check("agreeing balances reconcile", agreed.isReconciled, true);
 check("with nothing to report", agreed.findings.length, 0);
@@ -592,8 +595,8 @@ const short = reconcile({
   statementClosing: rupees("109800.03"),
   ledgerClosing: rupees("108565.47"),
   asOf: on("2026-04-30"),
-  unmatchedStatementRows: 1,
-  unexplainedTransactions: 0,
+  unmatchedStatementRows: Count(1),
+  unexplainedTransactions: Count(0),
 });
 check("a difference is exact", short.difference, rupees("1234.56"));
 check("and it does not reconcile", short.isReconciled, false);
@@ -603,8 +606,8 @@ const overRecorded = reconcile({
   statementClosing: rupees("100000.00"),
   ledgerClosing: rupees("101000.00"),
   asOf: on("2026-04-30"),
-  unmatchedStatementRows: 0,
-  unexplainedTransactions: 1,
+  unmatchedStatementRows: Count(0),
+  unexplainedTransactions: Count(1),
 });
 check("a ledger ahead of the statement is a negative difference", overRecorded.difference, rupees("-1000.00"));
 
@@ -789,5 +792,104 @@ const namedSelfTransfer = categoriser.categorise(
 );
 check("it is a transfer", namedSelfTransfer.intent, "TRANSFER");
 check("but no account is guessed", namedSelfTransfer.accountId, null);
+
+/* ═══ Coverage gap ════════════════════════════════════════════════════ */
+
+section("a statement that starts mid-life");
+
+/*
+ * The owner's real case, with the arithmetic from the diagnosis in
+ * `_architecture/requirements/pdf-geometry-reader-drops-rows.md`: the ledger sat
+ * at ₹178.72 after Nov 2023, the Dec-2025 statement declared it inherited
+ * ₹90,488.03, and Nov 2023 → Dec 2025 was never imported. The difference is not
+ * an estimate — it is exactly the missing period.
+ */
+const realGap = coverageGap({
+  coveredTo: on("2023-11-02"),
+  resumesOn: on("2025-12-06"),
+  ledgerBalance: rupees("178.72"),
+  impliedOpening: rupees("90488.03"),
+});
+
+check("the gap is reported", realGap !== null, true);
+check("and sized exactly", realGap?.difference.toDecimalString(), "90309.31");
+check("the ledger is short, so the difference is positive", realGap?.difference.isPositive, true);
+check("it names the date coverage stops", realGap?.coveredTo?.toISO(), "2023-11-02");
+check("and the date it resumes", realGap?.resumesOn.toISO(), "2025-12-06");
+
+// Agreement is the ordinary case and must stay silent: a notice that fires when
+// nothing is wrong would appear on every healthy account in the product.
+check(
+  "no gap when the statement's opening matches the ledger",
+  coverageGap({
+    coveredTo: on("2026-03-31"),
+    resumesOn: on("2026-04-01"),
+    ledgerBalance: rupees("48250.00"),
+    impliedOpening: rupees("48250.00"),
+  }),
+  null,
+);
+
+/*
+ * The sign carries meaning. A missing period of net spending leaves the ledger
+ * *over* the statement's opening, and reporting that as an absolute value would
+ * tell the user their balance is understated when it is overstated.
+ */
+const overstated = coverageGap({
+  coveredTo: on("2024-01-31"),
+  resumesOn: on("2024-06-01"),
+  ledgerBalance: rupees("50000.00"),
+  impliedOpening: rupees("32000.00"),
+});
+check("an overstated ledger reports a negative difference", overstated?.difference.toDecimalString(), "-18000.00");
+check("not an absolute value", overstated?.difference.isPositive, false);
+
+// A brand-new account is not a gap, and the UI words it differently.
+const firstEver = coverageGap({
+  coveredTo: null,
+  resumesOn: on("2026-04-01"),
+  ledgerBalance: rupees("0"),
+  impliedOpening: rupees("15000.00"),
+});
+check("a first statement still reports a difference", firstEver?.difference.toDecimalString(), "15000.00");
+check("but names no covered-to date", firstEver?.coveredTo, null);
+
+section("the opening balance a statement implies");
+
+// Read backwards off the first row carrying a running balance.
+check(
+  "a credit opened the day lower by its amount",
+  impliedOpeningBalance([
+    { direction: "CREDIT", amount: rupees("2500.00"), balanceAfter: rupees("12500.00") },
+  ])?.toDecimalString(),
+  "10000.00",
+);
+check(
+  "a debit opened it higher",
+  impliedOpeningBalance([
+    { direction: "DEBIT", amount: rupees("2500.00"), balanceAfter: rupees("7500.00") },
+  ])?.toDecimalString(),
+  "10000.00",
+);
+check(
+  "rows without a balance are skipped until one carries it",
+  impliedOpeningBalance([
+    { direction: "DEBIT", amount: rupees("100.00"), balanceAfter: null },
+    { direction: "CREDIT", amount: rupees("400.00"), balanceAfter: rupees("5400.00") },
+  ])?.toDecimalString(),
+  "5000.00",
+);
+/*
+ * The false-alarm case. A format that prints no running balance is not evidence
+ * of a gap, and claiming one would fire on every bank whose statements omit it.
+ */
+check(
+  "a statement with no running balance implies nothing",
+  impliedOpeningBalance([
+    { direction: "DEBIT", amount: rupees("100.00"), balanceAfter: null },
+  ]),
+  null,
+);
+
 
 done();

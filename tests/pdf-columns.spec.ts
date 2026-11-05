@@ -15,6 +15,7 @@
  */
 
 import { __test__ } from "@/infra/pdf-columns";
+import { parseStatementRows } from "@/infra/statements";
 import { check, checkDeep, checkTrue, done, section } from "./harness";
 
 const { findColumns, findColumnsByContent, inferGrid, recoverBestWrap, headerFor } = __test__;
@@ -235,5 +236,65 @@ check(
   inferGrid([[item("Thank you for banking with us", 50, 200, 100)]]),
   null,
 );
+
+section("SBI currency headings preserve sparse credits and Indian-grouped balances");
+
+// Synthetic figures only: two date columns, one salary among five withdrawals,
+// and amounts large enough to require Indian lakh grouping.
+const sbiHeadings = [
+  item("Value Date", 10, 40, 200),
+  item("Post Date", 60, 40, 200),
+  item("Details", 115, 40, 200),
+  item("₹ Debit", 300, 45, 200),
+  item("₹ Credit", 380, 45, 200),
+  item("Balance", 460, 45, 200),
+];
+const sbiMovements = [
+  ["", "1,00,000.00", "2,00,000.00"],
+  ["100.00", "", "1,99,900.00"],
+  ["200.00", "", "1,99,700.00"],
+  ["300.00", "", "1,99,400.00"],
+  ["400.00", "", "1,99,000.00"],
+  ["500.00", "", "1,98,500.00"],
+];
+const sbiPage = [
+  ...sbiHeadings,
+  ...sbiMovements.flatMap(([debit, credit, balance], index) => {
+    const y = 190 - index * 10;
+    return [
+      item(`${index + 13}/04/2026`, 10, 40, y),
+      item(`${index + 13}/04/2026`, 60, 40, y),
+      item(index === 0 ? "SALARY" : "PAYMENT", 115, 50, y),
+      ...(debit ? [item(debit, 315, 30, y)] : []),
+      ...(credit ? [item(credit, 375, 50, y)] : []),
+      item(balance!, 455, 50, y),
+    ];
+  }),
+];
+const sbiColumns = findColumns(sbiPage);
+checkTrue("currency-prefixed headings locate the SBI table", sbiColumns !== null);
+// Fall back only so the regression prints meaningful failures rather than throwing.
+const sbiGrid = sbiColumns ?? inferGrid([sbiPage]);
+checkTrue("the located table retains its named roles", sbiGrid?.headed === true);
+if (sbiGrid) {
+  const sbiRecords = recoverBestWrap([sbiPage], sbiGrid);
+  check("all six SBI movements survive geometry", sbiRecords.length, 6);
+  check("rare credit keeps its Indian-grouped amount", sbiRecords[0]?.cells.credit, "1,00,000.00");
+  check("the last printed balance is preserved", sbiRecords.at(-1)?.cells.balance, "1,98,500.00");
+  const roles = (["debit", "credit", "amount", "balance"] as const).filter(
+    (role) => sbiGrid.edges[role] !== undefined,
+  );
+  if (sbiRecords.length > 0) {
+    const parsedSbi = parseStatementRows([
+      headerFor(sbiGrid, roles),
+      ...sbiRecords.map((record) => [record.date, record.text, "", ...roles.map((role) => record.cells[role] ?? "")]),
+    ]);
+    check("all rows survive the shared parser", parsedSbi.rows.length, 6);
+    check("no amounts are dropped", parsedSbi.problems.length, 0);
+    checkDeep("direction follows the printed SBI columns", parsedSbi.rows.map((row) => row.direction), ["CREDIT", "DEBIT", "DEBIT", "DEBIT", "DEBIT", "DEBIT"]);
+    check("the full running-balance chain reconciles", parsedSbi.verdict.trust, "RECONCILED");
+    check("all five subsequent movements are checked", parsedSbi.verdict.checked, 5);
+  }
+}
 
 done();

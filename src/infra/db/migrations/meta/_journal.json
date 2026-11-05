@@ -120,6 +120,69 @@
       "when": 1789892822772,
       "tag": "0016_exact_lot_cost",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "6",
+      "when": 1793202983582,
+      "tag": "0017_p1_recurring",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "6",
+      "when": 1793326549923,
+      "tag": "0018_nonnegative_price_steps",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "6",
+      "when": 1793382449699,
+      "tag": "0019_projection_assumptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "6",
+      "when": 1793722233059,
+      "tag": "0020_asset_acquisitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "6",
+      "when": 1793722751861,
+      "tag": "0021_tier_history",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "6",
+      "when": 1793805898949,
+      "tag": "0022_physical_assets",
+      "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "6",
+      "when": 1793805958949,
+      "tag": "0023_cpi_series",
+      "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "6",
+      "when": 1793806018949,
+      "tag": "0024_target_allocations",
+      "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "6",
+      "when": 1793811317639,
+      "tag": "0025_bands_and_card_minimums",
+      "breakpoints": true
     }
   ]
 }

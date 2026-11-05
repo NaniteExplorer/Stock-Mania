@@ -14,6 +14,7 @@
  * three call sites.
  */
 
+import { Count, Millis } from "@/core/units";
 import { Currency } from "@/core/money";
 import { RateLimitBudget } from "@/domain/pricing";
 import { ProviderOptions, ProviderRuntime } from "@/infra/providers";
@@ -61,7 +62,7 @@ export class SecMasterAdapter extends MarketDataSource implements InstrumentMast
   override rateLimit(): RateLimitBudget {
     // The SEC asks for no more than 10 requests a second and a declared UA. This
     // file is fetched once a day; the budget says so.
-    return { requests: 6, perMillis: 60_000, burst: 2 };
+    return { requests: Count(6), perMillis: Millis(60_000), burst: Count(2) };
   }
 
   async load(): Promise<MarketDataResult<readonly InstrumentMasterRow[]>> {

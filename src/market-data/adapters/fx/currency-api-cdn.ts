@@ -12,6 +12,7 @@
  * and it would be invisible in the output.
  */
 
+import { Count, Millis } from "@/core/units";
 import { CalendarDate } from "@/core/time";
 import { ProviderError, RateLimitBudget } from "@/domain/pricing";
 import { ProviderOptions, ProviderRuntime } from "@/infra/providers";
@@ -54,7 +55,7 @@ export class CurrencyApiCdnFxAdapter extends MarketDataSource implements FxRateP
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 60, perMillis: 60_000, burst: 10 };
+    return { requests: Count(60), perMillis: Millis(60_000), burst: Count(10) };
   }
 
   async rate(request: FxRateRequest): Promise<MarketDataResult<FxRate>> {

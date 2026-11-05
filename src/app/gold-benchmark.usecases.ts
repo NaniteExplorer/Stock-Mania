@@ -43,6 +43,7 @@
 
 import { AppError, Err, NotFoundError, Ok, Result, UseCase, UserId } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
+import { Count } from "@/core/units";
 import { Percentage, Quantity, UnitPrice } from "@/core/numeric";
 import { CalendarDate, DateRange } from "@/core/time";
 import { InstitutionRepository } from "@/domain/institutions";
@@ -452,7 +453,7 @@ export class GoldBenchmarkReplay implements UseCase<GoldBenchmarkInput, GoldBenc
       input.instrumentId.value,
       "CLOSE",
       input.asOf,
-      1,
+      Count(1),
     );
     const benchmarkGramRate = latest[0]?.price ?? null;
     const realisableGramRate =

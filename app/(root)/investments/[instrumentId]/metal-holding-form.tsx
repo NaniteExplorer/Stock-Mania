@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Field } from "@/ui/primitives";
 import { recordMetalHoldingAction, type InvestingActionState } from "../actions";
+import { Input } from "../../../../components/ui/input";
+import { NativeSelect } from "../../../../components/ui/native-select";
+import { FormField as Field } from "./form-field";
 
 export interface FundingAccount {
   id: string;
@@ -41,44 +43,44 @@ export default function MetalHoldingForm({
     <form action={action} className="grid gap-4 md:grid-cols-3">
       <input type="hidden" name="instrumentId" value={instrumentId} />
       {errors.instrumentId?.[0] && (
-        <p className="text-sm text-red-500 md:col-span-3" role="alert">
+        <p className="text-sm text-(--loss) md:col-span-3" role="alert">
           {errors.instrumentId[0]}
         </p>
       )}
       <Field
         name="grams"
         label="Grams acquired"
-        required
+       required
         hint="Full current grams for first setup; only new grams for a later purchase."
         error={errors.grams?.[0]}
       >
         {(props) => (
-          <input
+          <Input
             {...props}
             name="grams"
-            className="form-input tnum"
+            className="tnum"
             inputMode="decimal"
             placeholder="e.g. 5.2500"
-            required
-          />
+           required
+         />
         )}
       </Field>
       <Field
         name="invested"
         label="Amount invested"
-        required
+       required
         hint="The total that actually left your account, GST included."
         error={errors.invested?.[0]}
       >
         {(props) => (
-          <input
+          <Input
             {...props}
             name="invested"
-            className="form-input tnum"
+            className="tnum"
             inputMode="decimal"
             placeholder="e.g. 35000.00"
-            required
-          />
+           required
+         />
         )}
       </Field>
       <Field
@@ -88,29 +90,29 @@ export default function MetalHoldingForm({
         hint="Optional. Taken out of the amount above, not added to it — so a gram's real rate stays visible."
       >
         {(props) => (
-          <input
+          <Input
             {...props}
             name="charges"
-            className="form-input tnum"
+            className="tnum"
             inputMode="decimal"
             placeholder="e.g. 1050.00"
-          />
+         />
         )}
       </Field>
       <Field
         name="fundingAccountId"
         label="Paid from"
-        required
+       required
         error={errors.fundingAccountId?.[0]}
         hint="The account the money left. Buying gold does not change your net worth — it moves it."
       >
         {(props) => (
-          <select
+          <NativeSelect
             {...props}
             name="fundingAccountId"
-            className="form-input"
-            defaultValue={accounts[0]?.id ?? "OPENING"}
-            required
+            
+           defaultValue={accounts[0]?.id ?? "OPENING"}
+           required
           >
             {accounts.map((account) => (
               <option key={account.id} value={account.id}>
@@ -118,19 +120,19 @@ export default function MetalHoldingForm({
               </option>
             ))}
             <option value="OPENING">Already owned — no payment to record</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
       <Field name="recordedOn" label="As of" required error={errors.recordedOn?.[0]}>
         {(props) => (
-          <input
+          <Input
             {...props}
             name="recordedOn"
             type="date"
-            className="form-input"
-            defaultValue={defaultDate}
-            required
-          />
+            
+           defaultValue={defaultDate}
+           required
+         />
         )}
       </Field>
       <div className="flex items-center gap-3 md:col-span-3">
@@ -138,7 +140,7 @@ export default function MetalHoldingForm({
           {pending ? "Recording…" : "Add investment"}
         </button>
         {state && (
-          <p className={state.ok ? "text-sm text-green-500" : "text-sm text-red-500"} role="status">
+          <p className={state.ok ? "text-sm text-(--gain)" : "text-sm text-(--loss)"} role="status">
             {state.message}
           </p>
         )}

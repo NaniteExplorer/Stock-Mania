@@ -5,7 +5,6 @@ import { connection } from "next/server";
 import {
   Archive,
   ArchiveRestore,
-  ArrowLeftRight,
   Save,
   Trash2,
   Upload,
@@ -14,7 +13,13 @@ import { Money } from "@/core/money";
 import { CalendarDate, DateRange } from "@/core/time";
 import { AccountType } from "@/domain/accounts";
 import { CashAsset } from "@/domain/assets";
-import { Card, EmptyState, Field, MoneyText, PageHeader, Pill, Stat } from "@/ui/primitives";
+import { Field } from "@/components/ui/field";
+import { rupee, type Figure } from "@/core/format";
+import { Kpi, KpiStrip, Masthead, Page as PageShell, Panel } from "@/components/ui/page-shell";
+import { Banner } from "@/components/ui/banner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 import { InstitutionMark, ProviderPicker } from "@/ui/provider-picker";
 import { formatMoney } from "@/ui/format";
 import { ActionForm, SubmitButton } from "@/ui/action-form";
@@ -30,6 +35,9 @@ import {
 import BalanceChart from "./balance-chart";
 import ReconcilePanel from "./reconcile-panel";
 import LedgerTable from "./ledger-table";
+import { Count } from "@/core/units";
+import { gapNotice, newAccountNotice } from "./gap-notice";
+import { GapNoticeView } from "./gap-notice-view";
 
 export const metadata: Metadata = { title: "Account" };
 
@@ -59,7 +67,7 @@ export default async function Page({
   const userId = await currentUserId();
   await ensureSeeded(userId);
 
-  const { repositories } = services();
+  const { banking, repositories } = services();
   const today = CalendarDate.parse(new Date().toISOString().slice(0, 10));
 
   // A hand-edited `?asOf=` should not take the whole page down with a parse error.
@@ -79,17 +87,18 @@ export default async function Page({
   const page = Math.max(0, Number.parseInt(query.page ?? "0", 10) || 0);
   const window = DateRange.of(asOf.plusDays(-365), asOf);
 
-  const [balance, postingCount, ledger, series, flows] = await Promise.all([
+  const [balance, postingCount, ledger, series, flows, coverage] = await Promise.all([
     repositories.balances.balanceOf(userId, account.id, asOf),
     repositories.accounts.countPostings(userId, account.id),
     repositories.journal.find(userId, {
       accountIds: [account.id],
       search: query.q || undefined,
-      limit: PAGE_SIZE,
-      offset: page * PAGE_SIZE,
+      limit: Count(PAGE_SIZE),
+      offset: Count(page * PAGE_SIZE),
     }),
     repositories.balances.balanceSeries(userId, account.id, window),
     repositories.balances.monthlyFlows(userId, DateRange.monthOf(asOf)),
+    banking.coverageGaps.execute({ userId, accountId: account.id }),
   ]);
 
   const byId = new Map(accounts.map((candidate) => [candidate.id.value, candidate]));
@@ -106,73 +115,78 @@ export default async function Page({
   const canDeleteHistory = !account.isSystem && account.isClosed && postingCount > 0;
 
   return (
-    <>
-      <PageHeader
+    <PageShell>
+      <Masthead
         title={account.displayName}
-        subtitle={
-          account.accountNumberSuffix
-            ? `${account.code.toString()} · ending ${account.accountNumberSuffix}`
-            : account.code.toString()
-        }
-        badge={
-          <Pill tone={account.isClosed ? "neutral" : "brand"}>
-            {account.isClosed ? "Closed" : "Open"}
-          </Pill>
-        }
-        action={
+        hero={rupee(balance)}
+        side={
           <div className="flex flex-wrap gap-2">
-            <Link href="/imports" className="ghost-btn h-10 px-4 text-xs">
-              <Upload className="h-3.5 w-3.5" aria-hidden />
-              Import a statement
-            </Link>
-            <Link href="/accounts" className="ghost-btn h-10 px-4 text-xs">
-              All accounts
-            </Link>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/imports">
+                <Upload className="h-3.5 w-3.5" aria-hidden />
+                Import a statement
+              </Link>
+            </Button>
+            <Button asChild variant="ghost" size="sm">
+              <Link href="/accounts">All accounts</Link>
+            </Button>
           </div>
         }
       />
 
-      <div className="mb-6 flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <InstitutionMark institution={account.institution} />
-        <p className="text-sm text-gray-400">
+        <p className="text-sm text-(--fg-secondary)">
           {account.institution ?? "No institution recorded"}
-          {asset && <span className="text-gray-500"> · {KIND_LABELS[asset.kind] ?? asset.kind}</span>}
+          {asset && <span className="text-(--fg-muted)"> · {KIND_LABELS[asset.kind] ?? asset.kind}</span>}
+          <span className="text-(--fg-muted)">
+            {" · "}
+            {account.accountNumberSuffix
+              ? `${account.code.toString()} · ending ${account.accountNumberSuffix}`
+              : account.code.toString()}
+            {" · "}
+            {account.isClosed ? "Closed" : "Open"}
+          </span>
         </p>
       </div>
 
+      {/* ── Coverage gaps: above the balance they qualify (DESIGN.md §9a) ── */}
+      {coverage.firstStatementOn && (
+        <GapNoticeView notice={newAccountNotice(coverage.firstStatementOn)} />
+      )}
+      {coverage.gaps.map((gap) => {
+        const notice = gapNotice(gap);
+        return notice ? <GapNoticeView key={gap.resumesOn.toISO()} notice={notice} /> : null;
+      })}
+
       {/* ── Balance, on a date the user chooses ─────────────────────────── */}
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Balance" value={balance} hint={`As at ${asOf.toISO()}`} />
-        <Stat
-          label="Postings"
-          value={<span className="tnum">{postingCount}</span>}
-          hint="Lines behind that figure"
-        />
-        <Stat label="Money in" value={thisMonth?.income ?? Money.zero()} hint="Across all accounts, this month" />
-        <Stat label="Money out" value={thisMonth?.expense ?? Money.zero()} hint="Across all accounts, this month" />
-      </div>
+      <KpiStrip>
+        <Kpi label="Balance" value={rupee(balance)} detail={`As at ${asOf.toISO()}`} />
+        <Kpi label="Postings" value={String(postingCount) as Figure} detail="Lines behind that figure" />
+        <Kpi label="Money in" value={rupee(thisMonth?.income ?? Money.zero())} detail="Across all accounts, this month" />
+        <Kpi label="Money out" value={rupee(thisMonth?.expense ?? Money.zero())} detail="Across all accounts, this month" />
+      </KpiStrip>
 
       {/* `Field` derives the input id from `name`, and the reconcile panel below
           also has an `asOf` — so this one is named for the id and mapped back to
           `asOf` on submit, rather than shipping two elements with one id. */}
-      <form method="get" className="mb-6 flex flex-wrap items-end gap-3">
+      <form method="get" className="flex flex-wrap items-end gap-3">
         <Field name="balanceAsOf" label="Balance as at">
           {(props) => (
-            <input
+            <Input
               {...props}
               name="asOf"
               type="date"
               defaultValue={asOf.toISO()}
               max={today.toISO()}
-              className="form-input"
             />
           )}
         </Field>
-        <button type="submit" className="ghost-btn h-12 px-5 text-xs">
+        <Button type="submit" variant="outline">
           Show that date
-        </button>
+        </Button>
         {query.asOf && (
-          <Link href={`/accounts/${accountId}`} className="text-xs text-gray-400 hover:underline">
+          <Link href={`/accounts/${accountId}`} className="text-xs text-(--fg-secondary) hover:underline">
             Back to today
           </Link>
         )}
@@ -190,10 +204,9 @@ export default async function Page({
 
       {/* ── Details ─────────────────────────────────────────────────────── */}
       {!account.isSystem && (
-        <Card
+        <Panel
           title="Details"
-          subtitle="Only the last four digits of an account number are ever stored."
-          className="mb-6"
+          description="Only the last four digits of an account number are ever stored."
         >
           <ActionForm
             action={updateCashAccountAction}
@@ -203,10 +216,9 @@ export default async function Page({
             <>
               <Field name="name" label="Account name" required>
                 {(props) => (
-                  <input
+                  <Input
                     {...props}
                     name="name"
-                    className="form-input"
                     defaultValue={account.name}
                     required
                     maxLength={120}
@@ -216,17 +228,16 @@ export default async function Page({
 
               <Field name="subtype" label="Kind" required>
                 {(props) => (
-                  <select
+                  <NativeSelect
                     {...props}
                     name="subtype"
-                    className="form-input"
                     defaultValue={account.subtype ?? "BANK"}
                   >
                     <option value="BANK">Bank account</option>
                     <option value="SAVINGS">Savings account</option>
                     <option value="WALLET">Wallet (Paytm, PhonePe)</option>
                     <option value="CASH">Cash in hand</option>
-                  </select>
+                  </NativeSelect>
                 )}
               </Field>
 
@@ -244,10 +255,10 @@ export default async function Page({
 
               <Field name="accountNumberSuffix" label="Last four digits">
                 {(props) => (
-                  <input
+                  <Input
                     {...props}
                     name="accountNumberSuffix"
-                    className="form-input tnum"
+                    className="tabular-nums"
                     defaultValue={account.accountNumberSuffix ?? ""}
                     inputMode="numeric"
                     maxLength={4}
@@ -262,10 +273,10 @@ export default async function Page({
                 hint="Lower sorts first. Leave alone if you have no preference."
               >
                 {(props) => (
-                  <input
+                  <Input
                     {...props}
                     name="sortOrder"
-                    className="form-input tnum"
+                    className="tabular-nums"
                     defaultValue={account.sortOrder}
                     inputMode="numeric"
                   />
@@ -279,39 +290,37 @@ export default async function Page({
               </div>
             </>
           </ActionForm>
-        </Card>
+        </Panel>
       )}
 
       {/* ── This account's ledger ───────────────────────────────────────── */}
-      <section className="panel mb-6 p-0">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-600 px-5 py-4">
-          <h2 className="text-sm font-semibold text-gray-100">Transactions</h2>
+      <Panel
+        title="Transactions"
+        actions={
           <form method="get" className="flex items-center gap-2">
             {query.asOf && <input type="hidden" name="asOf" value={query.asOf} />}
-            <input
+            <Input
               name="q"
               type="search"
               defaultValue={query.q ?? ""}
               placeholder="Search narration or reference"
               aria-label="Search this account's transactions"
-              className="form-input h-9 py-1 text-xs"
             />
-            <button type="submit" className="ghost-btn h-9 px-3 text-xs">
+            <Button type="submit" variant="outline" size="sm">
               Search
-            </button>
+            </Button>
           </form>
-        </div>
+        }
+      >
 
         {ledger.transactions.length === 0 ? (
-          <EmptyState
-            icon={ArrowLeftRight}
-            title={query.q ? "Nothing matches that search" : "No transactions yet"}
-            body={
-              query.q
+          <Banner title={query.q ? "Nothing matches that search" : "No transactions yet"}>
+            <p>
+              {query.q
                 ? "Try a shorter search, or clear it to see everything."
-                : "Import a statement to fill this account in."
-            }
-          />
+                : "Import a statement to fill this account in."}
+            </p>
+          </Banner>
         ) : (
           <>
             <LedgerTable
@@ -335,39 +344,33 @@ export default async function Page({
               })}
             />
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-600 px-5 py-3">
-              <p className="text-xs text-gray-500">
-                <span className="tnum text-gray-300">{ledger.totalCount}</span> transaction
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-(--border) pt-3">
+              <p className="text-xs text-(--fg-muted)">
+                <span className="tabular-nums text-(--fg-secondary)">{ledger.totalCount}</span> transaction
                 {ledger.totalCount === 1 ? "" : "s"} · page {page + 1} of {pageCount}
               </p>
               <div className="flex gap-2">
                 {page > 0 && (
-                  <Link
-                    href={pageHref(accountId, query, page - 1)}
-                    className="ghost-btn h-9 px-3 text-xs"
-                  >
-                    Previous
-                  </Link>
+                  <Button asChild variant="ghost" size="sm">
+                    <Link href={pageHref(accountId, query, page - 1)}>Previous</Link>
+                  </Button>
                 )}
                 {page < pageCount - 1 && (
-                  <Link
-                    href={pageHref(accountId, query, page + 1)}
-                    className="ghost-btn h-9 px-3 text-xs"
-                  >
-                    Next
-                  </Link>
+                  <Button asChild variant="ghost" size="sm">
+                    <Link href={pageHref(accountId, query, page + 1)}>Next</Link>
+                  </Button>
                 )}
               </div>
             </div>
           </>
         )}
-      </section>
+      </Panel>
 
       {/* ── Danger zone ─────────────────────────────────────────────────── */}
       {!account.isSystem && (
-        <Card
+        <Panel
           title="Closing and deleting"
-          subtitle="Closing is reversible and keeps everything. Deleting is not, which is why it insists the account is closed first."
+          description="Closing is reversible and keeps everything. Deleting is not, which is why it insists the account is closed first."
         >
           <div className="flex flex-wrap gap-3">
             {!account.isClosed && (
@@ -429,15 +432,15 @@ export default async function Page({
             )}
 
             {!canDelete && !canDeleteHistory && (
-              <p className="self-center text-xs text-gray-500">
+              <p className="self-center text-xs text-(--fg-muted)">
                 {postingCount} posting(s) here. Close the account first to be able to delete it
                 along with its history.
               </p>
             )}
           </div>
-        </Card>
+        </Panel>
       )}
-    </>
+    </PageShell>
   );
 }
 

@@ -4,9 +4,12 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Currency, Money } from "@/core/money";
+import { SortKey } from "@/core/units";
 import { CalendarDate, DateRange } from "@/core/time";
 import { AccountCode, AccountId, SystemAccountCodes } from "@/domain/accounts";
-import { TransactionId } from "@/domain/transactions";
+import { TombstoneRefusedError, TransactionId } from "@/domain/transactions";
+import { RemoveTransactions } from "@/app/ledger.usecases";
+import { describeRemovalRefusal } from "../transactions/bulk-scope";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 import { fail, ok, type ActionState } from "@/ui/action-state";
 
@@ -255,7 +258,7 @@ export async function updateCashAccountAction(
     subtype: parsed.data.subtype,
     institution: parsed.data.institution || null,
     accountNumberSuffix: parsed.data.accountNumberSuffix || null,
-    sortOrder: parsed.data.sortOrder ? Number(parsed.data.sortOrder) : undefined,
+    sortOrder: parsed.data.sortOrder ? SortKey(Number(parsed.data.sortOrder)) : undefined,
   });
 
   await services().repositories.accounts.save(next);
@@ -506,10 +509,10 @@ export async function deleteTransactionAction(
 /**
  * Deletes the selected transactions.
  *
- * One at a time through the repository rather than one bulk `UPDATE … IN (…)`:
- * the count reported back has to be the number actually tombstoned, and a
- * transaction that vanished between the page rendering and the click should be
- * skipped rather than silently inflating the total.
+ * Through `RemoveTransactions` (task 2.5): the selection is one atomic batch under
+ * one undoable request id (D1). A selected row that vanished, was already removed
+ * or sits in a reconciled statement refuses the whole batch, naming it — nothing
+ * is removed, rather than a partial application reported as success.
  */
 export async function bulkDeleteTransactionsAction(
   _previous: ActionState | null,
@@ -519,8 +522,7 @@ export async function bulkDeleteTransactionsAction(
   if (!parsed.success) return fail("Select at least one transaction.");
 
   const userId = await currentUserId();
-  const { journal } = services().repositories;
-  const at = new Date();
+  const { repositories, clock } = services();
 
   const ids = parsed.data.transactionIds.split(",").filter(Boolean);
   if (ids.length > 500) return fail("Delete at most 500 transactions at a time.");
@@ -528,16 +530,19 @@ export async function bulkDeleteTransactionsAction(
     return fail("The transaction selection is invalid.");
   }
 
-  let deleted = 0;
-  for (const id of ids) {
-    const transactionId = TransactionId.from(id);
-    if (await journal.findById(userId, transactionId)) {
-      await journal.softDelete(userId, transactionId, at);
-      deleted += 1;
-    }
+  const result = await new RemoveTransactions(repositories.journal, clock).execute({
+    userId,
+    transactionIds: [...new Set(ids)].map((id) => TransactionId.from(id)),
+  });
+  if (!result.ok) {
+    const error = result.error;
+    return fail(
+      error instanceof TombstoneRefusedError
+        ? describeRemovalRefusal(error.reason, error.transactionIds)
+        : error.message,
+    );
   }
 
-  if (deleted === 0) return fail("Those transactions are already gone.");
   revalidateAccountSurfaces(parsed.data.accountId);
-  return ok(`${deleted} transaction(s) deleted.`);
+  return ok(`${result.value.removed} transaction(s) deleted.`);
 }

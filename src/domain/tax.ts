@@ -2,6 +2,7 @@ import { DomainError, UserId, ValueObject } from "@/core/kernel";
 import { Money, ROUNDING } from "@/core/money";
 import { Percentage } from "@/core/numeric";
 import { CalendarDate, FinancialYear } from "@/core/time";
+import { Days, IndexPoints, Ordinal } from "@/core/units";
 
 /**
  * The tax engine.
@@ -86,7 +87,7 @@ export interface TaxableEvent {
   readonly taxCategory: TaxCategory;
   readonly instrumentId: string | null;
   readonly acquiredOn: CalendarDate | null;
-  readonly holdingDays: number | null;
+  readonly holdingDays: Days | null;
   readonly proceeds: Money | null;
   readonly costBasis: Money | null;
   /** Economic gain, before any relief. Never modified by a rule. */
@@ -317,7 +318,7 @@ export interface AssessmentContext {
 export abstract class TaxRule {
   abstract readonly name: string;
   /** Ascending. Gaps of 100, so a new rule slots in without renumbering. */
-  abstract readonly priority: number;
+  abstract readonly priority: Ordinal;
   abstract appliesTo(event: TaxableEvent, ctx: AssessmentContext): boolean;
   abstract compute(event: TaxableEvent, ctx: AssessmentContext): void;
 
@@ -355,7 +356,7 @@ export abstract class TaxRule {
 /** Priority 100. PPF, EPF, SGB at maturity — exempt outright, not merely low-rated. */
 export class ExemptRule extends TaxRule {
   readonly name = "IN.EXEMPT_SCHEME";
-  readonly priority = 100;
+  readonly priority = Ordinal(100);
 
   appliesTo(event: TaxableEvent): boolean {
     return event.taxCategory === "EXEMPT_SCHEME";
@@ -384,7 +385,7 @@ export class ExemptRule extends TaxRule {
  */
 export class GrandfatheringRule extends TaxRule {
   readonly name = "IN.GRANDFATHERING_2018";
-  readonly priority = 200;
+  readonly priority = Ordinal(200);
 
   appliesTo(event: TaxableEvent, ctx: AssessmentContext): boolean {
     const grandfatherDate = ctx.regime.grandfatherDateFor(event.taxCategory);
@@ -431,7 +432,7 @@ export class GrandfatheringRule extends TaxRule {
  */
 export class IndexationRule extends TaxRule {
   readonly name = "IN.INDEXATION_CII";
-  readonly priority = 300;
+  readonly priority = Ordinal(300);
 
   appliesTo(event: TaxableEvent, ctx: AssessmentContext): boolean {
     if (ctx.accumulator.exempt) return false;
@@ -472,7 +473,7 @@ export class IndexationRule extends TaxRule {
 /** Priority 400. Classification and the headline rate. */
 export class CapitalGainClassificationRule extends TaxRule {
   readonly name = "IN.CLASSIFY_TERM";
-  readonly priority = 400;
+  readonly priority = Ordinal(400);
 
   appliesTo(event: TaxableEvent, ctx: AssessmentContext): boolean {
     // F&O never reaches here: a contract has no holding period to classify.
@@ -535,7 +536,7 @@ export class CapitalGainClassificationRule extends TaxRule {
 /** Priority 500. Dividends and interest are slab income. */
 export class SlabIncomeRule extends TaxRule {
   readonly name = "IN.SLAB_INCOME";
-  readonly priority = 500;
+  readonly priority = Ordinal(500);
 
   appliesTo(event: TaxableEvent, ctx: AssessmentContext): boolean {
     return (
@@ -571,7 +572,7 @@ export class SlabIncomeRule extends TaxRule {
  */
 export class BusinessIncomeRule extends TaxRule {
   readonly name = "IN.FNO_BUSINESS_INCOME";
-  readonly priority = 450;
+  readonly priority = Ordinal(450);
 
   appliesTo(event: TaxableEvent, ctx: AssessmentContext): boolean {
     return (
@@ -601,7 +602,7 @@ export class BusinessIncomeRule extends TaxRule {
  */
 export class LossOffsetRule extends TaxRule {
   readonly name = "IN.LOSS_SET_OFF";
-  readonly priority = 600;
+  readonly priority = Ordinal(600);
 
   appliesTo(event: TaxableEvent, ctx: AssessmentContext): boolean {
     return (
@@ -655,7 +656,7 @@ export class LossOffsetRule extends TaxRule {
  */
 export class LtcgExemptionRule extends TaxRule {
   readonly name = "IN.LTCG_EXEMPTION";
-  readonly priority = 650;
+  readonly priority = Ordinal(650);
 
   appliesTo(event: TaxableEvent, ctx: AssessmentContext): boolean {
     return (
@@ -685,7 +686,7 @@ export class LtcgExemptionRule extends TaxRule {
 /** Priority 900. The rate finally meets the taxable amount. */
 export class ApplyRateRule extends TaxRule {
   readonly name = "IN.APPLY_RATE";
-  readonly priority = 900;
+  readonly priority = Ordinal(900);
 
   appliesTo(_event: TaxableEvent, ctx: AssessmentContext): boolean {
     return !ctx.accumulator.exempt;
@@ -704,7 +705,7 @@ export class ApplyRateRule extends TaxRule {
 /* ═══ Regimes ════════════════════════════════════════════════════════════ */
 
 export interface CategoryRule {
-  readonly longTermDays: number | null;
+  readonly longTermDays: Days | null;
   readonly ltcgRate: Percentage | null;
   readonly stcgRate: Percentage | null;
   readonly indexationAllowed: boolean;
@@ -738,7 +739,7 @@ export abstract class TaxRegime {
   protected abstract readonly categories: ReadonlyMap<TaxCategory, CategoryRule>;
   /** Surcharge bands, as (threshold, rate) ascending. */
   protected abstract readonly surchargeBands: readonly { above: Money; rate: Percentage }[];
-  abstract cii(financialYear: FinancialYear): number | null;
+  abstract cii(financialYear: FinancialYear): IndexPoints | null;
 
   covers(date: CalendarDate): boolean {
     return (
@@ -751,7 +752,7 @@ export abstract class TaxRegime {
     return this.categories.get(category) ?? null;
   }
 
-  longTermDaysFor(category: TaxCategory): number | null {
+  longTermDaysFor(category: TaxCategory): Days | null {
     return this.ruleFor(category)?.longTermDays ?? null;
   }
 
@@ -855,7 +856,7 @@ export class IndiaFY2024 extends TaxRegime {
 
   protected readonly categories: ReadonlyMap<TaxCategory, CategoryRule> = new Map([
     ["LISTED_EQUITY", {
-      longTermDays: 365,
+      longTermDays: Days(365),
       ltcgRate: PERCENT("10"),
       stcgRate: PERCENT("15"),
       indexationAllowed: false,
@@ -864,7 +865,7 @@ export class IndiaFY2024 extends TaxRegime {
       flatRate: null,
     }],
     ["EQUITY_MUTUAL_FUND", {
-      longTermDays: 365,
+      longTermDays: Days(365),
       ltcgRate: PERCENT("10"),
       stcgRate: PERCENT("15"),
       indexationAllowed: false,
@@ -873,7 +874,7 @@ export class IndiaFY2024 extends TaxRegime {
       flatRate: null,
     }],
     ["DEBT_LEGACY", {
-      longTermDays: 1095,
+      longTermDays: Days(1095),
       ltcgRate: PERCENT("20"),
       stcgRate: null,
       indexationAllowed: true,
@@ -882,7 +883,7 @@ export class IndiaFY2024 extends TaxRegime {
       flatRate: null,
     }],
     ["UNLISTED_EQUITY", {
-      longTermDays: 730,
+      longTermDays: Days(730),
       ltcgRate: PERCENT("20"),
       stcgRate: null,
       indexationAllowed: true,
@@ -926,8 +927,9 @@ export class IndiaFY2024 extends TaxRegime {
     }],
   ]);
 
-  cii(financialYear: FinancialYear): number | null {
-    return CII[financialYear.label] ?? null;
+  cii(financialYear: FinancialYear): IndexPoints | null {
+    const index = CII[financialYear.label];
+    return index === undefined ? null : IndexPoints(index);
   }
 }
 
@@ -941,7 +943,7 @@ export class IndiaFY2025 extends TaxRegime {
 
   protected readonly categories: ReadonlyMap<TaxCategory, CategoryRule> = new Map([
     ["LISTED_EQUITY", {
-      longTermDays: 365,
+      longTermDays: Days(365),
       ltcgRate: PERCENT("12.5"),
       stcgRate: PERCENT("20"),
       indexationAllowed: false,
@@ -950,7 +952,7 @@ export class IndiaFY2025 extends TaxRegime {
       flatRate: null,
     }],
     ["EQUITY_MUTUAL_FUND", {
-      longTermDays: 365,
+      longTermDays: Days(365),
       ltcgRate: PERCENT("12.5"),
       stcgRate: PERCENT("20"),
       indexationAllowed: false,
@@ -970,7 +972,7 @@ export class IndiaFY2025 extends TaxRegime {
       flatRate: null,
     }],
     ["DEBT_LEGACY", {
-      longTermDays: 1095,
+      longTermDays: Days(1095),
       ltcgRate: PERCENT("20"),
       stcgRate: null,
       indexationAllowed: true,
@@ -979,7 +981,7 @@ export class IndiaFY2025 extends TaxRegime {
       flatRate: null,
     }],
     ["GOLD", {
-      longTermDays: 730,
+      longTermDays: Days(730),
       ltcgRate: PERCENT("12.5"),
       stcgRate: null,
       indexationAllowed: false,
@@ -988,7 +990,7 @@ export class IndiaFY2025 extends TaxRegime {
       flatRate: null,
     }],
     ["UNLISTED_EQUITY", {
-      longTermDays: 730,
+      longTermDays: Days(730),
       ltcgRate: PERCENT("12.5"),
       stcgRate: null,
       indexationAllowed: false,
@@ -1032,8 +1034,9 @@ export class IndiaFY2025 extends TaxRegime {
     }],
   ]);
 
-  cii(financialYear: FinancialYear): number | null {
-    return CII[financialYear.label] ?? null;
+  cii(financialYear: FinancialYear): IndexPoints | null {
+    const index = CII[financialYear.label];
+    return index === undefined ? null : IndexPoints(index);
   }
 }
 

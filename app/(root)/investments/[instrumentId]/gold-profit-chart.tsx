@@ -17,6 +17,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { Chart, LineSeries, type SeriesPoint } from "@/ui/charts";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "../../../../components/ui/table";
 
 export interface GoldProfitPoint {
   month: string;
@@ -93,8 +94,8 @@ export default function GoldProfitChart({
           aria-pressed={range === option.id}
           className={
             range === option.id
-              ? "focus-brand rounded-lg border border-gray-500 bg-gray-700 px-2.5 py-1 text-xs font-medium text-gray-100"
-              : "focus-brand rounded-lg border border-gray-600 px-2.5 py-1 text-xs font-medium text-gray-400 transition-colors hover:text-gray-100"
+              ? "focus-brand rounded-lg border border-(--border-control) bg-(--bg-hover) px-2.5 py-1 text-xs font-medium text-(--fg)"
+              : "focus-brand rounded-lg border border-(--border) px-2.5 py-1 text-xs font-medium text-(--fg-secondary) transition-colors hover:text-(--fg)"
           }
         >
           {option.id}
@@ -158,7 +159,7 @@ export default function GoldProfitChart({
 
   const empty =
     points.length === 0 ? (
-      <p className="py-10 text-center text-sm text-gray-500">
+      <p className="py-10 text-center text-sm text-(--fg-muted)">
         Nothing to plot yet. Record a purchase and refresh prices, and the months fill in from
         there.
       </p>
@@ -174,41 +175,39 @@ export default function GoldProfitChart({
         height={300}
         empty={empty}
         tableView={() => (
-          <div className="table-scroll">
-            <table className="w-full text-sm">
-              <caption className="sr-only">Month-end profit split by source</caption>
-              <thead>
-                <tr className="border-b border-gray-600">
-                  <th className="metric-label px-3 py-2 text-left">Month</th>
-                  <th className="metric-label px-3 py-2 text-right">Grams</th>
-                  <th className="metric-label px-3 py-2 text-right">From lease</th>
-                  <th className="metric-label px-3 py-2 text-right">Invested</th>
-                  <th className="metric-label px-3 py-2 text-right">Value</th>
-                  <th className="metric-label px-3 py-2 text-right">Profit</th>
-                </tr>
-              </thead>
-              <tbody>
+          <Table>
+              <TableCaption className="sr-only">Month-end profit split by source</TableCaption>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Month</TableHead>
+                  <TableHead className="text-right">Grams</TableHead>
+                  <TableHead className="text-right">From lease</TableHead>
+                  <TableHead className="text-right">Invested</TableHead>
+                  <TableHead className="text-right">Value</TableHead>
+                  <TableHead className="text-right">Profit</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {shown.map((point) => (
-                  <tr key={point.month} className="border-b border-gray-600/50 last:border-0">
-                    <td className="px-3 py-2 text-gray-400">{point.month}</td>
-                    <td className="tnum px-3 py-2 text-right text-gray-300">{point.grams}g</td>
-                    <td className="tnum px-3 py-2 text-right text-green-500">
+                  <TableRow key={point.month} className="border-b border-(--border)/50 last:border-0">
+                    <TableCell className="text-(--fg-secondary)">{point.month}</TableCell>
+                    <TableCell className="tnum text-right text-(--fg-secondary)">{point.grams}g</TableCell>
+                    <TableCell className="tnum text-right text-(--gain)">
                       {point.leaseGrams}g
-                    </td>
-                    <td className="tnum px-3 py-2 text-right text-gray-400">
+                    </TableCell>
+                    <TableCell className="tnum text-right text-(--fg-secondary)">
                       {point.investedMinor}
-                    </td>
-                    <td className="tnum px-3 py-2 text-right text-gray-400">
+                    </TableCell>
+                    <TableCell className="tnum text-right text-(--fg-secondary)">
                       {point.marketValueMinor ?? "—"}
-                    </td>
-                    <td className="tnum px-3 py-2 text-right text-gray-200">
+                    </TableCell>
+                    <TableCell className="tnum text-right text-(--fg)">
                       {point.totalProfitMinor ?? "—"}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
         )}
       >
         <LineSeries data={profitData} series={[...PROFIT_SERIES]} currency={currency} />
@@ -222,25 +221,25 @@ export default function GoldProfitChart({
             series={[{ id: "rate", label: "Rate / gram" }]}
             height={200}
             tableView={() => (
-              <table className="w-full text-sm">
-                <caption className="sr-only">Month-end gram rate</caption>
-                <thead>
-                  <tr className="border-b border-gray-600">
-                    <th className="metric-label px-3 py-2 text-left">Month</th>
-                    <th className="metric-label px-3 py-2 text-right">Rate (minor units)</th>
-                  </tr>
-                </thead>
-                <tbody>
+              <Table>
+                <TableCaption className="sr-only">Month-end gram rate</TableCaption>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Month</TableHead>
+                    <TableHead className="text-right">Rate (minor units)</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {shown.map((point) => (
-                    <tr key={point.month} className="border-b border-gray-600/50 last:border-0">
-                      <td className="px-3 py-2 text-gray-400">{point.month}</td>
-                      <td className="tnum px-3 py-2 text-right text-gray-300">
+                    <TableRow key={point.month} className="border-b border-(--border)/50 last:border-0">
+                      <TableCell className="text-(--fg-secondary)">{point.month}</TableCell>
+                      <TableCell className="tnum text-right text-(--fg-secondary)">
                         {point.rateMinor ?? "—"}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             )}
           >
             <LineSeries
@@ -248,7 +247,7 @@ export default function GoldProfitChart({
               series={[{ id: "rate", label: "Rate / gram" }]}
               currency={currency}
               area
-            />
+           />
           </Chart>
 
           {/*
@@ -258,8 +257,8 @@ export default function GoldProfitChart({
             * dishonest thing in this view.
             */}
           {rated > 0 && (
-            <p className="px-1 text-xs text-gray-500">
-              History before the latest published rates is <strong className="font-medium text-gray-400">estimated</strong>:
+            <p className="px-1 text-xs text-(--fg-muted)">
+              History before the latest published rates is <strong className="font-medium text-(--fg-secondary)">estimated</strong>:
               IBJA publishes no free rate history, so earlier months are derived from a domestic
               exchange-traded fund for the same metal, calibrated to the most recent published IBJA
               rate. Today&rsquo;s valuation always uses the published rate itself.
@@ -271,8 +270,8 @@ export default function GoldProfitChart({
               role="status"
               className={
                 historyState.status === "error"
-                  ? "px-1 text-xs text-rose-400"
-                  : "px-1 text-xs text-gray-500"
+                  ? "px-1 text-xs text-(--loss)"
+                  : "px-1 text-xs text-(--fg-muted)"
               }
             >
               {historyState.message}

@@ -4,7 +4,9 @@ import { connection } from "next/server";
 import { ArrowLeft } from "lucide-react";
 import { CalendarDate, DateRange } from "@/core/time";
 import type { Bar } from "@/domain/analysis";
-import { Card, PageHeader, Pill } from "@/ui/primitives";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { ChartPanel, Page as Shell, Masthead, Panel } from "../../../../components/ui/page-shell";
+import { Banner } from "../../../../components/ui/banner";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 import ComparisonChart, { type ComparisonPoint, type ComparisonSeries } from "./comparison-chart";
 
@@ -154,29 +156,30 @@ export default async function ComparePage({
   ];
 
   return (
-    <>
-      <PageHeader
+    <Shell>
+      <Masthead
         title="Compare holdings"
-        subtitle="Two or more holdings and a market index on one axis, each rebased to 100 at their first shared day."
-        badge={<Pill tone="brand">Indexed</Pill>}
-        action={
-          <Link href="/investments" className="ghost-btn h-10 px-4 text-xs">
-            <ArrowLeft className="size-4" aria-hidden />
-            Investments
-          </Link>
+        side={
+          <>
+            <StatusBadge tone="accent">Indexed</StatusBadge>
+            <Link href="/investments" className="ghost-btn h-10 px-4 text-xs">
+              <ArrowLeft className="size-4" aria-hidden />
+              Investments
+            </Link>
+          </>
         }
       />
+      <p className="text-sm text-(--fg-muted)">Two or more holdings and a market index on one axis, each rebased to 100 at their first shared day.</p>
 
-      <Card
+      <Panel
         title="Choose what to compare"
-        subtitle="The selection lives in the address, so a comparison you like is a link you can keep."
-        className="mb-6"
+        description="The selection lives in the address, so a comparison you like is a link you can keep."
       >
         <form method="get" className="space-y-4">
           <fieldset>
-            <legend className="metric-label mb-2">Holdings</legend>
+            <legend className="mb-2 text-xs font-medium text-(--fg-muted)">Holdings</legend>
             {holdings.length === 0 ? (
-              <p className="rounded-lg border border-gray-600/70 p-3 text-sm text-gray-500">
+              <p className="rounded-lg border border-(--border)/70 p-3 text-sm text-(--fg-muted)">
                 No open holdings yet. Add one first and its history will be available here.
               </p>
             ) : (
@@ -184,7 +187,7 @@ export default async function ComparePage({
                 {holdings.map((instrument) => (
                   <label
                     key={instrument.id.value}
-                    className="flex items-start gap-2 rounded-lg border border-gray-600/70 p-3 text-sm text-gray-300"
+                    className="flex items-start gap-2 rounded-lg border border-(--border)/70 p-3 text-sm text-(--fg-secondary)"
                   >
                     <input
                       type="checkbox"
@@ -194,8 +197,8 @@ export default async function ComparePage({
                       className="mt-0.5 size-4 shrink-0"
                     />
                     <span className="min-w-0">
-                      <span className="block font-medium text-gray-100">{instrument.symbol}</span>
-                      <span className="block text-xs text-gray-500">
+                      <span className="block font-medium text-(--fg)">{instrument.symbol}</span>
+                      <span className="block text-xs text-(--fg-muted)">
                         {instrument.name} · {instrument.currency.code}
                       </span>
                     </span>
@@ -206,16 +209,16 @@ export default async function ComparePage({
           </fieldset>
 
           <fieldset>
-            <legend className="metric-label mb-2">Benchmark</legend>
+            <legend className="mb-2 text-xs font-medium text-(--fg-muted)">Benchmark</legend>
             <div className="flex flex-wrap gap-2">
-              <label className="flex items-center gap-2 rounded-lg border border-gray-600/70 px-3 py-2 text-sm text-gray-300">
+              <label className="flex items-center gap-2 rounded-lg border border-(--border)/70 px-3 py-2 text-sm text-(--fg-secondary)">
                 <input type="radio" name="benchmark" value="" defaultChecked={benchmark === null} className="size-4" />
                 None
               </label>
               {BENCHMARKS.map((option) => (
                 <label
                   key={option.id}
-                  className="flex items-center gap-2 rounded-lg border border-gray-600/70 px-3 py-2 text-sm text-gray-300"
+                  className="flex items-center gap-2 rounded-lg border border-(--border)/70 px-3 py-2 text-sm text-(--fg-secondary)"
                 >
                   <input
                     type="radio"
@@ -225,7 +228,7 @@ export default async function ComparePage({
                     className="size-4"
                   />
                   {option.label}
-                  <span className="text-xs text-gray-500">from {option.from}</span>
+                  <span className="text-xs text-(--fg-muted)">from {option.from}</span>
                 </label>
               ))}
             </div>
@@ -235,19 +238,22 @@ export default async function ComparePage({
             Compare
           </button>
         </form>
-      </Card>
+      </Panel>
 
       {chosen.length < 2 && (
-        <p className="panel mb-6 p-5 text-sm text-gray-500" role="status">
-          Pick at least two holdings — one line and an index is a holding page, not a comparison. A benchmark is
-          optional and is drawn dashed when chosen.
-        </p>
+        <Banner role="status" title="Pick at least two holdings">
+          <p>
+            Pick at least two holdings — one line and an index is a holding page, not a comparison. A benchmark is
+            optional and is drawn dashed when chosen.
+          </p>
+        </Banner>
       )}
 
-      <section className="panel p-5" aria-labelledby="comparison-heading">
-        <h2 id="comparison-heading" className="sr-only">Indexed comparison</h2>
-        <ComparisonChart series={series} data={data} baseDate={baseDate} partial={partial} />
-      </section>
-    </>
+      <ChartPanel
+        title="Indexed comparison"
+        summary="Each selected holding indexed to 100 on the base date, with the optional benchmark dashed."
+        state={{ kind: "ready", children: <ComparisonChart series={series} data={data} baseDate={baseDate} partial={partial} /> }}
+      />
+    </Shell>
   );
 }

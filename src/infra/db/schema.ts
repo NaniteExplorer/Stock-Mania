@@ -2409,3 +2409,432 @@ export const marketHolidays = sqliteTable(
   },
   (table) => [uniqueIndex("market_holidays_pk").on(table.mic, table.holidayDate)],
 );
+
+
+/* P1 manual reference data (class B). Never stores generated posting amounts. */
+const p1ReferenceFields = () => ({
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  createdAt: createdAt(), updatedAt: updatedAt(), deletedAt: deletedAt(),
+});
+const p1ScheduleFields = () => ({
+  cadence: text("cadence", { enum: ["MONTHLY", "QUARTERLY", "HALF_YEARLY", "ANNUAL"] }).notNull(),
+  anchorOn: calendarDate("anchor_on").notNull(),
+  scheduleEndsOn: calendarDate("schedule_ends_on"),
+  cancelNoticeDays: integer("cancel_notice_days"),
+});
+const p1DateRule = (column: string) => `${column} IS NULL OR (length(${column}) = 10 AND ${column} GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND date(${column}, '+0 days') IS ${column})`;
+const p1ScheduleRule = "cadence IN ('MONTHLY','QUARTERLY','HALF_YEARLY','ANNUAL') AND (cancel_notice_days IS NULL OR (typeof(cancel_notice_days) = 'integer' AND cancel_notice_days >= 0)) AND (schedule_ends_on IS NULL OR schedule_ends_on >= anchor_on)";
+const p1CurrencyRule = "length(currency) = 3 AND length(CAST(currency AS BLOB)) = 3 AND currency NOT GLOB '*[^A-Z]*'";
+
+export const insurancePolicies = sqliteTable("insurance_policies", {
+    ...p1ReferenceFields(), kind: text("kind", { enum: ["HEALTH", "TERM_LIFE", "PERSONAL_ACCIDENT", "MOTOR", "HOME", "OTHER"] }).notNull(),
+    insurer: text("insurer").notNull(), insured: text("insured").notNull(),
+    currency: text("currency").notNull(), sumInsuredMinor: moneyMinor("sum_insured_minor"),
+    ...p1ScheduleFields(), endsOn: calendarDate("ends_on"),
+  }, (t) => [
+    index("insurance_policies_user_live_idx").on(t.userId, t.deletedAt),
+    check("insurance_policies_fields_check", sql.raw("kind IN ('HEALTH','TERM_LIFE','PERSONAL_ACCIDENT','MOTOR','HOME','OTHER') AND length(trim(insurer,char(9,10,11,12,13,32,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288,65279))) > 0 AND length(trim(insured,char(9,10,11,12,13,32,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288,65279))) > 0 AND (sum_insured_minor IS NULL OR (typeof(sum_insured_minor) = 'integer' AND sum_insured_minor > 0)) AND (ends_on IS NULL OR ends_on >= anchor_on)")),
+    check("insurance_policies_currency_check", sql.raw(p1CurrencyRule)),
+    check("insurance_policies_schedule_check", sql.raw(p1ScheduleRule)),
+    check("insurance_policies_dates_check", sql.raw([p1DateRule("anchor_on"), p1DateRule("schedule_ends_on"), p1DateRule("ends_on")].map((rule) => `(${rule})`).join(" AND "))),
+  ]);
+
+export const recurringCommitments = sqliteTable("recurring_commitments", {
+    ...p1ReferenceFields(), name: text("name").notNull(),
+    kind: text("kind", { enum: ["STREAMING", "MOBILE", "BROADBAND", "EDUCATION", "MEMBERSHIP", "SOFTWARE", "OTHER"] }).notNull(),
+    currency: text("currency").notNull(), ...p1ScheduleFields(),
+    autoRenews: integer("auto_renews", { mode: "boolean" }).notNull(), endsOn: calendarDate("ends_on"),
+  }, (t) => [
+    index("recurring_commitments_user_live_idx").on(t.userId, t.deletedAt),
+    check("recurring_commitments_fields_check", sql.raw("length(trim(name,char(9,10,11,12,13,32,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288,65279))) > 0 AND kind IN ('STREAMING','MOBILE','BROADBAND','EDUCATION','MEMBERSHIP','SOFTWARE','OTHER') AND typeof(auto_renews) = 'integer' AND auto_renews IN (0,1) AND (ends_on IS NULL OR ends_on >= anchor_on)")),
+    check("recurring_commitments_currency_check", sql.raw(p1CurrencyRule)),
+    check("recurring_commitments_schedule_check", sql.raw(p1ScheduleRule)),
+    check("recurring_commitments_dates_check", sql.raw([p1DateRule("anchor_on"), p1DateRule("schedule_ends_on"), p1DateRule("ends_on")].map((rule) => `(${rule})`).join(" AND "))),
+  ]);
+
+export const incomeStreams = sqliteTable("income_streams", {
+    ...p1ReferenceFields(), name: text("name").notNull(),
+    kind: text("kind", { enum: ["SALARY", "FREELANCE", "BONUS", "RENT", "INTEREST", "OTHER"] }).notNull(),
+    payer: text("payer"), currency: text("currency").notNull(), ...p1ScheduleFields(),
+    graceDays: integer("grace_days").notNull(),
+  }, (t) => [
+    index("income_streams_user_live_idx").on(t.userId, t.deletedAt),
+    check("income_streams_fields_check", sql.raw("length(trim(name,char(9,10,11,12,13,32,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288,65279))) > 0 AND kind IN ('SALARY','FREELANCE','BONUS','RENT','INTEREST','OTHER') AND typeof(grace_days) = 'integer' AND grace_days >= 0")),
+    check("income_streams_currency_check", sql.raw(p1CurrencyRule)),
+    check("income_streams_schedule_check", sql.raw(p1ScheduleRule)),
+    check("income_streams_dates_check", sql.raw([p1DateRule("anchor_on"), p1DateRule("schedule_ends_on")].map((rule) => `(${rule})`).join(" AND "))),
+  ]);
+
+export const insurancePriceSteps = sqliteTable("insurance_price_steps", {
+    ...p1ReferenceFields(),
+    policyId: text("policy_id").notNull().references(() => insurancePolicies.id, { onDelete: "restrict" }),
+    fromDate: calendarDate("from_date").notNull(), amountMinor: moneyMinor("amount_minor"), currency: text("currency").notNull(),
+  }, (t) => [
+    index("insurance_price_steps_user_parent_idx").on(t.userId, t.policyId, t.fromDate),
+    uniqueIndex("insurance_price_steps_live_date_unique").on(t.policyId, t.fromDate).where(sql`${t.deletedAt} IS NULL`),
+    check("insurance_price_steps_amount_check", sql`amount_minor IS NULL OR (typeof(amount_minor) = 'integer' AND amount_minor >= 0)`),
+    check("insurance_price_steps_date_check", sql.raw(p1DateRule("from_date"))),
+    check("insurance_price_steps_currency_check", sql.raw(p1CurrencyRule)),
+  ]);
+
+export const commitmentPriceSteps = sqliteTable("commitment_price_steps", {
+    ...p1ReferenceFields(),
+    commitmentId: text("commitment_id").notNull().references(() => recurringCommitments.id, { onDelete: "restrict" }),
+    fromDate: calendarDate("from_date").notNull(), amountMinor: moneyMinor("amount_minor"), currency: text("currency").notNull(),
+  }, (t) => [
+    index("commitment_price_steps_user_parent_idx").on(t.userId, t.commitmentId, t.fromDate),
+    uniqueIndex("commitment_price_steps_live_date_unique").on(t.commitmentId, t.fromDate).where(sql`${t.deletedAt} IS NULL`),
+    check("commitment_price_steps_amount_check", sql`amount_minor IS NULL OR (typeof(amount_minor) = 'integer' AND amount_minor >= 0)`),
+    check("commitment_price_steps_date_check", sql.raw(p1DateRule("from_date"))),
+    check("commitment_price_steps_currency_check", sql.raw(p1CurrencyRule)),
+  ]);
+
+export const incomePriceSteps = sqliteTable("income_price_steps", {
+    ...p1ReferenceFields(),
+    streamId: text("stream_id").notNull().references(() => incomeStreams.id, { onDelete: "restrict" }),
+    fromDate: calendarDate("from_date").notNull(), amountMinor: moneyMinor("amount_minor"), currency: text("currency").notNull(),
+  }, (t) => [
+    index("income_price_steps_user_parent_idx").on(t.userId, t.streamId, t.fromDate),
+    uniqueIndex("income_price_steps_live_date_unique").on(t.streamId, t.fromDate).where(sql`${t.deletedAt} IS NULL`),
+    check("income_price_steps_amount_check", sql`amount_minor IS NULL OR (typeof(amount_minor) = 'integer' AND amount_minor >= 0)`),
+    check("income_price_steps_date_check", sql.raw(p1DateRule("from_date"))),
+    check("income_price_steps_currency_check", sql.raw(p1CurrencyRule)),
+  ]);
+
+export const coverAbsenceDeclarations = sqliteTable("cover_absence_declarations", {
+  ...p1ReferenceFields(),
+  kind: text("kind", { enum: ["HEALTH", "TERM_LIFE", "PERSONAL_ACCIDENT", "MOTOR", "HOME", "OTHER"] }).notNull(),
+  declaredOn: calendarDate("declared_on").notNull(),
+}, (t) => [
+  index("cover_absence_user_live_idx").on(t.userId, t.deletedAt),
+  uniqueIndex("cover_absence_live_date_unique").on(t.userId, t.kind, t.declaredOn).where(sql`${t.deletedAt} IS NULL`),
+  check("cover_absence_kind_check", sql`kind IN ('HEALTH','TERM_LIFE','PERSONAL_ACCIDENT','MOTOR','HOME','OTHER')`),
+  check("cover_absence_date_check", sql.raw(p1DateRule("declared_on"))),
+]);
+
+export const incomeReceipts = sqliteTable("income_receipts", {
+  ...p1ReferenceFields(),
+  streamId: text("stream_id").notNull().references(() => incomeStreams.id, { onDelete: "restrict" }),
+  occurrenceDate: calendarDate("occurrence_date").notNull(),
+  postingId: text("posting_id").notNull().references(() => postings.id, { onDelete: "restrict" }),
+  receivedOn: calendarDate("received_on").notNull(),
+}, (t) => [
+  index("income_receipts_user_stream_idx").on(t.userId, t.streamId, t.occurrenceDate),
+  uniqueIndex("income_receipts_live_occurrence_unique").on(t.streamId, t.occurrenceDate).where(sql`${t.deletedAt} IS NULL`),
+  uniqueIndex("income_receipts_live_posting_unique").on(t.postingId).where(sql`${t.deletedAt} IS NULL`),
+  check("income_receipts_dates_check", sql.raw([p1DateRule("occurrence_date"), p1DateRule("received_on")].map((rule) => `(${rule})`).join(" AND "))),
+]);
+
+/* ═══ Owner profile and projection assumptions ══════════════════════════ */
+
+/**
+ * Facts about the owner that no ledger can derive (task 4.1).
+ *
+ * Kept off better-auth's `user` table, whose columns the library owns. One live
+ * row per user. `born_on` is optional: when it is null nothing is guessed — the
+ * age-based screens degrade or refuse instead.
+ */
+export const ownerProfiles = sqliteTable(
+  "owner_profiles",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Date of birth, `YYYY-MM-DD`, or null when the owner has not given it. */
+    bornOn: calendarDate("born_on"),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("owner_profiles_live_user_unique").on(t.userId).where(sql`${t.deletedAt} IS NULL`),
+    check(
+      "owner_profiles_born_on_check",
+      sql`born_on IS NULL OR (length(born_on) = 10 AND born_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND date(born_on, '+0 days') IS born_on)`,
+    ),
+  ],
+);
+
+/**
+ * The projection's AssumptionSet (task 5.0), one row per stated key per user.
+ *
+ * `stated_json` holds the value in a lossless form (a decimal string for ratios
+ * and years, `{minor, currency}` for money); null means unknown — never zero.
+ * `source_json` is the AssumptionSource as stated. A key with no live row keeps
+ * the value AssumptionSet.initial() gives it.
+ */
+export const projectionAssumptions = sqliteTable(
+  "projection_assumptions",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    assumptionKey: text("assumption_key").notNull(),
+    statedJson: text("stated_json"),
+    sourceJson: text("source_json"),
+    verifiedOn: calendarDate("verified_on"),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("projection_assumptions_live_key_unique")
+      .on(t.userId, t.assumptionKey)
+      .where(sql`${t.deletedAt} IS NULL`),
+    check(
+      "projection_assumptions_key_check",
+      sql`assumption_key IN ('currentAge','retirementAge','horizonAge','inflation','withdrawalRate','monthlyContribution','equityShare','blockYears','npsAnnuityShareNonGovt','npsAnnuityShareGovt')`,
+    ),
+    check(
+      "projection_assumptions_verified_on_check",
+      sql`verified_on IS NULL OR (length(verified_on) = 10 AND date(verified_on, '+0 days') IS verified_on)`,
+    ),
+  ],
+);
+
+/* ═══ Asset acquisitions (task 1.8) ═════════════════════════════════════ */
+
+/**
+ * Which posting paid for a physical asset — the expense-to-asset link.
+ *
+ * A **side table** because of L12: a posting carries a category or an instrument,
+ * never both (`postings_no_category_on_commodity`), so the asset cannot be a
+ * second column on the posting. Only ids are stored: the acquisition date and
+ * cost are read from the posting and its transaction, which are authoritative
+ * (ARCHITECTURE §11, "Linked purchase"); a stored copy would drift.
+ *
+ * Class B (owner-stated). One live link per asset and one per posting; a relink
+ * tombstones the old row and inserts a new one, never an in-place rewrite.
+ */
+export const assetAcquisitions = sqliteTable(
+  "asset_acquisitions",
+  {
+    ...p1ReferenceFields(),
+    /** The physical asset: an ASSET ledger account of subtype REAL_ESTATE, VEHICLE or OTHER. */
+    assetAccountId: text("asset_account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id, { onDelete: "restrict" }),
+    /** The acquisition leg: a positive DEBIT on an EXPENSE account or on the asset's own account. */
+    postingId: text("posting_id")
+      .notNull()
+      .references(() => postings.id, { onDelete: "restrict" }),
+  },
+  (t) => [
+    index("asset_acquisitions_user_live_idx").on(t.userId, t.deletedAt),
+    uniqueIndex("asset_acquisitions_live_asset_unique").on(t.assetAccountId).where(sql`${t.deletedAt} IS NULL`),
+    uniqueIndex("asset_acquisitions_live_posting_unique").on(t.postingId).where(sql`${t.deletedAt} IS NULL`),
+  ],
+);
+
+/* ═══ Tier history (task 3.4 support) ═══════════════════════════════════ */
+
+/**
+ * The financial-health tier shown on a day, so demotion hysteresis has a real
+ * previous tier (`tierFor(score, facts, previous)`).
+ *
+ * Class C: recorded by the system from the computed score, with no owner verbs.
+ * At most one row per user per day; a second record that day updates the row.
+ * `score_scaled` is the composite score × 1 000 000 as an integer (never a
+ * float column), kept with `earned_tier` so a later screen can say what fell
+ * and by how much. A refused composite records nothing.
+ */
+export const tierHistory = sqliteTable(
+  "tier_history",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    recordedOn: calendarDate("recorded_on").notNull(),
+    /** The tier shown, after ceilings. */
+    tier: text("tier", { enum: ["LOWER", "MIDDLE", "UPPER"] }).notNull(),
+    /** The tier the score earned (with hysteresis) before ceilings. */
+    earnedTier: text("earned_tier", { enum: ["LOWER", "MIDDLE", "UPPER"] }).notNull(),
+    scoreScaled: integer("score_scaled").notNull(),
+    /**
+     * A03 tombstone. The owner has no verb on this table (class C), so only a
+     * system repair would set it; reads ignore tombstoned rows, and a new record
+     * for that day clears it (the row stays one per day either way).
+     */
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("tier_history_user_day_unique").on(t.userId, t.recordedOn),
+    check(
+      "tier_history_fields_check",
+      sql`tier IN ('LOWER','MIDDLE','UPPER') AND earned_tier IN ('LOWER','MIDDLE','UPPER') AND typeof(score_scaled) = 'integer' AND score_scaled >= 0 AND score_scaled <= 1000000`,
+    ),
+    check(
+      "tier_history_recorded_on_check",
+      sql`length(recorded_on) = 10 AND recorded_on GLOB '[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]' AND date(recorded_on, '+0 days') IS recorded_on`,
+    ),
+  ],
+);
+
+
+/**
+ * CPI Urban, entered by the owner (class B; net-worth-age-chart.md § "CPI series").
+ * One live row per user per month; `index_scaled` is the index × 10 000 as an
+ * integer. The base must match the month (2012 before Jan 2026, 2024 from it).
+ */
+export const cpiSeries = sqliteTable(
+  "cpi_series",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    month: text("month").notNull(),
+    base: text("base", { enum: ["2012", "2024"] }).notNull(),
+    indexScaled: integer("index_scaled").notNull(),
+    source: text("source").notNull(),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("cpi_series_user_month_unique").on(t.userId, t.month),
+    check(
+      "cpi_series_fields_check",
+      sql`length(month) = 7 AND month GLOB '[0-9][0-9][0-9][0-9]-[0-1][0-9]' AND substr(month,6,2) BETWEEN '01' AND '12' AND base IN ('2012','2024') AND ((month < '2026-01' AND base = '2012') OR (month >= '2026-01' AND base = '2024')) AND typeof(index_scaled) = 'integer' AND index_scaled > 0 AND length(trim(source)) > 0`,
+    ),
+  ],
+);
+
+/**
+ * The owner's stored target allocation (class B; financial-health-scoring.md § 3.6
+ * persistence). One live row per user per sleeve; `share_scaled` is the share in
+ * `Percentage` scaled units (1e6 per percent). Validity of the whole (shares sum to
+ * exactly 100%) is the domain's `targetAllocation()`; the row CHECK bounds each share.
+ */
+export const targetAllocations = sqliteTable(
+  "target_allocations",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    sleeveId: text("sleeve_id").notNull(),
+    shareScaled: integer("share_scaled").notNull(),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("target_allocations_user_sleeve_unique").on(t.userId, t.sleeveId),
+    check(
+      "target_allocations_fields_check",
+      sql`length(trim(sleeve_id)) > 0 AND typeof(share_scaled) = 'integer' AND share_scaled > 0 AND share_scaled <= 100000000`,
+    ),
+  ],
+);
+
+/**
+ * The owner's rebalancing band (class B; signals-board.md amendment 2026-11-04). One live
+ * row per user. Both figures are owner-entered `Percentage` scaled units (1e6 per percent);
+ * there is no default. The domain's `rebalancingBand()` refuses 5/25 or narrower.
+ */
+export const rebalancingBands = sqliteTable(
+  "rebalancing_bands",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    absoluteScaled: percentScaled("absolute_scaled").notNull(),
+    relativeScaled: percentScaled("relative_scaled").notNull(),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("rebalancing_bands_user_unique").on(t.userId),
+    check(
+      "rebalancing_bands_fields_check",
+      sql`typeof(absolute_scaled) = 'integer' AND typeof(relative_scaled) = 'integer' AND absolute_scaled > 5000000 AND absolute_scaled <= 100000000 AND relative_scaled > 25000000 AND relative_scaled <= 100000000`,
+    ),
+  ],
+);
+
+/**
+ * The minimum due the owner typed from an issuer's statement (class B; card-minimum-due.md).
+ * Keyed by card and statement end date; overrides the rule-computed minimum for that one
+ * statement. Only the typed figure is stored — the computed one never is.
+ */
+export const cardMinimumDues = sqliteTable(
+  "card_minimum_dues",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .references(() => ledgerAccounts.id, { onDelete: "cascade" }),
+    statementThrough: calendarDate("statement_through").notNull(),
+    currency: currencyCode(),
+    amountMinor: moneyMinor("amount_minor").notNull(),
+    deletedAt: deletedAt(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    uniqueIndex("card_minimum_dues_account_statement_unique").on(t.accountId, t.statementThrough),
+    index("card_minimum_dues_user_idx").on(t.userId),
+    check(
+      "card_minimum_dues_fields_check",
+      sql`typeof(amount_minor) = 'integer' AND amount_minor >= 0 AND length(statement_through) = 10 AND length(currency) = 3`,
+    ),
+  ],
+);
+
+/* Owner-valued physical assets. Identity belongs to the ledger account; the currency is
+ * recorded beside every amount (and trigger-pinned to the account's) per the money rule. */
+const physicalBasis = "model_basis IS NOT NULL AND length(trim(model_basis,char(9,10,11,12,13,32,160,5760,8192,8193,8194,8195,8196,8197,8198,8199,8200,8201,8202,8232,8233,8239,8287,12288,65279))) > 0";
+export const physicalAssets = sqliteTable("physical_assets", {
+  accountId: text("account_id").primaryKey().references(() => ledgerAccounts.id, { onDelete: "restrict" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  kind: text("kind", { enum: ["REAL_ESTATE", "VEHICLE", "OTHER"] }).notNull(),
+  currency: text("currency").notNull(),
+  purchaseOn: calendarDate("purchase_on"),
+  purchasePriceMinor: moneyMinor("purchase_price_minor"),
+  modelKind: text("model_kind", { enum: ["DECLINING", "STRAIGHT", "SCHEDULE"] }),
+  ratePercentScaled: percentScaled("rate_percent_scaled"),
+  floorPercentScaled: percentScaled("floor_percent_scaled"),
+  modelBasis: text("model_basis"),
+  scheduleId: text("schedule_id"),
+  createdAt: createdAt(), updatedAt: updatedAt(), deletedAt: deletedAt(),
+}, (t) => [
+  index("physical_assets_user_live_idx").on(t.userId, t.deletedAt),
+  check("physical_assets_currency_check", sql`length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'`),
+  check("physical_assets_kind_check", sql`kind IN ('REAL_ESTATE','VEHICLE','OTHER')`),
+  check("physical_assets_purchase_check", sql.raw(`(purchase_on IS NULL AND purchase_price_minor IS NULL) OR (purchase_on IS NOT NULL AND purchase_price_minor IS NOT NULL AND typeof(purchase_price_minor) = 'integer' AND purchase_price_minor > 0 AND (${p1DateRule("purchase_on")}))`)),
+  check("physical_assets_model_check", sql.raw(`coalesce((
+    (model_kind IS NULL AND rate_percent_scaled IS NULL AND floor_percent_scaled IS NULL AND model_basis IS NULL AND schedule_id IS NULL)
+    OR (model_kind = 'DECLINING' AND rate_percent_scaled IS NOT NULL AND typeof(rate_percent_scaled) = 'integer' AND rate_percent_scaled >= 0 AND rate_percent_scaled < 100000000 AND floor_percent_scaled IS NULL AND (${physicalBasis}) AND schedule_id IS NULL)
+    OR (model_kind = 'STRAIGHT' AND rate_percent_scaled IS NOT NULL AND typeof(rate_percent_scaled) = 'integer' AND rate_percent_scaled > 0 AND floor_percent_scaled IS NOT NULL AND typeof(floor_percent_scaled) = 'integer' AND floor_percent_scaled >= 0 AND floor_percent_scaled <= 100000000 AND (${physicalBasis}) AND schedule_id IS NULL)
+    OR (model_kind = 'SCHEDULE' AND schedule_id IS NOT NULL AND schedule_id = 'MOTOR_IDV' AND rate_percent_scaled IS NULL AND floor_percent_scaled IS NULL AND model_basis IS NULL)
+  ), 0)`)),
+]);
+
+export const physicalAssetValuations = sqliteTable("physical_asset_valuations", {
+  ...p1ReferenceFields(),
+  assetAccountId: text("asset_account_id").notNull().references(() => physicalAssets.accountId, { onDelete: "restrict" }),
+  onDate: calendarDate("on_date").notNull(),
+  valueMinor: moneyMinor("value_minor").notNull(),
+  currency: text("currency").notNull(),
+  source: text("source", { enum: ["PROFESSIONAL_VALUATION", "MARKET_COMPARABLE", "PURCHASE_PRICE", "SELF_ASSESSED"] }).notNull(),
+  note: text("note"),
+}, (t) => [
+  index("physical_asset_valuations_user_live_idx").on(t.userId, t.deletedAt),
+  uniqueIndex("physical_asset_valuations_live_date_unique").on(t.assetAccountId, t.onDate).where(sql`${t.deletedAt} IS NULL`),
+  check("physical_asset_valuations_date_check", sql.raw(p1DateRule("on_date"))),
+  check("physical_asset_valuations_value_check", sql`typeof(value_minor) = 'integer' AND value_minor >= 0`),
+  check("physical_asset_valuations_currency_check", sql`length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'`),
+  check("physical_asset_valuations_source_check", sql`source IN ('PROFESSIONAL_VALUATION','MARKET_COMPARABLE','PURCHASE_PRICE','SELF_ASSESSED')`),
+]);

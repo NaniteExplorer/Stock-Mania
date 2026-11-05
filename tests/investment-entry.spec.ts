@@ -1,3 +1,4 @@
+import { Count } from "@/core/units";
 import { readFileSync } from "node:fs";
 import { SearchInstrumentCatalog, RefreshInstrumentCatalog } from "@/app/instrument-catalog.usecases";
 import { FixedClock, UserId } from "@/core/kernel";
@@ -307,7 +308,7 @@ class SearchRefreshRepository extends CatalogQuoteKeyStubs implements Instrument
 
   async latestSuccessfulFetch() {
     return this.rows.length > 0
-      ? { source: "UPSTOX_PUBLIC", fetchedAt: now, checksum: "a".repeat(64), rowCount: this.rows.length }
+      ? { source: "UPSTOX_PUBLIC", fetchedAt: now, checksum: "a".repeat(64), rowCount: Count(this.rows.length) }
       : null;
   }
 
@@ -320,11 +321,11 @@ class SearchRefreshRepository extends CatalogQuoteKeyStubs implements Instrument
   }
 
   async count() {
-    return this.rows.length;
+    return Count(this.rows.length);
   }
 
   async ingest(_snapshot: CatalogSnapshot) {
-    return { instruments: 0, listings: 0, mappings: 0, unmatchedMappings: 0 };
+    return { instruments: Count(0), listings: Count(0), mappings: Count(0), unmatchedMappings: Count(0) };
   }
 
   async search(query: string) {

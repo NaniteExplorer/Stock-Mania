@@ -40,6 +40,7 @@
  * so `domain/` never imports `infra/`.
  */
 
+import { Count, Days, Months, Ordinal } from "@/core/units";
 import { AggregateRoot, DomainError, Entity, UniqueId, UserId, newUuid } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { Quantity } from "@/core/numeric";
@@ -133,7 +134,7 @@ export class UnbalancedTransactionError extends DomainError {
 }
 
 export class InsufficientPostingsError extends DomainError {
-  constructor(count: number) {
+  constructor(count: Count) {
     super(
       "LEDGER_TXN_TOO_FEW_POSTINGS",
       `A transaction needs at least two postings, got ${count} (invariant L02). ` +
@@ -255,7 +256,7 @@ export class Posting extends Entity<PostingId> {
     readonly accountId: AccountId,
     readonly direction: PostingDirection,
     readonly amount: Money,
-    readonly seq: number,
+    readonly seq: Ordinal,
     readonly memo: string | null,
     readonly instrumentId: string | null,
     readonly quantity: Quantity | null,
@@ -308,7 +309,7 @@ export class Posting extends Entity<PostingId> {
     accountId: AccountId;
     direction: PostingDirection;
     amount: Money;
-    seq?: number;
+    seq?: Ordinal;
     memo?: string | null;
     instrumentId?: string | null;
     quantity?: Quantity | null;
@@ -321,7 +322,7 @@ export class Posting extends Entity<PostingId> {
       props.accountId,
       props.direction,
       props.amount,
-      props.seq ?? 0,
+      props.seq ?? Ordinal(0),
       props.memo ?? null,
       props.instrumentId ?? null,
       props.quantity ?? null,
@@ -345,7 +346,7 @@ export class Posting extends Entity<PostingId> {
     accountId: AccountId;
     direction: PostingDirection;
     amount: Money;
-    seq: number;
+    seq: Ordinal;
     memo: string | null;
     instrumentId?: string | null;
     quantity?: Quantity | null;
@@ -401,7 +402,7 @@ export class Posting extends Entity<PostingId> {
     return accountType.signedEffect(this.direction) === 1 ? this.amount : this.amount.negated();
   }
 
-  withSeq(seq: number): Posting {
+  withSeq(seq: Ordinal): Posting {
     return new Posting(
       this.id, this.accountId, this.direction, this.amount, seq, this.memo,
       this.instrumentId, this.quantity, this.unitCost, this.categoryId, this.status,
@@ -560,8 +561,8 @@ export class LegalityMatrix {
     return `${kind}|${source}|${destination}`;
   }
 
-  get size(): number {
-    return this.keys.size;
+  get size(): Count {
+    return Count(this.keys.size);
   }
 
   permits(kind: TransactionKind, source: LegalityRole, destination: LegalityRole): boolean {
@@ -787,7 +788,7 @@ export abstract class Transaction<D = unknown> extends AggregateRoot<Transaction
     this.validate();
 
     // Renumbered so stored order always reflects written order.
-    this.legs = this.buildPostings().map((posting, index) => posting.withSeq(index));
+    this.legs = this.buildPostings().map((posting, index) => posting.withSeq(Ordinal(index)));
 
     this.assertBalanced();
     this.assertPostingCurrencies();
@@ -841,7 +842,7 @@ export abstract class Transaction<D = unknown> extends AggregateRoot<Transaction
    */
   private assertBalanced(): void {
     if (this.legs.length < 2) {
-      throw new InsufficientPostingsError(this.legs.length);
+      throw new InsufficientPostingsError(Count(this.legs.length));
     }
 
     for (const currency of this.currencies()) {
@@ -1301,7 +1302,11 @@ export class Charge extends TwoLegged<ChargeDetails> {
 /* ═══ OpeningBalance ══════════════════════════════════════════════════ */
 
 interface OpeningBalanceDetails {
-  /** The balance the account already has. Pass a liability as a positive amount owed. */
+  /**
+   * The balance the account already has, in its natural sense: positive is money held
+   * for an asset and money owed for a liability. Negative is the other side — an
+   * overdrawn bank account, a card in credit.
+   */
   readonly amount: Money;
   /** The account whose balance this is, as distinct from the equity counter-leg. */
   readonly account: AccountRef;
@@ -1332,13 +1337,24 @@ export class OpeningBalance extends Transaction<OpeningBalanceDetails> {
 
   protected buildPostings(): readonly Posting[] {
     const refs = this.refs()!;
-    const equity = refs.source.id.equals(this.details.account.id) ? refs.destination : refs.source;
-    // An asset's opening balance debits the asset; a liability's credits it. Reading
-    // it off the role rather than writing the sign by hand is what keeps the two
-    // cases from diverging.
-    const increasesWithDebit = !isLiabilityRole(this.details.account.role);
+    const accountIsSource = refs.source.id.equals(this.details.account.id);
+    const equity = accountIsSource ? refs.destination : refs.source;
+    // Two questions, answered separately so neither can be got wrong for the other.
+    //
+    // *Does the balance rise or fall?* The arrow says so: equity → account is a
+    // rise, account → equity a fall. A signed amount says so too — a negative
+    // opening is a fall from zero — and the two compose. This used to be ignored:
+    // the amount went through `abs()` and every opening was booked as a rise, so
+    // an overdrawn first statement and a downward balance correction both moved
+    // the balance the wrong way (QA, 2026-10-26).
+    //
+    // *Which side is a rise?* The role says so: an asset rises with a debit, a
+    // liability with a credit. Reading it off the role rather than writing the
+    // sign by hand keeps the asset and liability cases from diverging.
+    const rises = accountIsSource === this.details.amount.isNegative;
+    const debitsAccount = rises === !isLiabilityRole(this.details.account.role);
     const amount = this.details.amount.abs();
-    return increasesWithDebit
+    return debitsAccount
       ? [Posting.debit(this.details.account.id, amount), Posting.credit(equity.id, amount)]
       : [Posting.credit(this.details.account.id, amount), Posting.debit(equity.id, amount)];
   }
@@ -1769,7 +1785,7 @@ export class Sell extends Transaction<SellDetails> {
       taxCategory,
       instrumentId,
       acquiredOn: disposal.acquiredOn,
-      holdingDays: disposal.acquiredOn.daysUntil(this.txnDate),
+      holdingDays: Days(disposal.acquiredOn.daysUntil(this.txnDate)),
       proceeds: proceedsPerDisposal[index],
       costBasis: disposal.costBasis,
       gain: proceedsPerDisposal[index].minus(disposal.costBasis),
@@ -2402,6 +2418,13 @@ export class StoredTransaction extends Transaction<{ kind: TransactionKind; legs
  * balance in two currencies is two balances, and quietly translating one at today's
  * rate would report a number the user cannot reconcile against any statement.
  */
+/** Net worth's two sides, keyed by the sign each account type already reports. */
+const NET_WORTH_SIDE: Readonly<Record<1 | -1 | 0, "assets" | "liabilities" | null>> = {
+  1: "assets",
+  [-1]: "liabilities",
+  0: null,
+};
+
 export class BalanceCalculator {
   constructor(private readonly currency: Currency = Currency.reporting) {}
 
@@ -2476,15 +2499,16 @@ export class BalanceCalculator {
     const balances = this.balancesAsOf(accounts, transactions, asOf);
     const zero = Money.zero(this.currency);
 
-    let assets = zero;
-    let liabilities = zero;
+    // Which side an account counts on is the account type's answer
+    // (`netWorthSign`), not a comparison written here (`RULES.md` §8.3).
+    const totals = { assets: zero, liabilities: zero };
     for (const account of accounts) {
-      const balance = balances.get(account.id.value) ?? zero;
-      if (account.type === AccountType.ASSET) assets = assets.plus(balance);
-      else if (account.type === AccountType.LIABILITY) liabilities = liabilities.plus(balance);
+      const side = NET_WORTH_SIDE[account.netWorthSign];
+      if (!side) continue;
+      totals[side] = totals[side].plus(balances.get(account.id.value) ?? zero);
     }
 
-    return { assets, liabilities, netWorth: assets.minus(liabilities) };
+    return { ...totals, netWorth: totals.assets.minus(totals.liabilities) };
   }
 
   /**
@@ -2544,6 +2568,183 @@ export class BalanceCalculator {
   }
 }
 
+/* ═══ Restore (task 2.1) ══════════════════════════════════════════════ */
+
+/**
+ * How long a tombstone can be undone (D2, owner-approved). Expiry stops the undo;
+ * it is never permission to hard-delete the evidence (RULES 2.3).
+ */
+export const UNDO_WINDOW: Days = Days(30);
+
+export type RestoreRefusalReason =
+  | "NOT_FOUND"
+  | "NOT_DELETED"
+  | "EXPIRED"
+  | "RECONCILED"
+  | "ACCOUNT_REMOVED"
+  | "DUPLICATE";
+
+/** What the repository found, so the decision itself stays here and is testable without a database. */
+export interface RestoreFacts {
+  /** Null when the transaction is live. */
+  readonly deletedAt: Date | null;
+  /** Any of its postings reconciled (L10). */
+  readonly reconciled: boolean;
+  /** Name of an account a posting belongs to that has itself been removed, or null. */
+  readonly removedAccount: string | null;
+  /** A live transaction already holds the same import fingerprint or external id. */
+  readonly duplicate: boolean;
+}
+
+const RESTORE_MESSAGES: { readonly [R in Exclude<RestoreRefusalReason, "NOT_FOUND" | "ACCOUNT_REMOVED">]: string } = Object.freeze({
+  NOT_DELETED: "This transaction is not removed, so there is nothing to restore.",
+  EXPIRED: `It was removed more than ${UNDO_WINDOW} days ago, so it can no longer be undone. It is kept, not erased.`,
+  RECONCILED: "It touches a reconciled posting, which cannot change (L10).",
+  DUPLICATE: "A live transaction already has the same import fingerprint or reference; restoring would duplicate it.",
+});
+
+/** A restore the ledger refuses, with the reason the owner is shown (RULES 2.5: never silently dropped). */
+export class RestoreRefusedError extends DomainError {
+  constructor(
+    readonly reason: RestoreRefusalReason,
+    message: string,
+  ) {
+    super(`LEDGER_RESTORE_${reason}`, message);
+  }
+}
+
+/** The first reason `facts` forbid a restore at `at`, or null when it may proceed. */
+export function restoreRefusal(facts: RestoreFacts | null, at: Date): RestoreRefusedError | null {
+  if (facts === null) return new RestoreRefusedError("NOT_FOUND", "No such transaction.");
+  if (facts.deletedAt === null) return new RestoreRefusedError("NOT_DELETED", RESTORE_MESSAGES.NOT_DELETED);
+  const age = at.getTime() - facts.deletedAt.getTime();
+  if (age > UNDO_WINDOW * 86_400_000) return new RestoreRefusedError("EXPIRED", RESTORE_MESSAGES.EXPIRED);
+  if (facts.reconciled) return new RestoreRefusedError("RECONCILED", RESTORE_MESSAGES.RECONCILED);
+  if (facts.removedAccount !== null) {
+    return new RestoreRefusedError("ACCOUNT_REMOVED", `${facts.removedAccount} has been removed; restore the account first.`);
+  }
+  if (facts.duplicate) return new RestoreRefusedError("DUPLICATE", RESTORE_MESSAGES.DUPLICATE);
+  return null;
+}
+
+/* ═══ Batch undo (tasks 2.2–2.4) ══════════════════════════════════════ */
+
+/**
+ * What an audited ledger write did to one transaction. `audit_events.request_id`
+ * groups these into the undo unit (ARCHITECTURE §10.2): one edit, fifteen removals
+ * and a whole import are each one batch.
+ */
+export type BatchAction = "CREATE" | "REVERSE" | "SOFT_DELETE" | "RESTORE";
+
+export interface BatchEntry {
+  readonly transactionId: TransactionId;
+  readonly action: BatchAction;
+  /** When the write was made (the caller's clock, carried in the audit after-image). */
+  readonly at: Date;
+}
+
+/** One step of an undo (or of a redo, which is the undo of the undo). */
+export interface UndoStep {
+  readonly transactionId: TransactionId;
+  readonly op: "TOMBSTONE" | "RESTORE";
+}
+
+export type TombstoneRefusalReason = "NOT_FOUND" | "ALREADY_REMOVED" | "RECONCILED";
+
+/** A tombstone the ledger refuses (RULES 2.5). Names the transactions that block it. */
+export class TombstoneRefusedError extends DomainError {
+  constructor(
+    readonly reason: TombstoneRefusalReason,
+    readonly transactionIds: readonly string[],
+    message: string,
+  ) {
+    super(`LEDGER_TOMBSTONE_${reason}`, message);
+  }
+}
+
+export function tombstoneRefusal(
+  reason: TombstoneRefusalReason,
+  transactionIds: readonly string[],
+): TombstoneRefusedError {
+  const what = transactionIds.length === 1 ? "One transaction" : `${transactionIds.length} transactions`;
+  const message =
+    reason === "RECONCILED"
+      ? `${what} touch a reconciled posting, which cannot change (L10). Nothing was removed.`
+      : reason === "ALREADY_REMOVED"
+        ? `${what} already removed. Nothing was changed.`
+        : `${what} could not be found. Nothing was changed.`;
+  return new TombstoneRefusedError(reason, transactionIds, message);
+}
+
+export type UndoRefusalReason = "NO_BATCH" | "EXPIRED" | "SUPERSEDED" | "BLOCKED";
+
+/**
+ * An undo or redo the ledger refuses. `BLOCKED` wraps the restore or tombstone
+ * refusal that stopped it (`blockedBy`), so the owner sees the specific reason.
+ * Whatever the reason, nothing was changed.
+ */
+export class UndoRefusedError extends DomainError {
+  constructor(
+    readonly reason: UndoRefusalReason,
+    message: string,
+    readonly blockedBy: RestoreRefusedError | TombstoneRefusedError | null = null,
+  ) {
+    super(`LEDGER_UNDO_${reason}`, message);
+  }
+}
+
+export const UNDO_MESSAGES: { readonly [R in Exclude<UndoRefusalReason, "BLOCKED">]: string } = Object.freeze({
+  NO_BATCH: "There is no ledger change with that id to undo.",
+  EXPIRED: `That change is more than ${UNDO_WINDOW} days old, so it can no longer be undone. It is kept, not erased.`,
+  SUPERSEDED:
+    "A newer change touches the same transactions, so undoing this one would leave the ledger unreadable. Undo the newer change first.",
+});
+
+/**
+ * The inverse of a batch, as tombstone/restore steps (never reverse-a-reversal).
+ * Created, reversed and restored rows are tombstoned; removed rows are restored.
+ * The last action per transaction wins, and a row both created and removed within
+ * the batch needs no step: it was absent before and after.
+ *
+ * Pure, so the rule is testable without a database. Refuses an empty batch and one
+ * whose newest write is past the D2 window.
+ */
+export function undoPlan(entries: readonly BatchEntry[], at: Date): readonly UndoStep[] | UndoRefusedError {
+  if (entries.length === 0) return new UndoRefusedError("NO_BATCH", UNDO_MESSAGES.NO_BATCH);
+  const newest = Math.max(...entries.map((e) => e.at.getTime()));
+  if (at.getTime() - newest > UNDO_WINDOW * 86_400_000) {
+    return new UndoRefusedError("EXPIRED", UNDO_MESSAGES.EXPIRED);
+  }
+  const first = new Map<string, BatchAction>();
+  const last = new Map<string, BatchAction>();
+  for (const entry of entries) {
+    const key = entry.transactionId.value;
+    if (!first.has(key)) first.set(key, entry.action);
+    last.set(key, entry.action);
+  }
+  const steps: UndoStep[] = [];
+  for (const [key, action] of last) {
+    const opening = first.get(key);
+    if ((opening === "CREATE" || opening === "REVERSE") && action === "SOFT_DELETE") continue;
+    steps.push({ transactionId: TransactionId.from(key), op: action === "SOFT_DELETE" ? "RESTORE" : "TOMBSTONE" });
+  }
+  return steps;
+}
+
+/** Options for an audited write: the request every event of it is grouped under. */
+export interface AuditOptions {
+  /** The undo unit. A fresh id is generated when omitted. */
+  readonly requestId?: string;
+}
+
+/** What an undo (or redo) did, under its own new request id. */
+export interface InvertedBatch {
+  /** The request the undo itself was audited under — undoing it is the redo. */
+  readonly requestId: string;
+  readonly tombstoned: readonly TransactionId[];
+  readonly restored: readonly TransactionId[];
+}
+
 /* ═══ TransactionRepository (port) ════════════════════════════════════ */
 
 export interface TransactionQuery {
@@ -2554,14 +2755,19 @@ export interface TransactionQuery {
   search?: string;
   kinds?: readonly TransactionKind[];
   importBatchId?: string;
-  limit?: number;
-  offset?: number;
+  /**
+   * Tombstoned rows are hidden by default. `INCLUDE` or `ONLY` surfaces them: the
+   * evidence an undo leaves behind stays queryable behind this filter (ARCHITECTURE §10.1).
+   */
+  removed?: "EXCLUDE" | "INCLUDE" | "ONLY";
+  limit?: Count;
+  offset?: Count;
 }
 
 export interface TransactionPage {
   transactions: readonly Transaction[];
   /** Total matching the query, ignoring limit/offset — for pagination. */
-  totalCount: number;
+  totalCount: Count;
 }
 
 /**
@@ -2610,10 +2816,43 @@ export interface TransactionRepository {
    * with it — which destroyed the evidence of what the import had done, so "undo it
    * and tell me what changed" was unanswerable.
    */
-  softDeleteByImportBatch(userId: UserId, importBatchId: string, at: Date): Promise<number>;
+  softDeleteByImportBatch(userId: UserId, importBatchId: string, at: Date, options?: AuditOptions): Promise<Count>;
+
+  /**
+   * Tombstones several transactions and their postings as one audited batch (one
+   * request id — the undo unit). Atomic: any unknown, already-removed or reconciled
+   * (L10) row throws {@link TombstoneRefusedError} naming them, and nothing changes.
+   */
+  softDeleteMany(
+    userId: UserId,
+    ids: readonly TransactionId[],
+    at: Date,
+    options?: AuditOptions,
+  ): Promise<{ requestId: string; count: Count }>;
+
+  /**
+   * Saves new transactions as one audited batch — an edit is its reversal plus its
+   * replacement under one request id. Reversals are audited `REVERSE`, the rest `CREATE`.
+   */
+  saveBatch(userId: UserId, txns: readonly Transaction[], at: Date, options?: AuditOptions): Promise<{ requestId: string }>;
+
+  /** The audited ledger writes of one request, oldest first. Empty for an unknown or foreign id. */
+  batch(userId: UserId, requestId: string): Promise<readonly BatchEntry[]>;
+
+  /**
+   * Reverses a whole batch atomically ({@link undoPlan}), audited under a new request
+   * id. Throws {@link UndoRefusedError}; any refusal leaves the database unchanged.
+   */
+  invertBatch(userId: UserId, requestId: string, at: Date, options?: AuditOptions): Promise<InvertedBatch>;
+
+  /**
+   * Whether a write newer than `requestId` touches one of these transactions — a
+   * newer audited event on it, or a live reversal of it from outside the batch.
+   */
+  touchedSince(userId: UserId, requestId: string, ids: readonly TransactionId[]): Promise<boolean>;
 
   /** Tombstones every transaction touching an account, used when removing a mistaken account. */
-  softDeleteByAccount(userId: UserId, accountId: AccountId, at: Date): Promise<number>;
+  softDeleteByAccount(userId: UserId, accountId: AccountId, at: Date): Promise<Count>;
 
   /**
    * Stamps `deletedAt` — invariant A03.
@@ -2622,7 +2861,14 @@ export interface TransactionRepository {
    * fixed with a reversal, so both the error and the correction stay visible. This is
    * for one that should never have existed, such as a duplicate from a re-import.
    */
-  softDelete(userId: UserId, id: TransactionId, at: Date): Promise<void>;
+  softDelete(userId: UserId, id: TransactionId, at: Date, options?: AuditOptions): Promise<void>;
+
+  /**
+   * Undoes a tombstone (RULES 2.3): the transaction and its postings become live
+   * again, so it re-enters every balance. Throws {@link RestoreRefusedError}, naming
+   * the reason, when {@link restoreRefusal} forbids it; a refusal changes nothing.
+   */
+  restore(userId: UserId, id: TransactionId, at: Date): Promise<void>;
 
   /** The earliest transaction date, used to size the net-worth timeline. */
   earliestTxnDate(userId: UserId): Promise<CalendarDate | null>;
@@ -2645,7 +2891,7 @@ export interface AccountBalance {
   /** Cumulative to the as-of date for balance-sheet accounts. */
   balance: Money;
   /** Postings behind this balance — distinguishes "₹0" from "never used". */
-  postingCount: number;
+  postingCount: Count;
 }
 
 /** Cumulative totals per account type, as of a date. */
@@ -2673,7 +2919,7 @@ export interface AccountFlow {
   name: string;
   type: AccountTypeName;
   amount: Money;
-  postingCount: number;
+  postingCount: Count;
 }
 
 /**
@@ -2714,7 +2960,7 @@ export interface BalanceQuery {
    */
   netWorthSeries(
     userId: UserId,
-    months: number,
+    months: Months,
     asOf: CalendarDate,
   ): Promise<TypeTotals[]>;
 

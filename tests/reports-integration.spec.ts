@@ -15,6 +15,7 @@
  * `mongoose` appears nowhere in `package.json` or in any import.
  */
 
+import { Count, Days, Ordinal } from "@/core/units";
 import { readFileSync, readdirSync, existsSync, rmSync } from "node:fs";
 import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
@@ -115,7 +116,7 @@ async function main() {
     name: "HDFC Regalia",
     terms: {
       creditLimit: rupees("200000"),
-      cycle: new BillingCycleRule(18, 20),
+      cycle: new BillingCycleRule(Ordinal(18), Days(20)),
       financeRate: Rate.annual("42"),
       minimumDuePercent: Percentage.of("5"),
       minimumDueFloor: rupees("500"),
@@ -232,7 +233,7 @@ async function main() {
     deductibleCharges: rupees("60"),
   });
 
-  const everything = await txnRepo.find(userId, { limit: 20_000 });
+  const everything = await txnRepo.find(userId, { limit: Count(20_000) });
   checkTrue("the ledger has a variety of entries", everything.totalCount > 25);
   check(
     "and every one balances",
@@ -392,6 +393,7 @@ async function main() {
   checkTrue("a savings rate is computable", personal.value.savingsRate !== null);
   checkTrue("a burn rate is computable", personal.value.burnRate !== null);
   checkTrue("and a runway follows from it", personal.value.runwayMonths !== null);
+  check("debt service stays unknown without the loan store", personal.value.debtToIncome, null);
   checkTrue(
     "credit utilisation is null with no card terms loaded, rather than a misleading 0%",
     personal.value.creditUtilisation === null,
@@ -406,11 +408,19 @@ async function main() {
    * optional. "We do not know the limit" and "nothing is owed" are opposite
    * claims, and 0% would be indistinguishable from the second.
    */
-  const withLimits = await new PersonalReport(accountRepo, balances, cardTerms).execute({
+  const withLimits = await new PersonalReport(accountRepo, balances, cardTerms, lending).execute({
     userId,
     asOf,
   });
   if (!withLimits.ok) throw new Error(withLimits.error.message);
+  checkTrue("persisted loan terms make debt service measurable", withLimits.value.debtToIncome !== null);
+  check(
+    // The report covers twelve calendar months: six salaries plus investment
+    // income total 907,140, so the trailing monthly gross income is 75,595.
+    "the report uses persisted instalments against trailing monthly gross income",
+    withLimits.value.debtToIncome?.toFixed(2),
+    Percentage.ratio(loan.value.instalment, rupees("75595")).toFixed(2),
+  );
   checkTrue(
     "with card terms loaded it is a number",
     withLimits.value.creditUtilisation !== null,

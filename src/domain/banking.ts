@@ -19,6 +19,8 @@
 
 import { UserId } from "@/core/kernel";
 import { Money } from "@/core/money";
+import { Percentage } from "@/core/numeric";
+import { Count, Days, Ordinal, SortKey } from "@/core/units";
 import { CalendarDate } from "@/core/time";
 import { AccountCode, AccountId } from "@/domain/accounts";
 
@@ -88,7 +90,7 @@ export interface KeywordRule {
   /** The INCOME or EXPENSE account a match posts to. */
   readonly accountId: AccountId;
   readonly appliesTo: RuleScope;
-  readonly priority: number;
+  readonly priority: SortKey;
   readonly isEnabled: boolean;
 }
 
@@ -549,7 +551,7 @@ export class Categoriser {
         accountId,
         appliesTo: group.scope,
         // Below any rule the user writes by hand, which defaults to 0.
-        priority: -100,
+        priority: SortKey(-100),
         isEnabled: true,
       }));
     });
@@ -590,11 +592,12 @@ export function builtInAccountCodes(): readonly AccountCode[] {
  * Declared here rather than imported from `infra/statements.ts` because a use
  * case may not know about infra — `tests/layout.spec.ts` enforces that arrow, and
  * it is the right arrow: the *shape* of a bank movement is domain vocabulary,
- * while which delimiter a bank exported it with is not. `ParsedStatement`
- * satisfies this structurally, so nothing needs adapting at the boundary.
+ * while which delimiter a bank exported it with is not. Infrastructure's
+ * `toBankingStatement` validates source positions as Ordinal when raw parser
+ * output enters this port; it preserves amounts and source row numbering.
  */
 export interface StatementMovement {
-  readonly rowIndex: number;
+  readonly rowIndex: Ordinal;
   readonly date: CalendarDate;
   readonly description: string;
   readonly reference: string | null;
@@ -607,13 +610,13 @@ export interface StatementMovement {
   readonly amount: Money;
   readonly direction: RowDirection;
   readonly balanceAfter: Money | null;
-  readonly occurrence: number;
+  readonly occurrence: Ordinal;
   readonly raw: string;
 }
 
 export interface StatementInput {
   readonly rows: readonly StatementMovement[];
-  readonly problems: readonly { readonly rowIndex: number; readonly reason: string; readonly raw: string }[];
+  readonly problems: readonly { readonly rowIndex: Ordinal; readonly reason: string; readonly raw: string }[];
 }
 
 /* ═══ Duplicate matching ══════════════════════════════════════════════ */
@@ -647,13 +650,13 @@ export interface MatchOutcome {
   readonly key: string;
   readonly matchedTransactionId: string | null;
   /** Which sweep claimed it: 1 rules, 2 external id, 3 fuzzy. */
-  readonly pass: 1 | 2 | 3 | null;
+  readonly pass: Ordinal | null;
   readonly because: string;
 }
 
 export interface MatcherOptions {
   /** How far either side of the row's date a fuzzy match may reach. */
-  readonly windowDays?: number;
+  readonly windowDays?: Days;
   /**
    * When the bank supplies ids, an id mismatch is decisive.
    *
@@ -683,11 +686,11 @@ export interface MatcherOptions {
  *     an import twice.
  */
 export class DuplicateMatcher {
-  private readonly windowDays: number;
+  private readonly windowDays: Days;
   private readonly strictIdChecking: boolean;
 
   constructor(options: MatcherOptions = {}) {
-    this.windowDays = options.windowDays ?? 7;
+    this.windowDays = options.windowDays ?? Days(7);
     this.strictIdChecking = options.strictIdChecking ?? true;
   }
 
@@ -709,7 +712,7 @@ export class DuplicateMatcher {
       outcomes.set(row.key, {
         key: row.key,
         matchedTransactionId: pinned,
-        pass: 1,
+        pass: Ordinal(1),
         because: "A rule pinned this row to an existing transaction.",
       });
     }
@@ -730,7 +733,7 @@ export class DuplicateMatcher {
       outcomes.set(row.key, {
         key: row.key,
         matchedTransactionId: target.transactionId,
-        pass: 2,
+        pass: Ordinal(2),
         because: `Same bank reference (${row.externalId}) as an existing transaction.`,
       });
     }
@@ -745,7 +748,7 @@ export class DuplicateMatcher {
       outcomes.set(row.key, {
         key: row.key,
         matchedTransactionId: candidate.transactionId,
-        pass: 3,
+        pass: Ordinal(3),
         because:
           distance === 0
             ? `Same amount and date as an existing transaction.`
@@ -808,7 +811,7 @@ export function fingerprintOf(input: {
   amount: Money;
   direction: RowDirection;
   description: string;
-  occurrence: number;
+  occurrence: Ordinal;
 }): string {
   return [
     input.accountId.value,
@@ -830,9 +833,9 @@ export interface ReconciliationInput {
   readonly ledgerClosing: Money;
   readonly asOf: CalendarDate;
   /** Rows in the statement that the matcher could not tie to a transaction. */
-  readonly unmatchedStatementRows: number;
+  readonly unmatchedStatementRows: Count;
   /** Transactions in the window that no statement row explains. */
-  readonly unexplainedTransactions: number;
+  readonly unexplainedTransactions: Count;
 }
 
 export interface ReconciliationReport {
@@ -1086,7 +1089,7 @@ export type ImportBatchStatus = "COMPLETED" | "PARTIAL" | "FAILED" | "UNDONE";
 export interface StagedRow {
   readonly id: string;
   readonly batchId: string;
-  readonly rowIndex: number;
+  readonly rowIndex: Ordinal;
   readonly status: ImportRowStatus;
   readonly date: CalendarDate;
   readonly description: string;
@@ -1094,7 +1097,7 @@ export interface StagedRow {
   readonly amount: Money;
   readonly direction: RowDirection;
   readonly balanceAfter: Money | null;
-  readonly occurrence: number;
+  readonly occurrence: Ordinal;
   /** The source line, verbatim, so a re-parse never needs the original file. */
   readonly raw: string;
   /** The category the categoriser proposed, which the user may override. */
@@ -1103,7 +1106,7 @@ export interface StagedRow {
   readonly because: string;
   /** Set once the matcher claims this row duplicates an existing transaction. */
   readonly matchedTransactionId: string | null;
-  readonly matchPass: number | null;
+  readonly matchPass: Ordinal | null;
   readonly rejectedReason: string | null;
 }
 
@@ -1120,14 +1123,14 @@ export type ImportTrust = "RECONCILED" | "UNVERIFIED" | "BROKEN";
 export interface ImportVerdict {
   readonly trust: ImportTrust;
   /** Rows whose printed balance was testable. `0` means the file printed none. */
-  readonly checked: number;
+  readonly checked: Count;
   readonly breaks: readonly {
-    readonly rowIndex: number;
+    readonly rowIndex: Ordinal;
     readonly expected: Money;
     readonly printed: Money;
   }[];
   /** Which source column index was read as which role. */
-  readonly mapping: Readonly<Record<string, number>>;
+  readonly mapping: Readonly<Record<string, Ordinal>>;
   readonly closingBalance: Money | null;
   /**
    * Whether the bank's own printed totals agreed with the rows that were read.
@@ -1152,7 +1155,7 @@ export interface ImportVerdict {
 export interface ImportDiagnostics {
   readonly verdict: ImportVerdict;
   readonly problems: readonly {
-    readonly rowIndex: number;
+    readonly rowIndex: Ordinal;
     readonly reason: string;
     readonly raw: string;
   }[];
@@ -1207,10 +1210,10 @@ export interface ImportBatchRecord {
   readonly accountId: AccountId | null;
   readonly fileName: string;
   readonly fileHash: string;
-  readonly rowsRead: number;
-  readonly rowsImported: number;
-  readonly rowsDuplicate: number;
-  readonly rowsFailed: number;
+  readonly rowsRead: Count;
+  readonly rowsImported: Count;
+  readonly rowsDuplicate: Count;
+  readonly rowsFailed: Count;
   readonly status: ImportBatchStatus;
   /** `null` for trade-book and holdings imports, which have no balance to check. */
   readonly diagnostics: ImportDiagnostics | null;
@@ -1236,7 +1239,7 @@ export interface ImportRepository {
   findBatch(userId: UserId, batchId: string): Promise<ImportBatchRecord | null>;
 
   /** Recent batches, newest first — the import screen's history. */
-  listBatches(userId: UserId, limit?: number): Promise<readonly ImportBatchRecord[]>;
+  listBatches(userId: UserId, limit?: Count): Promise<readonly ImportBatchRecord[]>;
 
   listRows(
     userId: UserId,
@@ -1259,7 +1262,7 @@ export interface ImportRepository {
    */
   pendingRowCounts(
     userId: UserId,
-  ): Promise<readonly { accountId: string; rows: number; batches: number }[]>;
+  ): Promise<readonly { accountId: string; rows: Count; batches: Count }[]>;
 
   setRowStatus(
     userId: UserId,
@@ -1268,7 +1271,7 @@ export interface ImportRepository {
       status: ImportRowStatus;
       proposedAccountId?: AccountId | null;
       matchedTransactionId?: string | null;
-      matchPass?: number | null;
+      matchPass?: Ordinal | null;
       rejectedReason?: string | null;
     },
   ): Promise<void>;
@@ -1279,9 +1282,9 @@ export interface ImportRepository {
     batchId: string,
     outcome: {
       status: ImportBatchStatus;
-      rowsImported?: number;
-      rowsDuplicate?: number;
-      rowsFailed?: number;
+      rowsImported?: Count;
+      rowsDuplicate?: Count;
+      rowsFailed?: Count;
       completedAt?: Date;
     },
   ): Promise<void>;
@@ -1298,12 +1301,12 @@ export interface ImportRepository {
    * already-seen duplicate — so the account cannot be rebuilt from the file it was
    * built from in the first place.
    */
-  softDeleteBatchesForAccount(userId: UserId, accountId: AccountId, at: Date): Promise<number>;
+  softDeleteBatchesForAccount(userId: UserId, accountId: AccountId, at: Date): Promise<Count>;
 }
 
 export interface CategoryRuleRepository {
   list(userId: UserId): Promise<readonly KeywordRule[]>;
-  saveMany(userId: UserId, rules: readonly Omit<KeywordRule, "id">[]): Promise<number>;
+  saveMany(userId: UserId, rules: readonly Omit<KeywordRule, "id">[]): Promise<Count>;
   /** Surfaces dead rules for cleanup, and proves which rule categorised a row. */
   bumpMatchCounts(userId: UserId, ruleIds: readonly string[]): Promise<void>;
 }
@@ -1319,7 +1322,7 @@ export interface StoredBudget {
   /** `YYYY-MM`, or null for the recurring default. */
   readonly month: string | null;
   readonly limit: Money;
-  readonly warnAtPercent: number;
+  readonly warnAtPercent: Percentage;
   readonly carryover: boolean;
 }
 
@@ -1361,4 +1364,91 @@ export function resolveBudgets(
     if (!specific.has(accountId)) out.push({ ...budget, month });
   }
   return out.sort((a, b) => (a.accountId.value < b.accountId.value ? -1 : 1));
+}
+
+/* ═══ Coverage gap ════════════════════════════════════════════════════ */
+
+/**
+ * A period the ledger does not cover, measured in rupees.
+ *
+ * The balance on an account whose statements start mid-life is **wrong, and
+ * knowably wrong by an exact amount**. A statement declares the balance it
+ * inherits; if the ledger disagrees on that date, every figure after it is off
+ * by the difference — not approximately, exactly.
+ *
+ * This is the five-figure version of a warning that already exists as a sentence
+ * at import time (`StageStatementImport.openingBalanceWarning`). A sentence
+ * shown once during an import does not help someone reading the account three
+ * months later, and a UI cannot lay out a sentence: it needs the numbers apart
+ * so it can right-align them, mark the difference as the actionable one, and
+ * state the arithmetic rather than assert a conclusion.
+ *
+ * **Nothing here manufactures a balance.** An opening-balance posting would make
+ * the account add up and make the ledger a work of fiction. The owner's standing
+ * choice is to be told, and this is the telling.
+ */
+export interface CoverageGap {
+  /**
+   * The last date the ledger has coverage for, or `null` when the account has no
+   * postings at all before the statement — a genuinely new account rather than a
+   * gap, which the UI words differently.
+   */
+  readonly coveredTo: CalendarDate | null;
+  /** The first date the later statement covers. */
+  readonly resumesOn: CalendarDate;
+  /** What the ledger holds on the day before `resumesOn`. */
+  readonly ledgerBalance: Money;
+  /** What the statement says it inherited on that day. */
+  readonly impliedOpening: Money;
+  /**
+   * `impliedOpening − ledgerBalance`. Signed, and the sign is information: a
+   * positive difference means the ledger is **short** by that much, a negative
+   * one means it is over, which happens when the missing period was net
+   * spending. Both are reported; neither is shown as an absolute value.
+   */
+  readonly difference: Money;
+}
+
+/**
+ * The gap between what a statement inherited and what the ledger holds.
+ *
+ * `null` when they agree, which is the ordinary case and must stay silent — a
+ * notice that appears when nothing is wrong is a notice nobody reads.
+ *
+ * Pure, and takes `ledgerBalance` rather than a repository, so the rule is
+ * testable without a database (`RULES.md` §8.10). The caller supplies the
+ * balance because only the caller knows which user's ledger to ask.
+ */
+export function coverageGap(input: {
+  readonly coveredTo: CalendarDate | null;
+  readonly resumesOn: CalendarDate;
+  readonly ledgerBalance: Money;
+  readonly impliedOpening: Money;
+}): CoverageGap | null {
+  if (input.impliedOpening.equals(input.ledgerBalance)) return null;
+  return {
+    coveredTo: input.coveredTo,
+    resumesOn: input.resumesOn,
+    ledgerBalance: input.ledgerBalance,
+    impliedOpening: input.impliedOpening,
+    difference: input.impliedOpening.minus(input.ledgerBalance),
+  };
+}
+
+/**
+ * The opening balance a statement's first row implies it inherited.
+ *
+ * Read backwards off the first row that carries a running balance: a credit of
+ * `a` landing on a balance of `b` means the day opened at `b − a`. `null` when
+ * no row carries a balance, which is the honest answer for a statement format
+ * that does not print one — not zero, which would claim an empty account.
+ */
+export function impliedOpeningBalance(
+  rows: readonly { readonly direction: "DEBIT" | "CREDIT"; readonly amount: Money; readonly balanceAfter: Money | null }[],
+): Money | null {
+  const first = rows.find((row) => row.balanceAfter !== null);
+  if (!first?.balanceAfter) return null;
+  return first.direction === "CREDIT"
+    ? first.balanceAfter.minus(first.amount)
+    : first.balanceAfter.plus(first.amount);
 }

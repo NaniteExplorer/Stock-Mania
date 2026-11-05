@@ -1,10 +1,13 @@
 import type { Metadata } from "next";
-import { CalendarClock } from "lucide-react";
 import { connection } from "next/server";
 import { Money } from "@/core/money";
 import { CalendarDate, DateRange, FinancialYear } from "@/core/time";
 import { Percentage } from "@/core/numeric";
-import { Card, EmptyState, MoneyText, PageHeader, Pill, Stat } from "@/ui/primitives";
+import { rupee, unknown, type Figure } from "@/core/format";
+import { Kpi, KpiStrip, Masthead, Page as PageShell, Panel } from "../../../components/ui/page-shell";
+import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "../../../components/ui/table";
+import { FigureCell, TextCell, UnknownCell } from "../../../components/ui/data-cell";
+import { Banner } from "../../../components/ui/banner";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 import NetWorthChart from "./net-worth-chart";
 
@@ -19,7 +22,7 @@ const HISTORY_PERIODS = [12, 36, 60] as const;
  * transaction changes October's row after invalidating that month and every
  * later cumulative point.
  *
- * The tax panel is the other half: realised gains for the financial year, with the
+ * The tax section is the other half: realised gains for the financial year, with the
  * rule that produced each line. "Why is this ₹37,500?" has an answer here, and it
  * will still have the same answer in three years when the rates have changed.
  */
@@ -46,7 +49,7 @@ export default async function Page({
    * The user's own circumstances, from `/settings`.
    *
    * When nothing is stored the report still runs — at the top slab, so the figure
-   * is a ceiling rather than an underestimate — and the panel says which of the
+   * is a ceiling rather than an underestimate — and the section says which of the
    * two it is looking at. A silently-defaulted 30% would be indistinguishable
    * from a real 30%.
    */
@@ -80,27 +83,29 @@ export default async function Page({
   const totalExpense = Money.total(flows.map((flow) => flow.expense));
 
   return (
-    <>
-      <PageHeader
+    <PageShell>
+      <Masthead
         title="History"
-        subtitle="Every month derives from the journal. A backdated entry rebuilds its month and every later balance."
-        badge={<Pill tone="brand">{financialYear.label}</Pill>}
+        side={<span className="text-xs text-(--fg-secondary)">{financialYear.label}</span>}
       />
+      <p className="text-sm text-(--fg-secondary)">
+        Every month derives from the journal. A backdated entry rebuilds its month and every later balance.
+      </p>
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Income" value={totalIncome} hint={`Last ${months} months`} />
-        <Stat label="Expenses" value={totalExpense} hint={`Last ${months} months`} />
-        <Stat label="Saved" value={totalIncome.minus(totalExpense)} hint="Income less expenses" />
-        <Stat
+      <KpiStrip>
+        <Kpi label="Income" value={rupee(totalIncome)} detail={`Last ${months} months`} />
+        <Kpi label="Expenses" value={rupee(totalExpense)} detail={`Last ${months} months`} />
+        <Kpi label="Saved" value={rupee(totalIncome.minus(totalExpense))} detail="Income less expenses" />
+        <Kpi
           label="Net worth change"
           value={
             points.length > 1
-              ? points[points.length - 1].netWorth.minus(points[0].netWorth)
-              : null
+              ? rupee(points[points.length - 1].netWorth.minus(points[0].netWorth))
+              : unknown("Needs at least two months of history")
           }
-          hint="Over the period shown"
+          detail="Over the period shown"
         />
-      </div>
+      </KpiStrip>
 
       <nav className="mb-3 flex gap-2" aria-label="History period">
         {HISTORY_PERIODS.map((period) => (
@@ -108,7 +113,7 @@ export default async function Page({
             key={period}
             href={`/history?months=${period}`}
             aria-current={period === months ? "page" : undefined}
-            className={`rounded-lg border px-3 py-1.5 text-xs ${period === months ? "border-violet-500 text-violet-300" : "border-gray-600 text-gray-400"}`}
+            className={`rounded-lg border px-3 py-1.5 text-xs ${period === months ? "border-(--accent) text-(--accent)" : "border-(--border) text-(--fg-secondary)"}`}
           >
             {period === 12 ? "1 year" : `${period / 12} years`}
           </a>
@@ -124,127 +129,118 @@ export default async function Page({
         />
       )}
 
-      <section className="panel mb-6 p-0">
-        {points.length === 0 ? (
-          <EmptyState icon={CalendarClock} title="No history yet" body="Record a month of activity and it will appear here." />
-        ) : (
-          <div className="table-scroll">
-            <table className="w-full text-sm">
-              <caption className="sr-only">
-                Month-end net worth with the income and expenses of each month
-              </caption>
-              <thead>
-                <tr className="border-b border-gray-600">
-                  <th scope="col" className="metric-label px-4 py-3 text-left">Month</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Income</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Expenses</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Saved</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Assets</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Liabilities</th>
-                  <th scope="col" className="metric-label px-4 py-3 text-right">Net worth</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...points].reverse().map((point) => {
-                  const flow = flowByMonth.get(point.on.toMonthKey());
-                  const saved = flow ? flow.income.minus(flow.expense) : null;
-                  return (
-                    <tr key={point.on.toISO()} className="border-b border-gray-600/50 last:border-0">
-                      <td className="tnum px-4 py-3 text-gray-300">{point.on.toMonthKey()}</td>
-                      <td className="px-4 py-3 text-right"><MoneyText value={flow?.income ?? null} tone="neutral" /></td>
-                      <td className="px-4 py-3 text-right"><MoneyText value={flow?.expense ?? null} tone="neutral" /></td>
-                      <td className="px-4 py-3 text-right"><MoneyText value={saved} /></td>
-                      <td className="px-4 py-3 text-right"><MoneyText value={point.assets} tone="neutral" /></td>
-                      <td className="px-4 py-3 text-right"><MoneyText value={point.liabilities} tone="neutral" /></td>
-                      <td className="px-4 py-3 text-right"><MoneyText value={point.netWorth} tone="neutral" /></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
+      {points.length === 0 ? (
+        <Banner title="No history yet"><p>Record a month of activity and it will appear here.</p></Banner>
+      ) : (
+        <Panel title="Month by month" flush>
+          <Table aria-label="Month-end net worth">
+            <TableCaption className="sr-only">
+              Month-end net worth with the income and expenses of each month
+            </TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Month</TableHead>
+                <TableHead className="text-right">Income</TableHead>
+                <TableHead className="text-right">Expenses</TableHead>
+                <TableHead className="text-right">Saved</TableHead>
+                <TableHead className="text-right">Assets</TableHead>
+                <TableHead className="text-right">Liabilities</TableHead>
+                <TableHead className="text-right">Net worth</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[...points].reverse().map((point) => {
+                const month = point.on.toMonthKey();
+                const flow = flowByMonth.get(month);
+                const saved = flow ? flow.income.minus(flow.expense) : null;
+                const noFlow = "No income or expense recorded for this month";
+                return (
+                  <TableRow key={point.on.toISO()}>
+                    <TextCell>{month}</TextCell>
+                    {flow ? <FigureCell value={flow.income} /> : <UnknownCell reason={noFlow} reasonId={`history-${month}-income`} />}
+                    {flow ? <FigureCell value={flow.expense} /> : <UnknownCell reason={noFlow} reasonId={`history-${month}-expense`} />}
+                    {saved ? <FigureCell value={saved} tone="change" /> : <UnknownCell reason={noFlow} reasonId={`history-${month}-saved`} />}
+                    <FigureCell value={point.assets} />
+                    <FigureCell value={point.liabilities} />
+                    <FigureCell value={point.netWorth} />
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </Panel>
+      )}
 
       {tax.ok && (
-        <Card
+        <Panel
           title={`Realised gains — ${financialYear.label}`}
-          subtitle={
+          description={
             taxSettings.isAssumed
               ? "Every line names its rule. No tax settings are stored for this year, so slab income is computed at 30% — a ceiling. Set your marginal rate on Settings."
               : `Every line names the rule that produced it. Slab income is computed at your stored marginal rate of ${taxSettings.settings.slabRate.toFixed(2)}%.`
           }
         >
           {tax.value.events.length === 0 ? (
-            <p className="text-sm text-gray-500">
+            <p className="text-sm text-(--fg-muted)">
               Nothing was sold this financial year, so there is no capital gain to report.
             </p>
           ) : (
             <>
-              <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-                <Stat
-                  label="Disposals"
-                  value={<span className="tnum">{tax.value.events.length}</span>}
-                  hint="Lots consumed"
-                />
-                <Stat
+              <KpiStrip>
+                <Kpi label="Disposals" value={String(tax.value.events.length) as Figure} detail="Lots consumed" />
+                <Kpi
                   label="Gain"
-                  value={Money.total(tax.value.events.map((event) => event.gain))}
-                  hint="Before relief"
+                  value={rupee(Money.total(tax.value.events.map((event) => event.gain)))}
+                  detail="Before relief"
                 />
-                <Stat
+                <Kpi
                   label="Taxable"
-                  value={Money.total(tax.value.assessment.lines.map((line) => line.taxableAmount))}
-                  hint="After exemptions and set-off"
+                  value={rupee(Money.total(tax.value.assessment.lines.map((line) => line.taxableAmount)))}
+                  detail="After exemptions and set-off"
                 />
-                <Stat label="Tax" value={tax.value.assessment.totalTax} hint="At the assessed rates" />
-              </div>
+                <Kpi label="Tax" value={rupee(tax.value.assessment.totalTax)} detail="At the assessed rates" />
+              </KpiStrip>
 
-              <div className="table-scroll">
-                <table className="w-full text-sm">
-                  <caption className="sr-only">Tax lines with their rule provenance</caption>
-                  <thead>
-                    <tr className="border-b border-gray-600">
-                      <th scope="col" className="metric-label px-3 py-2 text-left">Line</th>
-                      <th scope="col" className="metric-label px-3 py-2 text-left">Rule</th>
-                      <th scope="col" className="metric-label px-3 py-2 text-left">Bucket</th>
-                      <th scope="col" className="metric-label px-3 py-2 text-right">Taxable</th>
-                      <th scope="col" className="metric-label px-3 py-2 text-right">Tax</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {tax.value.assessment.lines.map((line, index) => (
-                      <tr key={`${line.eventId}-${index}`} className="border-b border-gray-600/50 last:border-0">
-                        <td className="px-3 py-2 text-gray-300">{line.label}</td>
-                        <td className="px-3 py-2 text-xs text-gray-500">
-                          {line.rule}
-                          <span className="ml-1 text-gray-600">({line.ruleVersion})</span>
-                        </td>
-                        <td className="px-3 py-2 text-xs text-gray-400">{line.bucket}</td>
-                        <td className="px-3 py-2 text-right"><MoneyText value={line.taxableAmount} tone="neutral" /></td>
-                        <td className="px-3 py-2 text-right"><MoneyText value={line.tax} tone="neutral" /></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <Table aria-label="Tax lines" density="compact">
+                <TableCaption className="sr-only">Tax lines with their rule provenance</TableCaption>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Line</TableHead>
+                    <TableHead>Rule</TableHead>
+                    <TableHead>Bucket</TableHead>
+                    <TableHead className="text-right">Taxable</TableHead>
+                    <TableHead className="text-right">Tax</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {tax.value.assessment.lines.map((line, index) => (
+                    <TableRow key={`${line.eventId}-${index}`}>
+                      <TextCell>{line.label}</TextCell>
+                      <TextCell secondary={`(${line.ruleVersion})`}>{line.rule}</TextCell>
+                      <TextCell>{line.bucket}</TextCell>
+                      <FigureCell value={line.taxableAmount} />
+                      <FigureCell value={line.tax} />
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
 
               {tax.value.assessment.warnings.length > 0 && (
-                <ul className="mt-3 space-y-1 text-xs text-amber-500">
+                <ul className="mt-3 space-y-1 text-xs text-(--warn)">
                   {tax.value.assessment.warnings.map((warning) => (
                     <li key={warning}>{warning}</li>
                   ))}
                 </ul>
               )}
 
-              <p className="mt-3 text-xs text-gray-500">
+              <p className="mt-3 text-xs text-(--fg-muted)">
                 Computed at the top slab until a settings screen collects your own rate, so the
                 figure is a ceiling rather than an underestimate.
               </p>
             </>
           )}
-        </Card>
+        </Panel>
       )}
-    </>
+    </PageShell>
   );
 }

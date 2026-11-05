@@ -22,6 +22,7 @@ import { instruments, ledgerAccounts, users } from "@/infra/db/schema";
 import type { Database } from "@/infra/db/client";
 import { FixedClock, UserId } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
+import { Count } from "@/core/units";
 import { Quantity, UnitPrice } from "@/core/numeric";
 import { CalendarDate, DateRange } from "@/core/time";
 import { FxBook, InstrumentRef, PriceBook } from "@/domain/pricing";
@@ -105,7 +106,7 @@ async function main() {
     },
   ]);
 
-  const bothRows = await quotes.findLatestOnOrBefore("INFY", "CLOSE", on("2026-08-21"), 10);
+  const bothRows = await quotes.findLatestOnOrBefore("INFY", "CLOSE", on("2026-08-21"), Count(10));
   check("both providers' rows are stored for the same date", bothRows.length, 2);
   check(
     "...and are distinguishable",
@@ -132,7 +133,7 @@ async function main() {
     },
   ]);
 
-  const afterCorrection = await quotes.findLatestOnOrBefore("INFY", "CLOSE", on("2026-08-21"), 10);
+  const afterCorrection = await quotes.findLatestOnOrBefore("INFY", "CLOSE", on("2026-08-21"), Count(10));
   check("the correction is a third row, not an overwrite", afterCorrection.length, 3);
   const nseRows = afterCorrection.filter((row) => row.providerId === "nse");
   check("both NSE beliefs survive", nseRows.length, 2);

@@ -1,4 +1,7 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import { resolve } from "node:path";
+import { createRequire } from "node:module";
+import type * as TypeScript from "typescript";
 import { check, checkDeep, checkTrue, section, done } from "./harness";
 
 /**
@@ -204,11 +207,63 @@ section("money never crosses the driver boundary as a float");
 // The schema stores minor units as INTEGER; a repository that wrote a decimal
 // string or a float would typecheck and corrupt quietly.
 const repositories = read("src/infra/repositories.ts");
-check(
-  "repositories never call toApproximateNumber on a money path",
-  stripComments(repositories).includes("toApproximateNumber"),
-  false,
-);
+const ts: typeof TypeScript = createRequire(import.meta.url)("typescript");
+// A Percentage may cross its numeric SQL column as percent points. Resolve the
+// receiver's declaration instead of allowing a field name or banning every
+// approximate conversion. Casts cannot disguise a Money/unknown receiver.
+const config = ts.readConfigFile("tsconfig.json", ts.sys.readFile);
+const options = ts.parseJsonConfigFileContent(config.config, ts.sys, process.cwd()).options;
+const probePath = resolve("tests/__driver_boundary_guard_probe.ts");
+const probeSource = `
+import { Percentage as Percent } from "@/core/numeric";
+import { Money } from "@/core/money";
+declare const percentage: Percent;
+declare const money: Money;
+declare const untyped: any;
+declare const unknownValue: unknown;
+declare const impostor: { toApproximateNumber(): number };
+class Percentage { toApproximateNumber() { return 80; } }
+declare const sameName: Percentage;
+declare const mixed: Percent | Money;
+percentage.toApproximateNumber();
+money.toApproximateNumber();
+untyped.toApproximateNumber();
+unknownValue.toApproximateNumber();
+impostor.toApproximateNumber();
+(money as unknown as Percent).toApproximateNumber();
+money["toApproximateNumber"]();
+sameName.toApproximateNumber();
+mixed.toApproximateNumber();
+`;
+const host = ts.createCompilerHost(options);
+const originalGetSourceFile = host.getSourceFile.bind(host);
+host.getSourceFile = (path, languageVersion, onError, shouldCreateNewSourceFile) =>
+  resolve(path) === probePath
+    ? ts.createSourceFile(path, probeSource, languageVersion, true)
+    : originalGetSourceFile(path, languageVersion, onError, shouldCreateNewSourceFile);
+const program = ts.createProgram([resolve("src/infra/repositories.ts"), probePath], options, host);
+const checker = program.getTypeChecker();
+const numericSource = program.getSourceFile(resolve("src/core/numeric.ts"))!;
+const numericModule = checker.getSymbolAtLocation(numericSource)!;
+const percentageSymbol = checker.getExportsOfModule(numericModule).find((symbol) => symbol.name === "Percentage")!;
+
+function unsafeApproximateReceivers(source: TypeScript.SourceFile): string[] {
+  const unsafe: string[] = [];
+  function inspect(node: TypeScript.Node) {
+    if (ts.isPropertyAccessExpression(node) && node.name.text === "toApproximateNumber" ||
+      ts.isElementAccessExpression(node) && node.argumentExpression && ts.isStringLiteral(node.argumentExpression) && node.argumentExpression.text === "toApproximateNumber") {
+      let receiver: TypeScript.Expression = node.expression;
+      while (ts.isParenthesizedExpression(receiver) || ts.isAsExpression(receiver) || ts.isTypeAssertionExpression(receiver) || ts.isNonNullExpression(receiver)) receiver = receiver.expression;
+      const type = checker.getTypeAtLocation(receiver);
+      if (type.getSymbol() !== percentageSymbol) unsafe.push(receiver.getText(source));
+    }
+    ts.forEachChild(node, inspect);
+  }
+  inspect(source);
+  return unsafe;
+}
+checkDeep("repositories approximate only actual core Percentage values", unsafeApproximateReceivers(program.getSourceFile(resolve("src/infra/repositories.ts"))!), []);
+checkDeep("Money, any, unknown, impostors, casts, bracket access and mixed unions cannot bypass the guard; Percentage aliases are allowed", unsafeApproximateReceivers(program.getSourceFile(probePath)!), ["money", "untyped", "unknownValue", "impostor", "money", "money", "sameName", "mixed"]);
 check(
   "and never parseFloat",
   stripComments(repositories).includes("parseFloat"),

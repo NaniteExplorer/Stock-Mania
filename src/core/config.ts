@@ -77,8 +77,10 @@ export const config = {
    * emails are skipped and sign-up stays usable in local development.
    */
   email: () => {
-    const user = read("SMTP_USER");
-    const password = read("SMTP_PASSWORD");
+    // v1 env files name these NODEMAILER_EMAIL / NODEMAILER_PASSWORD; accept
+    // them as fallbacks so an existing .env.local keeps sending mail.
+    const user = read("SMTP_USER") ?? read("NODEMAILER_EMAIL");
+    const password = read("SMTP_PASSWORD") ?? read("NODEMAILER_PASSWORD");
     if (!user || !password) return null;
     return {
       user,

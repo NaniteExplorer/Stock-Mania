@@ -13,6 +13,7 @@
  * One file per trading day, so the same range cap as NSE applies.
  */
 
+import { Count, Millis } from "@/core/units";
 import { Err } from "@/core/kernel";
 import { CalendarDate } from "@/core/time";
 import { ProviderError, RateLimitBudget } from "@/domain/pricing";
@@ -59,7 +60,7 @@ export class BseBhavcopyHistoryAdapter extends MarketDataSource implements Histo
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 30, perMillis: 60_000, burst: 5 };
+    return { requests: Count(30), perMillis: Millis(60_000), burst: Count(5) };
   }
 
   async history(request: HistoryRequest): Promise<MarketDataResult<HistoricalSeries>> {

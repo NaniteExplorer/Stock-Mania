@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import { ArrowLeft } from "lucide-react";
 import { CalendarDate } from "@/core/time";
 import { CashAsset } from "@/domain/assets";
-import { Card, PageHeader, Pill } from "@/ui/primitives";
+import { Masthead, Page, Panel } from "../../../../components/ui/page-shell";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 import EntryLaneNav, {
   entryLane,
@@ -50,22 +50,26 @@ export default async function NewInvestmentPage({
   }));
 
   return (
-    <>
-      <PageHeader
+    <Page>
+      <Masthead
         title="Add investment"
-        subtitle="Pick what you are adding first — each asset family is identified differently and carries different charges."
-        badge={<Pill tone="brand">{entryLane(lane).label}</Pill>}
-        action={
-          <Link href="/investments" className="ghost-btn h-10 px-4 text-xs">
-            <ArrowLeft className="size-4" aria-hidden />
-            Investments
-          </Link>
+        side={
+          <>
+            <span className="text-xs text-(--fg-muted)">{entryLane(lane).label}</span>
+            <Link href="/investments" className="ghost-btn h-10 px-4 text-xs">
+              <ArrowLeft className="size-4" aria-hidden />
+              Investments
+            </Link>
+          </>
         }
       />
+      <p className="max-w-2xl text-sm text-(--fg-muted)">
+        Pick what you are adding first — each asset family is identified differently and carries different charges.
+      </p>
 
       <EntryLaneNav activeLane={lane} />
 
-      <Card title={CARD_TITLE[lane]} subtitle={entryLane(lane).hint}>
+      <Panel title={CARD_TITLE[lane]} description={entryLane(lane).hint}>
         {lane === "metal" ? (
           <RecordMetalForm
             accounts={cashAccounts}
@@ -80,7 +84,7 @@ export default async function NewInvestmentPage({
             defaultDate={today.toISO()}
           />
         )}
-      </Card>
-    </>
+      </Panel>
+    </Page>
   );
 }

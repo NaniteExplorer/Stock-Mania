@@ -26,23 +26,21 @@ export default function MaturityLadder({
         return (
           <div key={`${rung.label}-${rung.maturesOn}`}>
             <div className="mb-1 flex items-baseline justify-between gap-3 text-xs">
-              <span className="truncate text-gray-300">{rung.label}</span>
-              <span className="tnum shrink-0 text-gray-500">
+              <span className="truncate text-(--fg-secondary)">{rung.label}</span>
+              <span className="tabular-nums shrink-0 text-(--fg-muted)">
                 {rung.maturesOn} · ₹{rung.value}
               </span>
             </div>
-            <div className="relative h-2 w-full rounded-full bg-gray-600">
-              <div
-                className="absolute inset-y-0 left-0 rounded-full bg-brand-500/70"
-                style={{ width: `${position}%` }}
-                aria-hidden
-              />
-            </div>
+            {/* SVG geometry attributes size the bar, so no inline style is needed (F.7). */}
+            <svg className="h-2 w-full" aria-hidden>
+              <rect x="0" y="0" width="100%" height="100%" rx="4" className="fill-(--border)" />
+              <rect x="0" y="0" width={`${position}%`} height="100%" rx="4" className="fill-(--accent)/70" />
+            </svg>
           </div>
         );
       })}
-      <div className="flex justify-between text-xs text-gray-500">
-        <span className="tnum">{today}</span>
+      <div className="flex justify-between text-xs text-(--fg-muted)">
+        <span className="tabular-nums">{today}</span>
         <span>{horizon} days out</span>
       </div>
     </div>

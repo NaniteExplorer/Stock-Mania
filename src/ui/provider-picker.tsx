@@ -179,7 +179,19 @@ export function ProviderPicker({
  */
 export function ProviderMark({ provider, size = 24 }: { provider: FinancialProvider; size?: number }) {
   const [failed, setFailed] = React.useState(false);
+  const image = React.useRef<HTMLImageElement>(null);
   const box = { width: size, height: size };
+
+  /*
+   * The hydration race. The <img> is in the server HTML, so the browser can request
+   * `/api/logo/<id>`, get the 404 and fire `error` before React has attached
+   * `onError`. That event is gone, and the browser's broken-image box stays. So,
+   * once mounted, look at the element itself: a request that already finished with
+   * no pixels is the same 404. `onError` below still covers every later failure.
+   */
+  React.useEffect(() => {
+    if (image.current && imageHasFailed(image.current)) setFailed(true);
+  }, [provider.id]);
 
   if (failed || (!provider.logo && !provider.domain)) {
     return (
@@ -203,6 +215,7 @@ export function ProviderMark({ provider, size = 24 }: { provider: FinancialProvi
     // because it has no build-time knowledge of a 24px runtime badge.
     // eslint-disable-next-line @next/next/no-img-element
     <img
+      ref={image}
       src={`/api/logo/${provider.id}`}
       alt=""
       aria-hidden
@@ -212,6 +225,17 @@ export function ProviderMark({ provider, size = 24 }: { provider: FinancialProvi
       style={box}
     />
   );
+}
+
+/**
+ * Whether an `<img>` has already failed: its request is finished (`complete`) and
+ * it decoded no pixels (`naturalWidth === 0`). A lazy image that has not started
+ * loading is not `complete`, so it is left for `onError` to catch later.
+ *
+ * Exported so the rule can be tested without a DOM.
+ */
+export function imageHasFailed(image: Pick<HTMLImageElement, "complete" | "naturalWidth">): boolean {
+  return image.complete && image.naturalWidth === 0;
 }
 
 /**

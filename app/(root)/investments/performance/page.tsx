@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { BarChart3 } from "lucide-react";
 import { connection } from "next/server";
 import { CalendarDate } from "@/core/time";
 import type { InvestmentMetric, InvestmentWorkspaceOutput } from "@/app/investing.usecases";
-import { Card, EmptyState, PageHeader, Pill } from "@/ui/primitives";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { Page as Shell, Masthead, Panel } from "../../../../components/ui/page-shell";
+import { Banner } from "../../../../components/ui/banner";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 import PerformanceChart from "./performance-chart";
 
@@ -27,26 +28,23 @@ export default async function Page() {
 
   if (!workspace) {
     return (
-      <>
-        <PageHeader title="Performance" subtitle="Returns appear once the ledger has investment cashflows." badge={<Pill tone="brand">Performance</Pill>} />
-        <section className="panel p-0">
-          <EmptyState
-            icon={BarChart3}
-            title="No performance yet"
-            body="Record an investment and its trades first. This page will show only metrics the ledger can prove."
-          />
-        </section>
-      </>
+      <Shell>
+        <Masthead title="Performance" side={<StatusBadge tone="accent">Performance</StatusBadge>} />
+        <p className="text-sm text-(--fg-muted)">Returns appear once the ledger has investment cashflows.</p>
+        <Banner title="No performance yet">
+          <p>Record an investment and its trades first. This page will show only metrics the ledger can prove.</p>
+        </Banner>
+      </Shell>
     );
   }
 
   return (
-    <>
-      <PageHeader
+    <Shell>
+      <Masthead
         title="Performance"
-        subtitle="Every metric names its scope, valuation date and source inputs."
-        badge={<Pill tone={workspace.dataQuality.status === "COMPLETE" ? "brand" : "neutral"}>{workspace.asOf}</Pill>}
+        side={<StatusBadge tone={workspace.dataQuality.status === "COMPLETE" ? "accent" : "neutral"}>{workspace.asOf}</StatusBadge>}
       />
+      <p className="text-sm text-(--fg-muted)">Every metric names its scope, valuation date and source inputs.</p>
 
       <PerformanceChart metrics={workspace.metrics} reportingCurrency={workspace.reportingCurrency} asOf={workspace.asOf} />
 
@@ -61,7 +59,7 @@ export default async function Page() {
           <MetricPanel key={key} label={metricLabel(key)} metric={workspace.metrics[key]} />
         ))}
       </section>
-    </>
+    </Shell>
   );
 }
 
@@ -81,26 +79,26 @@ async function readWorkspace(): Promise<InvestmentWorkspaceOutput | null> {
 
 function MetricPanel({ label, metric }: { label: string; metric: InvestmentMetric }) {
   return (
-    <Card title={label} subtitle={`${metric.scope.toLowerCase()} through ${metric.period.through}`}>
+    <Panel title={label} description={`${metric.scope.toLowerCase()} through ${metric.period.through}`}>
       {metric.status === "AVAILABLE" ? (
-        <p className="tnum text-2xl font-semibold text-gray-100">
+        <p className="tnum text-2xl font-semibold text-(--fg)">
           {metric.unit === "PERCENTAGE" ? `${trimDecimal(metric.value, 2)}%` : `${metric.currency} ${metric.value}`}
         </p>
       ) : (
         <>
-          <p className="text-sm font-medium text-amber-500">{reasonLabel(metric.reason)}</p>
-          <p className="mt-2 text-sm text-gray-400">{metric.message}</p>
+          <p className="text-sm font-medium text-(--warn)">{reasonLabel(metric.reason)}</p>
+          <p className="mt-2 text-sm text-(--fg-secondary)">{metric.message}</p>
         </>
       )}
-      <p className="mt-3 text-xs text-gray-500">As of {metric.asOf}</p>
+      <p className="mt-3 text-xs text-(--fg-muted)">As of {metric.asOf}</p>
       <ul className="mt-2 flex flex-wrap gap-1.5" aria-label={`${label} provenance`}>
         {metric.provenance.map((source) => (
-          <li key={source} className="rounded-md border border-gray-600 px-2 py-1 text-xs text-gray-500">
+          <li key={source} className="rounded-md border border-(--border) px-2 py-1 text-xs text-(--fg-muted)">
             {source}
           </li>
         ))}
       </ul>
-    </Card>
+    </Panel>
   );
 }
 

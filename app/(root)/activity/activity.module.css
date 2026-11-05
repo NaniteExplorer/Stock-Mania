@@ -1,0 +1,23 @@
+.list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.row{display:grid;grid-template-columns:56px minmax(0,1fr) auto;gap:8px 12px;align-items:start;padding:10px 0;border-top:1px solid var(--border-subtle)}
+.row:first-child{border-top:0}
+.time{font-family:var(--fig-face);font-variant-numeric:var(--fig-vn);font-size:var(--fs-sec);color:var(--fg-secondary)}
+.what{min-width:16rem;white-space:normal;font-size:var(--fs-sec);color:var(--fg)}
+.chip{font-size:var(--fs-lab);letter-spacing:var(--ls-lab);text-transform:var(--tt-lab);font-weight:var(--fw-lab);color:var(--col-lab);border:1px solid var(--border-subtle);border-radius:999px;padding:1px 8px}
+.verbs{grid-column:2/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px;min-width:18rem;white-space:normal}
+.confirm{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.note{font-size:var(--fs-sec);color:var(--fg-secondary)}
+.reason{font-size:11px;line-height:15px;color:var(--fg-secondary)}
+.refused{font-size:var(--fs-sec);color:var(--warn)}
+.ok{font-size:var(--fs-sec);color:var(--accent)}
+/* The grid (DESIGN §6.1): one tab stop; the cursor row is shown while the grid has focus. */
+.grid:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+.grid:focus-within tr[data-cursor]{background:var(--bg-hover);box-shadow:inset 2px 0 0 var(--accent)}
+.dayRow th{color:var(--fg-secondary);font-weight:600;background:var(--bg-subtle)}
+.help{margin:0 0 12px;padding:10px 12px;border:1px solid var(--border-subtle);border-radius:var(--r-4);font-size:var(--fs-sec);color:var(--fg-secondary)}
+.help dl{display:grid;gap:4px;margin:0}
+.help div{display:flex;gap:12px}
+.help dt{min-width:8rem;color:var(--fg);font-family:var(--fig-face)}
+.help dd{margin:0}
+.srOnly{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;border:0}
+@media (max-width:640px){.row{grid-template-columns:minmax(0,1fr) auto}.time{grid-column:1/-1}.verbs{grid-column:1/-1}}

@@ -34,37 +34,31 @@ export default function CycleTimeline({
 
   return (
     <div>
-      <div className="relative h-3 w-full rounded-full bg-gray-600">
-        <div
-          className="absolute inset-y-0 left-0 rounded-l-full bg-brand-500/70"
-          style={{ width: percent(statement) }}
-          aria-hidden
-        />
+      {/* SVG geometry attributes position the bars, so no inline style is needed (F.7). */}
+      <svg className="h-5 w-full overflow-visible" aria-hidden>
+        <rect x="0" y="4" width="100%" height="12" rx="6" className="fill-(--border)" />
+        <rect x="0" y="4" width={percent(statement)} height="12" rx="6" className="fill-(--accent)/70" />
         {now >= start && now <= due && (
-          <div
-            className="absolute -top-1 h-5 w-0.5 bg-gray-100"
-            style={{ left: percent(now) }}
-            aria-hidden
-          />
+          <rect x={percent(now)} y="0" width="2" height="20" className="fill-(--fg)" />
         )}
-      </div>
+      </svg>
 
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
         <div>
-          <p className="metric-label">Cycle opened</p>
-          <p className="tnum text-gray-300">{from}</p>
+          <p className="text-xs text-(--fg-muted)">Cycle opened</p>
+          <p className="tabular-nums text-(--fg-secondary)">{from}</p>
         </div>
         <div>
-          <p className="metric-label">Statement</p>
-          <p className="tnum text-gray-300">{through}</p>
+          <p className="text-xs text-(--fg-muted)">Statement</p>
+          <p className="tabular-nums text-(--fg-secondary)">{through}</p>
         </div>
         <div className="text-right">
-          <p className="metric-label">Payment due</p>
-          <p className="tnum text-gray-300">{dueOn}</p>
+          <p className="text-xs text-(--fg-muted)">Payment due</p>
+          <p className="tabular-nums text-(--fg-secondary)">{dueOn}</p>
         </div>
       </div>
 
-      <p className="mt-2 text-xs text-gray-500">
+      <p className="mt-2 text-xs text-(--fg-muted)">
         {inCycle
           ? `Spending now lands on the statement dated ${through}, payable by ${dueOn}.`
           : `This cycle has closed; spending now lands on the next statement.`}

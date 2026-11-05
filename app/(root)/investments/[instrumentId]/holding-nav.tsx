@@ -45,7 +45,7 @@ export default function HoldingNav({
               className={
                 active
                   ? "focus-brand rounded-lg border border-brand-500/70 bg-brand-500/10 px-3 py-2 text-xs font-medium text-brand-200"
-                  : "focus-brand rounded-lg border border-gray-600 px-3 py-2 text-xs font-medium text-gray-400 transition-colors hover:border-gray-500 hover:text-gray-100"
+                  : "focus-brand rounded-lg border border-(--border) px-3 py-2 text-xs font-medium text-(--fg-secondary) transition-colors hover:border-(--border-control) hover:text-(--fg)"
               }
             >
               {view.label}

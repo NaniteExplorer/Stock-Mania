@@ -1,12 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { Field } from "@/ui/primitives";
+import { Field } from "@/components/ui/field";
+import { InstitutionMark } from "@/ui/provider-picker";
 import { accrueChargesAction, payCardAction, type CardActionState } from "../actions";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
 
 export interface PayFromOption {
   id: string;
   label: string;
+  /** The stored institution name, for the mark beside the chosen account (never inside an <option>). */
+  institution?: string | null;
 }
 
 /**
@@ -37,6 +43,8 @@ export default function PayCardForm({
     accrueChargesAction,
     null,
   );
+  const [fromId, setFromId] = React.useState("");
+  const from = accounts.find((account) => account.id === fromId);
 
   return (
     <div className="space-y-6">
@@ -45,7 +53,13 @@ export default function PayCardForm({
 
         <Field name="fromAccountId" label="Pay from" required>
           {(props) => (
-            <select {...props} name="fromAccountId" className="form-input" required defaultValue="">
+            <NativeSelect
+              {...props}
+              name="fromAccountId"
+              required
+              defaultValue=""
+              onChange={(event) => setFromId(event.target.value)}
+            >
               <option value="" disabled>
                 Choose an account
               </option>
@@ -54,16 +68,23 @@ export default function PayCardForm({
                   {account.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           )}
         </Field>
 
+        {from?.institution && (
+          <p className="md:col-span-2 -mt-2 flex items-center gap-2 text-xs text-(--fg-secondary)" data-testid="pay-from-institution">
+            <InstitutionMark institution={from.institution} size={20} />
+            {from.institution}
+          </p>
+        )}
+
         <Field name="amount" label="Amount" required hint="Defaults to the last statement's total.">
           {(props) => (
-            <input
+            <Input
               {...props}
               name="amount"
-              className="form-input tnum"
+              className="tabular-nums"
               inputMode="decimal"
               defaultValue={suggestedAmount}
               required
@@ -73,19 +94,19 @@ export default function PayCardForm({
 
         <Field name="postedOn" label="Paid on" required>
           {(props) => (
-            <input {...props} name="postedOn" type="date" className="form-input" defaultValue={defaultDate} required />
+            <Input {...props} name="postedOn" type="date" defaultValue={defaultDate} required />
           )}
         </Field>
 
         <div className="flex items-end gap-3">
-          <button type="submit" className="btn-glow" disabled={paying || accounts.length === 0}>
+          <Button type="submit" disabled={paying || accounts.length === 0}>
             {paying ? "Recording…" : "Record payment"}
-          </button>
+          </Button>
         </div>
 
         {payState && (
           <p
-            className={payState.ok ? "md:col-span-2 text-sm text-green-500" : "md:col-span-2 text-sm text-red-500"}
+            className={payState.ok ? "md:col-span-2 text-sm text-(--gain)" : "md:col-span-2 text-sm text-(--loss)"}
             role="status"
           >
             {payState.message}
@@ -93,7 +114,7 @@ export default function PayCardForm({
         )}
       </form>
 
-      <form action={chargeAction} className="grid gap-4 border-t border-gray-600 pt-5 md:grid-cols-2">
+      <form action={chargeAction} className="grid gap-4 border-t border-(--border) pt-5 md:grid-cols-2">
         <input type="hidden" name="cardAccountId" value={cardAccountId} />
 
         <Field
@@ -102,27 +123,27 @@ export default function PayCardForm({
           hint="Computed per day from the previous due date, on what the postings say was owed."
         >
           {(props) => (
-            <input {...props} name="statementDate" type="date" className="form-input" defaultValue={defaultDate} />
+            <Input {...props} name="statementDate" type="date" defaultValue={defaultDate} />
           )}
         </Field>
 
         <div className="space-y-2">
-          <label className="flex items-center gap-2 text-sm text-gray-300">
-            <input type="checkbox" name="lateFee" className="h-4 w-4 rounded border-gray-600 bg-gray-800" />
+          <label className="flex items-center gap-2 text-sm text-(--fg-secondary)">
+            <input type="checkbox" name="lateFee" className="h-4 w-4 rounded border-(--border) bg-(--bg-surface)" />
             Also charge the late fee
           </label>
-          <label className="flex items-center gap-2 text-sm text-gray-300">
-            <input type="checkbox" name="annualFee" className="h-4 w-4 rounded border-gray-600 bg-gray-800" />
+          <label className="flex items-center gap-2 text-sm text-(--fg-secondary)">
+            <input type="checkbox" name="annualFee" className="h-4 w-4 rounded border-(--border) bg-(--bg-surface)" />
             Also charge the annual fee
           </label>
         </div>
 
         <div className="md:col-span-2 flex flex-wrap items-center gap-3">
-          <button type="submit" className="ghost-btn h-10 px-4 text-xs" disabled={charging}>
+          <Button variant="outline" type="submit" size="sm" disabled={charging}>
             {charging ? "Charging…" : "Post interest and fees"}
-          </button>
+          </Button>
           {chargeState && (
-            <p className={chargeState.ok ? "text-sm text-green-500" : "text-sm text-red-500"} role="status">
+            <p className={chargeState.ok ? "text-sm text-(--gain)" : "text-sm text-(--loss)"} role="status">
               {chargeState.message}
             </p>
           )}

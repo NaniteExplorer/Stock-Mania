@@ -168,6 +168,15 @@ instrument. Validation that a caller must remember to call is not validation.
 `Quantity`, `CalendarDate`, `FinancialYear`. A raw `number` crossing a domain boundary
 is a defect. Value objects are immutable; an operation returns a new instance.
 
+*Clarified 2026-10-26, from the F.8 checker's first run (176 findings).* A number that is
+not money still has a unit, and the unit belongs **in its type**, not its name.
+`src/core/units.ts` supplies compile-time brands — `Count`, `Ordinal`, `Days`, `Months`,
+`Years`, `Minutes`, `Millis`, `Ratio`, and the literal union `Sign` — with no runtime
+cost. A `number` at a domain boundary is legal **only** when it carries one of them, or
+is a value object above. Choosing a brand is a claim made where the number is declared;
+a rupee figure typed `Count` passes the check and fails review. Money-path figures stay
+value objects: a brand never replaces `Money`, `Percentage` or `Quantity`.
+
 8.7 **Errors are values on the domain path.** `Result`/`Err`, not exceptions, for
 outcomes a caller is expected to handle. Exceptions are for programmer error.
 

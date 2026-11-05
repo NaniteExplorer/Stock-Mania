@@ -29,7 +29,7 @@ import {
   LotId,
   SpecificId,
   strategyFor,
-  type PositionEvent,
+  PositionEvent,
   type SaleInput,
 } from "@/domain/lots";
 import { assertProperty, check, checkDeep, checkTrue, done, genInt, section, throws } from "./harness";
@@ -339,14 +339,14 @@ const event = (
   amount: string,
   id: string,
   charges = "0",
-): PositionEvent => ({
-  kind,
-  on: on(date),
-  quantity: units(quantity),
-  amount: rupees(amount),
-  charges: rupees(charges),
-  transactionId: id,
-});
+): PositionEvent =>
+  PositionEvent.of(kind, {
+    on: on(date),
+    quantity: units(quantity),
+    amount: rupees(amount),
+    charges: rupees(charges),
+    transactionId: id,
+  });
 
 const book = new AverageCostBook(INFY);
 
@@ -401,7 +401,14 @@ section("average cost survives a split");
 
 const withSplit = book.recompute([
   event("BUY", "2024-04-01", "100", "150000", "t1"),
-  { ...event("RESCALE", "2024-09-01", "0", "0", "t2"), ratio: { from: units("1"), to: units("5") } },
+  PositionEvent.of("RESCALE", {
+    on: on("2024-09-01"),
+    quantity: units("0"),
+    amount: rupees("0"),
+    charges: rupees("0"),
+    ratio: { from: units("1"), to: units("5") },
+    transactionId: "t2",
+  }),
   event("SELL", "2025-06-01", "250", "100000", "t3"),
 ]);
 check("100 units became 500, 250 sold, 250 remain", withSplit.quantity.toDecimalString(), "250");

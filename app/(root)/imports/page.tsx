@@ -1,11 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { CheckCheck, Trash2, Undo2, Upload } from "lucide-react";
+import { CheckCheck, Trash2, Undo2 } from "lucide-react";
 import { connection } from "next/server";
 import { CashAsset } from "@/domain/assets";
-import { Card, EmptyState, PageHeader, Pill } from "@/ui/primitives";
+import { Masthead, Page as PageShell, Panel } from "../../../components/ui/page-shell";
+import { Table, TableBody, TableCaption, TableHead, TableHeader, TableRow } from "../../../components/ui/table";
+import { ActionCell, TextCell } from "../../../components/ui/data-cell";
+import { Banner } from "../../../components/ui/banner";
+import { Button } from "../../../components/ui/button";
 import { ActionForm, SubmitButton } from "@/ui/action-form";
 import { FilterBar } from "@/ui/filter-bar";
+import { InstitutionMark } from "@/ui/provider-picker";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 import {
   eraseUndoneBatchAction,
@@ -70,6 +75,7 @@ export default async function Page({
       label: account.institution
         ? `${account.displayName} — ${account.institution}`
         : account.displayName,
+      institution: account.institution,
     }));
 
   const needle = (filters.q ?? "").trim().toLowerCase();
@@ -81,47 +87,38 @@ export default async function Page({
   });
 
   return (
-    <>
-      <PageHeader
-        title="Import a statement"
-        subtitle="Rows are parsed into exact amounts, categorised by your keyword rules, checked against what you already have — and then wait for you."
-        badge={<Pill tone="brand">Phase 2</Pill>}
-      />
+    <PageShell>
+      <Masthead title="Import a statement" />
+      <p className="text-sm text-(--fg-secondary)">
+        Rows are parsed into exact amounts, categorised by your keyword rules, checked against what you already have — and then wait for you.{" "}
+        <span className="text-(--fg-muted)">Phase 2</span>
+      </p>
 
-      <Card
+      <Panel
         title="Upload"
-        subtitle="Four layers of duplicate detection run before anything is offered: the same file, the same row, the same bank reference, and looks-the-same-within-a-week."
-        className="mb-6"
+        description="Four layers of duplicate detection run before anything is offered: the same file, the same row, the same bank reference, and looks-the-same-within-a-week."
       >
         {options.length === 0 ? (
-          <EmptyState
-            icon={Upload}
-            title="Open an account first"
-            body="A statement belongs to an account, so there has to be one to import into."
-            action={
-              <Link href="/accounts" className="ghost-btn h-10 px-4 text-xs">
-                Open an account
-              </Link>
-            }
-          />
+          <Banner title="Open an account first">
+            <p>A statement belongs to an account, so there has to be one to import into.</p>
+            <Button asChild variant="outline" size="sm">
+              <Link href="/accounts">Open an account</Link>
+            </Button>
+          </Banner>
         ) : (
           <UploadForm accounts={options} />
         )}
-      </Card>
+      </Panel>
 
-      <section className="panel p-0">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-600 px-5 py-4">
-          <h2 className="text-sm font-semibold text-gray-100">Past imports</h2>
-          <p className="text-xs text-gray-500">
-            Every one of these can be undone. Showing the most recent {HISTORY_LIMIT}.
-          </p>
-        </div>
-
+      <Panel
+        title="Past imports"
+        description={`Every one of these can be undone. Showing the most recent ${HISTORY_LIMIT}.`}
+      >
         {batches.length === 0 ? (
-          <EmptyState icon={Upload} title="Nothing imported yet" body="Your first upload will appear here." />
+          <Banner title="Nothing imported yet"><p>Your first upload will appear here.</p></Banner>
         ) : (
           <>
-            <div className="px-5 pt-4">
+            <div>
               <FilterBar
                 searchPlaceholder="Search by file name"
                 filters={[
@@ -151,23 +148,22 @@ export default async function Page({
               />
             </div>
 
-            <div className="table-scroll">
-              <table className="w-full text-sm">
-                <caption className="sr-only">Past imports with account, row counts and status</caption>
-                <thead>
-                  <tr className="border-b border-gray-600">
-                    <th scope="col" className="metric-label px-4 py-3 text-left">File</th>
-                    <th scope="col" className="metric-label px-4 py-3 text-left">Account</th>
-                    <th scope="col" className="metric-label px-4 py-3 text-left">Status</th>
-                    <th scope="col" className="metric-label px-4 py-3 text-right">Read</th>
-                    <th scope="col" className="metric-label px-4 py-3 text-right">Posted</th>
-                    <th scope="col" className="metric-label px-4 py-3 text-right">Duplicates</th>
-                    <th scope="col" className="metric-label px-4 py-3 text-right">Unreadable</th>
-                    <th scope="col" className="metric-label px-4 py-3 text-right">Remaining</th>
-                    <th scope="col" className="metric-label px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
+            <Table aria-label="Past imports">
+                <TableCaption className="sr-only">Past imports with account, row counts and status</TableCaption>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>File</TableHead>
+                    <TableHead>Account</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Read</TableHead>
+                    <TableHead className="text-right">Posted</TableHead>
+                    <TableHead className="text-right">Duplicates</TableHead>
+                    <TableHead className="text-right">Unreadable</TableHead>
+                    <TableHead className="text-right">Remaining</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
                   {visible.map((batch) => {
                     const remaining = pendingByBatch.get(batch.id) ?? 0;
                     const account = batch.accountId ? byId.get(batch.accountId.value) : undefined;
@@ -176,34 +172,35 @@ export default async function Page({
                     const canErase = batch.status === "UNDONE";
 
                     return (
-                      <tr key={batch.id} className="border-b border-gray-600/50 last:border-0">
-                        <td className="px-4 py-3">
+                      <TableRow key={batch.id}>
+                        <TextCell>
                           <Link
                             href={`/imports/${batch.id}`}
-                            className="font-medium text-gray-100 hover:text-brand-400"
+                            className="font-medium text-(--fg) hover:text-brand-400"
                           >
                             {batch.fileName}
                           </Link>
-                        </td>
-                        <td className="px-4 py-3 text-gray-400">
+                        </TextCell>
+                        <TextCell>
                           {account ? (
                             <Link
                               href={`/accounts/${account.id.value}`}
-                              className="hover:text-brand-400"
+                              className="inline-flex items-center gap-2 hover:text-brand-400"
                             >
+                              <InstitutionMark institution={account.institution} />
                               {account.displayName}
                             </Link>
                           ) : (
                             "—"
                           )}
-                        </td>
-                        <td className="px-4 py-3 text-gray-400">{STATUS_LABELS[batch.status]}</td>
-                        <td className="tnum px-4 py-3 text-right text-gray-400">{batch.rowsRead}</td>
-                        <td className="tnum px-4 py-3 text-right text-gray-300">{batch.rowsImported}</td>
-                        <td className="tnum px-4 py-3 text-right text-gray-400">{batch.rowsDuplicate}</td>
-                        <td className="tnum px-4 py-3 text-right text-gray-400">{batch.rowsFailed}</td>
-                        <td className="tnum px-4 py-3 text-right text-gray-300">{remaining}</td>
-                        <td className="px-4 py-3">
+                        </TextCell>
+                        <TextCell>{STATUS_LABELS[batch.status]}</TextCell>
+                        <TextCell className="tnum text-right">{batch.rowsRead}</TextCell>
+                        <TextCell className="tnum text-right">{batch.rowsImported}</TextCell>
+                        <TextCell className="tnum text-right">{batch.rowsDuplicate}</TextCell>
+                        <TextCell className="tnum text-right">{batch.rowsFailed}</TextCell>
+                        <TextCell className="tnum text-right">{remaining}</TextCell>
+                        <ActionCell>
                           <div className="flex flex-wrap justify-end gap-2">
                             {canBulkReview && (
                               <ActionForm
@@ -259,23 +256,22 @@ export default async function Page({
                               Open
                             </Link>
                           </div>
-                        </td>
-                      </tr>
+                        </ActionCell>
+                      </TableRow>
                     );
                   })}
-                </tbody>
-              </table>
-            </div>
+                </TableBody>
+            </Table>
 
             {visible.length === 0 && (
-              <p className="px-5 py-10 text-center text-sm text-gray-500">
+              <p className="px-5 py-10 text-center text-sm text-(--fg-muted)">
                 No imports match this filter.
               </p>
             )}
           </>
         )}
-      </section>
-    </>
+      </Panel>
+    </PageShell>
   );
 }
 

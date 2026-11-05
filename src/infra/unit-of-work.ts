@@ -11,18 +11,9 @@ import {
 } from "./db/schema";
 
 /**
- * The write path.
- *
- * Every mutation goes through `UnitOfWork.mutate`, which writes the row, one
- * audit event and one ledger event, and bumps the revision of each account the
- * change touched. Those four things are one operation rather than four calls a
- * caller must remember, because invariant A02 — exactly one audit event per
- * mutation — is not something a convention can guarantee.
- *
- * `AuditWriter` and `LedgerEventWriter` are constructor dependencies rather than
- * optional collaborators for the same reason. If they were optional, the first
- * code path in a hurry would omit them, and an audit trail with a hole in it is
- * not an audit trail.
+ * Audited writes share one path for snapshots, events, revisions and projections.
+ * `mutateAtomic` additionally makes every database effect one SQL transaction.
+ * The legacy `mutate` remains nontransactional until its callers migrate.
  */
 
 export interface RequestContext {
@@ -81,6 +72,21 @@ export interface Mutation<T> {
   readonly apply: (tx: Database) => Promise<{ result: T; after: unknown }>;
 }
 
+/** The real executor supplied by Drizzle's transaction callback (not a Database cast). */
+export type TransactionExecutor = Parameters<Parameters<Database["transaction"]>[0]>[0];
+
+/** Atomic callers must perform all database writes through this supplied executor. */
+export type AtomicMutation<T> = Omit<Mutation<T>, "apply"> & {
+  /**
+   * Performs the write. A writer that must read its before-image inside the transaction
+   * (so a concurrent request cannot make it stale) returns `before`/`action` here; they
+   * replace the outer values in the audit record.
+   */
+  readonly apply: (tx: TransactionExecutor) => Promise<{ result: T; after: unknown; before?: unknown; action?: AuditActionName }>;
+};
+
+type WriteExecutor = Database | TransactionExecutor;
+
 /** Serialises a snapshot, with bigints made explicit rather than thrown on. */
 function snapshot(value: unknown): string | null {
   if (value === null || value === undefined) return null;
@@ -93,21 +99,33 @@ export class UnitOfWork {
     private readonly context: RequestContext,
   ) {}
 
-  /**
-   * Writes a mutation, its audit event, its ledger event and the revision bumps.
-   *
-   * Not wrapped in a SQL transaction: libSQL over HTTP has awkward transaction
-   * semantics with Drizzle, and the same reason better-auth's adapter is
-   * configured with `transaction: false`. The ordering is chosen so a failure
-   * part-way leaves a detectable state rather than a silent one — the row and its
-   * audit event are written before the revision bump, so a crash between them
-   * leaves a stale cache (detected by the revision check) rather than an
-   * un-audited write.
-   */
+  /** Legacy compatibility path: errors can leave partial writes; no atomicity guarantee. */
   async mutate<T>(mutation: Mutation<T>): Promise<T> {
     const { result, after } = await mutation.apply(this.db);
+    await this.recordMutation(this.db, mutation, after);
+    return result;
+  }
 
-    await this.db.insert(auditEvents).values({
+  /** Commit the aggregate, audit/event records, revisions and cache effects together. */
+  async mutateAtomic<T>(mutation: AtomicMutation<T>): Promise<T> {
+    return this.db.transaction(async (tx) => {
+      const out = await mutation.apply(tx);
+      const recorded = {
+        ...mutation,
+        ...("before" in out ? { before: out.before } : {}),
+        ...(out.action ? { action: out.action } : {}),
+      };
+      await this.recordMutation(tx, recorded, out.after);
+      return out.result;
+    });
+  }
+
+  private async recordMutation<T>(
+    executor: WriteExecutor,
+    mutation: Omit<Mutation<T>, "apply">,
+    after: unknown,
+  ): Promise<void> {
+    await executor.insert(auditEvents).values({
       id: newUuid(),
       userId: this.context.userId,
       actorId: this.context.actorId,
@@ -120,7 +138,7 @@ export class UnitOfWork {
       ipAddress: this.context.ipAddress,
     });
 
-    await this.db.insert(ledgerEvents).values({
+    await executor.insert(ledgerEvents).values({
       userId: this.context.userId,
       eventType: mutation.event.type,
       aggregateType: mutation.event.aggregateType,
@@ -131,11 +149,10 @@ export class UnitOfWork {
     });
 
     if (mutation.touchedAccountIds.length > 0) {
-      await this.bumpRevisions(mutation.touchedAccountIds, mutation.event.effectiveOn);
-      await this.invalidateProjections(mutation.touchedAccountIds, mutation.event.effectiveOn);
+      await this.bumpRevisions(executor, mutation.touchedAccountIds, mutation.event.effectiveOn);
+      await this.invalidateProjections(executor, mutation.touchedAccountIds, mutation.event.effectiveOn);
     }
 
-    return result;
   }
 
   /**
@@ -145,11 +162,12 @@ export class UnitOfWork {
    * boundary, while a 2026 entry on the same account must leave it alone.
    */
   private async bumpRevisions(
+    executor: WriteExecutor,
     accountIds: readonly string[],
     effectiveOn: CalendarDate | null,
   ): Promise<void> {
     const iso = effectiveOn?.toISO() ?? null;
-    await this.db
+    await executor
       .update(ledgerAccounts)
       .set({
         revision: sql`${ledgerAccounts.revision} + 1`,
@@ -181,6 +199,7 @@ export class UnitOfWork {
    * changes no balance.
    */
   private async invalidateProjections(
+    executor: WriteExecutor,
     accountIds: readonly string[],
     effectiveOn: CalendarDate | null,
   ): Promise<void> {
@@ -188,7 +207,7 @@ export class UnitOfWork {
     const iso = effectiveOn.toISO();
     void accountIds;
 
-    await this.db.delete(projectionCache).where(
+    await executor.delete(projectionCache).where(
       and(
         eq(projectionCache.userId, this.context.userId),
         sql`(

@@ -14,6 +14,7 @@
  * exception that escapes into a page render.
  */
 
+import { Count, Millis } from "@/core/units";
 import { CalendarDate } from "@/core/time";
 import { RateLimitBudget } from "@/domain/pricing";
 import { ProviderOptions, ProviderRuntime } from "@/infra/providers";
@@ -51,7 +52,7 @@ export class StockAnalysisQuoteAdapter extends MarketDataSource implements LiveQ
   }
 
   override rateLimit(): RateLimitBudget {
-    return { requests: 15, perMillis: 60_000, burst: 3 };
+    return { requests: Count(15), perMillis: Millis(60_000), burst: Count(3) };
   }
 
   async quote(request: LiveQuoteRequest): Promise<MarketDataResult<readonly LiveQuote[]>> {

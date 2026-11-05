@@ -1,7 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Field } from "@/ui/primitives";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Button } from "@/components/ui/button";
 import { ProviderPicker } from "@/ui/provider-picker";
 import { openCashAccountAction, type ActionState } from "./actions";
 
@@ -23,27 +26,27 @@ export default function OpenAccountForm() {
     <form action={action} className="grid gap-4 md:grid-cols-2">
       <Field name="name" label="Account name" required error={errors.name?.[0]}>
         {(props) => (
-          <input {...props} name="name" className="form-input" placeholder="HDFC Savings" required />
+          <Input {...props} name="name" placeholder="HDFC Savings" required />
         )}
       </Field>
 
       <Field name="subtype" label="Kind" required error={errors.subtype?.[0]}>
         {(props) => (
-          <select {...props} name="subtype" className="form-input" defaultValue="BANK">
+          <NativeSelect {...props} name="subtype" defaultValue="BANK">
             <option value="BANK">Bank account</option>
             <option value="SAVINGS">Savings account</option>
             <option value="WALLET">Wallet (Paytm, PhonePe)</option>
             <option value="CASH">Cash in hand</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
       <Field name="currency" label="Currency" required error={errors.currency?.[0]}>
         {(props) => (
-          <select {...props} name="currency" className="form-input" defaultValue="INR">
+          <NativeSelect {...props} name="currency" defaultValue="INR">
             <option value="INR">INR — Indian rupee</option>
             <option value="USD">USD — US dollar</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
@@ -58,7 +61,7 @@ export default function OpenAccountForm() {
         error={errors.accountNumberSuffix?.[0]}
       >
         {(props) => (
-          <input {...props} name="accountNumberSuffix" className="form-input" inputMode="numeric" maxLength={4} />
+          <Input {...props} name="accountNumberSuffix" inputMode="numeric" maxLength={4} />
         )}
       </Field>
 
@@ -69,20 +72,20 @@ export default function OpenAccountForm() {
         error={errors.openingBalance?.[0]}
       >
         {(props) => (
-          <input {...props} name="openingBalance" className="form-input tnum" inputMode="decimal" placeholder="200000.00" />
+          <Input {...props} name="openingBalance" inputMode="decimal" placeholder="200000.00" />
         )}
       </Field>
 
       <Field name="openingBalanceOn" label="As on" error={errors.openingBalanceOn?.[0]}>
-        {(props) => <input {...props} name="openingBalanceOn" type="date" className="form-input" />}
+        {(props) => <Input {...props} name="openingBalanceOn" type="date" />}
       </Field>
 
       <div className="md:col-span-2 flex flex-wrap items-center gap-3">
-        <button type="submit" className="btn-glow" disabled={pending}>
-          {pending ? "Opening…" : "Open account"}
-        </button>
+        <Button type="submit" loading={pending} disabled={pending}>
+          Open account
+        </Button>
         {state && (
-          <p className={state.ok ? "text-sm text-green-500" : "text-sm text-red-500"} role="status">
+          <p className={state.ok ? "text-sm text-(--gain)" : "text-sm text-(--loss)"} role="status">
             {state.message}
           </p>
         )}

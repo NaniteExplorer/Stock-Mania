@@ -13,6 +13,7 @@
  * covers a database constraint is how an invariant ends up enforced nowhere.
  */
 
+import { Ordinal } from "@/core/units";
 import { UserId } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { Quantity } from "@/core/numeric";
@@ -393,7 +394,7 @@ check(
 );
 check(
   "changing a posting produces a new one rather than mutating it",
-  reconciled.withSeq(3) === reconciled,
+  reconciled.withSeq(Ordinal(3)) === reconciled,
   false,
 );
 check("...and the original is untouched", reconciled.seq, 0);

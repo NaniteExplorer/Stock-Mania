@@ -1,8 +1,7 @@
 "use client";
 
-import { TrendingUp } from "lucide-react";
 import { Chart, LineSeries, type SeriesPoint } from "@/ui/charts";
-import { EmptyState } from "@/ui/primitives";
+import { Banner } from "@/components/ui/banner";
 
 /**
  * The account's running balance.
@@ -29,11 +28,9 @@ export default function BalanceChart({
       className="mb-6"
       empty={
         points.length === 0 ? (
-          <EmptyState
-            icon={TrendingUp}
-            title="No movements in this window"
-            body="Import a statement or widen the date range."
-          />
+          <Banner title="No movements in this window">
+            <p>Import a statement or widen the date range.</p>
+          </Banner>
         ) : undefined
       }
     >

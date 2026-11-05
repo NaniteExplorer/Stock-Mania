@@ -1,15 +1,18 @@
 "use client";
 
-import { AlertTriangle, RotateCcw } from "lucide-react";
+import { Banner } from "@/components/ui/banner";
+import { Button } from "@/components/ui/button";
+import { Masthead, Page } from "@/components/ui/page-shell";
 
 export default function WorkspaceError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
   return (
-    <div className="panel mx-auto flex max-w-xl flex-col items-center px-6 py-14 text-center">
-      <span className="icon-chip h-12 w-12 text-red-500"><AlertTriangle className="h-5 w-5" /></span>
-      <h1 className="mt-5 text-xl font-semibold text-gray-100">This view could not be synchronized</h1>
-      <p className="mt-2 max-w-md text-sm leading-6 text-gray-500">Your saved data is unchanged. Check the connection and retry this view.</p>
-      {error.digest && <p className="mt-2 font-mono text-[10px] text-gray-600">Reference {error.digest}</p>}
-      <button type="button" onClick={reset} className="btn-brand mt-6 inline-flex items-center gap-2 px-5"><RotateCcw className="h-4 w-4" /> Retry</button>
-    </div>
+    <Page>
+      <Masthead title="This view could not be synchronized" />
+      <Banner tone="error" title="Your saved data is unchanged.">
+        <p>Check the connection and retry this view.</p>
+        {error.digest && <p className="font-mono text-[10px]">Reference {error.digest}</p>}
+        <Button type="button" onClick={reset} className="mt-3">Retry</Button>
+      </Banner>
+    </Page>
   );
 }

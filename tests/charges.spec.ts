@@ -1,3 +1,4 @@
+import { Count } from "@/core/units";
 import { Money, ROUNDING } from "@/core/money";
 import { Percentage, Quantity } from "@/core/numeric";
 import { CalendarDate } from "@/core/time";
@@ -165,7 +166,7 @@ section("DP is per scrip per day, not per trade");
 // Two sells of the SAME scrip on one day are one DP charge; the trade carries the
 // scrip-day count because a single trade cannot know what else happened that day.
 const twoScrips = chargeModelFor("zerodha", rates).compute(
-  trade({ side: "SELL", scripDayCount: 2 }),
+  trade({ side: "SELL", scripDayCount: Count(2) }),
 );
 check("two distinct scrips, two DP charges", rupees(twoScrips.by("DP_CHARGES")), "30.68");
 check("one scrip-day is the default", rupees(sell.by("DP_CHARGES")), "15.34");

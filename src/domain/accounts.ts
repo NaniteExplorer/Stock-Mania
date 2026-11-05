@@ -15,6 +15,7 @@
 
 import { AggregateRoot, DomainError, UniqueId, UserId, ValueObject, newUuid } from "@/core/kernel";
 import { Currency } from "@/core/money";
+import { Count, SortKey, type Polarity, type Sign } from "@/core/units";
 /* ═══ PostingDirection ════════════════════════════════════════════════ */
 
 /**
@@ -84,7 +85,7 @@ export class AccountType extends ValueObject {
    * A debit raises an asset but lowers a liability — this single expression is
    * what makes that true everywhere, rather than being re-derived per report.
    */
-  signedEffect(direction: PostingDirection): 1 | -1 {
+  signedEffect(direction: PostingDirection): Sign {
     return direction === this.normalBalance ? 1 : -1;
   }
 
@@ -105,7 +106,7 @@ export class AccountType extends ValueObject {
   }
 
   /** Assets count positively toward net worth, liabilities negatively. */
-  get netWorthSign(): 1 | -1 | 0 {
+  get netWorthSign(): Polarity {
     if (this === AccountType.ASSET) return 1;
     if (this === AccountType.LIABILITY) return -1;
     return 0;
@@ -179,8 +180,8 @@ export class AccountCode extends ValueObject {
     return this.segments[this.segments.length - 1];
   }
 
-  get depth(): number {
-    return this.segments.length;
+  get depth(): Count {
+    return Count(this.segments.length);
   }
 
   /** The code of the parent account, or null at the root. */
@@ -261,7 +262,7 @@ export class SystemAccountError extends DomainError {
 }
 
 export class AccountHasPostingsError extends DomainError {
-  constructor(accountName: string, postingCount: number) {
+  constructor(accountName: string, postingCount: Count) {
     super(
       "LEDGER_ACCOUNT_HAS_POSTINGS",
       `${accountName} has ${postingCount} transaction(s) and cannot be deleted. ` +
@@ -379,19 +380,30 @@ export function legalityRoleOf(
   type: AccountTypeName,
   subtype: AccountSubtype | null,
 ): LegalityRole {
-  switch (type) {
-    case "ASSET":
-      return (subtype && ASSET_ROLE[subtype]) ?? "ASSET_OTHER";
-    case "LIABILITY":
-      return (subtype && LIABILITY_ROLE[subtype]) ?? "LIABILITY_OTHER";
-    case "INCOME":
-      return "INCOME";
-    case "EXPENSE":
-      return "EXPENSE";
-    case "EQUITY":
-      return subtype === "ADJUSTMENT" ? "EQUITY_ADJUSTMENT" : "EQUITY_OPENING";
-  }
+  const roles = ROLES_BY_TYPE[type];
+  return (subtype && roles.bySubtype[subtype]) ?? roles.otherwise;
 }
+
+/**
+ * Every account type, as a table rather than a `switch` (`RULES.md` §8.3).
+ *
+ * Exhaustive by its type: a sixth `AccountTypeName` fails to compile here until it
+ * is given roles, where a `switch` would have fallen through. Each type has the same
+ * shape — a subtype lookup and its fallback — so equity's adjustment account is a
+ * row in a table, not a comparison written inline.
+ */
+const ROLES_BY_TYPE: Readonly<
+  Record<
+    AccountTypeName,
+    { readonly bySubtype: Partial<Record<AccountSubtype, LegalityRole>>; readonly otherwise: LegalityRole }
+  >
+> = {
+  ASSET: { bySubtype: ASSET_ROLE, otherwise: "ASSET_OTHER" },
+  LIABILITY: { bySubtype: LIABILITY_ROLE, otherwise: "LIABILITY_OTHER" },
+  INCOME: { bySubtype: {}, otherwise: "INCOME" },
+  EXPENSE: { bySubtype: {}, otherwise: "EXPENSE" },
+  EQUITY: { bySubtype: { ADJUSTMENT: "EQUITY_ADJUSTMENT" }, otherwise: "EQUITY_OPENING" },
+};
 
 /**
  * An account in the chart of accounts.
@@ -415,9 +427,10 @@ export class Account extends AggregateRoot<AccountId> {
     readonly accountNumberSuffix: string | null,
     readonly isClosed: boolean,
     readonly isSystem: boolean,
-    readonly sortOrder: number,
+    readonly sortOrder: SortKey,
   ) {
     super(id);
+    SortKey(sortOrder);
   }
 
   static open(props: {
@@ -431,7 +444,7 @@ export class Account extends AggregateRoot<AccountId> {
     institution?: string | null;
     accountNumberSuffix?: string | null;
     isSystem?: boolean;
-    sortOrder?: number;
+    sortOrder?: SortKey;
   }): Account {
     const name = props.name.trim();
     if (name.length === 0) {
@@ -459,7 +472,7 @@ export class Account extends AggregateRoot<AccountId> {
       suffix,
       false,
       props.isSystem ?? false,
-      props.sortOrder ?? 0,
+      SortKey(props.sortOrder ?? 0),
     );
   }
 
@@ -477,7 +490,7 @@ export class Account extends AggregateRoot<AccountId> {
     accountNumberSuffix: string | null;
     isClosed: boolean;
     isSystem: boolean;
-    sortOrder: number;
+    sortOrder: SortKey;
   }): Account {
     return new Account(
       props.id,
@@ -492,7 +505,7 @@ export class Account extends AggregateRoot<AccountId> {
       props.accountNumberSuffix,
       props.isClosed,
       props.isSystem,
-      props.sortOrder,
+      SortKey(props.sortOrder),
     );
   }
 
@@ -502,7 +515,7 @@ export class Account extends AggregateRoot<AccountId> {
   }
 
   /** How this account's balance affects net worth: assets `+`, liabilities `-`. */
-  get netWorthSign(): 1 | -1 | 0 {
+  get netWorthSign(): Polarity {
     return this.type.netWorthSign;
   }
 
@@ -552,7 +565,7 @@ export class Account extends AggregateRoot<AccountId> {
     institution?: string | null;
     accountNumberSuffix?: string | null;
     subtype?: AccountSubtype | null;
-    sortOrder?: number;
+    sortOrder?: SortKey;
   }): Account {
     const suffix = props.accountNumberSuffix?.trim() || null;
     if (suffix !== null && !/^\d{4}$/.test(suffix)) {
@@ -567,7 +580,7 @@ export class Account extends AggregateRoot<AccountId> {
       accountNumberSuffix:
         props.accountNumberSuffix === undefined ? this.accountNumberSuffix : suffix,
       subtype: props.subtype === undefined ? this.subtype : props.subtype,
-      sortOrder: props.sortOrder ?? this.sortOrder,
+      sortOrder: SortKey(props.sortOrder ?? this.sortOrder),
     });
   }
 
@@ -578,7 +591,7 @@ export class Account extends AggregateRoot<AccountId> {
     institution?: string | null;
     accountNumberSuffix?: string | null;
     isClosed?: boolean;
-    sortOrder?: number;
+    sortOrder?: SortKey;
   }): Account {
     return new Account(
       this.id,
@@ -593,7 +606,7 @@ export class Account extends AggregateRoot<AccountId> {
       changes.accountNumberSuffix === undefined ? this.accountNumberSuffix : changes.accountNumberSuffix,
       changes.isClosed ?? this.isClosed,
       this.isSystem,
-      changes.sortOrder ?? this.sortOrder,
+      SortKey(changes.sortOrder ?? this.sortOrder),
     );
   }
 
@@ -804,7 +817,7 @@ export interface ResolvedSeedAccount {
   type: AccountType;
   subtype: AccountSubtype | null;
   isSystem: boolean;
-  sortOrder: number;
+  sortOrder: SortKey;
 }
 
 export function resolveDefaultChart(): ResolvedSeedAccount[] {
@@ -815,7 +828,7 @@ export function resolveDefaultChart(): ResolvedSeedAccount[] {
     subtype: seed.subtype ?? null,
     isSystem: seed.isSystem ?? false,
     // Preserve the declaration order above as the display order.
-    sortOrder: index,
+    sortOrder: SortKey(index),
   }));
 }
 
@@ -860,7 +873,7 @@ export interface AccountRepository {
   descendantsOf(userId: UserId, id: AccountId): Promise<Account[]>;
 
   /** How many postings reference this account — decides close-vs-delete. */
-  countPostings(userId: UserId, id: AccountId): Promise<number>;
+  countPostings(userId: UserId, id: AccountId): Promise<Count>;
 
   /** Hide an unused account without destroying its audit trail. */
   softDelete(userId: UserId, id: AccountId, at: Date): Promise<void>;

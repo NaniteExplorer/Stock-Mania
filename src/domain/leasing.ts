@@ -34,6 +34,7 @@
  *      us rather than something we presume. See {@link DEFAULT_TDS_RATE}.
  */
 
+import { Months, Ordinal } from "@/core/units";
 import { DomainError, UserId, ValueObject } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { Percentage, Quantity, UnitPrice } from "@/core/numeric";
@@ -74,16 +75,16 @@ export const PAYOUT_FREQUENCIES = [
 export type PayoutFrequency = (typeof PAYOUT_FREQUENCIES)[number];
 
 /** Months in one payout period. `null` means the whole term, paid once. */
-export function periodMonths(frequency: PayoutFrequency): number | null {
+export function periodMonths(frequency: PayoutFrequency): Months | null {
   switch (frequency) {
     case "MONTHLY":
-      return 1;
+      return Months(1);
     case "QUARTERLY":
-      return 3;
+      return Months(3);
     case "HALF_YEARLY":
-      return 6;
+      return Months(6);
     case "ANNUAL":
-      return 12;
+      return Months(12);
     case "ON_MATURITY":
       return null;
   }
@@ -194,9 +195,9 @@ export interface LeaseAccrual {
    * Months the accrual is actually paid on — completed **periods**, not
    * completed months. Seven months into an annually-paying lease this is 0.
    */
-  readonly monthsCompleted: number;
+  readonly monthsCompleted: Months;
   /** Months that have elapsed but not yet reached a payout date. */
-  readonly monthsPending: number;
+  readonly monthsPending: Months;
   /** When the next payout falls due, or `null` once the term is over. */
   readonly nextPayoutOn: CalendarDate | null;
   /** Interest before withholding. */
@@ -211,7 +212,7 @@ export interface LeaseAccrual {
 
 /** One month of a lease's life. */
 export interface LeaseAccrualRow {
-  readonly month: number;
+  readonly month: Ordinal;
   readonly on: CalendarDate;
   readonly grossToDate: Quantity;
   readonly tdsToDate: Quantity;
@@ -291,8 +292,8 @@ export class GoldLease {
   }
 
   /** The lease's whole term in months, for a screen and for the schedule. */
-  get termMonths(): number {
-    return this.props.startOn.monthsUntil(this.props.closesOn);
+  get termMonths(): Months {
+    return Months(this.props.startOn.monthsUntil(this.props.closesOn));
   }
 
   /**
@@ -322,10 +323,10 @@ export class GoldLease {
    * Clamped at both ends: never negative before the lease starts, never beyond
    * the term after it ends.
    */
-  monthsElapsedOn(asOf: CalendarDate): number {
+  monthsElapsedOn(asOf: CalendarDate): Months {
     const boundary = asOf.isBefore(this.accruesUntil) ? asOf : this.accruesUntil;
     const months = this.props.startOn.monthsUntil(boundary);
-    return months > 0 ? months : 0;
+    return Months(months > 0 ? months : 0);
   }
 
   /**
@@ -339,13 +340,13 @@ export class GoldLease {
    * `ON_MATURITY` pays nothing until the term is over and then pays all of it —
    * which is why it is not modelled as "annual with a long period".
    */
-  monthsCompletedOn(asOf: CalendarDate): number {
+  monthsCompletedOn(asOf: CalendarDate): Months {
     const elapsed = this.monthsElapsedOn(asOf);
     const period = periodMonths(this.payoutFrequency);
     if (period === null) {
-      return asOf.isOnOrAfter(this.accruesUntil) ? elapsed : 0;
+      return asOf.isOnOrAfter(this.accruesUntil) ? elapsed : Months(0);
     }
-    return Math.floor(elapsed / period) * period;
+    return Months(Math.floor(elapsed / period) * period);
   }
 
   /** When the next payout falls due, or `null` if the term is over. */
@@ -375,7 +376,7 @@ export class GoldLease {
     if (months === 0) {
       return {
         asOf,
-        monthsCompleted: 0,
+        monthsCompleted: Months(0),
         monthsPending: elapsed,
         nextPayoutOn,
         gross: Quantity.ZERO,
@@ -404,7 +405,7 @@ export class GoldLease {
     return {
       asOf,
       monthsCompleted: months,
-      monthsPending: pending,
+      monthsPending: Months(pending),
       nextPayoutOn,
       gross,
       tds,
@@ -469,7 +470,7 @@ export class GoldLease {
       const on = this.props.startOn.plusMonths(month);
       const accrual = this.accrualOn(on);
       rows.push({
-        month,
+        month: Ordinal(month),
         on,
         grossToDate: accrual.gross,
         tdsToDate: accrual.tds,

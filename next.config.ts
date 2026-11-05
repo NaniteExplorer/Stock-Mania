@@ -53,6 +53,14 @@ const nextConfig: NextConfig = {
   // Bundling it into a Next server chunk breaks that relative worker import.
   serverExternalPackages: ["pdfjs-dist"],
   experimental: { serverActions: { bodySizeLimit: "3mb" } },
+  // DESIGN.md §9c: /liabilities is retired and must never 404, so it redirects to
+  // /loans permanently. `permanent: true` is the local Next docs' permanent form
+  // (308, which keeps the request method); `statusCode` is documented only for old
+  // clients and cannot be combined with `permanent`. See
+  // node_modules/next/dist/docs/01-app/03-api-reference/05-config/01-next-config-js/redirects.md
+  async redirects() {
+    return [{ source: "/liabilities", destination: "/loans", permanent: true }];
+  },
   async headers() {
     return [{ source: "/:path*", headers: securityHeaders }];
   },

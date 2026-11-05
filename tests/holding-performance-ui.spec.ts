@@ -17,12 +17,12 @@ checkTrue("stored closes are not called live", !chart.includes("Live last price"
 checkTrue("manual control is retained as a retry", chart.includes("Retry price history"));
 
 section("open-position metrics are decision useful");
-checkTrue("summary preserves digital-metal realised behavior", page.includes('isDigitalMetal ? (\n          <Stat label="Realised"'));
+checkTrue("summary preserves digital-metal realised behavior", /isDigitalMetal\s*\?\s*\(\s*<Kpi label="Realised"/.test(page));
 checkTrue("non-digital summary uses unrealised P&L", page.includes('label="Unrealised gain / loss"'));
 checkTrue("performance exposes absolute return", returnsPanel.includes('label="Absolute return"'));
 checkTrue("performance removes realised headline", !returnsPanel.includes('label="Realised gain / loss"'));
 check("performance renders one consolidated returns panel", occurrences(page, "<ReturnsPanel"), 1);
-check("realised headline remains only in the frozen digital-metal branch", occurrences(page, '<Stat label="Realised"'), 1);
+check("realised headline remains only in the frozen digital-metal branch", occurrences(page, '<Kpi label="Realised"'), 1);
 
 done();
 

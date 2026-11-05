@@ -25,6 +25,7 @@
  * about and the ledger does not is a warning for the owner, never a ledger edit.
  */
 
+import { Count, Millis } from "@/core/units";
 import { Err } from "@/core/kernel";
 import { Currency } from "@/core/money";
 import { CalendarDate } from "@/core/time";
@@ -263,7 +264,7 @@ export class YahooChartAdapter
       const firstTrade = result.meta?.firstTradeDate;
       return {
         quoteKey,
-        bars,
+        bars: Count(bars),
         currency: result.meta?.currency?.toUpperCase() ?? null,
         instrumentType: result.meta?.instrumentType ?? null,
         firstTradeDate:
@@ -344,7 +345,7 @@ class YahooChartSource extends MarketDataSource {
     // Politeness, not a measured ceiling: 775 requests in an hour from one IP
     // produced zero 429s (C13). The budget is here so a runaway loop is slow
     // rather than banned.
-    return { requests: 20, perMillis: 60_000, burst: 4 };
+    return { requests: Count(20), perMillis: Millis(60_000), burst: Count(4) };
   }
 
   nowMillis(): number {

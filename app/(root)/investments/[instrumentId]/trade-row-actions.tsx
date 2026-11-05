@@ -1,12 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { Field } from "@/ui/primitives";
 import {
   correctTradeAction,
   voidTradeAction,
 } from "../admin-actions";
 import type { InvestingActionState } from "../actions";
+import { Input } from "../../../../components/ui/input";
+import { NativeSelect } from "../../../../components/ui/native-select";
+import { FormField as Field } from "./form-field";
 
 export interface TradeRowAccount {
   id: string;
@@ -78,7 +80,7 @@ export default function TradeRowActions({
         </button>
         <button
           type="button"
-          className="ghost-btn h-8 px-3 text-xs text-red-400"
+          className="ghost-btn h-8 px-3 text-xs text-(--loss)"
           onClick={() => {
             setConfirming((open) => !open);
             setEditing(false);
@@ -90,8 +92,8 @@ export default function TradeRowActions({
       </div>
 
       {confirming && (
-        <div className="space-y-2 rounded-xl border border-gray-600 p-3">
-          <p className="max-w-md text-xs text-gray-400">
+        <div className="space-y-2 rounded-xl border border-(--border) p-3">
+          <p className="max-w-md text-xs text-(--fg-secondary)">
             Two different things, and only one of them is true. <strong>Reverse</strong> says the
             trade happened and was recorded wrongly — it posts the mirror entry and leaves both on
             the statement. <strong>Delete</strong> says it never happened, and takes it off.
@@ -99,23 +101,23 @@ export default function TradeRowActions({
           <form action={undo} className="flex flex-wrap items-center gap-2">
             <input type="hidden" name="instrumentId" value={instrumentId} />
             <input type="hidden" name="tradeId" value={tradeId} />
-            <select
+            <NativeSelect
               name="mode"
-              className="form-input h-8 w-auto py-0 text-xs"
-              defaultValue="REVERSE"
+              className="h-8 w-auto py-0 text-xs"
+             defaultValue="REVERSE"
               aria-label="How to undo this trade"
             >
               <option value="REVERSE">Reverse — it happened, recorded wrongly</option>
               <option value="DELETE">Delete — it never happened</option>
-            </select>
-            <input
+            </NativeSelect>
+            <Input
               name="reason"
-              className="form-input h-8 w-48 py-0 text-xs"
+              className="h-8 w-48 py-0 text-xs"
               placeholder="Why (optional)"
               maxLength={200}
               aria-label="Reason"
-            />
-            <button type="submit" className="ghost-btn h-8 px-3 text-xs text-red-400" disabled={undoing}>
+           />
+            <button type="submit" className="ghost-btn h-8 px-3 text-xs text-(--loss)" disabled={undoing}>
               {undoing ? "Undoing…" : "Undo the trade"}
             </button>
           </form>
@@ -123,49 +125,49 @@ export default function TradeRowActions({
       )}
 
       {editing && (
-        <form action={correct} className="grid gap-3 rounded-xl border border-gray-600 p-3 md:grid-cols-3">
+        <form action={correct} className="grid gap-3 rounded-xl border border-(--border) p-3 md:grid-cols-3">
           <input type="hidden" name="instrumentId" value={instrumentId} />
           <input type="hidden" name="tradeId" value={tradeId} />
 
           <Field name={`quantity-${tradeId}`} label="Units">
             {(props) => (
-              <input
+              <Input
                 {...props}
                 name="quantity"
-                className="form-input tnum"
+                className="tnum"
                 inputMode="decimal"
-                defaultValue={quantity}
-              />
+               defaultValue={quantity}
+             />
             )}
           </Field>
 
           <Field name={`price-${tradeId}`} label="Price / unit">
             {(props) => (
-              <input
+              <Input
                 {...props}
                 name="pricePerUnit"
-                className="form-input tnum"
+                className="tnum"
                 inputMode="decimal"
-                defaultValue={pricePerUnit}
-              />
+               defaultValue={pricePerUnit}
+             />
             )}
           </Field>
 
           <Field name={`date-${tradeId}`} label="Traded on">
             {(props) => (
-              <input {...props} name="tradedOn" type="date" className="form-input" defaultValue={tradedOn} />
+              <Input {...props} name="tradedOn" type="date" defaultValue={tradedOn} />
             )}
           </Field>
 
           <Field name={`charges-${tradeId}`} label="Charges">
             {(props) => (
-              <input
+              <Input
                 {...props}
                 name="charges"
-                className="form-input tnum"
+                className="tnum"
                 inputMode="decimal"
-                defaultValue={charges}
-              />
+               defaultValue={charges}
+             />
             )}
           </Field>
 
@@ -177,7 +179,7 @@ export default function TradeRowActions({
                 hint="STT never is. Left blank, the correction says so rather than guessing."
               >
                 {(props) => (
-                  <input {...props} name="deductibleCharges" className="form-input tnum" inputMode="decimal" />
+                  <Input {...props} name="deductibleCharges" className="tnum" inputMode="decimal" />
                 )}
               </Field>
 
@@ -187,13 +189,13 @@ export default function TradeRowActions({
                 hint="The original sale did not record which it used, so this re-matches."
               >
                 {(props) => (
-                  <select {...props} name="method" className="form-input" defaultValue="FIFO">
+                  <NativeSelect {...props} name="method" defaultValue="FIFO">
                     <option value="FIFO">FIFO</option>
                     <option value="LIFO">LIFO</option>
                     <option value="HIFO">HIFO</option>
                     <option value="AVERAGE_COST">Average cost</option>
                     <option value="SPECIFIC_ID">Specific id</option>
-                  </select>
+                  </NativeSelect>
                 )}
               </Field>
             </>
@@ -201,11 +203,11 @@ export default function TradeRowActions({
 
           <Field name={`account-${tradeId}`} label="Settled through">
             {(props) => (
-              <select
+              <NativeSelect
                 {...props}
                 name="settlementAccountId"
-                className="form-input"
-                defaultValue={settlementAccountId ?? ""}
+                
+               defaultValue={settlementAccountId ?? ""}
               >
                 <option value="">Unchanged</option>
                 {accounts.map((account) => (
@@ -213,19 +215,19 @@ export default function TradeRowActions({
                     {account.label}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             )}
           </Field>
 
           <Field name={`reason-${tradeId}`} label="Why">
             {(props) => (
-              <input
+              <Input
                 {...props}
                 name="reason"
-                className="form-input"
+                
                 placeholder="Contract note said 520"
                 maxLength={200}
-              />
+             />
             )}
           </Field>
 
@@ -239,7 +241,7 @@ export default function TradeRowActions({
 
       {state && (
         <p
-          className={state.ok ? "max-w-md text-xs text-green-500" : "max-w-md text-xs text-red-500"}
+          className={state.ok ? "max-w-md text-xs text-(--gain)" : "max-w-md text-xs text-(--loss)"}
           role="status"
         >
           {state.message}

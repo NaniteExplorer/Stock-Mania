@@ -21,6 +21,7 @@
  * naming gzip, rather than as a mystery parse error.
  */
 
+import { Count, Millis } from "@/core/units";
 import { Currency } from "@/core/money";
 import { RateLimitBudget } from "@/domain/pricing";
 import { ProviderOptions, ProviderRuntime } from "@/infra/providers";
@@ -97,7 +98,7 @@ export class UpstoxMasterAdapter extends MarketDataSource implements InstrumentM
 
   override rateLimit(): RateLimitBudget {
     // Refreshed once a day. A budget this small is a statement of intent.
-    return { requests: 4, perMillis: 60_000, burst: 2 };
+    return { requests: Count(4), perMillis: Millis(60_000), burst: Count(2) };
   }
 
   async load(): Promise<MarketDataResult<readonly InstrumentMasterRow[]>> {

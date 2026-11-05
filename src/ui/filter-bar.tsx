@@ -1,5 +1,6 @@
 "use client";
 
+import { Dropdown } from "../../components/ui/dropdown";
 import * as React from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search, X } from "lucide-react";
@@ -87,19 +88,15 @@ export function FilterBar({
       )}
 
       {filters.map((filter) => (
-        <select
+        <Dropdown
           key={filter.name}
-          className="form-input h-10 py-1 text-xs"
+          className="w-auto min-w-[140px]"
+          size="sm"
           aria-label={filter.label}
           value={params.get(filter.name) ?? ""}
-          onChange={(event) => commit(filter.name, event.target.value)}
-        >
-          {filter.options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+          onValueChange={(next) => commit(filter.name, next)}
+          options={filter.options}
+        />
       ))}
 
       {children}

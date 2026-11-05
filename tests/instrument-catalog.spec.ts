@@ -1,3 +1,4 @@
+import { Count } from "@/core/units";
 import { FixedClock, UserId } from "@/core/kernel";
 import {
   CatalogCandidate,
@@ -50,15 +51,15 @@ const tcs: CatalogCandidate = {
 
 class SearchFixtureRepository extends CatalogQuoteKeyStubs implements InstrumentCatalogRepository {
   async latestSuccessfulFetch() {
-    return { source: "UPSTOX_PUBLIC", fetchedAt: now, checksum: "a".repeat(64), rowCount: 1 };
+    return { source: "UPSTOX_PUBLIC", fetchedAt: now, checksum: "a".repeat(64), rowCount: Count(1) };
   }
   async latestFetchAttempt() {
     return { source: "UPSTOX_PUBLIC", attemptedAt: now, outcome: "SUCCESS" as const };
   }
   async recordFetchFailure() {}
-  async count() { return 1; }
+  async count() { return Count(1); }
   async ingest(_snapshot: CatalogSnapshot) {
-    return { instruments: 0, listings: 0, mappings: 0, unmatchedMappings: 0 };
+    return { instruments: Count(0), listings: Count(0), mappings: Count(0), unmatchedMappings: Count(0) };
   }
   async search(query: string) {
     const candidate = ["TCS", "INE467B01029", "TATA CONSULTANCY SERV LT", "TATA CONSULTANCY SERVICES LTD", "TATA"]
@@ -273,7 +274,7 @@ function resolves(
     quoteKey,
     {
       quoteKey,
-      bars: 7716,
+      bars: Count(7716),
       currency: "INR",
       instrumentType: "EQUITY",
       firstTradeDate: "1996-01-01",
@@ -333,7 +334,7 @@ async function quoteKeyGate(): Promise<void> {
   const good = resolves("RELIANCE.NS")[1];
   checkTrue("a real equity in the right currency is accepted", acceptQuoteKeyProbe(good, { currency: "INR" }).accepted);
 
-  const empty = acceptQuoteKeyProbe({ ...good, bars: 0 }, { currency: "INR" });
+  const empty = acceptQuoteKeyProbe({ ...good, bars: Count(0) }, { currency: "INR" });
   check("a 200 with no bars is not a resolution", empty.accepted, false);
   if (!empty.accepted) checkTrue("and says so", empty.reason.includes("no bars"));
 
@@ -361,7 +362,7 @@ async function quoteKeyGate(): Promise<void> {
     listing({ listingId: "ghost", symbol: "GHOSTCO" }),
   ]);
   const prober = new FixtureProber(
-    new Map([resolves("RELIANCE.NS"), resolves("TAPARIA.BO", { bars: 1200, firstTradeDate: "2003-04-01" })]),
+    new Map([resolves("RELIANCE.NS"), resolves("TAPARIA.BO", { bars: Count(1200), firstTradeDate: "2003-04-01" })]),
   );
   const report = await new InstrumentQuoteKeyReconciler(catalog, prober, () => at).reconcile();
 
@@ -522,7 +523,7 @@ async function quoteKeyGate(): Promise<void> {
 }
 
 class RefreshFixtureRepository extends CatalogQuoteKeyStubs implements InstrumentCatalogRepository {
-  private readonly receipts = new Map<string, { source: string; fetchedAt: Date; checksum: string; rowCount: number }>();
+  private readonly receipts = new Map<string, { source: string; fetchedAt: Date; checksum: string; rowCount: Count }>();
 
   async latestSuccessfulFetch(source?: string) {
     if (source) return this.receipts.get(source) ?? null;
@@ -533,15 +534,15 @@ class RefreshFixtureRepository extends CatalogQuoteKeyStubs implements Instrumen
     return receipt ? { source, attemptedAt: receipt.fetchedAt, outcome: "SUCCESS" as const } : null;
   }
   async recordFetchFailure() {}
-  async count() { return this.receipts.size; }
+  async count() { return Count(this.receipts.size); }
   async ingest(snapshot: CatalogSnapshot) {
     this.receipts.set(snapshot.source, {
       source: snapshot.source,
       fetchedAt: snapshot.fetchedAt,
       checksum: snapshot.checksum,
-      rowCount: snapshot.instruments.length,
+      rowCount: Count(snapshot.instruments.length),
     });
-    return { instruments: snapshot.instruments.length, listings: snapshot.instruments.length, mappings: 0, unmatchedMappings: 0 };
+    return { instruments: Count(snapshot.instruments.length), listings: Count(snapshot.instruments.length), mappings: Count(0), unmatchedMappings: Count(0) };
   }
   async search() { return { candidates: [], exactIdentifierMatches: [] }; }
   async linkPortfolioInstrument() { return true; }

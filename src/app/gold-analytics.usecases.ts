@@ -43,6 +43,7 @@
 
 import { AppError, Err, NotFoundError, Ok, Result, UseCase, UserId } from "@/core/kernel";
 import { Money } from "@/core/money";
+import { Count } from "@/core/units";
 import { Percentage, Quantity, UnitPrice } from "@/core/numeric";
 import { CalendarDate, DateRange, FinancialYear } from "@/core/time";
 import { InstitutionRepository } from "@/domain/institutions";
@@ -403,7 +404,7 @@ export class GoldHoldingAnalytics implements UseCase<GoldAnalyticsInput, GoldAna
       input.instrumentId.value,
       "CLOSE",
       input.asOf,
-      1,
+      Count(1),
     );
     const benchmarkPricePerGram = latest[0]?.price ?? null;
     const pricedOn = latest[0]?.asOf ?? null;

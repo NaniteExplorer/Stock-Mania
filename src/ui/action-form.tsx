@@ -131,10 +131,10 @@ export function ActionForm({
 
       {confirm && (
         <Dialog open={asking} onOpenChange={setAsking}>
-          <DialogContent className="border-gray-600 bg-gray-800 text-gray-100">
+          <DialogContent className="border-(--border) bg-(--bg-surface) text-(--fg)">
             <DialogHeader>
               <DialogTitle>{confirm.title}</DialogTitle>
-              <DialogDescription className="text-gray-400">{confirm.body}</DialogDescription>
+              <DialogDescription className="text-(--fg-secondary)">{confirm.body}</DialogDescription>
             </DialogHeader>
             <DialogFooter>
               <button
@@ -149,7 +149,7 @@ export function ActionForm({
                 onClick={accept}
                 className={cn(
                   "ghost-btn h-10 px-4 text-xs",
-                  confirm.tone === "danger" && "border-red-500/40 text-red-300 hover:border-red-500/70",
+                  confirm.tone === "danger" && "border-(--loss)/40 text-(--loss) hover:border-(--loss)/70",
                 )}
               >
                 {confirm.confirmLabel}
@@ -203,7 +203,7 @@ export function SubmitButton({
       disabled={disabled || pending}
       className={cn(
         tone === "primary" ? "btn-glow" : "ghost-btn",
-        tone === "danger" && "text-red-300",
+        tone === "danger" && "text-(--loss)",
         "disabled:cursor-not-allowed disabled:opacity-50",
         // Sizes whichever icon lands inside, the spinner included, so no call
         // site has to restate it.

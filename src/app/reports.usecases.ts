@@ -13,6 +13,7 @@
  * has an answer three years later when the rates have changed twice.
  */
 
+import { Days, Months } from "@/core/units";
 import { AppError, Err, NotFoundError, Ok, Result, UseCase, UserId } from "@/core/kernel";
 import { Currency, Money } from "@/core/money";
 import { Percentage } from "@/core/numeric";
@@ -20,6 +21,7 @@ import { CalendarDate, DateRange, FinancialYear } from "@/core/time";
 import { AccountRepository, AccountTypeName } from "@/domain/accounts";
 import { CardTermsRepository, CashAsset, liquidPositions, totalLiquid } from "@/domain/assets";
 import { BalanceQuery } from "@/domain/transactions";
+import { LoanStore } from "@/domain/loans";
 import { InstrumentRepository } from "@/domain/instruments";
 import { LotBook, LotRepository } from "@/domain/lots";
 import { PriceLookup } from "@/domain/instruments";
@@ -239,7 +241,7 @@ export class NetWorthSeries implements UseCase<NetWorthSeriesInput, NetWorthSeri
   constructor(private readonly balances: BalanceQuery) {}
 
   async execute(input: NetWorthSeriesInput): Promise<Result<NetWorthSeriesOutput, AppError>> {
-    const totals = await this.balances.netWorthSeries(input.userId, input.months, input.asOf);
+    const totals = await this.balances.netWorthSeries(input.userId, Months(input.months), input.asOf);
     const points: NetWorthPoint[] = totals.map((total) => ({
       on: total.asOf,
       assets: total.assets,
@@ -286,6 +288,15 @@ export class PersonalReport implements UseCase<PersonalReportInput, PersonalRepo
      * used" when it means "we do not know the limit".
      */
     private readonly cardTerms?: CardTermsRepository,
+    /**
+     * Loans, for the debt-to-income figure.
+     *
+     * Optional on the same principle as `cardTerms`: with no store the monthly
+     * debt service is **unmeasured**, and `personalMetrics` reports
+     * `debtToIncome: null`. It does not report 0%, which a person with a home
+     * loan would read as "no debt" — a confident wrong answer, the worst kind.
+     */
+    private readonly loans?: LoanStore,
   ) {}
 
   async execute(input: PersonalReportInput): Promise<Result<PersonalReportOutput, AppError>> {
@@ -316,6 +327,25 @@ export class PersonalReport implements UseCase<PersonalReportInput, PersonalRepo
     );
     const monthsWithData = Math.max(1, monthly.length);
     const essentialPerMonth = essentialTotal.dividedBy(BigInt(monthsWithData), "HALF_UP");
+
+    /*
+     * Scheduled debt service, from the loans themselves.
+     *
+     * Only loans still outstanding at `asOf` count: a closed loan has a
+     * contractual instalment and no obligation to pay it, so including it would
+     * overstate the ratio for anyone who has ever repaid anything. The monthly
+     * restatement is the loan's own (`Loan.monthlyDebtService`) because a period
+     * is not a month on a quarterly loan.
+     */
+    const loanBook = this.loans ? await this.loans.loadLoans(input.userId, accounts) : null;
+    const monthlyDebtPayments = loanBook
+      ? Money.total(
+          loanBook
+            .filter((loan) => loan.outstandingOn(input.asOf).isPositive)
+            .map((loan) => loan.monthlyDebtService(input.asOf)),
+          Currency.reporting,
+        )
+      : null;
 
     const cards = sheet.filter((row) => row.subtype === "CREDIT_CARD");
     const cardBalances = Money.total(cards.map((row) => row.balance));
@@ -348,10 +378,7 @@ export class PersonalReport implements UseCase<PersonalReportInput, PersonalRepo
       periodIncome: income,
       periodExpenses: expenses,
       essentialMonthlyExpenses: Array.from({ length: monthsWithData }, () => essentialPerMonth),
-      // Debt payments and limits are only knowable from the products, which the
-      // caller may not have loaded; zero here means "not measured", and the metric
-      // returns null rather than a misleading 0%.
-      monthlyDebtPayments: Money.zero(Currency.reporting),
+      monthlyDebtPayments,
       monthlyGrossIncome: income.dividedBy(BigInt(monthsWithData), "HALF_UP"),
       cardBalances: measuredBalances,
       cardLimits,
@@ -432,7 +459,7 @@ export class TaxReport implements UseCase<TaxReportInput, TaxReportOutput> {
         taxCategory: profile?.category ?? "LISTED_EQUITY",
         instrumentId: disposal.instrumentId.value,
         acquiredOn: disposal.acquiredOn,
-        holdingDays: disposal.holdingDays,
+        holdingDays: Days(disposal.holdingDays),
         proceeds: disposal.proceeds,
         costBasis: disposal.costBasis,
         gain: disposal.gain,

@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { Count } from "@/core/units";
 import type { HttpClient } from "@/infra/providers";
 import {
   CatalogProviderResult,
@@ -561,7 +562,7 @@ export class InstrumentQuoteKeyReconciler {
 
   async reconcile(limit = 200): Promise<QuoteKeyReconciliationReport> {
     const at = this.now();
-    return this.run(await this.catalog.listingsDueQuoteKeyCheck(limit, at), at);
+    return this.run(await this.catalog.listingsDueQuoteKeyCheck(Count(limit), at), at);
   }
 
   /**
@@ -662,7 +663,7 @@ export class InstrumentQuoteKeyReconciler {
       }
     }
 
-    return { probed, resolved, markedStale, stillUnresolved, reasons };
+    return { probed: Count(probed), resolved: Count(resolved), markedStale: Count(markedStale), stillUnresolved: Count(stillUnresolved), reasons };
   }
 }
 

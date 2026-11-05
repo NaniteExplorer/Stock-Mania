@@ -1,7 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { Field } from "@/ui/primitives";
+import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import { saveTaxSettingsAction, type SettingsActionState } from "./actions";
 
 export interface TaxSettingsFormProps {
@@ -44,10 +48,10 @@ export default function TaxSettingsForm(props: TaxSettingsFormProps) {
         error={errors.financialYear?.[0]}
       >
         {(fieldProps) => (
-          <input
+          <Input
             {...fieldProps}
             name="financialYear"
-            className="form-input tnum"
+            className="tabular-nums"
             defaultValue={props.financialYear}
             required
           />
@@ -62,10 +66,10 @@ export default function TaxSettingsForm(props: TaxSettingsFormProps) {
         error={errors.marginalSlabPercent?.[0]}
       >
         {(fieldProps) => (
-          <input
+          <Input
             {...fieldProps}
             name="marginalSlabPercent"
-            className="form-input tnum"
+            className="tabular-nums"
             inputMode="decimal"
             defaultValue={props.marginalSlabPercent}
             required
@@ -81,10 +85,10 @@ export default function TaxSettingsForm(props: TaxSettingsFormProps) {
         error={errors.ltcgExemption?.[0]}
       >
         {(fieldProps) => (
-          <input
+          <Input
             {...fieldProps}
             name="ltcgExemption"
-            className="form-input tnum"
+            className="tabular-nums"
             inputMode="decimal"
             defaultValue={props.ltcgExemption}
             required
@@ -94,35 +98,31 @@ export default function TaxSettingsForm(props: TaxSettingsFormProps) {
 
       <Field name="regimeKey" label="Statutory regime" error={errors.regimeKey?.[0]}>
         {(fieldProps) => (
-          <select {...fieldProps} name="regimeKey" className="form-input" defaultValue={props.regimeKey}>
+          <NativeSelect {...fieldProps} name="regimeKey" defaultValue={props.regimeKey}>
             <option value="india-fy2025">India — from 23 July 2024</option>
             <option value="india-fy2024">India — to 22 July 2024</option>
-          </select>
+          </NativeSelect>
         )}
       </Field>
 
-      <label className="flex items-center gap-2 text-sm text-gray-300 md:col-span-2">
-        <input
-          type="checkbox"
+      <div className="md:col-span-2">
+        <Checkbox
           name="usesNewRegime"
           defaultChecked={props.usesNewRegime}
-          className="h-4 w-4"
+          label="I have opted into the new (concessional) income-tax regime"
         />
-        I have opted into the new (concessional) income-tax regime
-      </label>
+      </div>
 
       <div className="flex flex-wrap items-center gap-3 md:col-span-2">
-        <button type="submit" className="btn-glow" disabled={pending}>
-          {pending ? "Saving…" : "Save tax settings"}
-        </button>
+        <Button type="submit" loading={pending} disabled={pending}>Save tax settings</Button>
         {props.isAssumed && !state?.ok && (
-          <p className="text-xs text-amber-500" role="status">
+          <p className="text-xs text-(--warn)" role="status">
             Nothing is stored for this year yet, so the tax panel runs at the top slab — a ceiling
             rather than an estimate.
           </p>
         )}
         {state && (
-          <p className={state.ok ? "text-sm text-green-500" : "text-sm text-red-500"} role="status">
+          <p className={state.ok ? "text-sm text-(--gain)" : "text-sm text-(--loss)"} role="status">
             {state.message}
           </p>
         )}

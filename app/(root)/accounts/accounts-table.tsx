@@ -6,6 +6,10 @@ import { Archive, ArchiveRestore, ChevronRight, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ActionForm, SubmitButton } from "@/ui/action-form";
 import { InstitutionMark } from "@/ui/provider-picker";
+import { Panel } from "@/components/ui/page-shell";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ActionCell, TextCell } from "@/components/ui/data-cell";
+import { Button } from "@/components/ui/button";
 import {
   bulkCloseAccountsAction,
   closeCashAccountAction,
@@ -50,8 +54,8 @@ export default function AccountsTable({ rows }: { rows: readonly AccountRow[] })
   return (
     <>
       {effective.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-brand-500/30 bg-brand-500/5 px-4 py-3">
-          <p className="text-xs font-medium text-gray-200">
+        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-(--accent)/30 bg-(--accent)/5 px-4 py-3">
+          <p className="text-xs font-medium text-(--fg)">
             {effective.length} account{effective.length === 1 ? "" : "s"} selected
           </p>
           <ActionForm
@@ -76,7 +80,7 @@ export default function AccountsTable({ rows }: { rows: readonly AccountRow[] })
           </ActionForm>
           <button
             type="button"
-            className="text-xs text-gray-400 hover:underline"
+            className="text-xs text-(--fg-secondary) hover:underline"
             onClick={() => setSelected(new Set())}
           >
             Clear selection
@@ -84,18 +88,14 @@ export default function AccountsTable({ rows }: { rows: readonly AccountRow[] })
         </div>
       )}
 
-      <section className="panel p-0">
-        <div className="table-scroll">
-          <table className="w-full text-sm">
-            <caption className="sr-only">
-              Cash accounts, with kind, currency and derived balance
-            </caption>
-            <thead>
-              <tr className="border-b border-gray-600">
-                <th scope="col" className="px-4 py-3 text-left">
+      <Panel title="Your accounts" description="Balances are summed from postings at read time." flush>
+          <Table aria-label="Cash accounts, with kind, currency and derived balance">
+            <TableHeader>
+              <TableRow>
+                <TableHead>
                   <input
                     type="checkbox"
-                    className="h-4 w-4 accent-brand-500"
+                    className="h-4 w-4 accent-(--accent)"
                     checked={allSelected}
                     ref={(node) => {
                       if (node) node.indeterminate = effective.length > 0 && !allSelected;
@@ -104,28 +104,26 @@ export default function AccountsTable({ rows }: { rows: readonly AccountRow[] })
                     onChange={() => setSelected(allSelected ? new Set() : new Set(closable))}
                     aria-label="Select all open accounts"
                   />
-                </th>
-                <th scope="col" className="metric-label px-4 py-3 text-left">Account</th>
-                <th scope="col" className="metric-label px-4 py-3 text-left">Kind</th>
-                <th scope="col" className="metric-label px-4 py-3 text-left">Currency</th>
-                <th scope="col" className="metric-label px-4 py-3 text-left">Status</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Balance</th>
-                <th scope="col" className="metric-label px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+                </TableHead>
+                <TableHead>Account</TableHead>
+                <TableHead>Kind</TableHead>
+                <TableHead>Currency</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="text-right">Balance</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {rows.map((row) => (
-                <tr
+                <TableRow
                   key={row.id}
-                  className={cn(
-                    "border-b border-gray-600/50 last:border-0",
-                    selected.has(row.id) && "bg-brand-500/5",
-                  )}
+                  aria-selected={selected.has(row.id) || undefined}
+                  className={cn(selected.has(row.id) && "bg-(--accent)/5")}
                 >
-                  <td className="px-4 py-3">
+                  <TableCell>
                     <input
                       type="checkbox"
-                      className="h-4 w-4 accent-brand-500"
+                      className="h-4 w-4 accent-(--accent)"
                       checked={selected.has(row.id)}
                       disabled={row.isSystem || row.isClosed}
                       onChange={() =>
@@ -138,43 +136,31 @@ export default function AccountsTable({ rows }: { rows: readonly AccountRow[] })
                       }
                       aria-label={`Select ${row.name}`}
                     />
-                  </td>
-                  <td className="px-4 py-3">
+                  </TableCell>
+                  <TableCell>
                     <Link
                       href={`/accounts/${row.id}`}
                       className="group flex items-center gap-3"
                     >
                       <InstitutionMark institution={row.institution} />
                       <span>
-                        <span className="block font-medium text-gray-100 group-hover:text-brand-400">
+                        <span className="block font-medium text-(--fg) group-hover:text-(--accent)">
                           {row.name}
                         </span>
-                        <span className="block text-xs text-gray-500">
+                        <span className="block text-xs text-(--fg-muted)">
                           {row.institution ?? row.code}
                           {row.suffix && ` · ending ${row.suffix}`}
                         </span>
                       </span>
                     </Link>
-                  </td>
-                  <td className="px-4 py-3 text-gray-400">{row.kind}</td>
-                  <td className="px-4 py-3 text-gray-400">{row.currency}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={cn(
-                        "pill",
-                        row.isClosed ? undefined : "pill-brand",
-                      )}
-                    >
-                      {row.isClosed ? "Closed" : "Open"}
-                    </span>
-                    <p className="tnum mt-1 text-xs text-gray-500">
-                      {row.postingCount} posting{row.postingCount === 1 ? "" : "s"}
-                    </p>
-                  </td>
-                  <td className="tnum px-4 py-3 text-right font-medium text-gray-100">
-                    {row.balance}
-                  </td>
-                  <td className="px-4 py-3">
+                  </TableCell>
+                  <TextCell>{row.kind}</TextCell>
+                  <TextCell>{row.currency}</TextCell>
+                  <TextCell secondary={`${row.postingCount} posting${row.postingCount === 1 ? "" : "s"}`}>
+                    {row.isClosed ? "Closed" : "Open"}
+                  </TextCell>
+                  <TextCell className="text-right tabular-nums">{row.balance}</TextCell>
+                  <ActionCell>
                     <div className="flex flex-wrap justify-end gap-2">
                       {!row.isSystem && !row.isClosed && (
                         <ActionForm
@@ -238,24 +224,26 @@ export default function AccountsTable({ rows }: { rows: readonly AccountRow[] })
                         </ActionForm>
                       )}
 
-                      <Link href={`/accounts/${row.id}`} className="ghost-btn h-9 px-3 text-xs">
-                        Open
-                        <ChevronRight className="h-3.5 w-3.5" aria-hidden />
-                      </Link>
+                      <Button asChild variant="ghost" size="sm">
+                        <Link href={`/accounts/${row.id}`}>
+                          Open
+                          <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+                        </Link>
+                      </Button>
                     </div>
-                  </td>
-                </tr>
+                  </ActionCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
-        </div>
-
-        {rows.length === 0 && (
-          <p className="px-5 py-10 text-center text-sm text-gray-500">
-            No accounts match this filter.
-          </p>
-        )}
-      </section>
+              {rows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={7} className="py-10 text-center text-(--fg-muted)">
+                    No accounts match this filter.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+      </Panel>
     </>
   );
 }

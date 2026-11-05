@@ -2,7 +2,9 @@
 
 
 import { Toaster as SoonerToaster, type ToasterProps } from "sonner";
-import { CircleCheckIcon, InfoIcon, Loader2Icon, OctagonXIcon, TriangleAlertIcon } from "lucide-react";
+import { Icon } from "../icons";
+import { Spinner } from "./spinner";
+import styles from "./feedback.module.css";
 import React from "react";
 
 const Toaster = ({ ...props }: ToasterProps) => {
@@ -10,29 +12,33 @@ const Toaster = ({ ...props }: ToasterProps) => {
 
   return (
     <SoonerToaster
-      theme="dark"
+      theme="system"
       className="toaster group"
       position="top-center"
-      richColors
       closeButton
       icons={{
-        success: <CircleCheckIcon className="size-4" />,
-        info: <InfoIcon className="size-4" />,
-        warning: <TriangleAlertIcon className="size-4" />,
-        error: <OctagonXIcon className="size-4" />,
-        loading: <Loader2Icon className="size-4 animate-spin" />,
+        success: <Icon name="check" />,
+        info: <Icon name="info" />,
+        warning: <Icon name="warn" />,
+        error: <Icon name="warn" />,
+        loading: <Spinner />,
       }}
       style={
         {
-          "--normal-bg": "var(--popover)",
-          "--normal-text": "var(--popover-foreground)",
+          "--normal-bg": "var(--bg-raised)",
+          "--normal-text": "var(--fg)",
           "--normal-border": "var(--border)",
-          "--border-radius": "var(--radius)",
+          "--border-radius": "var(--r-3)",
         } as React.CSSProperties
       }
       toastOptions={{
         classNames: {
-          toast: "cn-toast",
+          toast: styles.toast,
+          success: styles.toastSuccess,
+          warning: styles.toastWarning,
+          error: styles.toastError,
+          info: styles.toastInfo,
+          description: styles.description,
         },
       }}
       {...props}

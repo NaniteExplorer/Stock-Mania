@@ -1,4 +1,5 @@
-import { Pill } from "@/ui/primitives";
+import { Panel } from "../../../../components/ui/page-shell";
+import { InstitutionMark } from "@/ui/provider-picker";
 
 export type NonDigitalHoldingFamily = "EQUITY" | "FUND" | "FIXED_INCOME";
 
@@ -50,89 +51,92 @@ export default function NonDigitalHoldingProfile(props: NonDigitalHoldingProfile
 
   if (props.view === "performance") {
     return (
-      <section className="panel mb-6 p-5" aria-labelledby="holding-data-quality-heading">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 id="holding-data-quality-heading" className="text-sm font-semibold text-gray-100">
-              Valuation data quality
-            </h2>
-            <p className="mt-1 max-w-2xl text-xs text-gray-500">
-              Price status and provenance for the performance figures on this page.
-            </p>
-          </div>
-          <Pill tone="neutral">{status}</Pill>
-        </div>
-        <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <Panel
+        title="Valuation data quality"
+        description="Price status and provenance for the performance figures on this page."
+        actions={<span className="text-xs text-(--fg-muted)">{status}</span>}
+      >
+        <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Fact label="Valuation basis" value={copy.valuation} />
           <Fact label="Observation date" value={props.pricedOn ?? "No usable observation"} />
           <Fact label="Price reference" value={props.quoteRef ?? "Instrument symbol fallback"} mono />
           <Fact label="Native currency" value={props.currency} mono />
         </dl>
         {(props.unpricedReason || props.isStale) && (
-          <p className="mt-4 rounded-lg border border-amber-600/40 bg-amber-500/5 px-3 py-2 text-xs text-amber-300">
+          <p className="mt-4 rounded-lg border border-(--warn)/40 bg-(--warn)/5 px-3 py-2 text-xs text-(--warn)">
             {props.unpricedReason ?? "The latest stored observation is stale. Performance remains dated to the observation shown above."}
           </p>
         )}
-      </section>
+      </Panel>
     );
   }
 
   if (props.view === "income-leases") {
     return (
-      <section className="panel mb-6 p-5" aria-labelledby="holding-lifecycle-heading">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 id="holding-lifecycle-heading" className="text-sm font-semibold text-gray-100">
-              {copy.lifecycleTitle}
-            </h2>
-            <p className="mt-1 max-w-2xl text-xs text-gray-500">
-              Recorded lifecycle facts only. Unrecorded distributions, coupons or redemptions are not estimated.
-            </p>
-          </div>
-          <Pill tone="neutral">{props.lifecycle.length ? "Terms recorded" : "Terms incomplete"}</Pill>
-        </div>
+      <Panel
+        title={copy.lifecycleTitle}
+        description="Recorded lifecycle facts only. Unrecorded distributions, coupons or redemptions are not estimated."
+        actions={<span className="text-xs text-(--fg-muted)">{props.lifecycle.length ? "Terms recorded" : "Terms incomplete"}</span>}
+      >
         {props.lifecycle.length ? (
-          <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {props.lifecycle.map((fact) => <Fact key={fact.label} label={fact.label} value={fact.value} />)}
           </dl>
         ) : (
-          <p className="mt-4 rounded-lg border border-gray-600 px-3 py-3 text-xs text-gray-500">
+          <p className="mt-4 rounded-lg border border-(--border) px-3 py-3 text-xs text-(--fg-muted)">
             No asset-specific income or maturity terms are recorded for this instrument. Activity remains available from the ledger and corporate-action history.
           </p>
         )}
-      </section>
+      </Panel>
     );
   }
 
   return (
-    <section className="panel mb-6 p-5" aria-labelledby="holding-profile-heading">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 id="holding-profile-heading" className="text-sm font-semibold text-gray-100">{copy.title}</h2>
-          <p className="mt-1 max-w-2xl text-xs text-gray-500">{copy.description}</p>
-        </div>
-        <Pill tone="neutral">{props.kindLabel}</Pill>
-      </div>
-      <dl className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <Panel
+      title={copy.title}
+      description={copy.description}
+      actions={<span className="text-xs text-(--fg-muted)">{props.kindLabel}</span>}
+    >
+      <dl className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Fact label={props.family === "FUND" ? "Scheme code" : "Exchange"} value={props.family === "FUND" ? (props.quoteRef ?? "Not recorded") : (props.exchange ?? "Not recorded")} mono />
         <Fact label="ISIN" value={props.isin ?? "Not recorded"} mono />
-        <Fact label="Platform" value={props.platform ?? "Unassigned"} />
+        <Fact label="Platform" value={props.platform ?? "Unassigned"} institution={props.platform} />
         <Fact label="Position records" value={`${props.openLots} open lot${props.openLots === 1 ? "" : "s"} / ${props.tradeCount} trade${props.tradeCount === 1 ? "" : "s"}`} />
       </dl>
-      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-gray-600 pt-3 text-xs text-gray-500">
+      <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 border-t border-(--border) pt-3 text-xs text-(--fg-muted)">
         <span>{props.corporateActionCount} corporate action{props.corporateActionCount === 1 ? "" : "s"} recorded</span>
         <span>Valuation: {props.pricedOn ? `${props.pricedOn}${props.isStale ? " (stale)" : ""}` : "unavailable"}</span>
         <span>Currency: {props.currency}</span>
       </div>
-    </section>
+    </Panel>
   );
 }
 
-function Fact({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+function Fact({
+  label,
+ value,
+  mono = false,
+  institution,
+}: {
+  label: string;
+ value: string;
+  mono?: boolean;
+  /** A stored platform or institution name: its mark sits beside the value (DESIGN.md §9). */
+  institution?: string | null;
+}) {
   return (
-    <div className="rounded-lg border border-gray-600 p-4">
-      <dt className="metric-label">{label}</dt>
-      <dd className={`mt-2 break-words text-sm font-medium text-gray-200${mono ? " tnum" : ""}`}>{value}</dd>
+    <div className="rounded-lg border border-(--border) p-4">
+      <dt className="text-xs font-medium text-(--fg-muted)">{label}</dt>
+      <dd className={`mt-2 break-words text-sm font-medium text-(--fg)${mono ? " tnum" : ""}`}>
+        {institution ? (
+          <span className="flex items-center gap-2">
+            <InstitutionMark institution={institution} />
+            {value}
+          </span>
+        ) : (
+         value
+        )}
+      </dd>
     </div>
   );
 }

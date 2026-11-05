@@ -30,6 +30,7 @@ import * as React from "react";
 import { DatabaseZap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { Chart, LineSeries, type SeriesPoint } from "@/ui/charts";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../../../../components/ui/table";
 
 export interface PriceHistoryPoint {
   /** ISO date. */
@@ -190,7 +191,7 @@ export default function PriceHistoryChart({
             className={
               active
                 ? "focus-brand rounded-lg border border-brand-500/70 bg-brand-500/10 px-2.5 py-1 text-xs font-medium text-brand-200"
-                : "focus-brand rounded-lg border border-gray-600 px-2.5 py-1 text-xs font-medium text-gray-400 transition-colors hover:text-gray-100"
+                : "focus-brand rounded-lg border border-(--border) px-2.5 py-1 text-xs font-medium text-(--fg-secondary) transition-colors hover:text-(--fg)"
             }
           >
             {option.id}
@@ -213,19 +214,19 @@ export default function PriceHistoryChart({
   const badges = (
     <div className="mb-3 flex flex-wrap gap-2">
       {quoteStale && (
-        <span className="rounded border border-amber-500/50 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-300">
+        <span className="rounded border border-(--warn)/50 bg-(--warn)/10 px-2 py-1 text-[11px] text-(--warn)">
           Quote key {quoteKey ?? symbol} has stopped resolving. The holding is still valued at its last known close.
         </span>
       )}
       {live && (
-        <span className="rounded border border-gray-600 px-2 py-1 text-[11px] text-gray-400">
+        <span className="rounded border border-(--border) px-2 py-1 text-[11px] text-(--fg-secondary)">
           Latest stored close {live.on}
         </span>
       )}
       {historyState.message && (
         <span
           role={historyState.status === "error" ? "alert" : "status"}
-          className={historyState.status === "error" ? "text-xs text-red-300" : "text-xs text-green-400"}
+          className={historyState.status === "error" ? "text-xs text-(--loss)" : "text-xs text-(--gain)"}
         >
           {historyState.message}
         </span>
@@ -234,11 +235,11 @@ export default function PriceHistoryChart({
   );
 
   const empty = error ? (
-    <p role="alert" className="rounded-lg border border-red-500/40 bg-red-500/[0.06] p-4 text-sm text-red-300">
+    <p role="alert" className="rounded-lg border border-(--loss)/40 bg-(--loss)/[0.06] p-4 text-sm text-(--loss)">
       {error}
     </p>
   ) : drawn < 2 ? (
-    <p className="rounded-lg border border-gray-600/70 p-4 text-sm text-gray-500">
+    <p className="rounded-lg border border-(--border)/70 p-4 text-sm text-(--fg-muted)">
       {drawn === 0 ? "No daily history is stored" : "Only one closing observation is stored"} for {symbol}. Daily closes
       are loading from the earliest purchase date; a single point cannot show performance.
     </p>
@@ -256,25 +257,25 @@ export default function PriceHistoryChart({
         loading={loading}
         empty={empty}
         tableView={() => (
-          <div className="table-scroll max-h-80">
-            <table className="w-full text-sm">
-              <thead className="sticky top-0 bg-gray-800">
-                <tr>
-                  <th scope="col" className="px-3 py-2 text-left text-xs text-gray-500">Date</th>
-                  <th scope="col" className="px-3 py-2 text-right text-xs text-gray-500">Close ({currency})</th>
-                </tr>
-              </thead>
-              <tbody>
+          <div className="max-h-80 overflow-auto">
+            <Table>
+              <TableHeader className="sticky top-0 bg-(--bg-surface)">
+                <TableRow>
+                  <TableHead className="text-xs text-(--fg-muted)">Date</TableHead>
+                  <TableHead className="text-right text-xs text-(--fg-muted)">Close ({currency})</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {data.map((point) => (
-                  <tr key={String(point.x)} className="border-t border-gray-700">
-                    <td className="px-3 py-1.5 text-gray-300">{String(point.x)}</td>
-                    <td className="tnum px-3 py-1.5 text-right text-gray-200">
+                  <TableRow key={String(point.x)} className="border-t border-(--border-subtle)">
+                    <TableCell className="text-(--fg-secondary)">{String(point.x)}</TableCell>
+                    <TableCell className="tnum text-right text-(--fg)">
                       {point.close === undefined ? "—" : (Number(point.close) / 100).toFixed(2)}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
       >
@@ -282,7 +283,7 @@ export default function PriceHistoryChart({
       </Chart>
 
       {!empty && (
-        <p className="mt-2 text-xs text-gray-500">
+        <p className="mt-2 text-xs text-(--fg-muted)">
           {drawn} of {data.length} plotted points carry a close.{" "}
           {visibleGaps.length === 0
             ? "No weekday gaps in this range."

@@ -1,12 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { AlertTriangle, Download, Landmark } from "lucide-react";
+import { AlertTriangle, Download } from "lucide-react";
 import { connection } from "next/server";
 import { CalendarDate, DateRange } from "@/core/time";
 import { Money } from "@/core/money";
-import { Card, EmptyState, PageHeader, Pill, Stat } from "@/ui/primitives";
+import { rupee, type Figure } from "@/core/format";
+import { Kpi, KpiStrip, Masthead, Page as PageShell, Panel } from "@/components/ui/page-shell";
+import { Banner } from "@/components/ui/banner";
+import { Button } from "@/components/ui/button";
 import { FilterBar } from "@/ui/filter-bar";
 import { formatMoney } from "@/ui/format";
+import { InstitutionMark } from "@/ui/provider-picker";
 import { currentUserId, ensureSeeded, services } from "@/infra/container";
 import AccountsTable, { type AccountRow } from "./accounts-table";
 import OpenAccountForm from "./open-account-form";
@@ -87,7 +91,13 @@ export default async function Page({
       const position = positions.find(
         (candidate) => candidate.asset.id.value === pending.accountId,
       );
-      return position ? { ...pending, label: position.asset.displayName } : null;
+      return position
+        ? {
+            ...pending,
+            label: position.asset.displayName,
+            institution: position.asset.account.institution,
+          }
+        : null;
     })
     .filter((pending): pending is NonNullable<typeof pending> => pending !== null);
 
@@ -142,74 +152,74 @@ export default async function Page({
     .map(({ sortKey: _sortKey, balanceMinor: _balanceMinor, ...row }) => row);
 
   return (
-    <>
-      <PageHeader
+    <PageShell>
+      <Masthead
         title="Accounts"
-        subtitle="Every bank account, wallet and cash balance — summed from journal postings at read time, never stored."
-        badge={<Pill tone="brand">Phase 2</Pill>}
-        action={
-          <a href="/accounts/export" className="ghost-btn h-10 px-4 text-xs" download>
-            <Download className="h-3.5 w-3.5" aria-hidden />
-            Export CSV
-          </a>
+        hero={rupee(totalOpen)}
+        side={
+          <Button asChild variant="outline" size="sm">
+            <a href="/accounts/export" download>
+              <Download className="h-3.5 w-3.5" aria-hidden />
+              Export CSV
+            </a>
+          </Button>
         }
       />
+      <p className="text-sm text-(--fg-secondary)">
+        Every bank account, wallet and cash balance — summed from journal postings at read time, never stored.{" "}
+        <span className="text-(--fg-muted)">Phase 2</span>
+      </p>
 
-      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Total balance" value={totalOpen} hint="Open spendable money" />
-        <Stat
-          label="Accounts"
-          value={<span className="tnum">{openPositions.length}</span>}
-          hint="Open, cash-like"
-        />
-        <Stat label="Money in" value={thisMonth?.income ?? Money.zero()} hint="This month" />
-        <Stat label="Money out" value={thisMonth?.expense ?? Money.zero()} hint="This month" />
-      </div>
+      <KpiStrip>
+        <Kpi label="Total balance" value={rupee(totalOpen)} detail="Open spendable money" />
+        <Kpi label="Accounts" value={String(openPositions.length) as Figure} detail="Open, cash-like" />
+        <Kpi label="Money in" value={rupee(thisMonth?.income ?? Money.zero())} detail="This month" />
+        <Kpi label="Money out" value={rupee(thisMonth?.expense ?? Money.zero())} detail="This month" />
+      </KpiStrip>
 
       {pendingImports.length > 0 && (
-        <Card
-          className="mb-6"
+        <Panel
           title="Part of an import is still in the review queue"
-          subtitle="Until these rows are posted, the balances below are the balances of the rows that were."
+          description="Until these rows are posted, the balances below are the balances of the rows that were."
         >
           <ul className="space-y-2 text-sm">
             {pendingImports.map((pending) => (
-              <li key={pending.accountId} className="flex flex-wrap items-baseline gap-2">
-                <span className="text-gray-100">{pending.label}</span>
-                <span className="text-gray-400">
-                  — <span className="tnum">{pending.rows}</span> row
+              <li key={pending.accountId} className="flex flex-wrap items-center gap-2">
+                <InstitutionMark institution={pending.institution} />
+                <span className="text-(--fg)">{pending.label}</span>
+                <span className="text-(--fg-secondary)">
+                  — <span className="tabular-nums">{pending.rows}</span> row
                   {pending.rows === 1 ? "" : "s"} staged and not posted
                   {pending.batches > 1 ? ` across ${pending.batches} imports` : ""}
                 </span>
-                <Link href="/imports" className="text-xs text-brand-400 hover:underline">
+                <Link href="/imports" className="text-xs text-(--accent) hover:underline">
                   Review them
                 </Link>
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-xs text-gray-500">
+          <p className="mt-3 text-xs text-(--fg-muted)">
             Worth finishing rather than ignoring: a review queue is rarely a random sample of a
             statement, so a part-posted import usually leans one way — and the balance leans with
             it.
           </p>
-        </Card>
+        </Panel>
       )}
 
       {result.value.anomalies.length > 0 && (
-        <Card
+        <Panel
           title="Worth a look"
-          subtitle="These balances are possible in the ledger but not in the world."
-          className="mb-6"
+          description="These balances are possible in the ledger but not in the world."
         >
           <ul className="space-y-2">
             {result.value.anomalies.map((anomaly) => (
-              <li key={anomaly} className="flex gap-2 text-sm text-gray-300">
-                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden />
+              <li key={anomaly} className="flex gap-2 text-sm text-(--fg-secondary)">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-(--warn)" aria-hidden />
                 <span>{anomaly}</span>
               </li>
             ))}
           </ul>
-        </Card>
+        </Panel>
       )}
 
       {positions.length > 0 && (
@@ -249,32 +259,26 @@ export default async function Page({
         />
       )}
 
-      <div className="mb-6">
-        {positions.length === 0 ? (
-          <section className="panel p-0">
-            <EmptyState
-              icon={Landmark}
-              title="No accounts yet"
-              body="Open a bank account, wallet or cash account below, then import a statement to fill it in."
-            />
-          </section>
-        ) : (
-          <AccountsTable rows={rows} />
-        )}
-      </div>
+      {positions.length === 0 ? (
+        <Banner title="No accounts yet">
+          <p>Open a bank account, wallet or cash account below, then import a statement to fill it in.</p>
+        </Banner>
+      ) : (
+        <AccountsTable rows={rows} />
+      )}
 
-      <Card
+      <Panel
         title="Open an account"
-        subtitle="A balance today is booked against Equity:Opening Balances, so you can start mid-life without inventing history."
-        action={
-          <Link href="/imports" className="ghost-btn h-10 px-4 text-xs">
-            Import a statement
-          </Link>
+        description="A balance today is booked against Equity:Opening Balances, so you can start mid-life without inventing history."
+        actions={
+          <Button asChild variant="outline" size="sm">
+            <Link href="/imports">Import a statement</Link>
+          </Button>
         }
       >
         <OpenAccountForm />
-      </Card>
-    </>
+      </Panel>
+    </PageShell>
   );
 }
 

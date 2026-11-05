@@ -26,7 +26,7 @@ export default function UtilisationGauge({
   const filled = (clamped / 100) * circumference;
 
   const tone =
-    percentValue > 70 ? "text-red-500" : percentValue > 30 ? "text-amber-500" : "text-green-500";
+    percentValue > 70 ? "text-(--loss)" : percentValue > 30 ? "text-(--warn)" : "text-(--gain)";
 
   return (
     <div className="flex items-center gap-3">
@@ -37,7 +37,7 @@ export default function UtilisationGauge({
           r="42"
           fill="none"
           strokeWidth="8"
-          className="stroke-gray-600"
+          className="stroke-(--border)"
         />
         <circle
           cx="50"
@@ -51,9 +51,9 @@ export default function UtilisationGauge({
         />
       </svg>
       <div>
-        <p className="metric-label">Utilisation</p>
-        <p className={cn("tnum text-xl font-semibold", tone)}>{percentText}%</p>
-        {percentValue > 100 && <p className="text-xs text-red-500">Over the limit</p>}
+        <p className="text-xs text-(--fg-muted)">Utilisation</p>
+        <p className={cn("tabular-nums text-xl font-semibold", tone)}>{percentText}%</p>
+        {percentValue > 100 && <p className="text-xs text-(--loss)">Over the limit</p>}
       </div>
     </div>
   );
